@@ -175,10 +175,18 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   };
 
   const handleExcludeCustomer = async (customerId: string) => {
+    if (!profile?.id) {
+      alert('User not authenticated');
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('excluded_customers')
-        .insert({ customer_id: customerId });
+        .insert({
+          user_id: profile.id,
+          customer_id: customerId
+        });
 
       if (error) throw error;
 
@@ -190,11 +198,17 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   };
 
   const handleIncludeCustomer = async (customerId: string) => {
+    if (!profile?.id) {
+      alert('User not authenticated');
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('excluded_customers')
         .delete()
-        .eq('customer_id', customerId);
+        .eq('customer_id', customerId)
+        .eq('user_id', profile.id);
 
       if (error) throw error;
 
@@ -212,6 +226,11 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const handleSaveFilter = async () => {
     if (!newFilterName.trim()) {
       alert('Please enter a filter name');
+      return;
+    }
+
+    if (!profile?.id) {
+      alert('User not authenticated');
       return;
     }
 
@@ -235,6 +254,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       const { error } = await supabase
         .from('saved_customer_filters')
         .upsert({
+          user_id: profile.id,
           filter_name: newFilterName.trim(),
           filter_config: filterConfig
         }, {
