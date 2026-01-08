@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { batchedInQuery } from '../lib/batchedQuery';
-import { ArrowLeft, Plus, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, Power, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, Lock, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Plus, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, Lock, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X } from 'lucide-react';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import CustomerFiles from './CustomerFiles';
 import { exportToExcel as exportExcel, formatDate, formatCurrency } from '../lib/excelExport';
+import * as XLSX from 'xlsx';
 
 type Customer = {
   id: string;
@@ -17,6 +18,13 @@ type Customer = {
   postpone_reason: string | null;
   created_at: string;
   updated_at: string;
+  // Analytics fields
+  customer_id?: string;
+  balance?: number;
+  invoice_count?: number;
+  oldest_invoice_date?: string | null;
+  newest_invoice_date?: string | null;
+  max_days_overdue?: number;
 };
 
 type ScheduledEmail = {
@@ -26,6 +34,29 @@ type ScheduledEmail = {
   formula_name: string;
   timezone: string;
 };
+
+type FilterConfig = {
+  minBalance: number;
+  maxBalance: number;
+  minInvoiceCount: number;
+  maxInvoiceCount: number;
+  minDaysOverdue: number;
+  maxDaysOverdue: number;
+  dateFrom: string;
+  dateTo: string;
+  logicOperator: 'AND' | 'OR';
+  sortBy: 'name' | 'email' | 'balance' | 'invoice_count' | 'max_days_overdue' | 'created_at';
+  sortOrder: 'asc' | 'desc';
+};
+
+const PRESET_FILTERS = [
+  { label: 'High Balance (>$10k)', filter: { minBalance: 10000, maxBalance: Infinity, minInvoiceCount: 0, maxInvoiceCount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
+  { label: 'Medium Balance ($5k-$10k)', filter: { minBalance: 5000, maxBalance: 10000, minInvoiceCount: 0, maxInvoiceCount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
+  { label: 'Balance >$500 & >10 Invoices', filter: { minBalance: 500, maxBalance: Infinity, minInvoiceCount: 10, maxInvoiceCount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
+  { label: 'Many Open Invoices (>20)', filter: { minBalance: 0, maxBalance: Infinity, minInvoiceCount: 20, maxInvoiceCount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
+  { label: 'Overdue >90 Days', filter: { minBalance: 0, maxBalance: Infinity, minInvoiceCount: 0, maxInvoiceCount: Infinity, minDaysOverdue: 90, maxDaysOverdue: Infinity } },
+  { label: 'Critical: >$20k OR >30 Invoices', filter: { minBalance: 20000, maxBalance: Infinity, minInvoiceCount: 30, maxInvoiceCount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity }, logic: 'OR' as const },
+];
 
 type CustomersProps = {
   onBack?: () => void;
@@ -38,6 +69,8 @@ export default function Customers({ onBack }: CustomersProps) {
   const hasAccess = hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW, 'view');
 
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
+  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -51,9 +84,31 @@ export default function Customers({ onBack }: CustomersProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [sortColumn, setSortColumn] = useState<string>('created_at');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const pageSize = 1000;
+  const [showFilters, setShowFilters] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(true);
+  const [stats, setStats] = useState({
+    total_customers: 0,
+    active_customers: 0,
+    total_balance: 0,
+    avg_balance: 0,
+    customers_with_open_invoices: 0
+  });
+
+  const [filters, setFilters] = useState<FilterConfig>({
+    minBalance: 0,
+    maxBalance: Infinity,
+    minInvoiceCount: 0,
+    maxInvoiceCount: Infinity,
+    minDaysOverdue: 0,
+    maxDaysOverdue: Infinity,
+    dateFrom: '',
+    dateTo: '',
+    logicOperator: 'AND',
+    sortBy: 'balance',
+    sortOrder: 'desc'
+  });
+
+  const pageSize = 50;
 
   const [formData, setFormData] = useState({
     name: '',
@@ -61,28 +116,84 @@ export default function Customers({ onBack }: CustomersProps) {
   });
 
   useEffect(() => {
-    loadCustomers();
+    loadCustomersWithAnalytics();
   }, []);
 
-  const loadCustomers = async (page = 0) => {
+  useEffect(() => {
+    applyFilters();
+  }, [filters, allCustomers]);
+
+  const loadCustomersWithAnalytics = async () => {
     setLoading(true);
     setIsSearching(false);
     try {
-      const { count } = await supabase
-        .from('customers')
-        .select('*', { count: 'exact', head: true });
-
-      setTotalCount(count || 0);
-
-      const { data, error } = await supabase
+      // Get customers from customers table
+      const { data: customerData, error: customerError } = await supabase
         .from('customers')
         .select('*')
-        .order('created_at', { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
+        .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setCustomers(data || []);
-      setCurrentPage(page);
+      if (customerError) throw customerError;
+
+      // Get customers with analytics (balance, invoice counts)
+      const { data: analyticsData, error: analyticsError } = await supabase
+        .rpc('get_customers_with_balance', {
+          p_min_balance: 0,
+          p_max_balance: 999999999,
+          p_min_invoice_count: 0,
+          p_max_invoice_count: 999999,
+          p_min_days_overdue: 0,
+          p_max_days_overdue: 999999,
+          p_date_from: null,
+          p_date_to: null
+        });
+
+      if (analyticsError) {
+        console.error('Analytics error:', analyticsError);
+      }
+
+      // Create a map of analytics data by customer_id
+      const analyticsMap = new Map();
+      (analyticsData || []).forEach((item: any) => {
+        analyticsMap.set(item.customer_id, {
+          balance: item.balance || 0,
+          invoice_count: item.invoice_count || 0,
+          oldest_invoice_date: item.oldest_invoice_date,
+          newest_invoice_date: item.newest_invoice_date,
+          max_days_overdue: item.max_days_overdue || 0
+        });
+      });
+
+      // Merge customer data with analytics
+      const mergedData = (customerData || []).map(customer => {
+        const analytics = analyticsMap.get(customer.id);
+        return {
+          ...customer,
+          customer_id: customer.id,
+          balance: analytics?.balance || 0,
+          invoice_count: analytics?.invoice_count || 0,
+          oldest_invoice_date: analytics?.oldest_invoice_date || null,
+          newest_invoice_date: analytics?.newest_invoice_date || null,
+          max_days_overdue: analytics?.max_days_overdue || 0
+        };
+      });
+
+      setAllCustomers(mergedData);
+      setTotalCount(mergedData.length);
+
+      // Calculate stats
+      const activeCount = mergedData.filter(c => c.is_active).length;
+      const totalBalance = mergedData.reduce((sum, c) => sum + (c.balance || 0), 0);
+      const customersWithInvoices = mergedData.filter(c => (c.invoice_count || 0) > 0).length;
+      const avgBalance = customersWithInvoices > 0 ? totalBalance / customersWithInvoices : 0;
+
+      setStats({
+        total_customers: mergedData.length,
+        active_customers: activeCount,
+        total_balance: totalBalance,
+        avg_balance: avgBalance,
+        customers_with_open_invoices: customersWithInvoices
+      });
     } catch (error) {
       console.error('Error loading customers:', error);
     } finally {
@@ -90,74 +201,161 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      loadCustomers(0);
-      return;
+  const applyFilters = useCallback(() => {
+    let filtered = [...allCustomers];
+
+    // Apply search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(c =>
+        c.name.toLowerCase().includes(query) ||
+        c.email.toLowerCase().includes(query) ||
+        c.id.toLowerCase().includes(query)
+      );
     }
 
-    setLoading(true);
-    setIsSearching(true);
-    try {
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .or(`name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
-        .order('created_at', { ascending: false });
+    // Apply date filters
+    if (filters.dateFrom || filters.dateTo) {
+      filtered = filtered.filter(customer => {
+        if (!customer.oldest_invoice_date) return false;
 
-      if (error) throw error;
-      setCustomers(data || []);
-      setTotalCount(data?.length || 0);
-    } catch (error) {
-      console.error('Error searching customers:', error);
-    } finally {
-      setLoading(false);
+        const oldestDate = new Date(customer.oldest_invoice_date);
+        const fromDate = filters.dateFrom ? new Date(filters.dateFrom) : null;
+        const toDate = filters.dateTo ? new Date(filters.dateTo) : null;
+
+        if (fromDate && toDate) {
+          const newestDate = customer.newest_invoice_date ? new Date(customer.newest_invoice_date) : oldestDate;
+          return (oldestDate <= toDate && newestDate >= fromDate);
+        } else if (fromDate) {
+          return oldestDate >= fromDate;
+        } else if (toDate) {
+          return oldestDate <= toDate;
+        }
+        return true;
+      });
     }
+
+    // Apply balance, invoice count, and days overdue filters with logic operator
+    if (filters.logicOperator === 'AND') {
+      filtered = filtered.filter(customer => {
+        const balanceMatch = (customer.balance || 0) >= filters.minBalance &&
+                            (filters.maxBalance === Infinity || (customer.balance || 0) <= filters.maxBalance);
+        const invoiceMatch = (customer.invoice_count || 0) >= filters.minInvoiceCount &&
+                            (filters.maxInvoiceCount === Infinity || (customer.invoice_count || 0) <= filters.maxInvoiceCount);
+        const overdueMatch = (customer.max_days_overdue || 0) >= filters.minDaysOverdue &&
+                            (filters.maxDaysOverdue === Infinity || (customer.max_days_overdue || 0) <= filters.maxDaysOverdue);
+        return balanceMatch && invoiceMatch && overdueMatch;
+      });
+    } else {
+      filtered = filtered.filter(customer => {
+        const balanceMatch = (customer.balance || 0) >= filters.minBalance &&
+                            (filters.maxBalance === Infinity || (customer.balance || 0) <= filters.maxBalance);
+        const invoiceMatch = (customer.invoice_count || 0) >= filters.minInvoiceCount &&
+                            (filters.maxInvoiceCount === Infinity || (customer.invoice_count || 0) <= filters.maxInvoiceCount);
+        const overdueMatch = (customer.max_days_overdue || 0) >= filters.minDaysOverdue &&
+                            (filters.maxDaysOverdue === Infinity || (customer.max_days_overdue || 0) <= filters.maxDaysOverdue);
+        return balanceMatch || invoiceMatch || overdueMatch;
+      });
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      const sortBy = filters.sortBy;
+
+      if (sortBy === 'balance') {
+        comparison = (a.balance || 0) - (b.balance || 0);
+      } else if (sortBy === 'invoice_count') {
+        comparison = (a.invoice_count || 0) - (b.invoice_count || 0);
+      } else if (sortBy === 'max_days_overdue') {
+        comparison = (a.max_days_overdue || 0) - (b.max_days_overdue || 0);
+      } else if (sortBy === 'name') {
+        comparison = a.name.localeCompare(b.name);
+      } else if (sortBy === 'email') {
+        comparison = a.email.localeCompare(b.email);
+      } else if (sortBy === 'created_at') {
+        comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
+
+      return filters.sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    setFilteredCustomers(filtered);
+    setTotalCount(filtered.length);
+
+    // Paginate
+    const start = currentPage * pageSize;
+    const end = start + pageSize;
+    setCustomers(filtered.slice(start, end));
+  }, [allCustomers, filters, searchQuery, currentPage, pageSize]);
+
+  const handleSearch = () => {
+    setCurrentPage(0);
+    setIsSearching(!!searchQuery.trim());
+    applyFilters();
   };
 
   const goToNextPage = () => {
     if ((currentPage + 1) * pageSize < totalCount) {
-      loadCustomers(currentPage + 1);
+      setCurrentPage(currentPage + 1);
     }
   };
 
   const goToPreviousPage = () => {
     if (currentPage > 0) {
-      loadCustomers(currentPage - 1);
+      setCurrentPage(currentPage - 1);
     }
   };
 
   const handleSort = (column: string) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    if (filters.sortBy === column) {
+      setFilters({ ...filters, sortOrder: filters.sortOrder === 'asc' ? 'desc' : 'asc' });
     } else {
-      setSortColumn(column);
-      setSortDirection('asc');
+      setFilters({ ...filters, sortBy: column as any, sortOrder: 'asc' });
     }
+    setCurrentPage(0);
   };
 
-  const sortedCustomers = [...customers].sort((a, b) => {
-    let aVal: any = a[sortColumn as keyof Customer];
-    let bVal: any = b[sortColumn as keyof Customer];
-
-    if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-    if (typeof bVal === 'string') bVal = bVal.toLowerCase();
-
-    if (aVal === null || aVal === undefined) return 1;
-    if (bVal === null || bVal === undefined) return -1;
-
-    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
-  });
-
   const getSortIcon = (column: string) => {
-    if (sortColumn !== column) {
+    if (filters.sortBy !== column) {
       return <ArrowUpDown size={14} className="text-gray-400" />;
     }
-    return sortDirection === 'asc' ?
+    return filters.sortOrder === 'asc' ?
       <ArrowUp size={14} className="text-blue-600" /> :
       <ArrowDown size={14} className="text-blue-600" />;
+  };
+
+  const resetFilters = () => {
+    setFilters({
+      minBalance: 0,
+      maxBalance: Infinity,
+      minInvoiceCount: 0,
+      maxInvoiceCount: Infinity,
+      minDaysOverdue: 0,
+      maxDaysOverdue: Infinity,
+      dateFrom: '',
+      dateTo: '',
+      logicOperator: 'AND',
+      sortBy: 'balance',
+      sortOrder: 'desc'
+    });
+    setSearchQuery('');
+    setCurrentPage(0);
+  };
+
+  const applyPresetFilter = (preset: typeof PRESET_FILTERS[0]) => {
+    setFilters({
+      ...filters,
+      minBalance: preset.filter.minBalance,
+      maxBalance: preset.filter.maxBalance,
+      minInvoiceCount: preset.filter.minInvoiceCount,
+      maxInvoiceCount: preset.filter.maxInvoiceCount,
+      minDaysOverdue: preset.filter.minDaysOverdue,
+      maxDaysOverdue: preset.filter.maxDaysOverdue,
+      logicOperator: preset.logic || 'AND'
+    });
+    setCurrentPage(0);
+    setShowFilters(true);
   };
 
   const handleCreate = () => {
@@ -185,7 +383,7 @@ export default function Customers({ onBack }: CustomersProps) {
         .eq('id', id);
 
       if (error) throw error;
-      await loadCustomers(currentPage);
+      await loadCustomersWithAnalytics();
     } catch (error) {
       console.error('Error deleting customer:', error);
       alert('Error deleting customer');
@@ -201,7 +399,8 @@ export default function Customers({ onBack }: CustomersProps) {
         .eq('id', id);
 
       if (error) throw error;
-      setCustomers(customers.map(c => c.id === id ? { ...c, is_active: !currentValue } : c));
+
+      setAllCustomers(allCustomers.map(c => c.id === id ? { ...c, is_active: !currentValue } : c));
     } catch (error) {
       console.error('Error updating customer status:', error);
       alert('Error updating customer status');
@@ -219,7 +418,8 @@ export default function Customers({ onBack }: CustomersProps) {
         .eq('id', id);
 
       if (error) throw error;
-      setCustomers(customers.map(c => c.id === id ? { ...c, responded_this_month: !currentValue } : c));
+
+      setAllCustomers(allCustomers.map(c => c.id === id ? { ...c, responded_this_month: !currentValue } : c));
     } catch (error) {
       console.error('Error updating response status:', error);
       alert('Error updating response status');
@@ -242,7 +442,8 @@ export default function Customers({ onBack }: CustomersProps) {
         .eq('id', id);
 
       if (error) throw error;
-      setCustomers(customers.map(c => c.id === id ? { ...c, postpone_until: null, postpone_reason: null } : c));
+
+      setAllCustomers(allCustomers.map(c => c.id === id ? { ...c, postpone_until: null, postpone_reason: null } : c));
     } catch (error) {
       console.error('Error removing postponement:', error);
       alert('Error removing postponement');
@@ -293,7 +494,7 @@ export default function Customers({ onBack }: CustomersProps) {
       }
 
       setShowForm(false);
-      await loadCustomers(0);
+      await loadCustomersWithAnalytics();
     } catch (error: any) {
       console.error('Error saving customer:', error);
       if (error.code === '23505') {
@@ -374,148 +575,39 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
-  const exportToExcel = async () => {
-    if (customers.length === 0) {
-      alert('No customers to export');
-      return;
-    }
+  const exportToExcel = () => {
+    const exportData = filteredCustomers.map((customer, index) => ({
+      'Rank': index + 1,
+      'Customer Name': customer.name,
+      'Email': customer.email,
+      'Active': customer.is_active ? 'Yes' : 'No',
+      'Responded This Month': customer.responded_this_month ? 'Yes' : 'No',
+      'Customer ID': customer.customer_id || customer.id,
+      'Open Invoices': customer.invoice_count || 0,
+      'Outstanding Balance': customer.balance || 0,
+      'Max Days Overdue': customer.max_days_overdue || 0,
+      'Oldest Invoice Date': customer.oldest_invoice_date || 'N/A',
+      'Newest Invoice Date': customer.newest_invoice_date || 'N/A',
+      'Created': new Date(customer.created_at).toLocaleDateString()
+    }));
 
-    setExporting(true);
-    try {
-      const customerIds = customers.map(c => c.id);
-
-      const { data: payments } = await supabase
-        .from('acumatica_payments')
-        .select('id, reference_number, customer_id, payment_amount, application_date, status, payment_method, cash_account, description')
-        .in('customer_id', customerIds)
-        .order('application_date', { ascending: false });
-
-      const paymentRefs = (payments || []).map(p => p.reference_number);
-
-      const attachments = await batchedInQuery(
-        supabase,
-        'payment_attachments',
-        '*',
-        'payment_reference_number',
-        paymentRefs
-      );
-
-      const applications = await batchedInQuery(
-        supabase,
-        'payment_invoice_applications',
-        '*',
-        'payment_reference_number',
-        paymentRefs
-      );
-
-      const attachmentsByPayment = new Map<string, any[]>();
-      const applicationsByPayment = new Map<string, any[]>();
-
-      (attachments || []).forEach(att => {
-        if (!attachmentsByPayment.has(att.payment_reference_number)) {
-          attachmentsByPayment.set(att.payment_reference_number, []);
-        }
-        attachmentsByPayment.get(att.payment_reference_number)!.push(att);
-      });
-
-      (applications || []).forEach(app => {
-        if (!applicationsByPayment.has(app.payment_reference_number)) {
-          applicationsByPayment.set(app.payment_reference_number, []);
-        }
-        applicationsByPayment.get(app.payment_reference_number)!.push(app);
-      });
-
-      const exportData: any[] = [];
-
-      customers.forEach(customer => {
-        const customerPayments = (payments || []).filter(p => p.customer_id === customer.id);
-
-        if (customerPayments.length === 0) {
-          exportData.push({
-            customer_name: customer.name,
-            customer_email: customer.email,
-            customer_active: customer.is_active ? 'Yes' : 'No',
-            payment_reference: '',
-            payment_amount: '',
-            payment_date: '',
-            payment_status: '',
-            payment_method: '',
-            cash_account: '',
-            description: '',
-            attachments: '',
-            invoices_applied: '',
-            credit_memos_applied: ''
-          });
-        } else {
-          customerPayments.forEach(payment => {
-            const atts = attachmentsByPayment.get(payment.reference_number) || [];
-            const apps = applicationsByPayment.get(payment.reference_number) || [];
-
-            const invoices = apps.filter(a => a.doc_type === 'Invoice' || !a.doc_type);
-            const creditMemos = apps.filter(a => a.doc_type === 'Credit Memo');
-
-            const attDetails = atts.map(a =>
-              `${a.file_name} (${a.file_type || 'unknown'}, ${(a.file_size / 1024).toFixed(1)}KB${a.is_check_image ? ', Check Image' : ''})`
-            ).join(' | ');
-
-            const invoiceDetails = invoices.map(a =>
-              `${a.invoice_reference_number}: $${parseFloat(a.amount_paid || 0).toFixed(2)}`
-            ).join(' | ');
-
-            const creditMemoDetails = creditMemos.map(a =>
-              `${a.invoice_reference_number}: $${parseFloat(a.amount_paid || 0).toFixed(2)}`
-            ).join(' | ');
-
-            exportData.push({
-              customer_name: customer.name,
-              customer_email: customer.email,
-              customer_active: customer.is_active ? 'Yes' : 'No',
-              payment_reference: payment.reference_number,
-              payment_amount: payment.payment_amount || 0,
-              payment_date: payment.application_date || '',
-              payment_status: payment.status || '',
-              payment_method: payment.payment_method || '',
-              cash_account: payment.cash_account || '',
-              description: payment.description || '',
-              attachments: attDetails,
-              invoices_applied: invoiceDetails,
-              credit_memos_applied: creditMemoDetails
-            });
-          });
-        }
-      });
-
-      exportExcel({
-        filename: `customers_with_payments_${new Date().toISOString().split('T')[0]}`,
-        sheetName: 'Customers & Payments',
-        title: 'Customers with Payments Report',
-        subtitle: `Generated on ${new Date().toLocaleDateString()}`,
-        columns: [
-          { header: 'Customer Name', key: 'customer_name', width: 25 },
-          { header: 'Customer Email', key: 'customer_email', width: 30 },
-          { header: 'Active', key: 'customer_active', width: 10 },
-          { header: 'Payment Reference', key: 'payment_reference', width: 20 },
-          { header: 'Payment Amount', key: 'payment_amount', width: 15, format: formatCurrency },
-          { header: 'Payment Date', key: 'payment_date', width: 15, format: formatDate },
-          { header: 'Status', key: 'payment_status', width: 12 },
-          { header: 'Payment Method', key: 'payment_method', width: 15 },
-          { header: 'Cash Account', key: 'cash_account', width: 15 },
-          { header: 'Description', key: 'description', width: 30 },
-          { header: 'Attachments', key: 'attachments', width: 40 },
-          { header: 'Invoices Applied', key: 'invoices_applied', width: 30 },
-          { header: 'Credit Memos Applied', key: 'credit_memos_applied', width: 30 }
-        ],
-        data: exportData
-      });
-
-      alert(`Exported ${customers.length} customers with ${payments?.length || 0} payments`);
-    } catch (error) {
-      console.error('Error exporting to Excel:', error);
-      alert('Error exporting data');
-    } finally {
-      setExporting(false);
-    }
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Customers');
+    XLSX.writeFile(workbook, `customers_analytics_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
+
+  const activeFilterCount = [
+    filters.minBalance > 0,
+    filters.maxBalance !== Infinity,
+    filters.minInvoiceCount > 0,
+    filters.maxInvoiceCount !== Infinity,
+    filters.minDaysOverdue > 0,
+    filters.maxDaysOverdue !== Infinity,
+    filters.dateFrom !== '',
+    filters.dateTo !== '',
+    searchQuery.trim() !== ''
+  ].filter(Boolean).length;
 
   if (viewingSchedule) {
     return (
@@ -627,7 +719,6 @@ export default function Customers({ onBack }: CustomersProps) {
     );
   }
 
-  // Wait for permissions to load before checking access
   if (permissionsLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -639,7 +730,6 @@ export default function Customers({ onBack }: CustomersProps) {
     );
   }
 
-  // Check permission
   if (!hasAccess) {
     return (
       <div className="min-h-screen bg-gray-100 p-6">
@@ -746,313 +836,580 @@ export default function Customers({ onBack }: CustomersProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <div className="max-w-7xl mx-auto">
-        <button
-          onClick={handleBack}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-colors"
-        >
-          <ArrowLeft size={20} />
-          Back to Dashboard
-        </button>
-
-        <div className="bg-white rounded-lg shadow border border-gray-300">
-          <div className="p-6 border-b border-gray-300">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <Users className="text-blue-600" size={24} />
-                <h2 className="text-xl font-semibold text-gray-900">Customers</h2>
-                <span className="text-gray-600 text-sm">({totalCount} total)</span>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={exportToExcel}
-                  disabled={loading || exporting || customers.length === 0}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-                  title="Export customers with all payments and attachments"
-                >
-                  <Download size={18} className={exporting ? 'animate-bounce' : ''} />
-                  {exporting ? 'Exporting...' : 'Export to Excel'}
-                </button>
-                <button
-                  onClick={() => loadCustomers(0)}
-                  disabled={loading}
-                  className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors"
-                >
-                  <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                  Refresh
-                </button>
-                <button
-                  onClick={handleCreate}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                >
-                  <Plus size={18} />
-                  Add Customer
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  placeholder="Search by name or email (searches entire database)..."
-                  className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <button
-                onClick={handleSearch}
-                disabled={loading}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
-              >
-                Search
-              </button>
-              {isSearching && (
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    loadCustomers(0);
-                  }}
-                  className="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors"
-                >
-                  Clear
-                </button>
-              )}
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50">
+      <div className="max-w-[95%] mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleBack}
+              className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5 text-blue-600" />
+            </button>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Customers & Analytics</h1>
+              <p className="text-gray-600">Manage customers with real-time analytics and filtering</p>
             </div>
           </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowAnalytics(!showAnalytics)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                showAnalytics ? 'bg-blue-600 text-white' : 'bg-white border-2 border-blue-600 text-blue-600'
+              }`}
+            >
+              <TrendingUp size={18} />
+              {showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
+            </button>
+            <button
+              onClick={exportToExcel}
+              disabled={loading || filteredCustomers.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+            >
+              <Download size={18} />
+              Export to Excel
+            </button>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                showFilters ? 'bg-blue-600 text-white' : 'bg-white border-2 border-blue-600 text-blue-600'
+              }`}
+            >
+              <Filter size={18} />
+              Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
+            </button>
+            <button
+              onClick={() => loadCustomersWithAnalytics()}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors"
+            >
+              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+            <button
+              onClick={handleCreate}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            >
+              <Plus size={18} />
+              Add Customer
+            </button>
+          </div>
+        </div>
 
-          <div className="p-6">
-            {loading ? (
-              <div className="text-center py-12">
-                <RefreshCw className="animate-spin text-blue-600 mx-auto mb-4" size={32} />
-                <p className="text-gray-600">Loading customers...</p>
+        {/* Analytics Stats Cards */}
+        {showAnalytics && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-gray-600 font-medium text-sm">Total Customers</span>
+                <Users className="w-5 h-5 text-blue-600" />
               </div>
-            ) : customers.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="text-gray-400 mx-auto mb-4" size={48} />
-                <p className="text-gray-600 mb-4">No customers added yet</p>
-                <button
-                  onClick={handleCreate}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              <p className="text-3xl font-bold text-gray-900">{stats.total_customers}</p>
+              <p className="text-sm text-gray-600 mt-1">{stats.active_customers} active</p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-gray-600 font-medium text-sm">With Open Invoices</span>
+                <FileText className="w-5 h-5 text-orange-600" />
+              </div>
+              <p className="text-3xl font-bold text-gray-900">{stats.customers_with_open_invoices}</p>
+              <p className="text-sm text-gray-600 mt-1">have outstanding balances</p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-gray-600 font-medium text-sm">Total Balance</span>
+                <DollarSign className="w-5 h-5 text-green-600" />
+              </div>
+              <p className="text-3xl font-bold text-gray-900">
+                ${stats.total_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-gray-600 font-medium text-sm">Avg Balance</span>
+                <TrendingUp className="w-5 h-5 text-cyan-600" />
+              </div>
+              <p className="text-3xl font-bold text-gray-900">
+                ${stats.avg_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Preset Filters */}
+        <div className="mb-4 flex flex-wrap gap-3">
+          {PRESET_FILTERS.map((preset, index) => (
+            <button
+              key={index}
+              onClick={() => applyPresetFilter(preset)}
+              className="px-4 py-2 bg-white border-2 border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-colors text-sm font-medium"
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Advanced Filters Panel */}
+        {showFilters && (
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border border-gray-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Advanced Filters</h3>
+              <button
+                onClick={() => setShowFilters(false)}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Min Balance</label>
+                <input
+                  type="number"
+                  value={filters.minBalance || ''}
+                  onChange={(e) => setFilters({ ...filters, minBalance: Number(e.target.value) || 0 })}
+                  placeholder="e.g., 500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Max Balance</label>
+                <input
+                  type="number"
+                  value={filters.maxBalance === Infinity ? '' : filters.maxBalance}
+                  onChange={(e) => setFilters({ ...filters, maxBalance: e.target.value ? Number(e.target.value) : Infinity })}
+                  placeholder="e.g., 10000"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Min Invoice Count</label>
+                <input
+                  type="number"
+                  value={filters.minInvoiceCount || ''}
+                  onChange={(e) => setFilters({ ...filters, minInvoiceCount: Number(e.target.value) || 0 })}
+                  placeholder="e.g., 10"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Max Invoice Count</label>
+                <input
+                  type="number"
+                  value={filters.maxInvoiceCount === Infinity ? '' : filters.maxInvoiceCount}
+                  onChange={(e) => setFilters({ ...filters, maxInvoiceCount: e.target.value ? Number(e.target.value) : Infinity })}
+                  placeholder="e.g., 50"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Min Days Overdue</label>
+                <input
+                  type="number"
+                  value={filters.minDaysOverdue || ''}
+                  onChange={(e) => setFilters({ ...filters, minDaysOverdue: Number(e.target.value) || 0 })}
+                  placeholder="e.g., 30"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Max Days Overdue</label>
+                <input
+                  type="number"
+                  value={filters.maxDaysOverdue === Infinity ? '' : filters.maxDaysOverdue}
+                  onChange={(e) => setFilters({ ...filters, maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
+                  placeholder="e.g., 90"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Invoice Date From</label>
+                <input
+                  type="date"
+                  value={filters.dateFrom}
+                  onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Invoice Date To</label>
+                <input
+                  type="date"
+                  value={filters.dateTo}
+                  onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Filter Logic</label>
+                <select
+                  value={filters.logicOperator}
+                  onChange={(e) => setFilters({ ...filters, logicOperator: e.target.value as 'AND' | 'OR' })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <Plus size={18} />
-                  Add Your First Customer
-                </button>
+                  <option value="AND">AND (All conditions)</option>
+                  <option value="OR">OR (Any condition)</option>
+                </select>
               </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Sort By</label>
+                <select
+                  value={filters.sortBy}
+                  onChange={(e) => setFilters({ ...filters, sortBy: e.target.value as any })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="balance">Balance</option>
+                  <option value="invoice_count">Invoice Count</option>
+                  <option value="max_days_overdue">Days Overdue</option>
+                  <option value="name">Customer Name</option>
+                  <option value="email">Email</option>
+                  <option value="created_at">Created Date</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Sort Order</label>
+                <select
+                  value={filters.sortOrder}
+                  onChange={(e) => setFilters({ ...filters, sortOrder: e.target.value as 'asc' | 'desc' })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="desc">Highest First</option>
+                  <option value="asc">Lowest First</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center gap-3">
+              <button
+                onClick={resetFilters}
+                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+              >
+                Reset All Filters
+              </button>
+              <div className="flex-1"></div>
+              <div className="text-sm text-gray-600 py-2">
+                Showing <span className="font-bold text-blue-600">{filteredCustomers.length}</span> of {allCustomers.length} customers
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Search Bar */}
+        <div className="bg-white rounded-xl shadow-sm p-4 mb-6 border border-gray-200">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                placeholder="Search by name, email, or customer ID..."
+                className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <button
+              onClick={handleSearch}
+              disabled={loading}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+            >
+              Search
+            </button>
+            {(isSearching || searchQuery) && (
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setIsSearching(false);
+                  setCurrentPage(0);
+                }}
+                className="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Customers Table */}
+        {loading ? (
+          <div className="bg-white rounded-xl shadow-sm p-12 text-center border border-gray-200">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading customers...</p>
+          </div>
+        ) : filteredCustomers.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-sm p-12 text-center border border-gray-200">
+            <Users className="text-gray-400 mx-auto mb-4" size={48} />
+            <p className="text-gray-600 mb-4">No customers found</p>
+            {activeFilterCount > 0 ? (
+              <button
+                onClick={resetFilters}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              >
+                Reset Filters
+              </button>
             ) : (
-              <>
-                {!isSearching && (
-                  <div className="flex items-center justify-between mb-4 px-4">
-                    <button
-                      onClick={goToPreviousPage}
-                      disabled={currentPage === 0 || loading}
-                      className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
+              <button
+                onClick={handleCreate}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              >
+                <Plus size={18} />
+                Add Your First Customer
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+            {/* Pagination Top */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <button
+                onClick={goToPreviousPage}
+                disabled={currentPage === 0 || loading}
+                className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
+              >
+                <ChevronLeft size={20} />
+                Previous
+              </button>
+              <span className="text-gray-600 font-medium">
+                Page {currentPage + 1} of {Math.ceil(totalCount / pageSize)} • Showing {Math.min(currentPage * pageSize + 1, totalCount)}-{Math.min((currentPage + 1) * pageSize, totalCount)} of {totalCount}
+              </span>
+              <button
+                onClick={goToNextPage}
+                disabled={(currentPage + 1) * pageSize >= totalCount || loading}
+                className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
+              >
+                Next
+                <ChevronRight size={20} />
+              </button>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b-2 border-gray-200 sticky top-0">
+                  <tr>
+                    <th
+                      className="text-left py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => handleSort('name')}
                     >
-                      <ChevronLeft size={20} />
-                      Previous
-                    </button>
-                    <span className="text-gray-600">
-                      Page {currentPage + 1} of {Math.ceil(totalCount / pageSize)} (Showing {currentPage * pageSize + 1}-{Math.min((currentPage + 1) * pageSize, totalCount)})
-                    </span>
-                    <button
-                      onClick={goToNextPage}
-                      disabled={(currentPage + 1) * pageSize >= totalCount || loading}
-                      className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
+                      <div className="flex items-center gap-2">
+                        <span>Customer</span>
+                        {getSortIcon('name')}
+                      </div>
+                    </th>
+                    <th
+                      className="text-left py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => handleSort('email')}
                     >
-                      Next
-                      <ChevronRight size={20} />
-                    </button>
-                  </div>
-                )}
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse border border-gray-300">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-300">
-                      <th
-                        className="text-left py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300 cursor-pointer hover:bg-gray-100 transition-colors"
-                        onClick={() => handleSort('name')}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span>Name</span>
-                          {getSortIcon('name')}
-                        </div>
-                      </th>
-                      <th
-                        className="text-left py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300 cursor-pointer hover:bg-gray-100 transition-colors"
-                        onClick={() => handleSort('email')}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span>Email</span>
-                          {getSortIcon('email')}
-                        </div>
-                      </th>
-                      <th
-                        className="text-center py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300 cursor-pointer hover:bg-gray-100 transition-colors"
-                        onClick={() => handleSort('is_active')}
-                      >
-                        <div className="flex items-center justify-center gap-2">
-                          <span>Active</span>
-                          {getSortIcon('is_active')}
-                        </div>
-                      </th>
-                      <th
-                        className="text-center py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300 cursor-pointer hover:bg-gray-100 transition-colors"
-                        onClick={() => handleSort('responded_this_month')}
-                      >
-                        <div className="flex items-center justify-center gap-2">
-                          <span>Responded This Month</span>
-                          {getSortIcon('responded_this_month')}
-                        </div>
-                      </th>
-                      <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedCustomers.map((customer, index) => (
-                      <tr key={customer.id} className={`border-b border-gray-300 hover:bg-gray-50 transition-colors ${
-                        index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                      }`}>
-                        <td className="py-4 px-4 border-r border-gray-300">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-full bg-blue-100">
-                              <Mail size={20} className="text-blue-600" />
-                            </div>
+                      <div className="flex items-center gap-2">
+                        <span>Email</span>
+                        {getSortIcon('email')}
+                      </div>
+                    </th>
+                    <th
+                      className="text-right py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => handleSort('invoice_count')}
+                    >
+                      <div className="flex items-center justify-end gap-2">
+                        <span>Invoices</span>
+                        {getSortIcon('invoice_count')}
+                      </div>
+                    </th>
+                    <th
+                      className="text-right py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => handleSort('balance')}
+                    >
+                      <div className="flex items-center justify-end gap-2">
+                        <span>Balance</span>
+                        {getSortIcon('balance')}
+                      </div>
+                    </th>
+                    <th
+                      className="text-right py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => handleSort('max_days_overdue')}
+                    >
+                      <div className="flex items-center justify-end gap-2">
+                        <span>Days Overdue</span>
+                        {getSortIcon('max_days_overdue')}
+                      </div>
+                    </th>
+                    <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm">Active</th>
+                    <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm">Responded</th>
+                    <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customers.map((customer, index) => (
+                    <tr key={customer.id} className={`border-b border-gray-200 hover:bg-blue-50 transition-colors ${
+                      index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                    }`}>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-full bg-blue-100">
+                            <Mail size={18} className="text-blue-600" />
+                          </div>
+                          <div>
                             <div className="flex items-center gap-2">
-                              <span className="text-gray-900 font-medium">{customer.name}</span>
+                              <span className="text-gray-900 font-semibold">{customer.name}</span>
                               {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
                                 <button
                                   onClick={() => handleUnpostpone(customer.id)}
                                   disabled={updating === customer.id}
                                   className={`flex items-center gap-1 px-2 py-0.5 bg-yellow-100 border border-yellow-300 hover:bg-yellow-200 rounded text-xs text-yellow-800 transition-colors ${updating === customer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                  title={`${customer.postpone_reason || 'Postponed'} - Click to remove postponement`}
+                                  title={`${customer.postpone_reason || 'Postponed'} - Click to remove`}
                                 >
                                   <PauseCircle size={12} />
-                                  <span>Postponed until {new Date(customer.postpone_until).toLocaleDateString()}</span>
+                                  <span>Until {new Date(customer.postpone_until).toLocaleDateString()}</span>
                                 </button>
                               )}
                             </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 text-gray-700 border-r border-gray-300">{customer.email}</td>
-                        <td className="py-4 px-4 border-r border-gray-300">
-                          <div className="flex justify-center">
-                            <button
-                              onClick={() => handleToggleActive(customer.id, customer.is_active)}
-                              disabled={updating === customer.id}
-                              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                                customer.is_active ? 'bg-green-600' : 'bg-gray-300'
-                              } ${updating === customer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            >
-                              <span
-                                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                                  customer.is_active ? 'translate-x-6' : 'translate-x-1'
-                                }`}
-                              />
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 border-r border-gray-300">
-                          <div className="flex justify-center">
-                            <button
-                              onClick={() => handleToggleResponded(customer.id, customer.responded_this_month)}
-                              disabled={updating === customer.id}
-                              className={`p-2 rounded-lg transition-colors ${
-                                updating === customer.id ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'
-                              }`}
-                            >
-                              {customer.responded_this_month ? (
-                                <CheckSquare className="text-green-600" size={24} />
-                              ) : (
-                                <Square className="text-gray-400" size={24} />
+                            <div className="text-xs text-gray-500">
+                              {customer.oldest_invoice_date && customer.newest_invoice_date && (
+                                <span>{customer.oldest_invoice_date} → {customer.newest_invoice_date}</span>
                               )}
-                            </button>
+                            </div>
                           </div>
-                        </td>
-                        <td className="py-4 px-4">
-                          <div className="flex justify-center gap-2">
-                            {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
-                              <button
-                                onClick={() => handleUnpostpone(customer.id)}
-                                disabled={updating === customer.id}
-                                className={`p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors ${updating === customer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                title="Remove Postponement"
-                              >
-                                <Play size={18} />
-                              </button>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-gray-700 text-sm">{customer.email}</td>
+                      <td className="py-3 px-4 text-right text-gray-900 font-medium">
+                        {customer.invoice_count || 0}
+                      </td>
+                      <td className="py-3 px-4 text-right text-gray-900 font-bold">
+                        ${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <span className={`font-semibold ${
+                          (customer.max_days_overdue || 0) > 90 ? 'text-red-600' :
+                          (customer.max_days_overdue || 0) > 60 ? 'text-orange-600' :
+                          (customer.max_days_overdue || 0) > 30 ? 'text-yellow-600' :
+                          'text-gray-600'
+                        }`}>
+                          {customer.max_days_overdue || 0}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex justify-center">
+                          <button
+                            onClick={() => handleToggleActive(customer.id, customer.is_active)}
+                            disabled={updating === customer.id}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                              customer.is_active ? 'bg-green-600' : 'bg-gray-300'
+                            } ${updating === customer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                customer.is_active ? 'translate-x-6' : 'translate-x-1'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex justify-center">
+                          <button
+                            onClick={() => handleToggleResponded(customer.id, customer.responded_this_month)}
+                            disabled={updating === customer.id}
+                            className={`p-1 rounded-lg transition-colors ${
+                              updating === customer.id ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'
+                            }`}
+                          >
+                            {customer.responded_this_month ? (
+                              <CheckSquare className="text-green-600" size={20} />
+                            ) : (
+                              <Square className="text-gray-400" size={20} />
                             )}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex justify-center gap-1">
+                          {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
                             <button
-                              onClick={() => {
-                                setViewingSchedule({ id: customer.id, name: customer.name });
-                                loadScheduledEmails(customer.id);
-                              }}
-                              className="p-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
-                              title="View Schedule"
+                              onClick={() => handleUnpostpone(customer.id)}
+                              disabled={updating === customer.id}
+                              className={`p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors ${updating === customer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              title="Remove Postponement"
                             >
-                              <Clock size={18} />
+                              <Play size={16} />
                             </button>
-                            <button
-                              onClick={() => setViewingFiles({ id: customer.id, name: customer.name })}
-                              className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                              title="View Files"
-                            >
-                              <FileText size={18} />
-                            </button>
-                            <button
-                              onClick={() => handleEdit(customer)}
-                              className="p-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
-                              title="Edit Customer"
-                            >
-                              <Edit2 size={18} />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(customer.id)}
-                              className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                              title="Delete Customer"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  </table>
-                </div>
-                {!isSearching && customers.length > 0 && (
-                  <div className="flex items-center justify-between mt-4 px-4">
-                    <button
-                      onClick={goToPreviousPage}
-                      disabled={currentPage === 0 || loading}
-                      className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
-                    >
-                      <ChevronLeft size={20} />
-                      Previous
-                    </button>
-                    <span className="text-gray-600">
-                      Page {currentPage + 1} of {Math.ceil(totalCount / pageSize)}
-                    </span>
-                    <button
-                      onClick={goToNextPage}
-                      disabled={(currentPage + 1) * pageSize >= totalCount || loading}
-                      className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
-                    >
-                      Next
-                      <ChevronRight size={20} />
-                    </button>
-                  </div>
-                )}
-                {isSearching && (
-                  <div className="mt-4 px-4 text-center text-gray-600 text-sm">
-                    Showing {customers.length} search result{customers.length !== 1 ? 's' : ''} from entire database
-                  </div>
-                )}
-              </>
-            )}
+                          )}
+                          <button
+                            onClick={() => {
+                              setViewingSchedule({ id: customer.id, name: customer.name });
+                              loadScheduledEmails(customer.id);
+                            }}
+                            className="p-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
+                            title="View Schedule"
+                          >
+                            <Clock size={16} />
+                          </button>
+                          <button
+                            onClick={() => setViewingFiles({ id: customer.id, name: customer.name })}
+                            className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                            title="View Files"
+                          >
+                            <FileText size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleEdit(customer)}
+                            className="p-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(customer.id)}
+                            className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Bottom */}
+            <div className="flex items-center justify-between p-4 border-t border-gray-200">
+              <button
+                onClick={goToPreviousPage}
+                disabled={currentPage === 0 || loading}
+                className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
+              >
+                <ChevronLeft size={20} />
+                Previous
+              </button>
+              <span className="text-gray-600 font-medium">
+                Page {currentPage + 1} of {Math.ceil(totalCount / pageSize)}
+              </span>
+              <button
+                onClick={goToNextPage}
+                disabled={(currentPage + 1) * pageSize >= totalCount || loading}
+                className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
+              >
+                Next
+                <ChevronRight size={20} />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
