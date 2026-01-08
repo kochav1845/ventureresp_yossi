@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
@@ -54,12 +54,20 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     totalOpenInvoices: 0,
     customersWithOverdue: 0
   });
+  const [excludedCustomerIds, setExcludedCustomerIds] = useState<Set<string>>(new Set());
+  const [savedFilters, setSavedFilters] = useState<any[]>([]);
+  const [showSaveFilterModal, setShowSaveFilterModal] = useState(false);
+  const [showLoadFilterModal, setShowLoadFilterModal] = useState(false);
+  const [newFilterName, setNewFilterName] = useState('');
+  const [savingFilter, setSavingFilter] = useState(false);
   const observer = useRef<IntersectionObserver | null>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const ITEMS_PER_PAGE = 100;
 
   useEffect(() => {
+    loadExcludedCustomers();
+    loadSavedFilters();
     loadCustomers();
     loadAnalytics();
   }, []);
@@ -133,6 +141,154 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       }
     } catch (error) {
       console.error('Error loading analytics:', error);
+    }
+  };
+
+  const loadExcludedCustomers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('excluded_customers')
+        .select('customer_id');
+
+      if (error) throw error;
+
+      const excludedIds = new Set(data?.map(item => item.customer_id) || []);
+      setExcludedCustomerIds(excludedIds);
+    } catch (error) {
+      console.error('Error loading excluded customers:', error);
+    }
+  };
+
+  const loadSavedFilters = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('saved_customer_filters')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setSavedFilters(data || []);
+    } catch (error) {
+      console.error('Error loading saved filters:', error);
+    }
+  };
+
+  const handleExcludeCustomer = async (customerId: string) => {
+    try {
+      const { error } = await supabase
+        .from('excluded_customers')
+        .insert({ customer_id: customerId });
+
+      if (error) throw error;
+
+      setExcludedCustomerIds(prev => new Set([...prev, customerId]));
+    } catch (error) {
+      console.error('Error excluding customer:', error);
+      alert('Failed to exclude customer');
+    }
+  };
+
+  const handleIncludeCustomer = async (customerId: string) => {
+    try {
+      const { error } = await supabase
+        .from('excluded_customers')
+        .delete()
+        .eq('customer_id', customerId);
+
+      if (error) throw error;
+
+      setExcludedCustomerIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(customerId);
+        return newSet;
+      });
+    } catch (error) {
+      console.error('Error including customer:', error);
+      alert('Failed to include customer');
+    }
+  };
+
+  const handleSaveFilter = async () => {
+    if (!newFilterName.trim()) {
+      alert('Please enter a filter name');
+      return;
+    }
+
+    setSavingFilter(true);
+    try {
+      const filterConfig = {
+        searchTerm,
+        statusFilter,
+        countryFilter,
+        balanceFilter,
+        sortBy,
+        sortOrder,
+        dateFrom,
+        dateTo,
+        minOpenInvoices,
+        maxOpenInvoices,
+        minBalance,
+        maxBalance
+      };
+
+      const { error } = await supabase
+        .from('saved_customer_filters')
+        .upsert({
+          filter_name: newFilterName.trim(),
+          filter_config: filterConfig
+        }, {
+          onConflict: 'user_id,filter_name'
+        });
+
+      if (error) throw error;
+
+      await loadSavedFilters();
+      setShowSaveFilterModal(false);
+      setNewFilterName('');
+      alert('Filter saved successfully!');
+    } catch (error) {
+      console.error('Error saving filter:', error);
+      alert('Failed to save filter');
+    } finally {
+      setSavingFilter(false);
+    }
+  };
+
+  const handleLoadFilter = (filter: any) => {
+    const config = filter.filter_config;
+    setSearchTerm(config.searchTerm || '');
+    setStatusFilter(config.statusFilter || 'all');
+    setCountryFilter(config.countryFilter || 'all');
+    setBalanceFilter(config.balanceFilter || 'all');
+    setSortBy(config.sortBy || 'customer_name');
+    setSortOrder(config.sortOrder || 'asc');
+    setDateFrom(config.dateFrom || '');
+    setDateTo(config.dateTo || '');
+    setMinOpenInvoices(config.minOpenInvoices || '');
+    setMaxOpenInvoices(config.maxOpenInvoices || '');
+    setMinBalance(config.minBalance || '');
+    setMaxBalance(config.maxBalance || '');
+    setShowLoadFilterModal(false);
+  };
+
+  const handleDeleteFilter = async (filterId: string) => {
+    if (!confirm('Are you sure you want to delete this saved filter?')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('saved_customer_filters')
+        .delete()
+        .eq('id', filterId);
+
+      if (error) throw error;
+
+      await loadSavedFilters();
+    } catch (error) {
+      console.error('Error deleting filter:', error);
+      alert('Failed to delete filter');
     }
   };
 
@@ -235,7 +391,9 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     return countries;
   };
 
-  const filteredCustomers = displayedCustomers;
+  const filteredCustomers = displayedCustomers.filter(
+    customer => !excludedCustomerIds.has(customer.customer_id)
+  );
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -457,6 +615,27 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                   Fetch Customers
                 </button>
               )}
+
+              <button
+                onClick={() => setShowSaveFilterModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
+              >
+                <Save className="w-5 h-5" />
+                Save Filter
+              </button>
+
+              <button
+                onClick={() => setShowLoadFilterModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+              >
+                <FolderOpen className="w-5 h-5" />
+                Load Filter
+                {savedFilters.length > 0 && (
+                  <span className="bg-white text-indigo-600 text-xs font-bold px-2 py-0.5 rounded-full">
+                    {savedFilters.length}
+                  </span>
+                )}
+              </button>
 
               <button
                 onClick={() => {
@@ -868,6 +1047,9 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                         Email {getSortIcon('email_address')}
                       </div>
                     </th>
+                    <th className="px-3 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider w-24">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700">
@@ -1103,6 +1285,18 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                           {customer.email_address || 'N/A'}
                         </div>
                       </td>
+                      <td
+                        className="px-3 py-4 text-center w-24"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={() => handleExcludeCustomer(customer.customer_id)}
+                          className="p-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                          title="Exclude this customer from the list"
+                        >
+                          <EyeOff className="w-4 h-4" />
+                        </button>
+                      </td>
                     </tr>
                   );
                   })}
@@ -1179,6 +1373,153 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 })}
               </div>
             </div>
+          </div>
+        )}
+
+        {showSaveFilterModal && (
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50"
+            onClick={() => setShowSaveFilterModal(false)}
+          >
+            <div
+              className="bg-slate-800 border border-slate-700 rounded-lg p-8 max-w-md w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-2xl font-bold text-white mb-6">Save Current Filter</h2>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Filter Name
+                </label>
+                <input
+                  type="text"
+                  value={newFilterName}
+                  onChange={(e) => setNewFilterName(e.target.value)}
+                  placeholder="e.g., High Balance Customers"
+                  className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveFilter();
+                    if (e.key === 'Escape') setShowSaveFilterModal(false);
+                  }}
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleSaveFilter}
+                  disabled={savingFilter || !newFilterName.trim()}
+                  className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                >
+                  {savingFilter ? 'Saving...' : 'Save Filter'}
+                </button>
+                <button
+                  onClick={() => setShowSaveFilterModal(false)}
+                  disabled={savingFilter}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showLoadFilterModal && (
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50"
+            onClick={() => setShowLoadFilterModal(false)}
+          >
+            <div
+              className="bg-slate-800 border border-slate-700 rounded-lg p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-white">Saved Filters</h2>
+                <button
+                  onClick={() => setShowLoadFilterModal(false)}
+                  className="text-slate-400 hover:text-white transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {savedFilters.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-slate-400 mb-4">No saved filters yet</p>
+                  <button
+                    onClick={() => {
+                      setShowLoadFilterModal(false);
+                      setShowSaveFilterModal(true);
+                    }}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
+                  >
+                    Save Your First Filter
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {savedFilters.map((filter) => (
+                    <div
+                      key={filter.id}
+                      className="flex items-center justify-between p-4 bg-slate-900 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors"
+                    >
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-white mb-1">
+                          {filter.filter_name}
+                        </h3>
+                        <p className="text-sm text-slate-400">
+                          Created {formatDateUtil(filter.created_at)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleLoadFilter(filter)}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+                        >
+                          Load
+                        </button>
+                        <button
+                          onClick={() => handleDeleteFilter(filter.id)}
+                          className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                          title="Delete filter"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {excludedCustomerIds.size > 0 && (
+          <div className="fixed bottom-6 right-6 bg-slate-800 border border-slate-700 rounded-lg p-4 shadow-2xl max-w-sm z-40">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-white font-semibold flex items-center gap-2">
+                <EyeOff className="w-5 h-5 text-red-400" />
+                Excluded Customers
+              </h3>
+              <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                {excludedCustomerIds.size}
+              </span>
+            </div>
+            <p className="text-sm text-slate-400 mb-3">
+              {excludedCustomerIds.size} customer{excludedCustomerIds.size !== 1 ? 's' : ''} hidden from list
+            </p>
+            <button
+              onClick={() => {
+                if (confirm(`Remove all ${excludedCustomerIds.size} excluded customers?`)) {
+                  excludedCustomerIds.forEach(id => handleIncludeCustomer(id));
+                }
+              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <Eye className="w-4 h-4" />
+              Show All Excluded
+            </button>
           </div>
         )}
       </div>
