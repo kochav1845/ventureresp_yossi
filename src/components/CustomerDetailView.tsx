@@ -89,13 +89,28 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const loadCustomerData = async () => {
     setLoading(true);
     try {
-      const { data: customerData, error: customerError } = await supabase
-        .from('acumatica_customers')
-        .select('*')
-        .eq('customer_id', customerId)
-        .maybeSingle();
+      // Load customer with calculated balance
+      const { data: customerWithBalance, error: balanceError } = await supabase
+        .rpc('get_customers_with_balance', {
+          p_search: customerId,
+          p_status_filter: 'all',
+          p_country_filter: 'all',
+          p_balance_filter: 'all',
+          p_date_from: null,
+          p_date_to: null,
+          p_min_balance: null,
+          p_max_balance: null,
+          p_min_open_invoices: null,
+          p_max_open_invoices: null,
+          p_sort_by: 'customer_name',
+          p_sort_order: 'asc',
+          p_limit: 1,
+          p_offset: 0
+        });
 
-      if (customerError) throw customerError;
+      if (balanceError) throw balanceError;
+
+      const customerData = customerWithBalance && customerWithBalance.length > 0 ? customerWithBalance[0] : null;
       setCustomer(customerData);
 
       await logActivity('customer_viewed', 'customer', customerId, {
@@ -466,10 +481,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     return diffDays > 90;
   };
 
-  // Calculate totals from displayed invoices (first page approximation)
-  const currentBalance = displayedInvoices
-    .filter(inv => inv.balance > 0)
-    .reduce((sum, inv) => sum + (inv.balance || 0), 0);
+  // Use calculated balance from customer data (not just displayed invoices)
+  const currentBalance = customer?.calculated_balance || 0;
   const totalPaid = payments
     .filter(p => p.status !== 'Voided')
     .reduce((sum, p) => sum + (p.payment_amount || 0), 0);
