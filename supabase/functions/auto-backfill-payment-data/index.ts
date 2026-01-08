@@ -213,7 +213,6 @@ Deno.serve(async (req: Request) => {
                 doc_type: app.DocType?.value || app.AdjustedDocType?.value || 'Invoice',
                 invoice_reference_number: invoiceRefNbr,
                 application_period: app.ApplicationPeriod?.value || null,
-                status: app.Status?.value || null,
                 amount_paid: app.AmountPaid?.value || 0,
                 balance: app.Balance?.value || 0,
                 cash_discount_taken: app.CashDiscountTaken?.value || 0,
