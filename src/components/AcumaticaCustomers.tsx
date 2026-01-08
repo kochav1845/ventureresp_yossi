@@ -115,26 +115,42 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     loadCustomers();
   }, [searchTerm, statusFilter, countryFilter, balanceFilter, sortBy, sortOrder, dateFrom, dateTo, minOpenInvoices, maxOpenInvoices, minBalance, maxBalance]);
 
-  // Calculate analytics from displayed customers on the page
-  const calculateAnalytics = useCallback((customers: any[]) => {
-    const totalCustomers = customers.length;
-    const activeCustomers = customers.filter(c => c.customer_status === 'Active').length;
-    const totalBalance = customers.reduce((sum, c) => sum + (c.calculated_balance || 0), 0);
-    const customersWithDebt = customers.filter(c => (c.calculated_balance || 0) > 0).length;
-    const avgBalance = customersWithDebt > 0 ? totalBalance / customersWithDebt : 0;
-    const totalOpenInvoices = customers.reduce((sum, c) => sum + (c.open_invoice_count || 0), 0);
-    const customersWithOverdue = customers.filter(c => (c.max_days_overdue || 0) > 0).length;
+  // Load analytics from database with ALL filters applied
+  const loadAnalytics = useCallback(async () => {
+    try {
+      const excludedArray = Array.from(excludedCustomerIds);
+      const { data, error } = await supabase
+        .rpc('get_customer_analytics', {
+          p_search: searchTerm || null,
+          p_status_filter: statusFilter,
+          p_country_filter: countryFilter,
+          p_date_from: dateFrom ? new Date(dateFrom).toISOString() : null,
+          p_date_to: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : null,
+          p_excluded_customer_ids: excludedArray.length > 0 ? excludedArray : null,
+          p_balance_filter: balanceFilter,
+          p_min_balance: minBalance ? parseFloat(minBalance) : null,
+          p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
+          p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
+          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null
+        });
 
-    setAnalyticsStats({
-      totalCustomers,
-      activeCustomers,
-      totalBalance,
-      avgBalance,
-      customersWithDebt,
-      totalOpenInvoices,
-      customersWithOverdue
-    });
-  }, []);
+      if (error) throw error;
+
+      if (data) {
+        setAnalyticsStats({
+          totalCustomers: data.total_customers || 0,
+          activeCustomers: data.active_customers || 0,
+          totalBalance: data.total_balance || 0,
+          avgBalance: data.avg_balance || 0,
+          customersWithDebt: data.customers_with_debt || 0,
+          totalOpenInvoices: data.total_open_invoices || 0,
+          customersWithOverdue: data.customers_with_overdue || 0
+        });
+      }
+    } catch (error) {
+      console.error('Error loading analytics:', error);
+    }
+  }, [searchTerm, statusFilter, countryFilter, dateFrom, dateTo, excludedCustomerIds, balanceFilter, minBalance, maxBalance, minOpenInvoices, maxOpenInvoices]);
 
   const loadExcludedCustomers = async () => {
     try {
@@ -464,10 +480,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     customer => !excludedCustomerIds.has(customer.customer_id)
   );
 
-  // Recalculate analytics whenever displayed customers change
+  // Load analytics whenever filters change
   useEffect(() => {
-    calculateAnalytics(filteredCustomers);
-  }, [displayedCustomers, excludedCustomerIds, calculateAnalytics]);
+    loadAnalytics();
+  }, [loadAnalytics]);
 
   const clearFilters = () => {
     const hasExclusions = excludedCustomerIds.size > 0;
