@@ -169,12 +169,13 @@ Deno.serve(async (req: Request) => {
 
     for (const payment of allPayments) {
       try {
-        console.log(`Processing payment ${payment.reference_number}...`);
+        console.log(`[Auto-backfill] Processing payment ${payment.reference_number} (${payment.type})...`);
 
-        // Fetch payment with both ApplicationHistory and files expanded
-        const detailUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${payment.type}/${payment.reference_number}?$expand=ApplicationHistory,files`;
+        // FIRST API CALL: Fetch payment with ApplicationHistory expanded
+        const applicationUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${payment.type}/${payment.reference_number}?$expand=ApplicationHistory`;
 
-        const detailResponse = await fetch(detailUrl, {
+        console.log(`[Auto-backfill] Fetching applications for ${payment.reference_number}...`);
+        const applicationResponse = await fetch(applicationUrl, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -183,15 +184,16 @@ Deno.serve(async (req: Request) => {
           },
         });
 
-        if (!detailResponse.ok) {
-          errors.push(`Failed to fetch ${payment.reference_number}: ${detailResponse.status}`);
+        if (!applicationResponse.ok) {
+          errors.push(`Failed to fetch applications for ${payment.reference_number}: ${applicationResponse.status}`);
           continue;
         }
 
-        const paymentDetail = await detailResponse.json();
+        const paymentWithApplications = await applicationResponse.json();
 
         // Process applications - use ApplicationHistory for closed payments, DocumentsToApply for open ones
-        const applications = paymentDetail.ApplicationHistory || paymentDetail.DocumentsToApply || [];
+        const applications = paymentWithApplications.ApplicationHistory || paymentWithApplications.DocumentsToApply || [];
+        console.log(`[Auto-backfill] Found ${applications.length} application(s) for payment ${payment.reference_number}`);
         if (applications && Array.isArray(applications) && applications.length > 0) {
           const applicationRecords = applications
             .filter((app: any) => {
@@ -234,8 +236,10 @@ Deno.serve(async (req: Request) => {
 
             if (!appError) {
               batchApps += applicationRecords.length;
+              console.log(`[Auto-backfill] ✓ Saved ${applicationRecords.length} application(s) for payment ${payment.reference_number}`);
 
               for (const app of applicationRecords) {
+                console.log(`[Auto-backfill]   - Invoice ${app.invoice_reference_number}: $${app.amount_paid}`);
                 await supabase.rpc('log_sync_change', {
                   p_sync_type: 'payment_application',
                   p_action_type: 'application_fetched',
@@ -253,12 +257,41 @@ Deno.serve(async (req: Request) => {
                   p_sync_source: 'auto_backfill'
                 });
               }
+            } else {
+              console.log(`[Auto-backfill] ✗ Error saving applications for ${payment.reference_number}: ${appError.message}`);
+              errors.push(`Failed to save applications for ${payment.reference_number}: ${appError.message}`);
             }
           }
+        } else {
+          console.log(`[Auto-backfill] No applications found for payment ${payment.reference_number}`);
         }
 
+        // SECOND API CALL: Fetch payment attachments with files expanded
+        console.log(`[Auto-backfill] Fetching attachments for ${payment.reference_number}...`);
+        const filesUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${payment.type}/${payment.reference_number}?$expand=files`;
+
+        const filesResponse = await fetch(filesUrl, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Cookie": cookies,
+          },
+        });
+
+        if (!filesResponse.ok) {
+          console.log(`[Auto-backfill] Failed to fetch files for ${payment.reference_number}: ${filesResponse.status}`);
+          errors.push(`Failed to fetch files for ${payment.reference_number}: ${filesResponse.status}`);
+          batchProcessed++;
+          await new Promise(resolve => setTimeout(resolve, 200));
+          continue;
+        }
+
+        const paymentWithFiles = await filesResponse.json();
+
         // Process attachments
-        const files = paymentDetail.files || paymentDetail.Files || [];
+        const files = paymentWithFiles.files || paymentWithFiles.Files || [];
+        console.log(`[Auto-backfill] Found ${files.length} attachment(s) for payment ${payment.reference_number}`);
         if (Array.isArray(files) && files.length > 0) {
           for (const file of files) {
             const fileId = file.id?.value || file.id;
@@ -305,6 +338,7 @@ Deno.serve(async (req: Request) => {
                     });
 
                   batchFiles++;
+                  console.log(`[Auto-backfill] ✓ Saved attachment ${cleanFileName} (${fileBlob.byteLength} bytes)`);
 
                   await supabase.rpc('log_sync_change', {
                     p_sync_type: 'payment_attachment',
@@ -322,17 +356,27 @@ Deno.serve(async (req: Request) => {
                     },
                     p_sync_source: 'auto_backfill'
                   });
+                } else {
+                  console.log(`[Auto-backfill] ✗ Failed to upload ${cleanFileName}: ${uploadError.message}`);
+                  errors.push(`Upload error for ${cleanFileName}: ${uploadError.message}`);
                 }
+              } else {
+                console.log(`[Auto-backfill] ✗ Failed to download file from Acumatica (status: ${fileResponse.status})`);
               }
             } catch (fileError: any) {
+              console.log(`[Auto-backfill] ✗ File error for ${payment.reference_number}: ${fileError.message}`);
               errors.push(`File error for ${payment.reference_number}: ${fileError.message}`);
             }
           }
+        } else {
+          console.log(`[Auto-backfill] No attachments found for payment ${payment.reference_number}`);
         }
 
         batchProcessed++;
+        console.log(`[Auto-backfill] ✓ Completed processing payment ${payment.reference_number}\n`);
         await new Promise(resolve => setTimeout(resolve, 200));
       } catch (error: any) {
+        console.log(`[Auto-backfill] ✗ Error processing ${payment.reference_number}: ${error.message}`);
         errors.push(`Error processing ${payment.reference_number}: ${error.message}`);
       }
     }
@@ -349,6 +393,14 @@ Deno.serve(async (req: Request) => {
     const newApps = progress.applications_found + batchApps;
     const newFiles = progress.attachments_found + batchFiles;
     const isComplete = newProcessed >= progress.total_items;
+
+    console.log(`\n[Auto-backfill] ========== BATCH SUMMARY ==========`);
+    console.log(`[Auto-backfill] Payments processed: ${batchProcessed}`);
+    console.log(`[Auto-backfill] Applications found: ${batchApps}`);
+    console.log(`[Auto-backfill] Attachments found: ${batchFiles}`);
+    console.log(`[Auto-backfill] Errors: ${errors.length}`);
+    console.log(`[Auto-backfill] Overall progress: ${newProcessed}/${progress.total_items} (${Math.round((newProcessed / progress.total_items) * 100)}%)`);
+    console.log(`[Auto-backfill] ===================================\n`);
 
     await supabase
       .from('backfill_progress')
