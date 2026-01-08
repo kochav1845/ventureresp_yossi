@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2 } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
@@ -55,11 +55,15 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     customersWithOverdue: 0
   });
   const [excludedCustomerIds, setExcludedCustomerIds] = useState<Set<string>>(new Set());
+  const [excludedCustomersWithReasons, setExcludedCustomersWithReasons] = useState<Map<string, { notes: string; excluded_at: string }>>(new Map());
   const [savedFilters, setSavedFilters] = useState<any[]>([]);
   const [showSaveFilterModal, setShowSaveFilterModal] = useState(false);
   const [showLoadFilterModal, setShowLoadFilterModal] = useState(false);
   const [newFilterName, setNewFilterName] = useState('');
   const [savingFilter, setSavingFilter] = useState(false);
+  const [dateRangeContext, setDateRangeContext] = useState<'invoice_date' | 'balance_date' | 'customer_added'>('invoice_date');
+  const [showExcludedCustomersPanel, setShowExcludedCustomersPanel] = useState(false);
+  const [excludeReason, setExcludeReason] = useState('');
   const observer = useRef<IntersectionObserver | null>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -148,12 +152,16 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     try {
       const { data, error } = await supabase
         .from('excluded_customers')
-        .select('customer_id');
+        .select('customer_id, notes, excluded_at');
 
       if (error) throw error;
 
       const excludedIds = new Set(data?.map(item => item.customer_id) || []);
+      const excludedMap = new Map(
+        data?.map(item => [item.customer_id, { notes: item.notes || '', excluded_at: item.excluded_at }]) || []
+      );
       setExcludedCustomerIds(excludedIds);
+      setExcludedCustomersWithReasons(excludedMap);
     } catch (error) {
       console.error('Error loading excluded customers:', error);
     }
@@ -164,6 +172,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       const { data, error } = await supabase
         .from('saved_customer_filters')
         .select('*')
+        .order('last_used_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -174,7 +183,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     }
   };
 
-  const handleExcludeCustomer = async (customerId: string) => {
+  const handleExcludeCustomer = async (customerId: string, reason?: string) => {
     if (!profile?.id) {
       alert('User not authenticated');
       return;
@@ -185,12 +194,18 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         .from('excluded_customers')
         .insert({
           user_id: profile.id,
-          customer_id: customerId
+          customer_id: customerId,
+          notes: reason || null
         });
 
       if (error) throw error;
 
       setExcludedCustomerIds(prev => new Set([...prev, customerId]));
+      setExcludedCustomersWithReasons(prev => new Map(prev).set(customerId, {
+        notes: reason || '',
+        excluded_at: new Date().toISOString()
+      }));
+      setExcludeReason('');
     } catch (error) {
       console.error('Error excluding customer:', error);
       alert('Failed to exclude customer');
@@ -217,9 +232,40 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         newSet.delete(customerId);
         return newSet;
       });
+      setExcludedCustomersWithReasons(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(customerId);
+        return newMap;
+      });
     } catch (error) {
       console.error('Error including customer:', error);
       alert('Failed to include customer');
+    }
+  };
+
+  const handleBulkIncludeCustomers = async () => {
+    if (!profile?.id) {
+      alert('User not authenticated');
+      return;
+    }
+
+    if (!confirm(`Remove all ${excludedCustomerIds.size} excluded customers?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('excluded_customers')
+        .delete()
+        .eq('user_id', profile.id);
+
+      if (error) throw error;
+
+      setExcludedCustomerIds(new Set());
+      setExcludedCustomersWithReasons(new Map());
+    } catch (error) {
+      console.error('Error including customers:', error);
+      alert('Failed to include customers');
     }
   };
 
@@ -248,7 +294,9 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         minOpenInvoices,
         maxOpenInvoices,
         minBalance,
-        maxBalance
+        maxBalance,
+        dateRangeContext,
+        excludedCustomerIds: Array.from(excludedCustomerIds)
       };
 
       const { error } = await supabase
@@ -266,7 +314,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       await loadSavedFilters();
       setShowSaveFilterModal(false);
       setNewFilterName('');
-      alert('Filter saved successfully!');
+      alert('Filter saved successfully with exclusions!');
     } catch (error) {
       console.error('Error saving filter:', error);
       alert('Failed to save filter');
@@ -275,7 +323,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     }
   };
 
-  const handleLoadFilter = (filter: any) => {
+  const handleLoadFilter = async (filter: any) => {
     const config = filter.filter_config;
     setSearchTerm(config.searchTerm || '');
     setStatusFilter(config.statusFilter || 'all');
@@ -289,6 +337,19 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     setMaxOpenInvoices(config.maxOpenInvoices || '');
     setMinBalance(config.minBalance || '');
     setMaxBalance(config.maxBalance || '');
+    setDateRangeContext(config.dateRangeContext || 'invoice_date');
+
+    if (config.excludedCustomerIds && Array.isArray(config.excludedCustomerIds)) {
+      setExcludedCustomerIds(new Set(config.excludedCustomerIds));
+    }
+
+    try {
+      await supabase.rpc('update_filter_last_used', { filter_id: filter.id });
+      await loadSavedFilters();
+    } catch (error) {
+      console.error('Error updating last used:', error);
+    }
+
     setShowLoadFilterModal(false);
   };
 
@@ -416,6 +477,15 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   );
 
   const clearFilters = () => {
+    const hasExclusions = excludedCustomerIds.size > 0;
+
+    if (hasExclusions) {
+      const keepExclusions = confirm('Clear all filters. Keep excluded customers?');
+      if (!keepExclusions) {
+        handleBulkIncludeCustomers();
+      }
+    }
+
     setSearchTerm('');
     setStatusFilter('all');
     setCountryFilter('all');
@@ -428,6 +498,46 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     setMaxOpenInvoices('');
     setMinBalance('');
     setMaxBalance('');
+    setDateRangeContext('invoice_date');
+  };
+
+  const applyQuickFilter = (preset: string) => {
+    clearFilters();
+    const today = new Date();
+
+    switch (preset) {
+      case 'last_90_days_debt':
+        const date90 = new Date(today);
+        date90.setDate(date90.getDate() - 90);
+        setDateFrom(date90.toISOString().split('T')[0]);
+        setDateTo(today.toISOString().split('T')[0]);
+        setBalanceFilter('positive');
+        setMinBalance('0.01');
+        setDateRangeContext('invoice_date');
+        break;
+      case 'last_30_days':
+        const date30 = new Date(today);
+        date30.setDate(date30.getDate() - 30);
+        setDateFrom(date30.toISOString().split('T')[0]);
+        setDateTo(today.toISOString().split('T')[0]);
+        setDateRangeContext('invoice_date');
+        break;
+      case 'last_180_days':
+        const date180 = new Date(today);
+        date180.setDate(date180.getDate() - 180);
+        setDateFrom(date180.toISOString().split('T')[0]);
+        setDateTo(today.toISOString().split('T')[0]);
+        setDateRangeContext('invoice_date');
+        break;
+      case 'high_balance':
+        setBalanceFilter('positive');
+        setMinBalance('10000');
+        break;
+      case 'multiple_overdue':
+        setMinOpenInvoices('3');
+        setBalanceFilter('positive');
+        break;
+    }
   };
 
   const handleColumnSort = (column: string) => {
@@ -721,6 +831,51 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         )}
 
         <div className="mb-6 space-y-4">
+          {/* Quick Preset Filters */}
+          <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Zap className="w-5 h-5 text-yellow-400" />
+              <h3 className="text-sm font-semibold text-white">Quick Filters</h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => applyQuickFilter('last_90_days_debt')}
+                className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white rounded-lg text-sm font-medium transition-all"
+              >
+                <Clock className="w-4 h-4" />
+                Last 90 Days with Debt
+              </button>
+              <button
+                onClick={() => applyQuickFilter('last_30_days')}
+                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <Calendar className="w-4 h-4" />
+                Last 30 Days
+              </button>
+              <button
+                onClick={() => applyQuickFilter('last_180_days')}
+                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <Calendar className="w-4 h-4" />
+                Last 180 Days
+              </button>
+              <button
+                onClick={() => applyQuickFilter('high_balance')}
+                className="flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <DollarSign className="w-4 h-4" />
+                High Balance ($10K+)
+              </button>
+              <button
+                onClick={() => applyQuickFilter('multiple_overdue')}
+                className="flex items-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <Target className="w-4 h-4" />
+                Multiple Overdue (3+)
+              </button>
+            </div>
+          </div>
+
           <div className="flex gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
@@ -856,8 +1011,54 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 {showAdvancedFilters && (
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-slate-900/50 rounded-lg border border-slate-700">
                     <div className="md:col-span-2 lg:col-span-3">
-                      <h4 className="text-sm font-medium text-slate-300 mb-3">Invoice Date Range</h4>
-                      <p className="text-xs text-slate-500 mb-2">Show customers with invoices created within this date range</p>
+                      <h4 className="text-sm font-medium text-slate-300 mb-3">Date Range Filter</h4>
+
+                      <div className="mb-4 space-y-2 bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+                        <p className="text-xs text-slate-400 mb-2 font-semibold">What do you want to see in this date range?</p>
+                        <label className="flex items-start gap-3 cursor-pointer group">
+                          <input
+                            type="radio"
+                            name="dateRangeContext"
+                            value="invoice_date"
+                            checked={dateRangeContext === 'invoice_date'}
+                            onChange={(e) => setDateRangeContext(e.target.value as any)}
+                            className="mt-1"
+                          />
+                          <div>
+                            <span className="text-sm text-white group-hover:text-blue-400 transition-colors">Invoices created in this date range</span>
+                            <p className="text-xs text-slate-500">Show customers who have invoices with creation dates within this period</p>
+                          </div>
+                        </label>
+                        <label className="flex items-start gap-3 cursor-pointer group">
+                          <input
+                            type="radio"
+                            name="dateRangeContext"
+                            value="balance_date"
+                            checked={dateRangeContext === 'balance_date'}
+                            onChange={(e) => setDateRangeContext(e.target.value as any)}
+                            className="mt-1"
+                          />
+                          <div>
+                            <span className="text-sm text-white group-hover:text-blue-400 transition-colors">Customers owing money as of end date</span>
+                            <p className="text-xs text-slate-500">Show customers with outstanding balance on the end date specified</p>
+                          </div>
+                        </label>
+                        <label className="flex items-start gap-3 cursor-pointer group">
+                          <input
+                            type="radio"
+                            name="dateRangeContext"
+                            value="customer_added"
+                            checked={dateRangeContext === 'customer_added'}
+                            onChange={(e) => setDateRangeContext(e.target.value as any)}
+                            className="mt-1"
+                          />
+                          <div>
+                            <span className="text-sm text-white group-hover:text-blue-400 transition-colors">New customers added in this date range</span>
+                            <p className="text-xs text-slate-500">Show customers who were first synced within this period</p>
+                          </div>
+                        </label>
+                      </div>
+
                       <div className="grid md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs text-slate-400 mb-1">From Date</label>
@@ -1310,7 +1511,12 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                         onClick={(e) => e.stopPropagation()}
                       >
                         <button
-                          onClick={() => handleExcludeCustomer(customer.customer_id)}
+                          onClick={() => {
+                            const reason = prompt('Optional: Why are you excluding this customer?\n(e.g., "Already contacted", "Payment plan arranged")');
+                            if (reason !== null) {
+                              handleExcludeCustomer(customer.customer_id, reason);
+                            }
+                          }}
                           className="p-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
                           title="Exclude this customer from the list"
                         >
@@ -1479,36 +1685,86 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {savedFilters.map((filter) => (
+                  {savedFilters.map((filter) => {
+                    const config = filter.filter_config;
+                    const activeSettings = [];
+
+                    if (config.searchTerm) activeSettings.push(`Search: "${config.searchTerm}"`);
+                    if (config.statusFilter && config.statusFilter !== 'all') activeSettings.push(`Status: ${config.statusFilter}`);
+                    if (config.countryFilter && config.countryFilter !== 'all') activeSettings.push(`Country: ${config.countryFilter}`);
+                    if (config.balanceFilter && config.balanceFilter !== 'all') activeSettings.push(`Balance: ${config.balanceFilter}`);
+                    if (config.dateFrom || config.dateTo) {
+                      const dateContext = config.dateRangeContext === 'invoice_date' ? 'Invoice dates' :
+                                         config.dateRangeContext === 'balance_date' ? 'Balance date' : 'Customer added';
+                      activeSettings.push(`${dateContext}: ${config.dateFrom || '...'} to ${config.dateTo || '...'}`);
+                    }
+                    if (config.minBalance || config.maxBalance) {
+                      activeSettings.push(`Balance: $${config.minBalance || '0'} - $${config.maxBalance || '∞'}`);
+                    }
+                    if (config.minOpenInvoices || config.maxOpenInvoices) {
+                      activeSettings.push(`Open invoices: ${config.minOpenInvoices || '0'} - ${config.maxOpenInvoices || '∞'}`);
+                    }
+                    const excludedCount = config.excludedCustomerIds?.length || 0;
+
+                    return (
                     <div
                       key={filter.id}
-                      className="flex items-center justify-between p-4 bg-slate-900 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors"
+                      className="p-4 bg-slate-900 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors"
                     >
-                      <div className="flex-1">
-                        <h3 className="text-lg font-semibold text-white mb-1">
-                          {filter.filter_name}
-                        </h3>
-                        <p className="text-sm text-slate-400">
-                          Created {formatDateUtil(filter.created_at)}
-                        </p>
+                      <div className="flex items-start justify-between gap-4 mb-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="text-lg font-semibold text-white">
+                              {filter.filter_name}
+                            </h3>
+                            {excludedCount > 0 && (
+                              <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                                {excludedCount} excluded
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-slate-500">
+                            <span>Created {formatDateUtil(filter.created_at)}</span>
+                            {filter.last_used_at && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                Last used {formatDateUtil(filter.last_used_at)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleLoadFilter(filter)}
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+                          >
+                            Load
+                          </button>
+                          <button
+                            onClick={() => handleDeleteFilter(filter.id)}
+                            className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                            title="Delete filter"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleLoadFilter(filter)}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
-                        >
-                          Load
-                        </button>
-                        <button
-                          onClick={() => handleDeleteFilter(filter.id)}
-                          className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                          title="Delete filter"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
+
+                      {activeSettings.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {activeSettings.map((setting, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center px-2 py-1 bg-slate-800 border border-slate-600 rounded text-xs text-slate-300"
+                            >
+                              {setting}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
             </div>
@@ -1516,30 +1772,78 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         )}
 
         {excludedCustomerIds.size > 0 && (
-          <div className="fixed bottom-6 right-6 bg-slate-800 border border-slate-700 rounded-lg p-4 shadow-2xl max-w-sm z-40">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white font-semibold flex items-center gap-2">
-                <EyeOff className="w-5 h-5 text-red-400" />
-                Excluded Customers
-              </h3>
-              <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                {excludedCustomerIds.size}
-              </span>
+          <div className="fixed bottom-6 right-6 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl max-w-md z-40">
+            <div className="p-4 border-b border-slate-700">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-white font-semibold flex items-center gap-2">
+                  <EyeOff className="w-5 h-5 text-red-400" />
+                  Excluded Customers
+                </h3>
+                <div className="flex items-center gap-2">
+                  <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                    {excludedCustomerIds.size}
+                  </span>
+                  <button
+                    onClick={() => setShowExcludedCustomersPanel(!showExcludedCustomersPanel)}
+                    className="text-slate-400 hover:text-white transition-colors"
+                  >
+                    {showExcludedCustomersPanel ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <p className="text-sm text-slate-400">
+                {excludedCustomerIds.size} customer{excludedCustomerIds.size !== 1 ? 's' : ''} hidden from list
+              </p>
             </div>
-            <p className="text-sm text-slate-400 mb-3">
-              {excludedCustomerIds.size} customer{excludedCustomerIds.size !== 1 ? 's' : ''} hidden from list
-            </p>
-            <button
-              onClick={() => {
-                if (confirm(`Remove all ${excludedCustomerIds.size} excluded customers?`)) {
-                  excludedCustomerIds.forEach(id => handleIncludeCustomer(id));
-                }
-              }}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              <Eye className="w-4 h-4" />
-              Show All Excluded
-            </button>
+
+            {showExcludedCustomersPanel && (
+              <div className="max-h-96 overflow-y-auto">
+                <div className="p-4 space-y-2">
+                  {Array.from(excludedCustomerIds).map((customerId) => {
+                    const customer = displayedCustomers.find(c => c.customer_id === customerId);
+                    const exclusionInfo = excludedCustomersWithReasons.get(customerId);
+                    return (
+                      <div key={customerId} className="bg-slate-900 border border-slate-700 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-white truncate">
+                              {customer?.customer_name || customerId}
+                            </p>
+                            <p className="text-xs text-slate-500">{customerId}</p>
+                            {exclusionInfo?.notes && (
+                              <div className="mt-1 flex items-start gap-1">
+                                <MessageSquare className="w-3 h-3 text-blue-400 mt-0.5 flex-shrink-0" />
+                                <p className="text-xs text-slate-400 italic">{exclusionInfo.notes}</p>
+                              </div>
+                            )}
+                            <p className="text-xs text-slate-600 mt-1">
+                              Excluded {formatDateUtil(exclusionInfo?.excluded_at || '')}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleIncludeCustomer(customerId)}
+                            className="p-1.5 bg-green-600 hover:bg-green-700 text-white rounded transition-colors flex-shrink-0"
+                            title="Show this customer again"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="p-4 border-t border-slate-700 space-y-2">
+              <button
+                onClick={handleBulkIncludeCustomers}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <Eye className="w-4 h-4" />
+                Show All {excludedCustomerIds.size} Excluded
+              </button>
+            </div>
           </div>
         )}
       </div>
