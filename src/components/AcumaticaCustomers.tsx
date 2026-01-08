@@ -65,6 +65,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const [dateRangeContext, setDateRangeContext] = useState<'invoice_date' | 'balance_date' | 'customer_added'>('invoice_date');
   const [showExcludedCustomersPanel, setShowExcludedCustomersPanel] = useState(false);
   const [excludeReason, setExcludeReason] = useState('');
+  const [activeQuickFilter, setActiveQuickFilter] = useState<string | null>(null);
   const observer = useRef<IntersectionObserver | null>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -508,10 +509,12 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     setMinBalance('');
     setMaxBalance('');
     setDateRangeContext('invoice_date');
+    setActiveQuickFilter(null);
   };
 
   const applyQuickFilter = (preset: string) => {
     clearFilters();
+    setActiveQuickFilter(preset);
     const today = new Date();
 
     switch (preset) {
@@ -908,35 +911,45 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => applyQuickFilter('last_90_days_debt')}
-                className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white rounded-lg text-sm font-medium transition-all"
+                className={`flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white rounded-lg text-sm font-medium transition-all ${
+                  activeQuickFilter === 'last_90_days_debt' ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 shadow-lg scale-105' : ''
+                }`}
               >
                 <Clock className="w-4 h-4" />
                 Last 90 Days with Debt
               </button>
               <button
                 onClick={() => applyQuickFilter('last_30_days')}
-                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                className={`flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-all ${
+                  activeQuickFilter === 'last_30_days' ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 shadow-lg scale-105' : ''
+                }`}
               >
                 <Calendar className="w-4 h-4" />
                 Last 30 Days
               </button>
               <button
                 onClick={() => applyQuickFilter('last_180_days')}
-                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                className={`flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-all ${
+                  activeQuickFilter === 'last_180_days' ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 shadow-lg scale-105' : ''
+                }`}
               >
                 <Calendar className="w-4 h-4" />
                 Last 180 Days
               </button>
               <button
                 onClick={() => applyQuickFilter('high_balance')}
-                className="flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
+                className={`flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-all ${
+                  activeQuickFilter === 'high_balance' ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 shadow-lg scale-105' : ''
+                }`}
               >
                 <DollarSign className="w-4 h-4" />
                 High Balance ($10K+)
               </button>
               <button
                 onClick={() => applyQuickFilter('multiple_overdue')}
-                className="flex items-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors"
+                className={`flex items-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-all ${
+                  activeQuickFilter === 'multiple_overdue' ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 shadow-lg scale-105' : ''
+                }`}
               >
                 <Target className="w-4 h-4" />
                 Multiple Overdue (3+)
