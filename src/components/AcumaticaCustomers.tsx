@@ -118,17 +118,19 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
   useEffect(() => {
     loadAnalytics();
-  }, [searchTerm, statusFilter, countryFilter, dateFrom, dateTo]);
+  }, [searchTerm, statusFilter, countryFilter, dateFrom, dateTo, excludedCustomerIds]);
 
   const loadAnalytics = async () => {
     try {
+      const excludedArray = Array.from(excludedCustomerIds);
       const { data, error } = await supabase
         .rpc('get_customer_analytics', {
           p_search: searchTerm || null,
           p_status_filter: statusFilter,
           p_country_filter: countryFilter,
           p_date_from: dateFrom ? new Date(dateFrom).toISOString() : null,
-          p_date_to: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : null
+          p_date_to: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : null,
+          p_excluded_customer_ids: excludedArray.length > 0 ? excludedArray : null
         });
 
       if (error) throw error;
@@ -315,7 +317,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       await loadSavedFilters();
       setShowSaveFilterModal(false);
       setNewFilterName('');
-      alert('Filter saved successfully with exclusions!');
+      alert('Filter saved successfully!');
     } catch (error) {
       console.error('Error saving filter:', error);
       alert('Failed to save filter');
@@ -818,6 +820,33 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             </div>
           </div>
         </div>
+
+        {/* Exclusion Indicator */}
+        {excludedCustomerIds.size > 0 && (
+          <div className="bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-4 mb-6">
+            <div className="flex items-center gap-3">
+              <EyeOff className="w-5 h-5 text-yellow-500" />
+              <div className="flex-1">
+                <p className="text-yellow-200 font-medium">
+                  {excludedCustomerIds.size} customer{excludedCustomerIds.size !== 1 ? 's' : ''} excluded from view and analytics
+                </p>
+                <p className="text-yellow-300/70 text-sm mt-1">
+                  These customers won't appear in the table or affect analytics totals. Save your current filters to preserve these exclusions.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  if (confirm(`Include all ${excludedCustomerIds.size} excluded customers?`)) {
+                    handleBulkIncludeCustomers();
+                  }
+                }}
+                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium transition-colors whitespace-nowrap"
+              >
+                Include All
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Analytics Stats Cards */}
         {showAnalytics && (
@@ -1548,14 +1577,9 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                         onClick={(e) => e.stopPropagation()}
                       >
                         <button
-                          onClick={() => {
-                            const reason = prompt('Optional: Why are you excluding this customer?\n(e.g., "Already contacted", "Payment plan arranged")');
-                            if (reason !== null) {
-                              handleExcludeCustomer(customer.customer_id, reason);
-                            }
-                          }}
+                          onClick={() => handleExcludeCustomer(customer.customer_id)}
                           className="p-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
-                          title="Exclude this customer from the list"
+                          title="Exclude this customer from analytics and saved filters"
                         >
                           <EyeOff className="w-4 h-4" />
                         </button>
@@ -1649,6 +1673,17 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               onClick={(e) => e.stopPropagation()}
             >
               <h2 className="text-2xl font-bold text-white mb-6">Save Current Filter</h2>
+
+              {excludedCustomerIds.size > 0 && (
+                <div className="mb-4 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded-lg">
+                  <div className="flex items-center gap-2 text-yellow-200">
+                    <EyeOff className="w-4 h-4" />
+                    <span className="text-sm font-medium">
+                      {excludedCustomerIds.size} customer{excludedCustomerIds.size !== 1 ? 's' : ''} will be saved as excluded
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <div className="mb-6">
                 <label className="block text-sm font-medium text-slate-300 mb-2">
