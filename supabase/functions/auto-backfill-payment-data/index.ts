@@ -171,7 +171,8 @@ Deno.serve(async (req: Request) => {
       try {
         console.log(`Processing payment ${payment.reference_number}...`);
 
-        const detailUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${payment.type}/${payment.reference_number}?$expand=files`;
+        // Fetch payment with both ApplicationHistory and files expanded
+        const detailUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${payment.type}/${payment.reference_number}?$expand=ApplicationHistory,files`;
 
         const detailResponse = await fetch(detailUrl, {
           method: "GET",
@@ -189,8 +190,8 @@ Deno.serve(async (req: Request) => {
 
         const paymentDetail = await detailResponse.json();
 
-        // Process applications
-        const applications = paymentDetail.ApplicationHistory;
+        // Process applications - use ApplicationHistory for closed payments, DocumentsToApply for open ones
+        const applications = paymentDetail.ApplicationHistory || paymentDetail.DocumentsToApply || [];
         if (applications && Array.isArray(applications) && applications.length > 0) {
           const applicationRecords = applications
             .filter((app: any) => {
@@ -198,7 +199,8 @@ Deno.serve(async (req: Request) => {
               return docType === 'Invoice';
             })
             .map((app: any) => {
-              let invoiceRefNbr = app.ReferenceNbr?.value || app.AdjustedRefNbr?.value;
+              // Handle reference number from either ReferenceNbr or RefNbr
+              let invoiceRefNbr = app.ReferenceNbr?.value || app.RefNbr?.value || app.AdjustedRefNbr?.value;
               if (invoiceRefNbr && /^[0-9]+$/.test(invoiceRefNbr) && invoiceRefNbr.length < 6) {
                 invoiceRefNbr = invoiceRefNbr.padStart(6, '0');
               }
@@ -216,8 +218,9 @@ Deno.serve(async (req: Request) => {
                 post_period: app.PostPeriod?.value || null,
                 due_date: app.DueDate?.value || null,
                 customer_order: app.CustomerOrder?.value || null,
-                application_date: app.ApplicationDate?.value || app.Date?.value || null,
-                invoice_date: app.Date?.value || null,
+                // Use ApplicationDate or AdjgDocDate for application date, DocDate for invoice date
+                application_date: app.ApplicationDate?.value || app.AdjgDocDate?.value || app.Date?.value || null,
+                invoice_date: app.DocDate?.value || app.Date?.value || null,
                 description: app.Description?.value || null
               };
             });
