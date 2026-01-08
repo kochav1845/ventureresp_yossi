@@ -1,0 +1,252 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+};
+
+const fieldMapping: Record<string, string> = {
+  'CustomerID': 'customer_id',
+  'CustomerName': 'customer_name',
+  'Status': 'customer_status',
+  'CustomerClass': 'customer_class',
+  'CreditLimit': 'credit_limit',
+  'CreditDaysPastDue': 'credit_days_past_due',
+  'CreditVerificationRules': 'credit_verification_rules',
+  'CreditHold': 'credit_hold',
+  'CreditTerms': 'credit_terms',
+  'CurrencyID': 'currency_id',
+  'StatementType': 'statement_type',
+  'PrintStatements': 'print_statements',
+  'SendStatementsByEmail': 'send_statements_by_email',
+  'MainContact': 'main_contact',
+  'Phone1': 'phone_1',
+  'Email': 'email_address',
+  'PriceClassID': 'price_class_id',
+  'PrimaryContact': 'primary_contact',
+  'LastModifiedDateTime': 'last_modified_datetime',
+};
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 200, headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const requestBody = await req.json().catch(() => ({}));
+    const {
+      lookbackMinutes = 2,
+      acumaticaUrl: urlFromRequest,
+      username: usernameFromRequest,
+      password: passwordFromRequest,
+      company: companyFromRequest,
+      branch: branchFromRequest
+    } = requestBody;
+
+    let acumaticaUrl = urlFromRequest;
+    let username = usernameFromRequest;
+    let password = passwordFromRequest;
+    let company = companyFromRequest || "";
+    let branch = branchFromRequest || "";
+
+    if (!acumaticaUrl || !username || !password) {
+      console.log('Credentials not provided in request, loading from database...');
+
+      const { data: config, error: configError } = await supabase
+        .from('acumatica_sync_credentials')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (configError) {
+        console.error('Error loading credentials from database:', configError);
+      }
+
+      if (config) {
+        acumaticaUrl = acumaticaUrl || config.acumatica_url;
+        username = username || config.username;
+        password = password || config.password;
+        company = company || config.company || "";
+        branch = branch || config.branch || "";
+        console.log('Loaded credentials from database');
+      }
+    }
+
+    if (acumaticaUrl && !acumaticaUrl.startsWith("http://") && !acumaticaUrl.startsWith("https://")) {
+      acumaticaUrl = `https://${acumaticaUrl}`;
+    }
+
+    if (!acumaticaUrl || !username || !password) {
+      return new Response(
+        JSON.stringify({ error: "Missing Acumatica credentials. Please configure sync settings first." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const loginBody: any = { name: username, password: password };
+    if (company) loginBody.company = company;
+    if (branch) loginBody.branch = branch;
+
+    const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(loginBody),
+    });
+
+    if (!loginResponse.ok) {
+      const errorText = await loginResponse.text();
+      return new Response(
+        JSON.stringify({ error: `Authentication failed: ${errorText}` }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const setCookieHeader = loginResponse.headers.get("set-cookie");
+    if (!setCookieHeader) {
+      return new Response(
+        JSON.stringify({ error: "No authentication cookies received" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
+
+    const cutoffTime = new Date(Date.now() - lookbackMinutes * 60 * 1000);
+    const filterDate = cutoffTime.toISOString().split('.')[0];
+
+    const customersUrl = `${acumaticaUrl}/entity/Default/24.200.001/Customer?$filter=LastModifiedDateTime gt datetimeoffset'${filterDate}'&$expand=MainContact`;
+
+    console.log(`Fetching customers modified after ${filterDate} (last ${lookbackMinutes} minutes)`);
+
+    const customersResponse = await fetch(customersUrl, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "Cookie": cookies,
+      },
+    });
+
+    if (!customersResponse.ok) {
+      const errorText = await customersResponse.text();
+      await fetch(`${acumaticaUrl}/entity/auth/logout`, {
+        method: "POST",
+        headers: { "Cookie": cookies },
+      });
+      return new Response(
+        JSON.stringify({ error: `Failed to fetch customers: ${errorText}` }),
+        { status: customersResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const customersData = await customersResponse.json();
+    await fetch(`${acumaticaUrl}/entity/auth/logout`, {
+      method: "POST",
+      headers: { "Cookie": cookies },
+    });
+
+    const customers = Array.isArray(customersData) ? customersData : [];
+
+    let created = 0;
+    let updated = 0;
+    const errors: string[] = [];
+
+    if (customers && customers.length > 0) {
+      for (const customer of customers) {
+        try {
+
+          const mappedCustomer: any = { raw_data: customer, last_sync_timestamp: new Date().toISOString() };
+
+          for (const [acuKey, dbKey] of Object.entries(fieldMapping)) {
+            if (customer[acuKey]?.value !== undefined) {
+              mappedCustomer[dbKey] = customer[acuKey].value;
+            }
+          }
+
+          if (!mappedCustomer.customer_id) {
+            errors.push(`Customer missing CustomerID`);
+            continue;
+          }
+
+          const { data: existing } = await supabase
+            .from('acumatica_customers')
+            .select('id')
+            .eq('customer_id', mappedCustomer.customer_id)
+            .maybeSingle();
+
+          if (existing) {
+            const { error } = await supabase
+              .from('acumatica_customers')
+              .update(mappedCustomer)
+              .eq('customer_id', mappedCustomer.customer_id);
+
+            if (error) {
+              errors.push(`Update failed for ${mappedCustomer.customer_id}: ${error.message}`);
+            } else {
+              updated++;
+              await supabase.rpc('log_sync_change', {
+                p_sync_type: 'customer',
+                p_action_type: 'updated',
+                p_entity_id: existing.id,
+                p_entity_reference: mappedCustomer.customer_id,
+                p_entity_name: mappedCustomer.customer_name || mappedCustomer.customer_id,
+                p_change_summary: `Customer ${mappedCustomer.customer_id} was updated`,
+                p_change_details: { status: mappedCustomer.customer_status },
+                p_sync_source: 'scheduled_sync'
+              });
+            }
+          } else {
+            const { data: inserted, error } = await supabase
+              .from('acumatica_customers')
+              .insert(mappedCustomer)
+              .select('id')
+              .single();
+
+            if (error) {
+              errors.push(`Insert failed for ${mappedCustomer.customer_id}: ${error.message}`);
+            } else {
+              created++;
+              await supabase.rpc('log_sync_change', {
+                p_sync_type: 'customer',
+                p_action_type: 'created',
+                p_entity_id: inserted.id,
+                p_entity_reference: mappedCustomer.customer_id,
+                p_entity_name: mappedCustomer.customer_name || mappedCustomer.customer_id,
+                p_change_summary: `New customer ${mappedCustomer.customer_id} was added`,
+                p_change_details: { status: mappedCustomer.customer_status },
+                p_sync_source: 'scheduled_sync'
+              });
+            }
+          }
+        } catch (err) {
+          errors.push(`Error processing customer: ${err.message}`);
+        }
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        totalFetched: customers?.length || 0,
+        processed: created + updated,
+        created,
+        updated,
+        lookbackMinutes,
+        filterDate: cutoffTime.toISOString(),
+        errors,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    console.error('Error in customer incremental sync:', err);
+    return new Response(
+      JSON.stringify({ error: err.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});

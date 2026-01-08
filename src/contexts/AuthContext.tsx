@@ -1,0 +1,233 @@
+import { createContext, useContext, useEffect, useState, ReactNode, useMemo } from 'react';
+import { User, AuthError } from '@supabase/supabase-js';
+import { supabase, UserProfile, logActivity } from '../lib/supabase';
+
+interface AuthContextType {
+  user: User | null;
+  profile: UserProfile | null;
+  loading: boolean;
+  isImpersonating: boolean;
+  originalProfile: UserProfile | null;
+  signIn: (email: string, password: string) => Promise<{ data: any; error: AuthError | null }>;
+  signUp: (email: string, password: string) => Promise<{ data: any; error: AuthError | null }>;
+  signOut: () => Promise<void>;
+  impersonateUser: (userId: string) => Promise<void>;
+  stopImpersonation: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  const [originalProfile, setOriginalProfile] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error('Session error:', error);
+          await supabase.auth.signOut();
+          setLoading(false);
+          return;
+        }
+
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          const impersonationData = localStorage.getItem('impersonation');
+          if (impersonationData) {
+            const { impersonatedUserId, originalUserId } = JSON.parse(impersonationData);
+            if (session.user.id === originalUserId) {
+              // Fetch original profile directly
+              const { data: originalProfileData } = await supabase
+                .from('user_profiles')
+                .select('*')
+                .eq('id', originalUserId)
+                .maybeSingle();
+
+              setOriginalProfile(originalProfileData);
+
+              // Fetch impersonated profile directly
+              const { data: impersonatedProfileData } = await supabase
+                .from('user_profiles')
+                .select('*')
+                .eq('id', impersonatedUserId)
+                .maybeSingle();
+
+              setProfile(impersonatedProfileData);
+              setIsImpersonating(true);
+              setLoading(false);
+              return;
+            } else {
+              localStorage.removeItem('impersonation');
+            }
+          }
+          await loadProfile(session.user.id);
+        } else {
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Auth initialization error:', err);
+        setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      (async () => {
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          // Check if we're in impersonation mode - if so, don't reload profile
+          const impersonationData = localStorage.getItem('impersonation');
+          if (!impersonationData) {
+            // Not impersonating, load the actual user's profile
+            await loadProfile(session.user.id);
+          }
+          // If impersonating, the profile is already set correctly, don't overwrite it
+        } else {
+          setProfile(null);
+        }
+      })();
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const loadProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error) throw error;
+      setProfile(data);
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadImpersonatedProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error) throw error;
+      setProfile(data);
+    } catch (error) {
+      console.error('Error loading impersonated profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const impersonateUser = async (userId: string) => {
+    if (!user || !profile || profile.role !== 'admin') {
+      throw new Error('Only admins can impersonate users');
+    }
+
+    try {
+      setOriginalProfile(profile);
+
+      const { data: targetProfile, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!targetProfile) throw new Error('User not found');
+
+      localStorage.setItem('impersonation', JSON.stringify({
+        impersonatedUserId: userId,
+        originalUserId: user.id
+      }));
+
+      setProfile(targetProfile);
+      setIsImpersonating(true);
+
+      await logActivity('user_impersonation_started', {
+        impersonated_user_id: userId,
+        impersonated_user_email: targetProfile.email
+      });
+    } catch (error) {
+      console.error('Error impersonating user:', error);
+      throw error;
+    }
+  };
+
+  const stopImpersonation = async () => {
+    if (!isImpersonating || !originalProfile) return;
+
+    try {
+      await logActivity('user_impersonation_stopped', {
+        impersonated_user_id: profile?.id,
+        impersonated_user_email: profile?.email
+      });
+
+      localStorage.removeItem('impersonation');
+      setProfile(originalProfile);
+      setOriginalProfile(null);
+      setIsImpersonating(false);
+    } catch (error) {
+      console.error('Error stopping impersonation:', error);
+    }
+  };
+
+  const signIn = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    return { data, error };
+  };
+
+  const signUp = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    return { data, error };
+  };
+
+  const signOut = async () => {
+    await logActivity('user_signed_out');
+    localStorage.removeItem('impersonation');
+    await supabase.auth.signOut();
+    setProfile(null);
+    setIsImpersonating(false);
+    setOriginalProfile(null);
+  };
+
+  const contextValue = useMemo(() => ({
+    user,
+    profile,
+    loading,
+    isImpersonating,
+    originalProfile,
+    signIn,
+    signUp,
+    signOut,
+    impersonateUser,
+    stopImpersonation
+  }), [user, profile, loading, isImpersonating, originalProfile]);
+
+  return (
+    <AuthContext.Provider value={contextValue}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}
