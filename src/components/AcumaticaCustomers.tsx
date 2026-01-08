@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import AcumaticaInvoiceTest from './AcumaticaInvoiceTest';
 import CustomerDetailView from './CustomerDetailView';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
+import { exportToExcel } from '../lib/excelExport';
 
 interface AcumaticaCustomersProps {
   onBack?: () => void;
@@ -540,6 +541,29 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     }
   };
 
+  const handleExportToExcel = () => {
+    const exportData = filteredCustomers.map(customer => ({
+      'Customer ID': customer.customer_id,
+      'Customer Name': customer.customer_name,
+      'Balance Owed': customer.calculated_balance || 0,
+      'Open Invoices': customer.open_invoice_count || 0,
+      'Max Days Overdue': customer.max_days_overdue || 0,
+      'Red After (Days)': customer.days_past_due_threshold || 30,
+      'Status': customer.customer_status || 'Unknown',
+      'City': customer.city || '',
+      'Country': customer.country || '',
+      'Class': customer.customer_class || '',
+      'Email': customer.email_address || '',
+      'Last Synced': formatDateUtil(customer.synced_at),
+    }));
+
+    exportToExcel(
+      exportData,
+      'Customer List',
+      `customers_${new Date().toISOString().split('T')[0]}`
+    );
+  };
+
   const handleColumnSort = (column: string) => {
     if (sortBy === column) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -765,6 +789,16 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     {savedFilters.length}
                   </span>
                 )}
+              </button>
+
+              <button
+                onClick={handleExportToExcel}
+                disabled={filteredCustomers.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                title={`Export ${filteredCustomers.length} customers to Excel`}
+              >
+                <Download className="w-5 h-5" />
+                Export ({filteredCustomers.length})
               </button>
 
               <button
@@ -1269,7 +1303,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                       </div>
                     </th>
                     <th className="px-3 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider w-24">
-                      Actions
+                      <div className="flex items-center justify-center gap-1">
+                        <EyeOff className="w-3 h-3" />
+                        Exclude
+                      </div>
                     </th>
                   </tr>
                 </thead>
