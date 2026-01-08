@@ -28,8 +28,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [countryFilter, setCountryFilter] = useState<string>('all');
-  const [balanceFilter, setBalanceFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<string>('balance');
+  const [balanceFilter, setBalanceFilter] = useState<string>('positive');
+  const [sortBy, setSortBy] = useState<string>('customer_name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -241,8 +241,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     setSearchTerm('');
     setStatusFilter('all');
     setCountryFilter('all');
-    setBalanceFilter('all');
-    setSortBy('balance');
+    setBalanceFilter('positive');
+    setSortBy('customer_name');
     setSortOrder('asc');
     setDateFrom('');
     setDateTo('');
