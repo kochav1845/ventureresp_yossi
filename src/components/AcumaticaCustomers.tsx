@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
@@ -44,6 +44,16 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const [maxOpenInvoices, setMaxOpenInvoices] = useState('');
   const [minBalance, setMinBalance] = useState('');
   const [maxBalance, setMaxBalance] = useState('');
+  const [showAnalytics, setShowAnalytics] = useState(true);
+  const [analyticsStats, setAnalyticsStats] = useState({
+    totalCustomers: 0,
+    activeCustomers: 0,
+    totalBalance: 0,
+    avgBalance: 0,
+    customersWithDebt: 0,
+    totalOpenInvoices: 0,
+    customersWithOverdue: 0
+  });
   const observer = useRef<IntersectionObserver | null>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -91,6 +101,38 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     setDisplayedCustomers([]);
     loadCustomers();
   }, [searchTerm, statusFilter, countryFilter, balanceFilter, sortBy, sortOrder, dateFrom, dateTo, minOpenInvoices, maxOpenInvoices, minBalance, maxBalance]);
+
+  useEffect(() => {
+    // Calculate analytics from displayed customers
+    if (displayedCustomers.length > 0) {
+      const totalBalance = displayedCustomers.reduce((sum, c) => sum + (c.calculated_balance || 0), 0);
+      const customersWithDebt = displayedCustomers.filter(c => (c.calculated_balance || 0) > 0).length;
+      const activeCustomers = displayedCustomers.filter(c => c.customer_status === 'Active').length;
+      const totalOpenInvoices = displayedCustomers.reduce((sum, c) => sum + (c.open_invoice_count || 0), 0);
+      const customersWithOverdue = displayedCustomers.filter(c => (c.max_days_overdue || 0) > 0).length;
+      const avgBalance = customersWithDebt > 0 ? totalBalance / customersWithDebt : 0;
+
+      setAnalyticsStats({
+        totalCustomers: displayedCustomers.length,
+        activeCustomers,
+        totalBalance,
+        avgBalance,
+        customersWithDebt,
+        totalOpenInvoices,
+        customersWithOverdue
+      });
+    } else {
+      setAnalyticsStats({
+        totalCustomers: 0,
+        activeCustomers: 0,
+        totalBalance: 0,
+        avgBalance: 0,
+        customersWithDebt: 0,
+        totalOpenInvoices: 0,
+        customersWithOverdue: 0
+      });
+    }
+  }, [displayedCustomers]);
 
   const loadCustomers = async (offset = 0, append = false) => {
     if (!append) setLoading(true);
@@ -392,6 +434,18 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             </div>
 
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowAnalytics(!showAnalytics)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  showAnalytics
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                }`}
+              >
+                <TrendingUp className="w-5 h-5" />
+                {showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
+              </button>
+
               {canPerformFetch && (
                 <button
                   onClick={() => setShowFetchPage(true)}
@@ -418,6 +472,51 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             </div>
           </div>
         </div>
+
+        {/* Analytics Stats Cards */}
+        {showAnalytics && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-slate-400 font-medium text-sm">Total Customers</span>
+                <Users className="w-5 h-5 text-blue-400" />
+              </div>
+              <p className="text-3xl font-bold text-white">{analyticsStats.totalCustomers.toLocaleString()}</p>
+              <p className="text-sm text-slate-500 mt-1">{analyticsStats.activeCustomers} active</p>
+            </div>
+
+            <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-slate-400 font-medium text-sm">Total Balance Owed</span>
+                <DollarSign className="w-5 h-5 text-red-400" />
+              </div>
+              <p className="text-3xl font-bold text-white">
+                {formatCurrency(analyticsStats.totalBalance)}
+              </p>
+              <p className="text-sm text-slate-500 mt-1">{analyticsStats.customersWithDebt} customers</p>
+            </div>
+
+            <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-slate-400 font-medium text-sm">Avg Balance</span>
+                <TrendingUp className="w-5 h-5 text-cyan-400" />
+              </div>
+              <p className="text-3xl font-bold text-white">
+                {formatCurrency(analyticsStats.avgBalance)}
+              </p>
+              <p className="text-sm text-slate-500 mt-1">per customer with debt</p>
+            </div>
+
+            <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-slate-400 font-medium text-sm">Open Invoices</span>
+                <FileText className="w-5 h-5 text-orange-400" />
+              </div>
+              <p className="text-3xl font-bold text-white">{analyticsStats.totalOpenInvoices.toLocaleString()}</p>
+              <p className="text-sm text-slate-500 mt-1">{analyticsStats.customersWithOverdue} overdue</p>
+            </div>
+          </div>
+        )}
 
         <div className="mb-6 space-y-4">
           <div className="flex gap-3">
