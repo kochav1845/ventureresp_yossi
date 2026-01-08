@@ -210,6 +210,7 @@ Deno.serve(async (req: Request) => {
               return {
                 payment_id: payment.id,
                 payment_reference_number: payment.reference_number,
+                customer_id: payment.customer_id,
                 doc_type: app.DocType?.value || app.AdjustedDocType?.value || 'Invoice',
                 invoice_reference_number: invoiceRefNbr,
                 application_period: app.ApplicationPeriod?.value || null,
