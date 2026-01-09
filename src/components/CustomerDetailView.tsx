@@ -1118,10 +1118,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                           {invoice.reference_number}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatDate(invoice.date)}
+                          {formatDateUtil(invoice.date)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatDate(invoice.due_date)}
+                          {formatDateUtil(invoice.due_date)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(invoice.status)}`}>
