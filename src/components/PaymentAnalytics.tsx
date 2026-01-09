@@ -2294,13 +2294,69 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
             }}
           >
             {loading && filteredPayments.length === 0 ? (
-              <div className="text-center text-gray-500 py-12">
-                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 text-blue-400" />
-                <p>Loading payments...</p>
-              </div>
+              <table className="divide-y divide-gray-200" style={{ minWidth: '1400px', width: 'max-content' }}>
+                <thead>
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Reference</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Customer</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Method</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Amount</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Applied</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Available</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Applications</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {[...Array(8)].map((_, i) => (
+                    <tr key={i} className="animate-pulse">
+                      <td className="px-4 py-4 border-r border-gray-200">
+                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]"></div>
+                      </td>
+                      <td className="px-4 py-4 border-r border-gray-200">
+                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '0.1s' }}></div>
+                      </td>
+                      <td className="px-4 py-4 border-r border-gray-200">
+                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded w-3/4 animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '0.2s' }}></div>
+                      </td>
+                      <td className="px-4 py-4 border-r border-gray-200">
+                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded w-2/3 animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '0.3s' }}></div>
+                      </td>
+                      <td className="px-4 py-4 border-r border-gray-200">
+                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded w-1/2 animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '0.4s' }}></div>
+                      </td>
+                      <td className="px-4 py-4 border-r border-gray-200 text-right">
+                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded ml-auto w-20 animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '0.5s' }}></div>
+                      </td>
+                      <td className="px-4 py-4 border-r border-gray-200 text-right">
+                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded ml-auto w-20 animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '0.6s' }}></div>
+                      </td>
+                      <td className="px-4 py-4 border-r border-gray-200 text-right">
+                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded ml-auto w-20 animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '0.7s' }}></div>
+                      </td>
+                      <td className="px-4 py-4 border-r border-gray-200">
+                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded w-16 animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '0.8s' }}></div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '0.9s' }}></div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             ) : filteredPayments.length === 0 ? (
               <div className="text-center text-gray-500 py-12">
-                {searchTerm ? 'No payments found matching your search.' : 'No payments found for this month.'}
+                {searchTerm ? 'No payments found matching your search.' : (
+                  loading ? (
+                    <div>
+                      <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 text-blue-400" />
+                      <p>Loading payments...</p>
+                      {loadingBatchInfo && <p className="text-sm text-blue-400 mt-2">{loadingBatchInfo}</p>}
+                    </div>
+                  ) : 'No payments found for this month.'
+                )}
               </div>
             ) : (
               <table className="divide-y divide-gray-200" style={{ minWidth: '1400px', width: 'max-content' }}>

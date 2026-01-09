@@ -43,6 +43,19 @@ html,
   }
 }
 
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}
+
 .animate-slide-in-right {
   animation: slide-in-right 0.3s ease-out;
 }
