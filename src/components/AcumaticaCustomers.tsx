@@ -403,37 +403,20 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_limit: ITEMS_PER_PAGE,
           p_offset: offset,
           p_date_from: dateFrom ? new Date(dateFrom).toISOString() : null,
-          p_date_to: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : null
+          p_date_to: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : null,
+          p_balance_filter: balanceFilter,
+          p_min_balance: minBalance ? parseFloat(minBalance) : null,
+          p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
+          p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
+          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null
         });
 
       if (error) throw error;
 
-      let customers = (data || []).map((c: any) => ({
+      const customers = (data || []).map((c: any) => ({
         ...c,
         color_status_counts: { red: c.red_count || 0, yellow: c.yellow_count || 0, green: c.green_count || 0 }
       }));
-
-      // Apply client-side filters for advanced options
-      if (balanceFilter === 'positive') {
-        customers = customers.filter((c: any) => c.calculated_balance > 0);
-      } else if (balanceFilter === 'negative') {
-        customers = customers.filter((c: any) => c.calculated_balance < 0);
-      } else if (balanceFilter === 'zero') {
-        customers = customers.filter((c: any) => c.calculated_balance === 0);
-      }
-
-      if (minBalance) {
-        customers = customers.filter((c: any) => c.calculated_balance >= parseFloat(minBalance));
-      }
-      if (maxBalance) {
-        customers = customers.filter((c: any) => c.calculated_balance <= parseFloat(maxBalance));
-      }
-      if (minOpenInvoices) {
-        customers = customers.filter((c: any) => c.open_invoice_count >= parseInt(minOpenInvoices));
-      }
-      if (maxOpenInvoices) {
-        customers = customers.filter((c: any) => c.open_invoice_count <= parseInt(maxOpenInvoices));
-      }
 
       if (append) {
         setDisplayedCustomers(prev => [...prev, ...customers]);
