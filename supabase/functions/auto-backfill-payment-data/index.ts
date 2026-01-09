@@ -95,64 +95,41 @@ Deno.serve(async (req: Request) => {
         .eq('backfill_type', 'payment_data');
     }
 
-    // Get payments for this batch - use ID ordering for stable pagination
-    const { data: allPayments } = await supabase
+    // Get payments for this batch - use cursor-based pagination for reliability
+    let query = supabase
       .from('acumatica_payments')
       .select('id, reference_number, type, customer_id, payment_amount')
       .order('id', { ascending: true })
-      .range(progress.current_offset, progress.current_offset + progress.batch_size - 1);
+      .limit(progress.batch_size);
+
+    // If we have a last processed ID, start after it (cursor-based)
+    if (progress.last_processed_id) {
+      query = query.gt('id', progress.last_processed_id);
+    }
+
+    const { data: allPayments } = await query;
 
     if (!allPayments || allPayments.length === 0) {
-      // Double-check: verify we've actually processed everything
-      const { count: totalCount } = await supabase
-        .from('acumatica_payments')
-        .select('*', { count: 'exact', head: true });
+      // No more payments to process - mark as completed
+      await supabase
+        .from('backfill_progress')
+        .update({
+          is_running: false,
+          completed_at: new Date().toISOString()
+        })
+        .eq('backfill_type', 'payment_data');
 
-      const isReallyComplete = progress.items_processed >= (totalCount || 0);
-
-      if (isReallyComplete) {
-        // Mark as completed
-        await supabase
-          .from('backfill_progress')
-          .update({
-            is_running: false,
-            completed_at: new Date().toISOString(),
-            total_items: totalCount || 0
-          })
-          .eq('backfill_type', 'payment_data');
-
-        return new Response(
-          JSON.stringify({
-            success: true,
-            status: 'completed',
-            message: "Backfill completed - no more payments to process",
-            totalProcessed: progress.items_processed,
-            applicationsFound: progress.applications_found,
-            attachmentsFound: progress.attachments_found
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } else {
-        // Not complete yet, just no data in this batch - mark as not running and wait for next trigger
-        await supabase
-          .from('backfill_progress')
-          .update({
-            is_running: false,
-            last_error: `No data in batch at offset ${progress.current_offset}, but ${totalCount} total records exist. Will retry.`
-          })
-          .eq('backfill_type', 'payment_data');
-
-        return new Response(
-          JSON.stringify({
-            success: false,
-            status: 'empty_batch',
-            message: "No data in this batch, but more records exist",
-            currentOffset: progress.current_offset,
-            totalRecords: totalCount
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          status: 'completed',
+          message: "Backfill completed - no more payments to process",
+          totalProcessed: progress.items_processed,
+          applicationsFound: progress.applications_found,
+          attachmentsFound: progress.attachments_found
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Login to Acumatica
@@ -160,7 +137,7 @@ Deno.serve(async (req: Request) => {
     if (company) loginBody.company = company;
     if (branch) loginBody.branch = branch;
 
-    console.log(`[Batch ${Math.floor(progress.current_offset / progress.batch_size) + 1}] Logging into Acumatica...`);
+    console.log(`[Batch] Logging into Acumatica...`);
 
     const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
       method: 'POST',
@@ -417,12 +394,11 @@ Deno.serve(async (req: Request) => {
       headers: { 'Cookie': cookies },
     }).catch(() => {});
 
-    // Update progress
-    const newOffset = progress.current_offset + batchProcessed;
+    // Update progress with cursor tracking
     const newProcessed = progress.items_processed + batchProcessed;
     const newApps = progress.applications_found + batchApps;
     const newFiles = progress.attachments_found + batchFiles;
-    const isComplete = newProcessed >= progress.total_items;
+    const lastProcessedId = allPayments[allPayments.length - 1].id;
 
     console.log(`\n[Auto-backfill] ========== BATCH SUMMARY ==========`);
     console.log(`[Auto-backfill] Payments processed: ${batchProcessed}`);
@@ -430,20 +406,20 @@ Deno.serve(async (req: Request) => {
     console.log(`[Auto-backfill] Attachments found: ${batchFiles}`);
     console.log(`[Auto-backfill] Errors: ${errors.length}`);
     console.log(`[Auto-backfill] Overall progress: ${newProcessed}/${progress.total_items} (${Math.round((newProcessed / progress.total_items) * 100)}%)`);
+    console.log(`[Auto-backfill] Last processed ID: ${lastProcessedId}`);
     console.log(`[Auto-backfill] ===================================\n`);
 
     await supabase
       .from('backfill_progress')
       .update({
-        current_offset: newOffset,
         items_processed: newProcessed,
         applications_found: newApps,
         attachments_found: newFiles,
+        last_processed_id: lastProcessedId,
         errors_count: progress.errors_count + errors.length,
         last_error: errors.length > 0 ? errors[errors.length - 1] : null,
         last_batch_at: new Date().toISOString(),
-        is_running: false,
-        completed_at: isComplete ? new Date().toISOString() : null
+        is_running: false
       })
       .eq('backfill_type', 'payment_data');
 
@@ -453,7 +429,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: true,
-        status: isComplete ? 'completed' : 'in_progress',
+        status: 'in_progress',
         batch: {
           processed: batchProcessed,
           applicationsFound: batchApps,
@@ -469,10 +445,9 @@ Deno.serve(async (req: Request) => {
           remaining: progress.total_items - newProcessed
         },
         timing: {
-          durationMs: duration,
-          batchNumber: Math.floor(progress.current_offset / progress.batch_size) + 1
+          durationMs: duration
         },
-        nextRun: isComplete ? null : 'Will run again in 1 minute'
+        nextRun: 'Will run again in 1 minute'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
