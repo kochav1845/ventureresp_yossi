@@ -138,12 +138,13 @@ export default function Customers({ onBack }: CustomersProps) {
       // Get customers with analytics (balance, invoice counts)
       const { data: analyticsData, error: analyticsError } = await supabase
         .rpc('get_customers_with_balance', {
-          p_min_balance: 0,
-          p_max_balance: 999999999,
-          p_min_invoice_count: 0,
-          p_max_invoice_count: 999999,
-          p_min_days_overdue: 0,
-          p_max_days_overdue: 999999,
+          p_search: null,
+          p_status_filter: 'all',
+          p_country_filter: 'all',
+          p_sort_by: 'customer_name',
+          p_sort_order: 'asc',
+          p_limit: 10000,
+          p_offset: 0,
           p_date_from: null,
           p_date_to: null
         });
@@ -156,11 +157,12 @@ export default function Customers({ onBack }: CustomersProps) {
       const analyticsMap = new Map();
       (analyticsData || []).forEach((item: any) => {
         analyticsMap.set(item.customer_id, {
-          balance: item.balance || 0,
-          invoice_count: item.invoice_count || 0,
-          oldest_invoice_date: item.oldest_invoice_date,
-          newest_invoice_date: item.newest_invoice_date,
-          max_days_overdue: item.max_days_overdue || 0
+          balance: item.calculated_balance || 0,
+          invoice_count: item.open_invoice_count || 0,
+          max_days_overdue: item.max_days_overdue || 0,
+          red_count: item.red_count || 0,
+          yellow_count: item.yellow_count || 0,
+          green_count: item.green_count || 0
         });
       });
 
@@ -172,9 +174,10 @@ export default function Customers({ onBack }: CustomersProps) {
           customer_id: customer.id,
           balance: analytics?.balance || 0,
           invoice_count: analytics?.invoice_count || 0,
-          oldest_invoice_date: analytics?.oldest_invoice_date || null,
-          newest_invoice_date: analytics?.newest_invoice_date || null,
-          max_days_overdue: analytics?.max_days_overdue || 0
+          max_days_overdue: analytics?.max_days_overdue || 0,
+          red_count: analytics?.red_count || 0,
+          yellow_count: analytics?.yellow_count || 0,
+          green_count: analytics?.green_count || 0
         };
       });
 
