@@ -1,30 +1,30 @@
 import { useState, useEffect } from 'react';
-import { Calendar, TrendingUp, DollarSign, FileText, X } from 'lucide-react';
+import { Calendar, TrendingUp, DollarSign, FileText, X, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatDate } from '../lib/dateUtils';
 
-interface TimelineData {
-  period_date: string;
-  invoices_opened: number;
-  invoice_amount: number;
-  payments_made: number;
-  payment_amount: number;
-  balance_owed: number;
+interface CustomerAnalytics {
+  customer_id: string;
+  customer_name: string;
+  total_invoice_amount: number;
+  total_payment_amount: number;
+  current_balance: number;
+  invoice_count: number;
+  payment_count: number;
+  last_invoice_date: string | null;
+  last_payment_date: string | null;
+  avg_days_to_pay: number;
 }
 
 export default function CustomerAnalyticsChart() {
-  const [data, setData] = useState<TimelineData[]>([]);
+  const [data, setData] = useState<CustomerAnalytics[]>([]);
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState<'month' | 'year' | 'all' | 'custom'>('month');
+  const [timeRange, setTimeRange] = useState<'month' | 'year' | 'all' | 'custom'>('all');
   const [showCustomRange, setShowCustomRange] = useState(false);
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [hoveredPoint, setHoveredPoint] = useState<{ x: number; data: TimelineData } | null>(null);
-  const [activeLines, setActiveLines] = useState({
-    invoices: true,
-    payments: true,
-    balance: true
-  });
+  const [hoveredBar, setHoveredBar] = useState<CustomerAnalytics | null>(null);
+  const [sortBy, setSortBy] = useState<'balance' | 'invoices' | 'payments'>('balance');
 
   useEffect(() => {
     loadData();
@@ -35,37 +35,29 @@ export default function CustomerAnalyticsChart() {
     try {
       let dateFrom: Date | null = null;
       let dateTo: Date = new Date();
-      let grouping = 'day';
 
       switch (timeRange) {
         case 'month':
           dateFrom = new Date();
           dateFrom.setMonth(dateFrom.getMonth() - 1);
-          grouping = 'day';
           break;
         case 'year':
           dateFrom = new Date();
           dateFrom.setFullYear(dateFrom.getFullYear() - 1);
-          grouping = 'week';
           break;
         case 'all':
           dateFrom = null;
-          grouping = 'month';
           break;
         case 'custom':
           if (customFrom) dateFrom = new Date(customFrom);
           if (customTo) dateTo = new Date(customTo);
-          const daysDiff = dateFrom && dateTo ? Math.abs((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24)) : 30;
-          if (daysDiff <= 60) grouping = 'day';
-          else if (daysDiff <= 365) grouping = 'week';
-          else grouping = 'month';
           break;
       }
 
-      const { data: result, error } = await supabase.rpc('get_customer_analytics_timeline', {
+      const { data: result, error } = await supabase.rpc('get_customer_level_analytics', {
         p_date_from: dateFrom?.toISOString() || null,
         p_date_to: dateTo.toISOString(),
-        p_grouping: grouping
+        p_limit: 50
       });
 
       if (error) throw error;
@@ -90,215 +82,38 @@ export default function CustomerAnalyticsChart() {
     return new Intl.NumberFormat('en-US').format(num);
   };
 
-  const renderLineChart = () => {
-    if (data.length === 0) return null;
+  const sortedData = [...data].sort((a, b) => {
+    switch (sortBy) {
+      case 'invoices':
+        return b.total_invoice_amount - a.total_invoice_amount;
+      case 'payments':
+        return b.total_payment_amount - a.total_payment_amount;
+      case 'balance':
+      default:
+        return b.current_balance - a.current_balance;
+    }
+  });
 
-    const width = 100;
-    const height = 300;
-    const padding = { top: 20, right: 20, bottom: 40, left: 60 };
-    const chartWidth = width - padding.left - padding.right;
-    const chartHeight = height - padding.top - padding.bottom;
+  const displayData = sortedData.slice(0, 20);
 
-    // Get max values for scaling
-    const maxInvoiceAmount = Math.max(...data.map(d => d.invoice_amount), 1);
-    const maxPaymentAmount = Math.max(...data.map(d => d.payment_amount), 1);
-    const maxBalance = Math.max(...data.map(d => d.balance_owed), 1);
-    const maxValue = Math.max(maxInvoiceAmount, maxPaymentAmount, maxBalance);
-
-    // Create points for each line
-    const createPath = (values: number[]) => {
-      if (values.length === 0) return '';
-
-      const points = values.map((value, index) => {
-        const x = (index / (values.length - 1 || 1)) * chartWidth;
-        const y = chartHeight - (value / maxValue) * chartHeight;
-        return `${x},${y}`;
-      });
-
-      return `M ${points.join(' L ')}`;
-    };
-
-    const invoicePath = createPath(data.map(d => d.invoice_amount));
-    const paymentPath = createPath(data.map(d => d.payment_amount));
-    const balancePath = createPath(data.map(d => d.balance_owed));
-
-    return (
-      <div className="relative w-full" style={{ height: '320px' }}>
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          preserveAspectRatio="none"
-          className="w-full h-full"
-          onMouseLeave={() => setHoveredPoint(null)}
-        >
-          {/* Grid lines */}
-          <g className="opacity-20">
-            {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => (
-              <line
-                key={i}
-                x1={padding.left}
-                y1={padding.top + chartHeight * ratio}
-                x2={padding.left + chartWidth}
-                y2={padding.top + chartHeight * ratio}
-                stroke="white"
-                strokeWidth="0.2"
-              />
-            ))}
-          </g>
-
-          {/* Y-axis labels */}
-          <g className="text-white text-xs">
-            {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
-              const value = maxValue * (1 - ratio);
-              return (
-                <text
-                  key={i}
-                  x={padding.left - 3}
-                  y={padding.top + chartHeight * ratio}
-                  textAnchor="end"
-                  dominantBaseline="middle"
-                  fontSize="2.5"
-                  fill="white"
-                >
-                  {formatCurrency(value)}
-                </text>
-              );
-            })}
-          </g>
-
-          {/* Lines */}
-          <g transform={`translate(${padding.left}, ${padding.top})`}>
-            {activeLines.balance && (
-              <path
-                d={balancePath}
-                fill="none"
-                stroke="#f59e0b"
-                strokeWidth="0.8"
-                className="transition-opacity duration-200"
-              />
-            )}
-            {activeLines.invoices && (
-              <path
-                d={invoicePath}
-                fill="none"
-                stroke="#ef4444"
-                strokeWidth="0.8"
-                className="transition-opacity duration-200"
-              />
-            )}
-            {activeLines.payments && (
-              <path
-                d={paymentPath}
-                fill="none"
-                stroke="#10b981"
-                strokeWidth="0.8"
-                className="transition-opacity duration-200"
-              />
-            )}
-
-            {/* Interactive points */}
-            {data.map((point, index) => {
-              const x = (index / (data.length - 1 || 1)) * chartWidth;
-              return (
-                <rect
-                  key={index}
-                  x={x - 2}
-                  y={0}
-                  width="4"
-                  height={chartHeight}
-                  fill="transparent"
-                  className="cursor-pointer"
-                  onMouseEnter={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setHoveredPoint({ x: rect.left + rect.width / 2, data: point });
-                  }}
-                />
-              );
-            })}
-          </g>
-
-          {/* X-axis labels */}
-          <g className="text-white text-xs">
-            {data
-              .filter((_, i) => {
-                const step = Math.ceil(data.length / 8);
-                return i % step === 0 || i === data.length - 1;
-              })
-              .map((point, i) => {
-                const index = data.indexOf(point);
-                const x = padding.left + (index / (data.length - 1 || 1)) * chartWidth;
-                const dateObj = new Date(point.period_date);
-                const label = timeRange === 'year' || timeRange === 'all'
-                  ? dateObj.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-                  : dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                return (
-                  <text
-                    key={i}
-                    x={x}
-                    y={padding.top + chartHeight + 15}
-                    textAnchor="middle"
-                    fontSize="2.5"
-                    fill="white"
-                  >
-                    {label}
-                  </text>
-                );
-              })}
-          </g>
-        </svg>
-
-        {/* Hover tooltip */}
-        {hoveredPoint && (
-          <div
-            className="fixed z-50 bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-2xl pointer-events-none"
-            style={{
-              left: `${hoveredPoint.x}px`,
-              top: '50%',
-              transform: 'translate(-50%, -50%)'
-            }}
-          >
-            <p className="text-xs font-semibold text-white mb-2">
-              {formatDate(hoveredPoint.data.period_date)}
-            </p>
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-0.5 bg-red-500"></div>
-                <span className="text-slate-300">Invoices:</span>
-                <span className="text-white font-semibold ml-auto">
-                  {formatCurrency(hoveredPoint.data.invoice_amount)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-0.5 bg-green-500"></div>
-                <span className="text-slate-300">Payments:</span>
-                <span className="text-white font-semibold ml-auto">
-                  {formatCurrency(hoveredPoint.data.payment_amount)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-0.5 bg-amber-500"></div>
-                <span className="text-slate-300">Balance:</span>
-                <span className="text-white font-semibold ml-auto">
-                  {formatCurrency(hoveredPoint.data.balance_owed)}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
+  const maxValue = Math.max(
+    ...displayData.map(d =>
+      Math.max(d.total_invoice_amount, d.total_payment_amount, d.current_balance)
+    ),
+    1
+  );
 
   const totals = data.reduce(
     (acc, curr) => ({
-      invoices: acc.invoices + curr.invoice_amount,
-      payments: acc.payments + curr.payment_amount,
-      invoiceCount: acc.invoiceCount + curr.invoices_opened,
-      paymentCount: acc.paymentCount + curr.payments_made
+      invoices: acc.invoices + curr.total_invoice_amount,
+      payments: acc.payments + curr.total_payment_amount,
+      balance: acc.balance + curr.current_balance,
+      invoiceCount: acc.invoiceCount + curr.invoice_count,
+      paymentCount: acc.paymentCount + curr.payment_count,
+      customerCount: acc.customerCount + 1
     }),
-    { invoices: 0, payments: 0, invoiceCount: 0, paymentCount: 0 }
+    { invoices: 0, payments: 0, balance: 0, invoiceCount: 0, paymentCount: 0, customerCount: 0 }
   );
-
-  const currentBalance = data.length > 0 ? data[data.length - 1].balance_owed : 0;
 
   return (
     <div className="bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 border border-slate-700 rounded-lg shadow-2xl overflow-hidden">
@@ -306,8 +121,8 @@ export default function CustomerAnalyticsChart() {
       <div className="p-6 border-b border-slate-700">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-white mb-1">Customer Analytics Overview</h2>
-            <p className="text-slate-400 text-sm">Track invoices, payments, and balance trends over time</p>
+            <h2 className="text-2xl font-bold text-white mb-1">Customer Analytics by Individual Customer</h2>
+            <p className="text-slate-400 text-sm">Compare invoice, payment, and balance metrics across customers</p>
           </div>
 
           {/* Time Range Selector */}
@@ -399,14 +214,23 @@ export default function CustomerAnalyticsChart() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6 border-b border-slate-700">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-6 border-b border-slate-700">
+        <div className="bg-gradient-to-br from-blue-600/20 to-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-blue-300 font-medium text-sm">Total Customers</span>
+            <Users className="w-5 h-5 text-blue-400" />
+          </div>
+          <p className="text-3xl font-bold text-white mb-1">{formatNumber(totals.customerCount)}</p>
+          <p className="text-sm text-blue-300">Active customers</p>
+        </div>
+
         <div className="bg-gradient-to-br from-red-600/20 to-red-900/20 border border-red-500/30 rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-red-300 font-medium text-sm">Total Invoices</span>
             <FileText className="w-5 h-5 text-red-400" />
           </div>
           <p className="text-3xl font-bold text-white mb-1">{formatCurrency(totals.invoices)}</p>
-          <p className="text-sm text-red-300">{formatNumber(totals.invoiceCount)} invoices opened</p>
+          <p className="text-sm text-red-300">{formatNumber(totals.invoiceCount)} invoices</p>
         </div>
 
         <div className="bg-gradient-to-br from-green-600/20 to-green-900/20 border border-green-500/30 rounded-lg p-4">
@@ -415,44 +239,59 @@ export default function CustomerAnalyticsChart() {
             <DollarSign className="w-5 h-5 text-green-400" />
           </div>
           <p className="text-3xl font-bold text-white mb-1">{formatCurrency(totals.payments)}</p>
-          <p className="text-sm text-green-300">{formatNumber(totals.paymentCount)} payments received</p>
+          <p className="text-sm text-green-300">{formatNumber(totals.paymentCount)} payments</p>
         </div>
 
         <div className="bg-gradient-to-br from-amber-600/20 to-amber-900/20 border border-amber-500/30 rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-amber-300 font-medium text-sm">Current Balance</span>
+            <span className="text-amber-300 font-medium text-sm">Total Balance</span>
             <TrendingUp className="w-5 h-5 text-amber-400" />
           </div>
-          <p className="text-3xl font-bold text-white mb-1">{formatCurrency(currentBalance)}</p>
-          <p className="text-sm text-amber-300">Outstanding amount owed</p>
+          <p className="text-3xl font-bold text-white mb-1">{formatCurrency(totals.balance)}</p>
+          <p className="text-sm text-amber-300">Outstanding balance</p>
         </div>
       </div>
 
-      {/* Chart */}
+      {/* Customer Comparison */}
       <div className="p-6">
-        {/* Legend */}
-        <div className="flex items-center justify-center gap-6 mb-6">
-          <button
-            onClick={() => setActiveLines(prev => ({ ...prev, invoices: !prev.invoices }))}
-            className={`flex items-center gap-2 transition-opacity ${activeLines.invoices ? 'opacity-100' : 'opacity-40'}`}
-          >
-            <div className="w-8 h-1 bg-red-500 rounded"></div>
-            <span className="text-sm text-white font-medium">Invoice Amount</span>
-          </button>
-          <button
-            onClick={() => setActiveLines(prev => ({ ...prev, payments: !prev.payments }))}
-            className={`flex items-center gap-2 transition-opacity ${activeLines.payments ? 'opacity-100' : 'opacity-40'}`}
-          >
-            <div className="w-8 h-1 bg-green-500 rounded"></div>
-            <span className="text-sm text-white font-medium">Payment Amount</span>
-          </button>
-          <button
-            onClick={() => setActiveLines(prev => ({ ...prev, balance: !prev.balance }))}
-            className={`flex items-center gap-2 transition-opacity ${activeLines.balance ? 'opacity-100' : 'opacity-40'}`}
-          >
-            <div className="w-8 h-1 bg-amber-500 rounded"></div>
-            <span className="text-sm text-white font-medium">Balance Owed</span>
-          </button>
+        {/* Sort Controls */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-400">Sort by:</span>
+            <button
+              onClick={() => setSortBy('balance')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                sortBy === 'balance'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              Balance
+            </button>
+            <button
+              onClick={() => setSortBy('invoices')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                sortBy === 'invoices'
+                  ? 'bg-red-600 text-white'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              Invoices
+            </button>
+            <button
+              onClick={() => setSortBy('payments')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                sortBy === 'payments'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              Payments
+            </button>
+          </div>
+          <div className="text-sm text-slate-400">
+            Showing top 20 of {data.length} customers
+          </div>
         </div>
 
         {loading ? (
@@ -461,10 +300,102 @@ export default function CustomerAnalyticsChart() {
           </div>
         ) : data.length === 0 ? (
           <div className="flex items-center justify-center h-64 text-slate-400">
-            No data available for the selected time range
+            No customer data available for the selected time range
           </div>
         ) : (
-          renderLineChart()
+          <div className="space-y-4">
+            {displayData.map((customer, index) => (
+              <div
+                key={customer.customer_id}
+                className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 hover:bg-slate-800 transition-colors"
+                onMouseEnter={() => setHoveredBar(customer)}
+                onMouseLeave={() => setHoveredBar(null)}
+              >
+                {/* Customer Header */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-white font-semibold truncate">{customer.customer_name}</h3>
+                    <p className="text-xs text-slate-400">ID: {customer.customer_id}</p>
+                  </div>
+                  <div className="text-right ml-4">
+                    <p className="text-sm text-slate-400">Current Balance</p>
+                    <p className="text-xl font-bold text-amber-400">
+                      {formatCurrency(customer.current_balance)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Metrics Bars */}
+                <div className="space-y-2">
+                  {/* Invoices Bar */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-red-300">Invoices: {customer.invoice_count}</span>
+                      <span className="text-white font-semibold">
+                        {formatCurrency(customer.total_invoice_amount)}
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-700 rounded-full h-2">
+                      <div
+                        className="bg-gradient-to-r from-red-500 to-red-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(customer.total_invoice_amount / maxValue) * 100}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Payments Bar */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-green-300">Payments: {customer.payment_count}</span>
+                      <span className="text-white font-semibold">
+                        {formatCurrency(customer.total_payment_amount)}
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-700 rounded-full h-2">
+                      <div
+                        className="bg-gradient-to-r from-green-500 to-green-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(customer.total_payment_amount / maxValue) * 100}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Balance Bar */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-amber-300">Outstanding Balance</span>
+                      <span className="text-white font-semibold">
+                        {formatCurrency(customer.current_balance)}
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-700 rounded-full h-2">
+                      <div
+                        className="bg-gradient-to-r from-amber-500 to-amber-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(customer.current_balance / maxValue) * 100}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional Info */}
+                {hoveredBar?.customer_id === customer.customer_id && (
+                  <div className="mt-3 pt-3 border-t border-slate-700 grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-slate-400">Last Invoice:</span>
+                      <p className="text-white font-medium">
+                        {customer.last_invoice_date ? formatDate(customer.last_invoice_date) : 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Last Payment:</span>
+                      <p className="text-white font-medium">
+                        {customer.last_payment_date ? formatDate(customer.last_payment_date) : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
