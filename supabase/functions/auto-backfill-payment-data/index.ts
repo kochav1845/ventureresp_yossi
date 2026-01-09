@@ -95,34 +95,64 @@ Deno.serve(async (req: Request) => {
         .eq('backfill_type', 'payment_data');
     }
 
-    // Get payments for this batch
+    // Get payments for this batch - use ID ordering for stable pagination
     const { data: allPayments } = await supabase
       .from('acumatica_payments')
       .select('id, reference_number, type, customer_id, payment_amount')
-      .order('reference_number', { ascending: true })
+      .order('id', { ascending: true })
       .range(progress.current_offset, progress.current_offset + progress.batch_size - 1);
 
     if (!allPayments || allPayments.length === 0) {
-      // Mark as completed
-      await supabase
-        .from('backfill_progress')
-        .update({
-          is_running: false,
-          completed_at: new Date().toISOString()
-        })
-        .eq('backfill_type', 'payment_data');
+      // Double-check: verify we've actually processed everything
+      const { count: totalCount } = await supabase
+        .from('acumatica_payments')
+        .select('*', { count: 'exact', head: true });
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          status: 'completed',
-          message: "Backfill completed - no more payments to process",
-          totalProcessed: progress.items_processed,
-          applicationsFound: progress.applications_found,
-          attachmentsFound: progress.attachments_found
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      const isReallyComplete = progress.items_processed >= (totalCount || 0);
+
+      if (isReallyComplete) {
+        // Mark as completed
+        await supabase
+          .from('backfill_progress')
+          .update({
+            is_running: false,
+            completed_at: new Date().toISOString(),
+            total_items: totalCount || 0
+          })
+          .eq('backfill_type', 'payment_data');
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            status: 'completed',
+            message: "Backfill completed - no more payments to process",
+            totalProcessed: progress.items_processed,
+            applicationsFound: progress.applications_found,
+            attachmentsFound: progress.attachments_found
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } else {
+        // Not complete yet, just no data in this batch - mark as not running and wait for next trigger
+        await supabase
+          .from('backfill_progress')
+          .update({
+            is_running: false,
+            last_error: `No data in batch at offset ${progress.current_offset}, but ${totalCount} total records exist. Will retry.`
+          })
+          .eq('backfill_type', 'payment_data');
+
+        return new Response(
+          JSON.stringify({
+            success: false,
+            status: 'empty_batch',
+            message: "No data in this batch, but more records exist",
+            currentOffset: progress.current_offset,
+            totalRecords: totalCount
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Login to Acumatica
