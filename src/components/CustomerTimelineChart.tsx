@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { TrendingUp, FileText, Calendar, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, FileText, Calendar, TrendingDown, Minus, DollarSign } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface CustomerTimelineChartProps {
@@ -12,14 +12,17 @@ interface TimelineData {
   balance: number;
   invoices: number;
   payments: number;
+  overdue_90_days: number;
 }
 
 interface HoverData {
   x: number;
   y: number;
   date: string;
+  balance: number;
   invoices: number;
   payments: number;
+  overdue_90_days: number;
   index: number;
 }
 
@@ -28,9 +31,10 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<'3month' | '6month' | 'year' | 'all'>('6month');
   const [hoveredPoint, setHoveredPoint] = useState<HoverData | null>(null);
+  const [showBalance, setShowBalance] = useState(true);
   const [showInvoices, setShowInvoices] = useState(true);
   const [showPayments, setShowPayments] = useState(true);
-  const chartRef = useRef<HTMLDivElement>(null);
+  const [showOverdue, setShowOverdue] = useState(true);
 
   useEffect(() => {
     loadTimelineData();
@@ -99,7 +103,7 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
 
   // Find max value across all series for consistent scale
   const maxValue = Math.max(
-    ...data.map(d => Math.max(d.invoices, d.payments)),
+    ...data.map(d => Math.max(d.balance, d.invoices, d.payments, d.overdue_90_days)),
     1
   );
 
@@ -233,8 +237,10 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
                   x,
                   y,
                   date: data[index].date,
+                  balance: data[index].balance,
                   invoices: data[index].invoices,
                   payments: data[index].payments,
+                  overdue_90_days: data[index].overdue_90_days,
                   index
                 })}
                 onMouseLeave={() => setHoveredPoint(null)}
@@ -388,6 +394,16 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
       {/* Interactive Legend */}
       <div className="flex flex-wrap items-center gap-4 md:gap-6 mb-6 pb-4 border-b">
         <button
+          onClick={() => setShowBalance(!showBalance)}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
+            showBalance ? 'bg-red-50 border border-red-200' : 'bg-gray-50 opacity-50 border border-gray-200'
+          }`}
+          aria-label={showBalance ? "Hide balance line" : "Show balance line"}
+        >
+          <div className={`w-8 h-1 rounded ${showBalance ? 'bg-red-500' : 'bg-gray-400'}`}></div>
+          <span className="text-sm font-medium text-gray-700">Balance Owed</span>
+        </button>
+        <button
           onClick={() => setShowInvoices(!showInvoices)}
           className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
             showInvoices ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 opacity-50 border border-gray-200'
@@ -396,16 +412,6 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
         >
           <div className={`w-8 h-1 rounded ${showInvoices ? 'bg-blue-500' : 'bg-gray-400'}`}></div>
           <span className="text-sm font-medium text-gray-700">Invoices</span>
-          {invoiceTrend.direction === 'up' && (
-            <TrendingUp className="w-4 h-4 text-green-600" />
-          )}
-          {invoiceTrend.direction === 'down' && (
-            <TrendingDown className="w-4 h-4 text-red-600" />
-          )}
-          {invoiceTrend.direction === 'flat' && (
-            <Minus className="w-4 h-4 text-gray-600" />
-          )}
-          <span className="text-xs text-gray-500">{invoiceTrend.percentage.toFixed(1)}%</span>
         </button>
         <button
           onClick={() => setShowPayments(!showPayments)}
@@ -416,16 +422,16 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
         >
           <div className={`w-8 h-1 rounded ${showPayments ? 'bg-green-500' : 'bg-gray-400'}`}></div>
           <span className="text-sm font-medium text-gray-700">Payments</span>
-          {paymentTrend.direction === 'up' && (
-            <TrendingUp className="w-4 h-4 text-green-600" />
-          )}
-          {paymentTrend.direction === 'down' && (
-            <TrendingDown className="w-4 h-4 text-red-600" />
-          )}
-          {paymentTrend.direction === 'flat' && (
-            <Minus className="w-4 h-4 text-gray-600" />
-          )}
-          <span className="text-xs text-gray-500">{paymentTrend.percentage.toFixed(1)}%</span>
+        </button>
+        <button
+          onClick={() => setShowOverdue(!showOverdue)}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
+            showOverdue ? 'bg-orange-50 border border-orange-200' : 'bg-gray-50 opacity-50 border border-gray-200'
+          }`}
+          aria-label={showOverdue ? "Hide overdue 90+ days line" : "Show overdue 90+ days line"}
+        >
+          <div className={`w-8 h-1 rounded ${showOverdue ? 'bg-orange-500' : 'bg-gray-400'}`}></div>
+          <span className="text-sm font-medium text-gray-700">Overdue 90+ Days</span>
         </button>
       </div>
 
@@ -481,11 +487,17 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
                 );
               })}
 
+              {/* Balance line (red) */}
+              {createLine(data.map(d => d.balance), '#ef4444', '#ef4444', 'Balance', showBalance)}
+
               {/* Invoice line (blue) */}
               {createLine(data.map(d => d.invoices), '#3b82f6', '#3b82f6', 'Invoices', showInvoices)}
 
               {/* Payment line (green) */}
               {createLine(data.map(d => d.payments), '#10b981', '#10b981', 'Payments', showPayments)}
+
+              {/* Overdue 90+ Days line (orange) */}
+              {createLine(data.map(d => d.overdue_90_days), '#f97316', '#f97316', 'Overdue 90+', showOverdue)}
             </svg>
 
             {/* Custom floating tooltip */}
@@ -502,6 +514,15 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
                   {formatDate(hoveredPoint.date)}
                 </div>
                 <div className="space-y-1">
+                  {showBalance && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                      <span className="text-xs text-gray-600">Balance:</span>
+                      <span className="text-xs font-bold text-red-700">
+                        {formatCurrency(hoveredPoint.balance)}
+                      </span>
+                    </div>
+                  )}
                   {showInvoices && (
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full bg-blue-500"></div>
@@ -517,6 +538,15 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
                       <span className="text-xs text-gray-600">Payments:</span>
                       <span className="text-xs font-bold text-green-700">
                         {formatCurrency(hoveredPoint.payments)}
+                      </span>
+                    </div>
+                  )}
+                  {showOverdue && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                      <span className="text-xs text-gray-600">Overdue 90+:</span>
+                      <span className="text-xs font-bold text-orange-700">
+                        {formatCurrency(hoveredPoint.overdue_90_days)}
                       </span>
                     </div>
                   )}
@@ -542,6 +572,17 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
 
       {/* Enhanced Stats Summary */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+        <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-4 border border-red-200">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-red-700">Current Balance</span>
+            <DollarSign className="w-5 h-5 text-red-600" />
+          </div>
+          <p className="text-2xl font-bold text-red-900">
+            {formatCurrency(data[data.length - 1]?.balance || 0)}
+          </p>
+          <p className="text-xs text-red-600 mt-1">Outstanding amount</p>
+        </div>
+
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-blue-700">Total Invoiced</span>
@@ -550,9 +591,7 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
           <p className="text-2xl font-bold text-blue-900">
             {formatCurrency(data.reduce((sum, d) => sum + d.invoices, 0))}
           </p>
-          <div className="flex items-center gap-1 mt-1">
-            <p className="text-xs text-blue-600">Avg: {formatCurrency(data.reduce((sum, d) => sum + d.invoices, 0) / data.length)}</p>
-          </div>
+          <p className="text-xs text-blue-600 mt-1">In selected period</p>
         </div>
 
         <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
@@ -563,36 +602,18 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
           <p className="text-2xl font-bold text-green-900">
             {formatCurrency(data.reduce((sum, d) => sum + d.payments, 0))}
           </p>
-          <div className="flex items-center gap-1 mt-1">
-            <p className="text-xs text-green-600">Avg: {formatCurrency(data.reduce((sum, d) => sum + d.payments, 0) / data.length)}</p>
-          </div>
+          <p className="text-xs text-green-600 mt-1">In selected period</p>
         </div>
 
-        <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-4 border border-amber-200">
+        <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-amber-700">Payment Ratio</span>
-            <TrendingUp className="w-5 h-5 text-amber-600" />
+            <span className="text-sm font-medium text-orange-700">Overdue 90+ Days</span>
+            <DollarSign className="w-5 h-5 text-orange-600" />
           </div>
-          <p className="text-2xl font-bold text-amber-900">
-            {(() => {
-              const totalInvoices = data.reduce((sum, d) => sum + d.invoices, 0);
-              const totalPayments = data.reduce((sum, d) => sum + d.payments, 0);
-              const ratio = totalInvoices > 0 ? (totalPayments / totalInvoices) * 100 : 0;
-              return `${ratio.toFixed(1)}%`;
-            })()}
+          <p className="text-2xl font-bold text-orange-900">
+            {formatCurrency(data[data.length - 1]?.overdue_90_days || 0)}
           </p>
-          <p className="text-xs text-amber-600 mt-1">Payment to invoice ratio</p>
-        </div>
-
-        <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg p-4 border border-slate-200">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-slate-700">Data Points</span>
-            <Calendar className="w-5 h-5 text-slate-600" />
-          </div>
-          <p className="text-2xl font-bold text-slate-900">
-            {data.length}
-          </p>
-          <p className="text-xs text-slate-600 mt-1">Time series entries</p>
+          <p className="text-xs text-orange-600 mt-1">Currently overdue</p>
         </div>
       </div>
     </div>
