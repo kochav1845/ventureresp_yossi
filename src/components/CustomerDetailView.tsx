@@ -744,14 +744,20 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                 onChange={async (e) => {
                   const newValue = e.target.checked;
                   try {
+                    const updateData: any = {
+                      exclude_from_payment_analytics: newValue,
+                      excluded_by: newValue ? profile?.id : null,
+                      excluded_at: newValue ? new Date().toISOString() : null
+                    };
+
                     const { error } = await supabase
                       .from('acumatica_customers')
-                      .update({ exclude_from_payment_analytics: newValue })
+                      .update(updateData)
                       .eq('customer_id', customerId);
 
                     if (error) throw error;
 
-                    setCustomer({ ...customer, exclude_from_payment_analytics: newValue });
+                    setCustomer({ ...customer, ...updateData });
 
                     await logActivity(
                       'customer_exclusion_updated',
@@ -781,14 +787,20 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                 onChange={async (e) => {
                   const newValue = e.target.checked;
                   try {
+                    const updateData: any = {
+                      exclude_from_invoice_analytics: newValue,
+                      excluded_by: newValue ? profile?.id : null,
+                      excluded_at: newValue ? new Date().toISOString() : null
+                    };
+
                     const { error } = await supabase
                       .from('acumatica_customers')
-                      .update({ exclude_from_invoice_analytics: newValue })
+                      .update(updateData)
                       .eq('customer_id', customerId);
 
                     if (error) throw error;
 
-                    setCustomer({ ...customer, exclude_from_invoice_analytics: newValue });
+                    setCustomer({ ...customer, ...updateData });
 
                     await logActivity(
                       'customer_exclusion_updated',
@@ -818,14 +830,20 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                 onChange={async (e) => {
                   const newValue = e.target.checked;
                   try {
+                    const updateData: any = {
+                      exclude_from_customer_analytics: newValue,
+                      excluded_by: newValue ? profile?.id : null,
+                      excluded_at: newValue ? new Date().toISOString() : null
+                    };
+
                     const { error } = await supabase
                       .from('acumatica_customers')
-                      .update({ exclude_from_customer_analytics: newValue })
+                      .update(updateData)
                       .eq('customer_id', customerId);
 
                     if (error) throw error;
 
-                    setCustomer({ ...customer, exclude_from_customer_analytics: newValue });
+                    setCustomer({ ...customer, ...updateData });
 
                     await logActivity(
                       'customer_exclusion_updated',

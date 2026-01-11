@@ -401,7 +401,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_status_filter: statusFilter,
           p_country_filter: countryFilter,
           p_date_from: dateFrom ? new Date(dateFrom).toISOString() : null,
-          p_date_to: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : null
+          p_date_to: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : null,
+          p_balance_filter: balanceFilter,
+          p_min_balance: minBalance ? parseFloat(minBalance) : null,
+          p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
+          p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
+          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
+          p_date_context: dateRangeContext
         });
 
       if (countError) throw countError;
@@ -422,7 +428,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_min_balance: minBalance ? parseFloat(minBalance) : null,
           p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
           p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
-          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null
+          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
+          p_date_context: dateRangeContext
         });
 
       if (error) throw error;
