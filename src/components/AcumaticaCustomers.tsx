@@ -856,7 +856,9 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               <button
                 onClick={() => {
                   setExclusionBannerDismissed(true);
+                  setShowAllExcludedButtonDismissed(true);
                   localStorage.setItem('customers_exclusionBannerDismissed', 'true');
+                  localStorage.setItem('customers_showAllExcludedButtonDismissed', 'true');
                 }}
                 className="p-2 hover:bg-yellow-700/30 rounded-lg transition-colors group"
                 title="Dismiss"
@@ -1949,7 +1951,9 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      setExclusionBannerDismissed(true);
                       setShowAllExcludedButtonDismissed(true);
+                      localStorage.setItem('customers_exclusionBannerDismissed', 'true');
                       localStorage.setItem('customers_showAllExcludedButtonDismissed', 'true');
                     }}
                     className="absolute -top-1 -right-1 p-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-full transition-colors group"
