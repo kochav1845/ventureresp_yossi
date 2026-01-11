@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { TrendingUp, FileText, Calendar, TrendingDown, Minus, DollarSign } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -436,7 +436,7 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
       </div>
 
       {/* Chart */}
-      <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 relative" ref={chartRef}>
+      <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 relative">
         <div className="flex gap-2">
           {/* Y-axis labels */}
           <div className="flex flex-col justify-between h-80 text-xs text-gray-500 pr-2 pt-1 pb-6">
