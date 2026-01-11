@@ -73,50 +73,96 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
     }).format(amount);
   };
 
-  const maxValue = Math.max(
-    ...data.map(d => Math.max(d.balance, d.invoices, d.payments)),
+  // Separate scales for better visualization
+  const maxBalance = Math.max(...data.map(d => d.balance), 1);
+  const maxTransaction = Math.max(
+    ...data.map(d => Math.max(d.invoices, d.payments)),
     1
   );
 
-  const getYValue = (value: number) => {
-    return 100 - (value / maxValue) * 80;
+  const getBalanceY = (value: number) => {
+    return 100 - (value / maxBalance) * 80;
   };
 
-  const createPath = (values: number[], color: string) => {
-    if (values.length === 0) return null;
+  const getBarHeight = (value: number) => {
+    return (value / maxTransaction) * 80;
+  };
 
-    const points = values.map((val, index) => {
-      const x = (index / (values.length - 1)) * 100;
-      const y = getYValue(val);
+  const createBalanceLine = () => {
+    if (data.length === 0) return null;
+
+    const points = data.map((d, index) => {
+      const x = (index / Math.max(data.length - 1, 1)) * 100;
+      const y = getBalanceY(d.balance);
       return `${x},${y}`;
     }).join(' ');
 
     return (
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        className="transition-all duration-300"
-      />
+      <>
+        <polyline
+          points={points}
+          fill="none"
+          stroke="#ef4444"
+          strokeWidth="0.4"
+          className="transition-all duration-300"
+        />
+        {data.map((d, index) => {
+          const x = (index / Math.max(data.length - 1, 1)) * 100;
+          const y = getBalanceY(d.balance);
+          return (
+            <circle
+              key={`balance-${index}`}
+              cx={x}
+              cy={y}
+              r="0.5"
+              fill="#ef4444"
+              className="hover:r-5 transition-all cursor-pointer"
+            >
+              <title>{`Balance: ${formatCurrency(d.balance)}\n${d.date}`}</title>
+            </circle>
+          );
+        })}
+      </>
     );
   };
 
-  const createDots = (values: number[], color: string) => {
-    return values.map((val, index) => {
-      const x = (index / (values.length - 1)) * 100;
-      const y = getYValue(val);
+  const createBars = () => {
+    const barWidth = 100 / (data.length * 2.5); // Width of each bar
+    const groupWidth = 100 / data.length; // Width of each group
+
+    return data.map((d, index) => {
+      const groupX = (index / data.length) * 100;
+      const invoiceHeight = getBarHeight(d.invoices);
+      const paymentHeight = getBarHeight(d.payments);
+
       return (
-        <circle
-          key={index}
-          cx={x}
-          cy={y}
-          r="3"
-          fill={color}
-          className="hover:r-5 transition-all cursor-pointer"
-        >
-          <title>{formatCurrency(val)}</title>
-        </circle>
+        <g key={index}>
+          {/* Invoice bar */}
+          <rect
+            x={groupX}
+            y={100 - invoiceHeight}
+            width={barWidth}
+            height={invoiceHeight}
+            fill="#3b82f6"
+            opacity="0.8"
+            className="hover:opacity-100 transition-all cursor-pointer"
+          >
+            <title>{`Invoice: ${formatCurrency(d.invoices)}\n${d.date}`}</title>
+          </rect>
+
+          {/* Payment bar */}
+          <rect
+            x={groupX + barWidth + barWidth * 0.2}
+            y={100 - paymentHeight}
+            width={barWidth}
+            height={paymentHeight}
+            fill="#10b981"
+            opacity="0.8"
+            className="hover:opacity-100 transition-all cursor-pointer"
+          >
+            <title>{`Payment: ${formatCurrency(d.payments)}\n${d.date}`}</title>
+          </rect>
+        </g>
       );
     });
   };
@@ -197,16 +243,16 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
       {/* Legend */}
       <div className="flex items-center gap-6 mb-6 pb-4 border-b">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-red-500 rounded-full"></div>
-          <span className="text-sm font-medium text-gray-700">Balance Owed</span>
+          <div className="w-8 h-1 bg-red-500 rounded"></div>
+          <span className="text-sm font-medium text-gray-700">Balance Owed (Line)</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
-          <span className="text-sm font-medium text-gray-700">Invoices</span>
+          <div className="w-4 h-4 bg-blue-500 rounded"></div>
+          <span className="text-sm font-medium text-gray-700">Invoices (Bar)</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-green-500 rounded-full"></div>
-          <span className="text-sm font-medium text-gray-700">Payments</span>
+          <div className="w-4 h-4 bg-green-500 rounded"></div>
+          <span className="text-sm font-medium text-gray-700">Payments (Bar)</span>
         </div>
       </div>
 
@@ -214,11 +260,11 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
       <div className="bg-white rounded-lg p-6 border border-gray-200">
         <svg
           viewBox="0 0 100 100"
-          className="w-full h-64"
+          className="w-full h-80"
           preserveAspectRatio="none"
         >
           {/* Grid lines */}
-          {[0, 25, 50, 75, 100].map(y => (
+          {[0, 20, 40, 60, 80, 100].map(y => (
             <line
               key={y}
               x1="0"
@@ -231,15 +277,11 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
             />
           ))}
 
-          {/* Lines */}
-          {createPath(data.map(d => d.balance), '#ef4444')}
-          {createPath(data.map(d => d.invoices), '#3b82f6')}
-          {createPath(data.map(d => d.payments), '#10b981')}
+          {/* Bars (rendered first, behind the line) */}
+          {createBars()}
 
-          {/* Dots */}
-          {createDots(data.map(d => d.balance), '#ef4444')}
-          {createDots(data.map(d => d.invoices), '#3b82f6')}
-          {createDots(data.map(d => d.payments), '#10b981')}
+          {/* Balance line (rendered last, on top) */}
+          {createBalanceLine()}
         </svg>
 
         {/* X-axis labels */}
