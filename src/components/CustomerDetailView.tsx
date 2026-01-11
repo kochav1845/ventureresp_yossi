@@ -7,6 +7,7 @@ import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl } from '../lib/acumaticaLinks';
 import InvoiceFilterPanel from './InvoiceFilterPanel';
+import CustomerTimelineChart from './CustomerTimelineChart';
 
 interface CustomerDetailViewProps {
   customerId: string;
@@ -847,7 +848,13 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow-md">
+      {/* Customer Timeline Chart */}
+      <CustomerTimelineChart
+        customerId={customerId}
+        customerName={customer.customer_name}
+      />
+
+      <div className="bg-white rounded-lg shadow-md mt-6">
         <div className="border-b border-gray-200">
           <nav className="flex">
             <button

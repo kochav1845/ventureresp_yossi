@@ -595,7 +595,11 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
                   </thead>
                   <tbody>
                     {filteredCustomers.slice(0, 100).map((customer, index) => (
-                      <tr key={customer.customer_id} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
+                      <tr
+                        key={customer.customer_id}
+                        onClick={() => navigate(`/customers?view=${customer.customer_id}`)}
+                        className="border-b border-gray-100 hover:bg-blue-50 transition-colors cursor-pointer"
+                      >
                         <td className="py-3 px-4">
                           <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-sm">
                             {index + 1}
