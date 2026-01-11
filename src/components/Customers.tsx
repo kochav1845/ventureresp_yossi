@@ -40,6 +40,8 @@ type FilterConfig = {
   maxBalance: number;
   minInvoiceCount: number;
   maxInvoiceCount: number;
+  minInvoiceAmount: number;
+  maxInvoiceAmount: number;
   minDaysOverdue: number;
   maxDaysOverdue: number;
   dateFrom: string;
@@ -50,12 +52,13 @@ type FilterConfig = {
 };
 
 const PRESET_FILTERS = [
-  { label: 'High Balance (>$10k)', filter: { minBalance: 10000, maxBalance: Infinity, minInvoiceCount: 0, maxInvoiceCount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
-  { label: 'Medium Balance ($5k-$10k)', filter: { minBalance: 5000, maxBalance: 10000, minInvoiceCount: 0, maxInvoiceCount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
-  { label: 'Balance >$500 & >10 Invoices', filter: { minBalance: 500, maxBalance: Infinity, minInvoiceCount: 10, maxInvoiceCount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
-  { label: 'Many Open Invoices (>20)', filter: { minBalance: 0, maxBalance: Infinity, minInvoiceCount: 20, maxInvoiceCount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
-  { label: 'Overdue >90 Days', filter: { minBalance: 0, maxBalance: Infinity, minInvoiceCount: 0, maxInvoiceCount: Infinity, minDaysOverdue: 90, maxDaysOverdue: Infinity } },
-  { label: 'Critical: >$20k OR >30 Invoices', filter: { minBalance: 20000, maxBalance: Infinity, minInvoiceCount: 30, maxInvoiceCount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity }, logic: 'OR' as const },
+  { label: 'High Balance (>$10k)', filter: { minBalance: 10000, maxBalance: Infinity, minInvoiceCount: 0, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
+  { label: 'Medium Balance ($5k-$10k)', filter: { minBalance: 5000, maxBalance: 10000, minInvoiceCount: 0, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
+  { label: 'Balance >$500 & >10 Invoices', filter: { minBalance: 500, maxBalance: Infinity, minInvoiceCount: 10, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
+  { label: 'Small Invoices ($30-$2k)', filter: { minBalance: 0, maxBalance: Infinity, minInvoiceCount: 0, maxInvoiceCount: Infinity, minInvoiceAmount: 30, maxInvoiceAmount: 2000, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
+  { label: 'Many Open Invoices (>20)', filter: { minBalance: 0, maxBalance: Infinity, minInvoiceCount: 20, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
+  { label: 'Overdue >90 Days', filter: { minBalance: 0, maxBalance: Infinity, minInvoiceCount: 0, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 90, maxDaysOverdue: Infinity } },
+  { label: 'Critical: >$20k OR >30 Invoices', filter: { minBalance: 20000, maxBalance: Infinity, minInvoiceCount: 30, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity }, logic: 'OR' as const },
 ];
 
 type CustomersProps = {
@@ -99,6 +102,8 @@ export default function Customers({ onBack }: CustomersProps) {
     maxBalance: Infinity,
     minInvoiceCount: 0,
     maxInvoiceCount: Infinity,
+    minInvoiceAmount: 0,
+    maxInvoiceAmount: Infinity,
     minDaysOverdue: 0,
     maxDaysOverdue: Infinity,
     dateFrom: '',
@@ -146,7 +151,14 @@ export default function Customers({ onBack }: CustomersProps) {
           p_limit: 10000,
           p_offset: 0,
           p_date_from: null,
-          p_date_to: null
+          p_date_to: null,
+          p_balance_filter: 'all',
+          p_min_balance: null,
+          p_max_balance: null,
+          p_min_open_invoices: null,
+          p_max_open_invoices: null,
+          p_min_invoice_amount: null,
+          p_max_invoice_amount: null
         });
 
       if (analyticsError) {
@@ -204,7 +216,71 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
-  const applyFilters = useCallback(() => {
+  const applyFilters = useCallback(async () => {
+    // Check if invoice amount filter is applied - if so, we need to query the database
+    const hasInvoiceAmountFilter = filters.minInvoiceAmount > 0 || filters.maxInvoiceAmount !== Infinity;
+
+    if (hasInvoiceAmountFilter) {
+      // Query database with invoice amount filter
+      setLoading(true);
+      try {
+        const { data: analyticsData, error: analyticsError } = await supabase
+          .rpc('get_customers_with_balance', {
+            p_search: searchQuery.trim() || null,
+            p_status_filter: 'all',
+            p_country_filter: 'all',
+            p_sort_by: 'customer_name',
+            p_sort_order: 'asc',
+            p_limit: 10000,
+            p_offset: 0,
+            p_date_from: filters.dateFrom || null,
+            p_date_to: filters.dateTo || null,
+            p_balance_filter: 'all',
+            p_min_balance: filters.minBalance > 0 ? filters.minBalance : null,
+            p_max_balance: filters.maxBalance !== Infinity ? filters.maxBalance : null,
+            p_min_open_invoices: filters.minInvoiceCount > 0 ? filters.minInvoiceCount : null,
+            p_max_open_invoices: filters.maxInvoiceCount !== Infinity ? filters.maxInvoiceCount : null,
+            p_min_invoice_amount: filters.minInvoiceAmount > 0 ? filters.minInvoiceAmount : null,
+            p_max_invoice_amount: filters.maxInvoiceAmount !== Infinity ? filters.maxInvoiceAmount : null
+          });
+
+        if (analyticsError) throw analyticsError;
+
+        // Map analytics data to customer format
+        const filtered = (analyticsData || []).map((item: any) => ({
+          id: item.customer_id,
+          customer_id: item.customer_id,
+          name: item.customer_name,
+          email: item.email_address || '',
+          is_active: true,
+          responded_this_month: false,
+          postpone_until: null,
+          postpone_reason: null,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+          balance: item.calculated_balance || 0,
+          invoice_count: item.open_invoice_count || 0,
+          max_days_overdue: item.max_days_overdue || 0,
+          oldest_invoice_date: null,
+          newest_invoice_date: null
+        }));
+
+        setFilteredCustomers(filtered);
+        setTotalCount(filtered.length);
+
+        // Paginate
+        const start = currentPage * pageSize;
+        const end = start + pageSize;
+        setCustomers(filtered.slice(start, end));
+      } catch (error) {
+        console.error('Error applying invoice amount filter:', error);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Otherwise, use client-side filtering
     let filtered = [...allCustomers];
 
     // Apply search query
@@ -334,6 +410,8 @@ export default function Customers({ onBack }: CustomersProps) {
       maxBalance: Infinity,
       minInvoiceCount: 0,
       maxInvoiceCount: Infinity,
+      minInvoiceAmount: 0,
+      maxInvoiceAmount: Infinity,
       minDaysOverdue: 0,
       maxDaysOverdue: Infinity,
       dateFrom: '',
@@ -353,6 +431,8 @@ export default function Customers({ onBack }: CustomersProps) {
       maxBalance: preset.filter.maxBalance,
       minInvoiceCount: preset.filter.minInvoiceCount,
       maxInvoiceCount: preset.filter.maxInvoiceCount,
+      minInvoiceAmount: preset.filter.minInvoiceAmount,
+      maxInvoiceAmount: preset.filter.maxInvoiceAmount,
       minDaysOverdue: preset.filter.minDaysOverdue,
       maxDaysOverdue: preset.filter.maxDaysOverdue,
       logicOperator: preset.logic || 'AND'
@@ -605,6 +685,8 @@ export default function Customers({ onBack }: CustomersProps) {
     filters.maxBalance !== Infinity,
     filters.minInvoiceCount > 0,
     filters.maxInvoiceCount !== Infinity,
+    filters.minInvoiceAmount > 0,
+    filters.maxInvoiceAmount !== Infinity,
     filters.minDaysOverdue > 0,
     filters.maxDaysOverdue !== Infinity,
     filters.dateFrom !== '',
@@ -969,6 +1051,10 @@ export default function Customers({ onBack }: CustomersProps) {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="col-span-full">
+                <h4 className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-300">Customer Total Balance Range</h4>
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Min Balance</label>
                 <input
@@ -989,6 +1075,40 @@ export default function Customers({ onBack }: CustomersProps) {
                   placeholder="e.g., 10000"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
+              </div>
+
+              <div className="col-span-full mt-4">
+                <h4 className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-300">Individual Invoice Amount Range</h4>
+                <p className="text-xs text-gray-600 mb-3">
+                  Filter customers by their individual invoice amounts. Only invoices within this range will be counted.
+                  Example: Min $30, Max $2000 will show customers who have invoices between $30-$2000, and only those invoices will be included in the balance and count.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Min Invoice Amount</label>
+                <input
+                  type="number"
+                  value={filters.minInvoiceAmount || ''}
+                  onChange={(e) => setFilters({ ...filters, minInvoiceAmount: Number(e.target.value) || 0 })}
+                  placeholder="e.g., 30"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Max Invoice Amount</label>
+                <input
+                  type="number"
+                  value={filters.maxInvoiceAmount === Infinity ? '' : filters.maxInvoiceAmount}
+                  onChange={(e) => setFilters({ ...filters, maxInvoiceAmount: e.target.value ? Number(e.target.value) : Infinity })}
+                  placeholder="e.g., 2000"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="col-span-full mt-4">
+                <h4 className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-300">Invoice Count Range</h4>
               </div>
 
               <div>
@@ -1013,6 +1133,10 @@ export default function Customers({ onBack }: CustomersProps) {
                 />
               </div>
 
+              <div className="col-span-full mt-4">
+                <h4 className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-300">Days Overdue Range</h4>
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Min Days Overdue</label>
                 <input
@@ -1035,6 +1159,10 @@ export default function Customers({ onBack }: CustomersProps) {
                 />
               </div>
 
+              <div className="col-span-full mt-4">
+                <h4 className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-300">Invoice Date Range</h4>
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Invoice Date From</label>
                 <input
@@ -1053,6 +1181,10 @@ export default function Customers({ onBack }: CustomersProps) {
                   onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
+              </div>
+
+              <div className="col-span-full mt-4">
+                <h4 className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-300">Additional Options</h4>
               </div>
 
               <div>
