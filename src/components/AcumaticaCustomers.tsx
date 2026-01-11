@@ -58,6 +58,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const [excludedCustomerIds, setExcludedCustomerIds] = useState<Set<string>>(new Set());
   const [excludedCustomersWithReasons, setExcludedCustomersWithReasons] = useState<Map<string, { notes: string; excluded_at: string }>>(new Map());
   const [exclusionBannerDismissed, setExclusionBannerDismissed] = useState(false);
+  const [showAllExcludedButtonDismissed, setShowAllExcludedButtonDismissed] = useState(false);
   const [savedFilters, setSavedFilters] = useState<any[]>([]);
   const [showSaveFilterModal, setShowSaveFilterModal] = useState(false);
   const [showLoadFilterModal, setShowLoadFilterModal] = useState(false);
@@ -76,10 +77,14 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     loadExcludedCustomers();
     loadSavedFilters();
     loadCustomers();
-    // Load banner dismissal state from localStorage
-    const dismissed = localStorage.getItem('customers_exclusionBannerDismissed');
-    if (dismissed === 'true') {
+    // Load banner dismissal states from localStorage
+    const bannerDismissed = localStorage.getItem('customers_exclusionBannerDismissed');
+    if (bannerDismissed === 'true') {
       setExclusionBannerDismissed(true);
+    }
+    const buttonDismissed = localStorage.getItem('customers_showAllExcludedButtonDismissed');
+    if (buttonDismissed === 'true') {
+      setShowAllExcludedButtonDismissed(true);
     }
   }, []);
 
@@ -1931,15 +1936,30 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               </div>
             )}
 
-            <div className="p-4 border-t border-slate-700 space-y-2">
-              <button
-                onClick={handleBulkIncludeCustomers}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
-              >
-                <Eye className="w-4 h-4" />
-                Show All {excludedCustomerIds.size} Excluded
-              </button>
-            </div>
+            {!showAllExcludedButtonDismissed && (
+              <div className="p-4 border-t border-slate-700 space-y-2">
+                <div className="relative">
+                  <button
+                    onClick={handleBulkIncludeCustomers}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    <Eye className="w-4 h-4" />
+                    Show All {excludedCustomerIds.size} Excluded
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAllExcludedButtonDismissed(true);
+                      localStorage.setItem('customers_showAllExcludedButtonDismissed', 'true');
+                    }}
+                    className="absolute -top-1 -right-1 p-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-full transition-colors group"
+                    title="Dismiss"
+                  >
+                    <X className="w-3 h-3 text-slate-400 group-hover:text-slate-200" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
