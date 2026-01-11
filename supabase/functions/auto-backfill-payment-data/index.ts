@@ -193,6 +193,8 @@ Deno.serve(async (req: Request) => {
 
         if (!applicationResponse.ok) {
           errors.push(`Failed to fetch applications for ${payment.reference_number}: ${applicationResponse.status}`);
+          batchProcessed++;
+          await new Promise(resolve => setTimeout(resolve, 200));
           continue;
         }
 
