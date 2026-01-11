@@ -705,7 +705,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         <div className="max-w-2xl mx-auto">
           <button
             onClick={handleBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors mb-6"
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-700 transition-colors mb-6"
           >
             <ArrowLeft className="w-5 h-5" />
             Back
@@ -733,12 +733,12 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-white p-6">
       <div className="w-full mx-auto">
         <div className="mb-8">
           <button
             onClick={handleBack}
-            className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-4"
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-700 transition-colors mb-4"
           >
             <ArrowLeft className="w-5 h-5" />
             Back to Main Menu
@@ -746,8 +746,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-white mb-2">Acumatica Customers</h1>
-              <p className="text-slate-400">
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Acumatica Customers</h1>
+              <p className="text-gray-600">
                 Showing {displayedCustomers.length} of {totalCount} customer{totalCount !== 1 ? 's' : ''}
               </p>
             </div>
@@ -758,7 +758,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                   showAnalytics
                     ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
                 }`}
               >
                 <TrendingUp className="w-5 h-5" />
@@ -799,7 +799,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               <button
                 onClick={handleExportToExcel}
                 disabled={filteredCustomers.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed text-gray-900 rounded-lg font-medium transition-colors"
                 title={`Export ${filteredCustomers.length} customers to Excel`}
               >
                 <Download className="w-5 h-5" />
@@ -814,7 +814,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                   loadCustomers();
                 }}
                 disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-900 rounded-lg font-medium transition-colors"
               >
                 <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
                 Refresh
@@ -842,7 +842,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     handleBulkIncludeCustomers();
                   }
                 }}
-                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium transition-colors whitespace-nowrap"
+                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-gray-900 rounded-lg font-medium transition-colors whitespace-nowrap"
               >
                 Include All
               </button>
@@ -865,60 +865,60 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         {/* Analytics Stats Cards */}
         {showAnalytics && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-slate-400 font-medium text-sm">Total Customers</span>
+                <span className="text-gray-600 font-medium text-sm">Total Customers</span>
                 <Users className="w-5 h-5 text-blue-400" />
               </div>
-              <p className="text-3xl font-bold text-white">{analyticsStats.totalCustomers.toLocaleString()}</p>
-              <p className="text-sm text-slate-500 mt-1">{analyticsStats.activeCustomers} active</p>
+              <p className="text-3xl font-bold text-gray-900">{analyticsStats.totalCustomers.toLocaleString()}</p>
+              <p className="text-sm text-gray-500 mt-1">{analyticsStats.activeCustomers} active</p>
             </div>
 
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-slate-400 font-medium text-sm">Total Balance Owed</span>
+                <span className="text-gray-600 font-medium text-sm">Total Balance Owed</span>
                 <DollarSign className="w-5 h-5 text-red-400" />
               </div>
-              <p className="text-3xl font-bold text-white">
+              <p className="text-3xl font-bold text-gray-900">
                 {formatCurrency(analyticsStats.totalBalance)}
               </p>
-              <p className="text-sm text-slate-500 mt-1">{analyticsStats.customersWithDebt} customers</p>
+              <p className="text-sm text-gray-500 mt-1">{analyticsStats.customersWithDebt} customers</p>
             </div>
 
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-slate-400 font-medium text-sm">Avg Balance</span>
+                <span className="text-gray-600 font-medium text-sm">Avg Balance</span>
                 <TrendingUp className="w-5 h-5 text-cyan-400" />
               </div>
-              <p className="text-3xl font-bold text-white">
+              <p className="text-3xl font-bold text-gray-900">
                 {formatCurrency(analyticsStats.avgBalance)}
               </p>
-              <p className="text-sm text-slate-500 mt-1">per customer with debt</p>
+              <p className="text-sm text-gray-500 mt-1">per customer with debt</p>
             </div>
 
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-slate-400 font-medium text-sm">Open Invoices</span>
+                <span className="text-gray-600 font-medium text-sm">Open Invoices</span>
                 <FileText className="w-5 h-5 text-orange-400" />
               </div>
-              <p className="text-3xl font-bold text-white">{analyticsStats.totalOpenInvoices.toLocaleString()}</p>
-              <p className="text-sm text-slate-500 mt-1">{analyticsStats.customersWithOverdue} overdue</p>
+              <p className="text-3xl font-bold text-gray-900">{analyticsStats.totalOpenInvoices.toLocaleString()}</p>
+              <p className="text-sm text-gray-500 mt-1">{analyticsStats.customersWithOverdue} overdue</p>
             </div>
           </div>
         )}
 
         <div className="mb-6 space-y-4">
           {/* Quick Preset Filters */}
-          <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-3">
               <Zap className="w-5 h-5 text-yellow-400" />
-              <h3 className="text-sm font-semibold text-white">Quick Filters</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Quick Filters</h3>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => applyQuickFilter('last_90_days_debt')}
-                className={`flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white rounded-lg text-sm font-medium transition-all ${
-                  activeQuickFilter === 'last_90_days_debt' ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 shadow-lg scale-105' : ''
+                className={`flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-gray-900 rounded-lg text-sm font-medium transition-all ${
+                  activeQuickFilter === 'last_90_days_debt' ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-white shadow-lg scale-105' : ''
                 }`}
               >
                 <Clock className="w-4 h-4" />
@@ -927,7 +927,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               <button
                 onClick={() => applyQuickFilter('last_30_days')}
                 className={`flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-all ${
-                  activeQuickFilter === 'last_30_days' ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 shadow-lg scale-105' : ''
+                  activeQuickFilter === 'last_30_days' ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-white shadow-lg scale-105' : ''
                 }`}
               >
                 <Calendar className="w-4 h-4" />
@@ -936,7 +936,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               <button
                 onClick={() => applyQuickFilter('last_180_days')}
                 className={`flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-all ${
-                  activeQuickFilter === 'last_180_days' ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 shadow-lg scale-105' : ''
+                  activeQuickFilter === 'last_180_days' ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-white shadow-lg scale-105' : ''
                 }`}
               >
                 <Calendar className="w-4 h-4" />
@@ -945,7 +945,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               <button
                 onClick={() => applyQuickFilter('high_balance')}
                 className={`flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-all ${
-                  activeQuickFilter === 'high_balance' ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 shadow-lg scale-105' : ''
+                  activeQuickFilter === 'high_balance' ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-white shadow-lg scale-105' : ''
                 }`}
               >
                 <DollarSign className="w-4 h-4" />
@@ -953,8 +953,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               </button>
               <button
                 onClick={() => applyQuickFilter('multiple_overdue')}
-                className={`flex items-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-all ${
-                  activeQuickFilter === 'multiple_overdue' ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 shadow-lg scale-105' : ''
+                className={`flex items-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-gray-900 rounded-lg text-sm font-medium transition-all ${
+                  activeQuickFilter === 'multiple_overdue' ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-white shadow-lg scale-105' : ''
                 }`}
               >
                 <Target className="w-4 h-4" />
@@ -965,13 +965,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
           <div className="flex gap-3">
             <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-600 w-5 h-5" />
               <input
                 type="text"
                 placeholder="Search by customer ID, name, email, class, city, or country..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
             <button
@@ -979,7 +979,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               className={`flex items-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors ${
                 showFilters || activeFiltersCount > 0
                   ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                  : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200'
               }`}
             >
               <Filter className="w-5 h-5" />
@@ -993,13 +993,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           </div>
 
           {showFilters && (
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 space-y-4">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 space-y-4">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-white">Filter & Sort Options</h3>
+                <h3 className="text-lg font-semibold text-gray-900">Filter & Sort Options</h3>
                 {activeFiltersCount > 0 && (
                   <button
                     onClick={clearFilters}
-                    className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
+                    className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-700 transition-colors"
                   >
                     <X className="w-4 h-4" />
                     Clear All Filters
@@ -1009,13 +1009,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Status
                   </label>
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:border-blue-500"
                   >
                     <option value="all">All Statuses</option>
                     <option value="Active">Active</option>
@@ -1025,13 +1025,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Country
                   </label>
                   <select
                     value={countryFilter}
                     onChange={(e) => setCountryFilter(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:border-blue-500"
                   >
                     <option value="all">All Countries</option>
                     {getUniqueCountries().map(country => (
@@ -1041,13 +1041,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Balance
                   </label>
                   <select
                     value={balanceFilter}
                     onChange={(e) => setBalanceFilter(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:border-blue-500"
                   >
                     <option value="all">All Balances</option>
                     <option value="positive">Positive Balance</option>
@@ -1057,14 +1057,14 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Sort By
                   </label>
                   <div className="flex gap-2">
                     <select
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                      className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:border-blue-500"
                     >
                       <option value="synced_at">Sync Date</option>
                       <option value="customer_name">Name</option>
@@ -1075,7 +1075,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     </select>
                     <button
                       onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                      className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white hover:bg-slate-800 transition-colors"
+                      className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900 hover:bg-gray-50 transition-colors"
                       title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
                     >
                       {sortOrder === 'asc' ? '↑' : '↓'}
@@ -1085,10 +1085,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               </div>
 
               {/* Advanced Filters */}
-              <div className="pt-4 border-t border-slate-700">
+              <div className="pt-4 border-t border-gray-200">
                 <button
                   onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                  className="flex items-center gap-2 text-sm font-medium text-slate-300 hover:text-white transition-colors mb-4"
+                  className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-700 transition-colors mb-4"
                 >
                   <Sliders className="w-4 h-4" />
                   Advanced Filters
@@ -1096,12 +1096,12 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 </button>
 
                 {showAdvancedFilters && (
-                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-white/50 rounded-lg border border-gray-200">
                     <div className="md:col-span-2 lg:col-span-3">
-                      <h4 className="text-sm font-medium text-slate-300 mb-3">Date Range Filter</h4>
+                      <h4 className="text-sm font-medium text-gray-700 mb-3">Date Range Filter</h4>
 
-                      <div className="mb-4 space-y-2 bg-slate-800/50 p-3 rounded-lg border border-slate-700">
-                        <p className="text-xs text-slate-400 mb-2 font-semibold">What do you want to see in this date range?</p>
+                      <div className="mb-4 space-y-2 bg-gray-50/50 p-3 rounded-lg border border-gray-200">
+                        <p className="text-xs text-gray-600 mb-2 font-semibold">What do you want to see in this date range?</p>
                         <label className="flex items-start gap-3 cursor-pointer group">
                           <input
                             type="radio"
@@ -1112,8 +1112,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                             className="mt-1"
                           />
                           <div>
-                            <span className="text-sm text-white group-hover:text-blue-400 transition-colors">Invoices created in this date range</span>
-                            <p className="text-xs text-slate-500">Show customers who have invoices with creation dates within this period</p>
+                            <span className="text-sm text-gray-900 group-hover:text-blue-400 transition-colors">Invoices created in this date range</span>
+                            <p className="text-xs text-gray-500">Show customers who have invoices with creation dates within this period</p>
                           </div>
                         </label>
                         <label className="flex items-start gap-3 cursor-pointer group">
@@ -1126,8 +1126,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                             className="mt-1"
                           />
                           <div>
-                            <span className="text-sm text-white group-hover:text-blue-400 transition-colors">Customers owing money as of end date</span>
-                            <p className="text-xs text-slate-500">Show customers with outstanding balance on the end date specified</p>
+                            <span className="text-sm text-gray-900 group-hover:text-blue-400 transition-colors">Customers owing money as of end date</span>
+                            <p className="text-xs text-gray-500">Show customers with outstanding balance on the end date specified</p>
                           </div>
                         </label>
                         <label className="flex items-start gap-3 cursor-pointer group">
@@ -1140,85 +1140,85 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                             className="mt-1"
                           />
                           <div>
-                            <span className="text-sm text-white group-hover:text-blue-400 transition-colors">New customers added in this date range</span>
-                            <p className="text-xs text-slate-500">Show customers who were first synced within this period</p>
+                            <span className="text-sm text-gray-900 group-hover:text-blue-400 transition-colors">New customers added in this date range</span>
+                            <p className="text-xs text-gray-500">Show customers who were first synced within this period</p>
                           </div>
                         </label>
                       </div>
 
                       <div className="grid md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs text-slate-400 mb-1">From Date</label>
+                          <label className="block text-xs text-gray-600 mb-1">From Date</label>
                           <input
                             type="date"
                             value={dateFrom}
                             onChange={(e) => setDateFrom(e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:border-blue-500"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-slate-400 mb-1">To Date</label>
+                          <label className="block text-xs text-gray-600 mb-1">To Date</label>
                           <input
                             type="date"
                             value={dateTo}
                             onChange={(e) => setDateTo(e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:border-blue-500"
                           />
                         </div>
                       </div>
                     </div>
 
                     <div className="md:col-span-2 lg:col-span-3">
-                      <h4 className="text-sm font-medium text-slate-300 mb-3">Open Invoices Count</h4>
+                      <h4 className="text-sm font-medium text-gray-700 mb-3">Open Invoices Count</h4>
                       <div className="grid md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs text-slate-400 mb-1">Minimum</label>
+                          <label className="block text-xs text-gray-600 mb-1">Minimum</label>
                           <input
                             type="number"
                             value={minOpenInvoices}
                             onChange={(e) => setMinOpenInvoices(e.target.value)}
                             placeholder="e.g., 1"
                             min="0"
-                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:border-blue-500"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-slate-400 mb-1">Maximum</label>
+                          <label className="block text-xs text-gray-600 mb-1">Maximum</label>
                           <input
                             type="number"
                             value={maxOpenInvoices}
                             onChange={(e) => setMaxOpenInvoices(e.target.value)}
                             placeholder="e.g., 10"
                             min="0"
-                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:border-blue-500"
                           />
                         </div>
                       </div>
                     </div>
 
                     <div className="md:col-span-2 lg:col-span-3">
-                      <h4 className="text-sm font-medium text-slate-300 mb-3">Balance Range</h4>
+                      <h4 className="text-sm font-medium text-gray-700 mb-3">Balance Range</h4>
                       <div className="grid md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs text-slate-400 mb-1">Minimum ($)</label>
+                          <label className="block text-xs text-gray-600 mb-1">Minimum ($)</label>
                           <input
                             type="number"
                             value={minBalance}
                             onChange={(e) => setMinBalance(e.target.value)}
                             placeholder="e.g., 100"
                             step="0.01"
-                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:border-blue-500"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-slate-400 mb-1">Maximum ($)</label>
+                          <label className="block text-xs text-gray-600 mb-1">Maximum ($)</label>
                           <input
                             type="number"
                             value={maxBalance}
                             onChange={(e) => setMaxBalance(e.target.value)}
                             placeholder="e.g., 10000"
                             step="0.01"
-                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:border-blue-500"
                           />
                         </div>
                       </div>
@@ -1227,10 +1227,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 )}
               </div>
 
-              <div className="pt-4 border-t border-slate-700">
-                <p className="text-sm text-slate-400">
-                  Showing <span className="text-white font-semibold">{filteredCustomers.length}</span> of{' '}
-                  <span className="text-white font-semibold">{displayedCustomers.length}</span> loaded
+              <div className="pt-4 border-t border-gray-200">
+                <p className="text-sm text-gray-600">
+                  Showing <span className="text-gray-900 font-semibold">{filteredCustomers.length}</span> of{' '}
+                  <span className="text-gray-900 font-semibold">{displayedCustomers.length}</span> loaded
                   {totalCount > displayedCustomers.length && (
                     <span> ({totalCount} total in database)</span>
                   )}
@@ -1243,35 +1243,35 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         {loading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <p className="text-slate-400">Loading customers...</p>
+            <p className="text-gray-600">Loading customers...</p>
           </div>
         ) : filteredCustomers.length === 0 ? (
-          <div className="bg-slate-800 border border-slate-700 rounded-lg p-12 text-center">
-            <p className="text-slate-400 text-lg mb-2">
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-12 text-center">
+            <p className="text-gray-600 text-lg mb-2">
               {searchTerm ? 'No customers found matching your search' : 'No customers synced yet'}
             </p>
             {!searchTerm && (
-              <p className="text-slate-500">
+              <p className="text-gray-500">
                 Use the Acumatica Invoice Test page to fetch customers from Acumatica
               </p>
             )}
           </div>
         ) : (
-          <div className="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+          <div className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
             <div
               ref={topScrollRef}
-              className="overflow-x-auto w-full border-b border-slate-700"
+              className="overflow-x-auto w-full border-b border-gray-200"
               style={{ overflowY: 'hidden', height: '20px' }}
             >
               <div style={{ width: '1600px', height: '20px' }}></div>
             </div>
             <div ref={tableScrollRef} className="overflow-x-auto w-full">
-              <table className="w-full divide-y divide-slate-700" style={{ minWidth: '1600px' }}>
-                <thead className="bg-slate-900">
+              <table className="w-full divide-y divide-gray-200" style={{ minWidth: '1600px' }}>
+                <thead className="bg-white">
                   <tr>
                     <th
                       onClick={() => handleColumnSort('customer_id')}
-                      className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-700 transition-colors"
                     >
                       <div className="flex items-center">
                         Customer ID {getSortIcon('customer_id')}
@@ -1279,7 +1279,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     </th>
                     <th
                       onClick={() => handleColumnSort('customer_name')}
-                      className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-700 transition-colors"
                     >
                       <div className="flex items-center">
                         Customer Name {getSortIcon('customer_name')}
@@ -1287,7 +1287,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     </th>
                     <th
                       onClick={() => handleColumnSort('balance')}
-                      className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                      className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-700 transition-colors"
                     >
                       <div className="flex items-center justify-end">
                         Balance Owed {getSortIcon('balance')}
@@ -1295,21 +1295,21 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     </th>
                     <th
                       onClick={() => handleColumnSort('open_invoices')}
-                      className="px-6 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                      className="px-6 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-700 transition-colors"
                     >
                       <div className="flex items-center justify-center">
                         Open Invoices {getSortIcon('open_invoices')}
                       </div>
                     </th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider">
                       Invoice Colors
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider w-64">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider w-64">
                       Payment Performance
                     </th>
                     <th
                       onClick={() => handleColumnSort('days_past_due_threshold')}
-                      className="px-6 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                      className="px-6 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-700 transition-colors"
                     >
                       <div className="flex items-center justify-center">
                         Red After (Days) {getSortIcon('days_past_due_threshold')}
@@ -1317,7 +1317,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     </th>
                     <th
                       onClick={() => handleColumnSort('customer_status')}
-                      className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-700 transition-colors"
                     >
                       <div className="flex items-center">
                         Status {getSortIcon('customer_status')}
@@ -1325,7 +1325,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     </th>
                     <th
                       onClick={() => handleColumnSort('city')}
-                      className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-700 transition-colors"
                     >
                       <div className="flex items-center">
                         Location {getSortIcon('city')}
@@ -1333,7 +1333,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     </th>
                     <th
                       onClick={() => handleColumnSort('customer_class')}
-                      className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-700 transition-colors"
                     >
                       <div className="flex items-center">
                         Class {getSortIcon('customer_class')}
@@ -1341,7 +1341,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     </th>
                     <th
                       onClick={() => handleColumnSort('synced_at')}
-                      className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-700 transition-colors"
                     >
                       <div className="flex items-center">
                         Last Synced {getSortIcon('synced_at')}
@@ -1349,13 +1349,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     </th>
                     <th
                       onClick={() => handleColumnSort('email_address')}
-                      className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider w-24 cursor-pointer hover:text-white transition-colors"
+                      className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider w-24 cursor-pointer hover:text-gray-700 transition-colors"
                     >
                       <div className="flex items-center">
                         Email {getSortIcon('email_address')}
                       </div>
                     </th>
-                    <th className="px-3 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider w-24">
+                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider w-24">
                       <div className="flex items-center justify-center gap-1">
                         <EyeOff className="w-3 h-3" />
                         Exclude
@@ -1363,7 +1363,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-700">
+                <tbody className="divide-y divide-gray-200">
                   {filteredCustomers.map((customer, index) => {
                     const hasOverdueOver90Days = customer.max_days_overdue > 90 && customer.calculated_balance > 0;
                     return (
@@ -1373,17 +1373,17 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                       className={`transition-colors ${
                         hasOverdueOver90Days
                           ? 'bg-red-900/40 hover:bg-red-900/60 border-l-4 border-l-red-500'
-                          : 'hover:bg-slate-700/50'
+                          : 'hover:bg-gray-100/50'
                       }`}
                     >
                       <td
-                        className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white cursor-pointer"
+                        className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 cursor-pointer"
                         onClick={() => setSelectedCustomer(customer.customer_id)}
                       >
                         {customer.customer_id || 'N/A'}
                       </td>
                       <td
-                        className="px-6 py-4 whitespace-nowrap text-sm text-white font-medium cursor-pointer"
+                        className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium cursor-pointer"
                         onClick={() => setSelectedCustomer(customer.customer_id)}
                       >
                         {customer.customer_name || customer.account_name || 'Unnamed Customer'}
@@ -1414,7 +1414,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                       >
                         <div className="flex items-center justify-center gap-2">
                           {customer.color_status_counts?.red > 0 && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-red-500 text-white border border-red-600">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-red-500 text-gray-900 border border-red-600">
                               {customer.color_status_counts.red}
                             </span>
                           )}
@@ -1424,7 +1424,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                             </span>
                           )}
                           {customer.color_status_counts?.green > 0 && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-green-500 text-white border border-green-600">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-green-500 text-gray-900 border border-green-600">
                               {customer.color_status_counts.green}
                             </span>
                           )}
@@ -1432,7 +1432,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                             (customer.color_status_counts.red === 0 &&
                              customer.color_status_counts.yellow === 0 &&
                              customer.color_status_counts.green === 0)) && (
-                            <span className="text-xs text-slate-500">-</span>
+                            <span className="text-xs text-gray-500">-</span>
                           )}
                         </div>
                       </td>
@@ -1449,10 +1449,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                             <PieChart className="w-6 h-6 text-blue-400 cursor-pointer hover:text-blue-300 transition-colors" />
 
                             {hoveredCustomer === customer.customer_id && (
-                              <div className="absolute z-50 left-10 top-0 bg-slate-800 border border-slate-700 rounded-lg p-4 shadow-2xl" style={{ width: '280px' }}>
+                              <div className="absolute z-50 left-10 top-0 bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-2xl" style={{ width: '280px' }}>
                                 <div className="mb-3">
-                                  <h4 className="text-sm font-semibold text-white mb-1">Payment Performance</h4>
-                                  <p className="text-xs text-slate-400">{customer.payment_performance.total} invoices tracked</p>
+                                  <h4 className="text-sm font-semibold text-gray-900 mb-1">Payment Performance</h4>
+                                  <p className="text-xs text-gray-600">{customer.payment_performance.total} invoices tracked</p>
                                 </div>
 
                                 <div className="flex justify-center mb-3">
@@ -1463,36 +1463,36 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="flex items-center gap-1">
                                       <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                      <span className="text-slate-300">≤15 days</span>
+                                      <span className="text-gray-700">≤15 days</span>
                                     </span>
-                                    <span className="font-semibold text-white">
+                                    <span className="font-semibold text-gray-900">
                                       {customer.payment_performance.within15} ({((customer.payment_performance.within15 / customer.payment_performance.total) * 100).toFixed(1)}%)
                                     </span>
                                   </div>
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="flex items-center gap-1">
                                       <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                      <span className="text-slate-300">16-45 days</span>
+                                      <span className="text-gray-700">16-45 days</span>
                                     </span>
-                                    <span className="font-semibold text-white">
+                                    <span className="font-semibold text-gray-900">
                                       {customer.payment_performance.within45} ({((customer.payment_performance.within45 / customer.payment_performance.total) * 100).toFixed(1)}%)
                                     </span>
                                   </div>
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="flex items-center gap-1">
                                       <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-                                      <span className="text-slate-300">46-365 days</span>
+                                      <span className="text-gray-700">46-365 days</span>
                                     </span>
-                                    <span className="font-semibold text-white">
+                                    <span className="font-semibold text-gray-900">
                                       {customer.payment_performance.withinYear} ({((customer.payment_performance.withinYear / customer.payment_performance.total) * 100).toFixed(1)}%)
                                     </span>
                                   </div>
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="flex items-center gap-1">
                                       <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                                      <span className="text-slate-300">&gt;365 days</span>
+                                      <span className="text-gray-700">&gt;365 days</span>
                                     </span>
-                                    <span className="font-semibold text-white">
+                                    <span className="font-semibold text-gray-900">
                                       {customer.payment_performance.overYear} ({((customer.payment_performance.overYear / customer.payment_performance.total) * 100).toFixed(1)}%)
                                     </span>
                                   </div>
@@ -1501,7 +1501,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                             )}
                           </div>
                         ) : (
-                          <span className="text-xs text-slate-500">No data</span>
+                          <span className="text-xs text-gray-500">No data</span>
                         )}
                       </td>
                       <td
@@ -1516,7 +1516,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                               max="999"
                               value={thresholdValue}
                               onChange={(e) => setThresholdValue(parseInt(e.target.value) || 0)}
-                              className="w-16 px-2 py-1 bg-slate-900 border border-blue-500 rounded text-white text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="w-16 px-2 py-1 bg-white border border-blue-500 rounded text-gray-900 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                               autoFocus
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
@@ -1535,7 +1535,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                             </button>
                             <button
                               onClick={() => setEditingThreshold(null)}
-                              className="p-1 bg-slate-600 hover:bg-slate-700 text-white rounded transition-colors"
+                              className="p-1 bg-gray-200 hover:bg-gray-100 text-gray-900 rounded transition-colors"
                               title="Cancel"
                             >
                               <X className="w-4 h-4" />
@@ -1543,7 +1543,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                           </div>
                         ) : (
                           <div className="flex items-center gap-2 justify-center group">
-                            <span className="text-sm font-medium text-white">
+                            <span className="text-sm font-medium text-gray-900">
                               {customer.days_past_due_threshold || 30}
                             </span>
                             <button
@@ -1563,13 +1563,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                           customer.customer_status === 'Active'
                             ? 'bg-green-500/10 text-green-500 border border-green-500/20'
-                            : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                            : 'bg-gray-200 text-gray-600 border border-gray-300'
                         }`}>
                           {customer.customer_status || 'Unknown'}
                         </span>
                       </td>
                       <td
-                        className="px-6 py-4 whitespace-nowrap text-sm text-slate-300 cursor-pointer"
+                        className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 cursor-pointer"
                         onClick={() => setSelectedCustomer(customer.customer_id)}
                       >
                         {customer.city && customer.country
@@ -1577,19 +1577,19 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                           : customer.city || customer.country || 'N/A'}
                       </td>
                       <td
-                        className="px-6 py-4 whitespace-nowrap text-sm text-slate-300 cursor-pointer"
+                        className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 cursor-pointer"
                         onClick={() => setSelectedCustomer(customer.customer_id)}
                       >
                         {customer.customer_class || 'N/A'}
                       </td>
                       <td
-                        className="px-6 py-4 whitespace-nowrap text-sm text-slate-400 cursor-pointer"
+                        className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 cursor-pointer"
                         onClick={() => setSelectedCustomer(customer.customer_id)}
                       >
                         {formatDateUtil(customer.synced_at)}
                       </td>
                       <td
-                        className="px-3 py-4 text-sm text-slate-300 w-24 cursor-pointer"
+                        className="px-3 py-4 text-sm text-gray-700 w-24 cursor-pointer"
                         onClick={() => setSelectedCustomer(customer.customer_id)}
                       >
                         <div className="truncate" title={customer.email_address || 'N/A'}>
@@ -1615,14 +1615,14 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               </table>
             </div>
             {loadingMore && (
-              <div className="text-center py-8 border-t border-slate-700">
+              <div className="text-center py-8 border-t border-gray-200">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                <p className="text-slate-400 text-sm">Loading more customers...</p>
+                <p className="text-gray-600 text-sm">Loading more customers...</p>
               </div>
             )}
             {!hasMore && displayedCustomers.length > 0 && (
               <div className="text-center py-8">
-                <p className="text-slate-400 text-sm">All customers loaded ({displayedCustomers.length} total)</p>
+                <p className="text-gray-600 text-sm">All customers loaded ({displayedCustomers.length} total)</p>
               </div>
             )}
           </div>
@@ -1634,19 +1634,19 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             onClick={() => setSelectedCustomer(null)}
           >
             <div
-              className="bg-slate-800 border border-slate-700 rounded-lg p-8 max-w-4xl w-full max-h-[80vh] overflow-y-auto"
+              className="bg-gray-50 border border-gray-200 rounded-lg p-8 max-w-4xl w-full max-h-[80vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-white mb-2">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
                     {selectedCustomer.customer_name || 'Customer Details'}
                   </h2>
-                  <p className="text-slate-400">ID: {selectedCustomer.customer_id}</p>
+                  <p className="text-gray-600">ID: {selectedCustomer.customer_id}</p>
                 </div>
                 <button
                   onClick={() => setSelectedCustomer(null)}
-                  className="text-slate-400 hover:text-white transition-colors"
+                  className="text-gray-600 hover:text-gray-700 transition-colors"
                 >
                   <span className="sr-only">Close</span>
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1677,8 +1677,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
                   return (
                     <div key={key}>
-                      <span className="text-slate-400 text-sm">{label}:</span>
-                      <p className="text-white font-medium">{String(displayValue)}</p>
+                      <span className="text-gray-600 text-sm">{label}:</span>
+                      <p className="text-gray-900 font-medium">{String(displayValue)}</p>
                     </div>
                   );
                 })}
@@ -1693,10 +1693,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             onClick={() => setShowSaveFilterModal(false)}
           >
             <div
-              className="bg-slate-800 border border-slate-700 rounded-lg p-8 max-w-md w-full"
+              className="bg-gray-50 border border-gray-200 rounded-lg p-8 max-w-md w-full"
               onClick={(e) => e.stopPropagation()}
             >
-              <h2 className="text-2xl font-bold text-white mb-6">Save Current Filter</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Save Current Filter</h2>
 
               {excludedCustomerIds.size > 0 && (
                 <div className="mb-4 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded-lg">
@@ -1710,7 +1710,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               )}
 
               <div className="mb-6">
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Filter Name
                 </label>
                 <input
@@ -1718,7 +1718,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                   value={newFilterName}
                   onChange={(e) => setNewFilterName(e.target.value)}
                   placeholder="e.g., High Balance Customers"
-                  className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
+                  className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleSaveFilter();
@@ -1731,14 +1731,14 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 <button
                   onClick={handleSaveFilter}
                   disabled={savingFilter || !newFilterName.trim()}
-                  className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                  className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-900 rounded-lg font-medium transition-colors"
                 >
                   {savingFilter ? 'Saving...' : 'Save Filter'}
                 </button>
                 <button
                   onClick={() => setShowSaveFilterModal(false)}
                   disabled={savingFilter}
-                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 disabled:cursor-not-allowed text-gray-900 rounded-lg font-medium transition-colors"
                 >
                   Cancel
                 </button>
@@ -1753,14 +1753,14 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             onClick={() => setShowLoadFilterModal(false)}
           >
             <div
-              className="bg-slate-800 border border-slate-700 rounded-lg p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+              className="bg-gray-50 border border-gray-200 rounded-lg p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-white">Saved Filters</h2>
+                <h2 className="text-2xl font-bold text-gray-900">Saved Filters</h2>
                 <button
                   onClick={() => setShowLoadFilterModal(false)}
-                  className="text-slate-400 hover:text-white transition-colors"
+                  className="text-gray-600 hover:text-gray-700 transition-colors"
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -1768,7 +1768,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
               {savedFilters.length === 0 ? (
                 <div className="text-center py-12">
-                  <p className="text-slate-400 mb-4">No saved filters yet</p>
+                  <p className="text-gray-600 mb-4">No saved filters yet</p>
                   <button
                     onClick={() => {
                       setShowLoadFilterModal(false);
@@ -1805,21 +1805,21 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     return (
                     <div
                       key={filter.id}
-                      className="p-4 bg-slate-900 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors"
+                      className="p-4 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-4 mb-3">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <h3 className="text-lg font-semibold text-white">
+                            <h3 className="text-lg font-semibold text-gray-900">
                               {filter.filter_name}
                             </h3>
                             {excludedCount > 0 && (
-                              <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                              <span className="bg-red-500 text-gray-900 text-xs font-bold px-2 py-0.5 rounded-full">
                                 {excludedCount} excluded
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-3 text-xs text-slate-500">
+                          <div className="flex items-center gap-3 text-xs text-gray-500">
                             <span>Created {formatDateUtil(filter.created_at)}</span>
                             {filter.last_used_at && (
                               <span className="flex items-center gap-1">
@@ -1851,7 +1851,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                           {activeSettings.map((setting, idx) => (
                             <span
                               key={idx}
-                              className="inline-flex items-center px-2 py-1 bg-slate-800 border border-slate-600 rounded text-xs text-slate-300"
+                              className="inline-flex items-center px-2 py-1 bg-gray-50 border border-gray-300 rounded text-xs text-gray-700"
                             >
                               {setting}
                             </span>
@@ -1868,26 +1868,26 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         )}
 
         {excludedCustomerIds.size > 0 && (
-          <div className="fixed bottom-6 right-6 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl max-w-md z-40">
-            <div className="p-4 border-b border-slate-700">
+          <div className="fixed bottom-6 right-6 bg-gray-50 border border-gray-200 rounded-lg shadow-2xl max-w-md z-40">
+            <div className="p-4 border-b border-gray-200">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-white font-semibold flex items-center gap-2">
+                <h3 className="text-gray-900 font-semibold flex items-center gap-2">
                   <EyeOff className="w-5 h-5 text-red-400" />
                   Excluded Customers
                 </h3>
                 <div className="flex items-center gap-2">
-                  <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                  <span className="bg-red-500 text-gray-900 text-xs font-bold px-2 py-1 rounded-full">
                     {excludedCustomerIds.size}
                   </span>
                   <button
                     onClick={() => setShowExcludedCustomersPanel(!showExcludedCustomersPanel)}
-                    className="text-slate-400 hover:text-white transition-colors"
+                    className="text-gray-600 hover:text-gray-700 transition-colors"
                   >
                     {showExcludedCustomersPanel ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-gray-600">
                 {excludedCustomerIds.size} customer{excludedCustomerIds.size !== 1 ? 's' : ''} hidden from list
               </p>
             </div>
@@ -1899,20 +1899,20 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     const customer = displayedCustomers.find(c => c.customer_id === customerId);
                     const exclusionInfo = excludedCustomersWithReasons.get(customerId);
                     return (
-                      <div key={customerId} className="bg-slate-900 border border-slate-700 rounded-lg p-3">
+                      <div key={customerId} className="bg-white border border-gray-200 rounded-lg p-3">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-white truncate">
+                            <p className="text-sm font-medium text-gray-900 truncate">
                               {customer?.customer_name || customerId}
                             </p>
-                            <p className="text-xs text-slate-500">{customerId}</p>
+                            <p className="text-xs text-gray-500">{customerId}</p>
                             {exclusionInfo?.notes && (
                               <div className="mt-1 flex items-start gap-1">
                                 <MessageSquare className="w-3 h-3 text-blue-400 mt-0.5 flex-shrink-0" />
-                                <p className="text-xs text-slate-400 italic">{exclusionInfo.notes}</p>
+                                <p className="text-xs text-gray-600 italic">{exclusionInfo.notes}</p>
                               </div>
                             )}
-                            <p className="text-xs text-slate-600 mt-1">
+                            <p className="text-xs text-gray-600 mt-1">
                               Excluded {formatDateUtil(exclusionInfo?.excluded_at || '')}
                             </p>
                           </div>
@@ -1932,7 +1932,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             )}
 
             {!showAllExcludedButtonDismissed && (
-              <div className="p-4 border-t border-slate-700 space-y-2">
+              <div className="p-4 border-t border-gray-200 space-y-2">
                 <div className="relative">
                   <button
                     onClick={handleBulkIncludeCustomers}
@@ -1949,10 +1949,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                       localStorage.setItem('customers_exclusionBannerDismissed', 'true');
                       localStorage.setItem('customers_showAllExcludedButtonDismissed', 'true');
                     }}
-                    className="absolute -top-1 -right-1 p-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-full transition-colors group"
+                    className="absolute -top-1 -right-1 p-1 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-full transition-colors group"
                     title="Dismiss"
                   >
-                    <X className="w-3 h-3 text-slate-400 group-hover:text-slate-200" />
+                    <X className="w-3 h-3 text-gray-600 group-hover:text-gray-700" />
                   </button>
                 </div>
               </div>
