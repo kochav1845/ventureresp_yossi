@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, Lock, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink } from 'lucide-react';
+import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, Lock, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, UserPlus } from 'lucide-react';
 import { supabase, logActivity } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
@@ -8,6 +8,7 @@ import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl } from '../lib/acumaticaLinks';
 import InvoiceFilterPanel from './InvoiceFilterPanel';
 import CustomerTimelineChart from './CustomerTimelineChart';
+import AssignInvoiceModal from './AssignInvoiceModal';
 
 interface CustomerDetailViewProps {
   customerId: string;
@@ -47,6 +48,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [showAssignInvoiceModal, setShowAssignInvoiceModal] = useState(false);
+  const [invoiceToAssign, setInvoiceToAssign] = useState<{ refNum: string; customerName: string; amount: number } | null>(null);
   const observer = useRef<IntersectionObserver | null>(null);
   const ITEMS_PER_PAGE = 50;
 
@@ -1045,16 +1048,33 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                             {formatCurrency(invoice.balance)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <a
-                              href={getAcumaticaInvoiceUrl(invoice.reference_number)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
-                              title="Open in Acumatica"
-                            >
-                              <ExternalLink className="w-4 h-4 mr-1" />
-                              View
-                            </a>
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setInvoiceToAssign({
+                                    refNum: invoice.reference_number,
+                                    customerName: customer?.customer_name || 'Unknown',
+                                    amount: invoice.balance
+                                  });
+                                  setShowAssignInvoiceModal(true);
+                                }}
+                                className="inline-flex items-center px-3 py-1 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded transition-colors"
+                                title="Assign to collector"
+                              >
+                                <UserPlus className="w-4 h-4 mr-1" />
+                                Assign
+                              </button>
+                              <a
+                                href={getAcumaticaInvoiceUrl(invoice.reference_number)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                                title="Open in Acumatica"
+                              >
+                                <ExternalLink className="w-4 h-4 mr-1" />
+                                View
+                              </a>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1362,6 +1382,22 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           )}
         </div>
       </div>
+
+      {/* Assign Invoice Modal */}
+      {showAssignInvoiceModal && invoiceToAssign && (
+        <AssignInvoiceModal
+          invoiceReferenceNumber={invoiceToAssign.refNum}
+          customerName={invoiceToAssign.customerName}
+          invoiceAmount={invoiceToAssign.amount}
+          onClose={() => {
+            setShowAssignInvoiceModal(false);
+            setInvoiceToAssign(null);
+          }}
+          onAssignmentComplete={() => {
+            loadCustomerData();
+          }}
+        />
+      )}
     </div>
   );
 }

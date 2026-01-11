@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare, Download } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare, Download, UserPlus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import AcumaticaInvoiceTest from './AcumaticaInvoiceTest';
 import CustomerDetailView from './CustomerDetailView';
+import AssignCustomerModal from './AssignCustomerModal';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { exportToExcel } from '../lib/excelExport';
 
@@ -68,6 +69,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const [showExcludedCustomersPanel, setShowExcludedCustomersPanel] = useState(false);
   const [excludeReason, setExcludeReason] = useState('');
   const [activeQuickFilter, setActiveQuickFilter] = useState<string | null>(null);
+  const [showAssignCustomerModal, setShowAssignCustomerModal] = useState(false);
+  const [customerToAssign, setCustomerToAssign] = useState<{ id: string; name: string } | null>(null);
   const observer = useRef<IntersectionObserver | null>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -1597,16 +1600,31 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                         </div>
                       </td>
                       <td
-                        className="px-3 py-4 text-center w-24"
+                        className="px-3 py-4 text-center w-32"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <button
-                          onClick={() => handleExcludeCustomer(customer.customer_id)}
-                          className="p-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
-                          title="Exclude this customer from analytics and saved filters"
-                        >
-                          <EyeOff className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => {
+                              setCustomerToAssign({
+                                id: customer.customer_id,
+                                name: customer.customer_name || customer.account_name || 'Unnamed Customer'
+                              });
+                              setShowAssignCustomerModal(true);
+                            }}
+                            className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                            title="Assign customer to collector"
+                          >
+                            <UserPlus className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleExcludeCustomer(customer.customer_id)}
+                            className="p-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                            title="Exclude this customer from analytics and saved filters"
+                          >
+                            <EyeOff className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1960,6 +1978,21 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           </div>
         )}
       </div>
+
+      {/* Assign Customer Modal */}
+      {showAssignCustomerModal && customerToAssign && (
+        <AssignCustomerModal
+          customerId={customerToAssign.id}
+          customerName={customerToAssign.name}
+          onClose={() => {
+            setShowAssignCustomerModal(false);
+            setCustomerToAssign(null);
+          }}
+          onAssignmentComplete={() => {
+            loadCustomers();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -33,6 +33,15 @@ interface TicketGroup {
   invoices: Assignment[];
 }
 
+interface CustomerAssignment {
+  assignment_id: string;
+  customer_id: string;
+  customer_name: string;
+  customer_balance: number;
+  notes: string;
+  assigned_at: string;
+}
+
 interface MyAssignmentsProps {
   onBack?: () => void;
 }
@@ -41,8 +50,9 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   const { user, profile } = useAuth();
   const [tickets, setTickets] = useState<TicketGroup[]>([]);
   const [individualAssignments, setIndividualAssignments] = useState<Assignment[]>([]);
+  const [customerAssignments, setCustomerAssignments] = useState<CustomerAssignment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedView, setSelectedView] = useState<'tickets' | 'individual'>('tickets');
+  const [selectedView, setSelectedView] = useState<'tickets' | 'individual' | 'customers'>('tickets');
   const [memoModalInvoice, setMemoModalInvoice] = useState<any>(null);
 
   useEffect(() => {
@@ -60,6 +70,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
 
     setLoading(true);
     try {
+      // Load invoice assignments
       const { data: assignments, error } = await supabase
         .from('collector_assignment_details')
         .select('*')
@@ -95,6 +106,18 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
 
         setTickets(Array.from(ticketGroups.values()));
         setIndividualAssignments(individualList);
+      }
+
+      // Load customer assignments
+      const { data: custAssignments, error: custError } = await supabase
+        .from('collector_customer_assignment_details')
+        .select('*')
+        .eq('assigned_collector_id', collectorId);
+
+      if (custError) {
+        console.error('Error loading customer assignments:', custError);
+      } else if (custAssignments) {
+        setCustomerAssignments(custAssignments);
       }
     } catch (error) {
       console.error('Error loading assignments:', error);
@@ -236,6 +259,19 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                 <span>Individual Invoices ({individualAssignments.length})</span>
               </div>
             </button>
+            <button
+              onClick={() => setSelectedView('customers')}
+              className={`px-6 py-3 font-medium ${
+                selectedView === 'customers'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-4 h-4" />
+                <span>Assigned Customers ({customerAssignments.length})</span>
+              </div>
+            </button>
           </div>
         </div>
 
@@ -341,7 +377,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                 ))
               )}
             </div>
-          ) : (
+          ) : selectedView === 'individual' ? (
             <div className="space-y-4">
               {individualAssignments.length === 0 ? (
                 <div className="text-center py-12">
@@ -412,6 +448,63 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                       >
                         <MessageSquare className="w-5 h-5" />
                       </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {customerAssignments.length === 0 ? (
+                <div className="text-center py-12">
+                  <DollarSign className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No customers assigned to you</p>
+                </div>
+              ) : (
+                customerAssignments.map(customer => (
+                  <div
+                    key={customer.assignment_id}
+                    className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-3">
+                          <h3 className="font-bold text-xl text-gray-900">
+                            {customer.customer_name}
+                          </h3>
+                          <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
+                            Customer Assignment
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-4">
+                          Customer ID: <span className="font-mono font-medium">{customer.customer_id}</span>
+                        </p>
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <p className="text-sm text-gray-500 mb-1">Total Balance</p>
+                            <p className="text-2xl font-bold text-red-600">
+                              ${(customer.customer_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-500 mb-1">Assigned On</p>
+                            <p className="text-sm font-medium text-gray-900">
+                              {new Date(customer.assigned_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        {customer.notes && (
+                          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <p className="text-sm font-medium text-gray-700 mb-1">Assignment Notes:</p>
+                            <p className="text-sm text-gray-700 italic">{customer.notes}</p>
+                          </div>
+                        )}
+                        <div className="mt-4">
+                          <p className="text-xs text-gray-500">
+                            Manage all invoices for this customer through the customer detail page
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))
