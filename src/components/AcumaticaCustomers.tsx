@@ -889,7 +889,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 <span className="text-gray-600 font-medium text-sm">Total Balance Owed</span>
                 <DollarSign className="w-5 h-5 text-red-400" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-2xl lg:text-3xl font-bold text-gray-900 break-words">
                 {formatCurrency(analyticsStats.totalBalance)}
               </p>
               <p className="text-sm text-gray-500 mt-1">{analyticsStats.customersWithDebt} customers</p>
@@ -900,7 +900,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 <span className="text-gray-600 font-medium text-sm">Avg Balance</span>
                 <TrendingUp className="w-5 h-5 text-cyan-400" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-2xl lg:text-3xl font-bold text-gray-900 break-words">
                 {formatCurrency(analyticsStats.avgBalance)}
               </p>
               <p className="text-sm text-gray-500 mt-1">per customer with debt</p>
