@@ -57,6 +57,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   });
   const [excludedCustomerIds, setExcludedCustomerIds] = useState<Set<string>>(new Set());
   const [excludedCustomersWithReasons, setExcludedCustomersWithReasons] = useState<Map<string, { notes: string; excluded_at: string }>>(new Map());
+  const [exclusionBannerDismissed, setExclusionBannerDismissed] = useState(false);
   const [savedFilters, setSavedFilters] = useState<any[]>([]);
   const [showSaveFilterModal, setShowSaveFilterModal] = useState(false);
   const [showLoadFilterModal, setShowLoadFilterModal] = useState(false);
@@ -75,6 +76,11 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     loadExcludedCustomers();
     loadSavedFilters();
     loadCustomers();
+    // Load banner dismissal state from localStorage
+    const dismissed = localStorage.getItem('customers_exclusionBannerDismissed');
+    if (dismissed === 'true') {
+      setExclusionBannerDismissed(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -820,7 +826,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         </div>
 
         {/* Exclusion Indicator */}
-        {excludedCustomerIds.size > 0 && (
+        {excludedCustomerIds.size > 0 && !exclusionBannerDismissed && (
           <div className="bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-4 mb-6">
             <div className="flex items-center gap-3">
               <EyeOff className="w-5 h-5 text-yellow-500" />
@@ -841,6 +847,16 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium transition-colors whitespace-nowrap"
               >
                 Include All
+              </button>
+              <button
+                onClick={() => {
+                  setExclusionBannerDismissed(true);
+                  localStorage.setItem('customers_exclusionBannerDismissed', 'true');
+                }}
+                className="p-2 hover:bg-yellow-700/30 rounded-lg transition-colors group"
+                title="Dismiss"
+              >
+                <X className="w-5 h-5 text-yellow-400 group-hover:text-yellow-300" />
               </button>
             </div>
           </div>

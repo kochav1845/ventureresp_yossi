@@ -141,6 +141,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   // Customer exclusions
   const [excludedCustomerIds, setExcludedCustomerIds] = useState<Set<string>>(new Set());
   const [excludedCustomersWithReasons, setExcludedCustomersWithReasons] = useState<Map<string, { notes: string; excluded_at: string }>>(new Map());
+  const [exclusionBannerDismissed, setExclusionBannerDismissed] = useState(false);
 
   // Intersection observer for infinite scroll
   const observer = useRef<IntersectionObserver | null>(null);
@@ -193,6 +194,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   useEffect(() => {
     loadExcludedCustomers();
+    // Load banner dismissal state from localStorage
+    const dismissed = localStorage.getItem('paymentAnalytics_exclusionBannerDismissed');
+    if (dismissed === 'true') {
+      setExclusionBannerDismissed(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -1907,7 +1913,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       )}
 
       {/* Exclusion Indicator */}
-      {excludedCustomerIds.size > 0 && (
+      {excludedCustomerIds.size > 0 && !exclusionBannerDismissed && (
         <div className="bg-yellow-900/20 border-b border-yellow-600/30 px-6 py-4">
           <div className="flex items-center gap-3">
             <EyeOff className="w-5 h-5 text-yellow-500" />
@@ -1919,6 +1925,16 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                 These customers' payments won't appear in the table or affect analytics totals. Manage exclusions in the Customers section.
               </p>
             </div>
+            <button
+              onClick={() => {
+                setExclusionBannerDismissed(true);
+                localStorage.setItem('paymentAnalytics_exclusionBannerDismissed', 'true');
+              }}
+              className="p-2 hover:bg-yellow-700/30 rounded-lg transition-colors group"
+              title="Dismiss"
+            >
+              <X className="w-5 h-5 text-yellow-400 group-hover:text-yellow-300" />
+            </button>
           </div>
         </div>
       )}
