@@ -31,6 +31,8 @@ interface FilterConfig {
   maxBalance: number;
   minInvoiceCount: number;
   maxInvoiceCount: number;
+  minInvoiceAmount: number;
+  maxInvoiceAmount: number;
   dateFrom: string;
   dateTo: string;
   logicOperator: 'AND' | 'OR';
@@ -58,6 +60,7 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
   });
   const [allCustomers, setAllCustomers] = useState<CustomerData[]>([]);
   const [filteredCustomers, setFilteredCustomers] = useState<CustomerData[]>([]);
+  const [allInvoices, setAllInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -66,6 +69,8 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
     maxBalance: Infinity,
     minInvoiceCount: 0,
     maxInvoiceCount: Infinity,
+    minInvoiceAmount: 0,
+    maxInvoiceAmount: Infinity,
     dateFrom: '',
     dateTo: '',
     logicOperator: 'AND',
@@ -156,7 +161,10 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
         [{ column: 'balance', operator: 'gt', value: 0 }]
       );
 
-      // Calculate balances, invoice counts, and date ranges per customer
+      // Store all invoices for filtering
+      setAllInvoices(invoices);
+
+      // Calculate balances, invoice counts, and date ranges per customer (unfiltered)
       const customerBalanceMap = new Map<string, number>();
       const customerInvoiceCountMap = new Map<string, number>();
       const customerOldestDateMap = new Map<string, Date>();
@@ -241,31 +249,84 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
   };
 
   const applyFilters = () => {
-    let filtered = [...allCustomers];
+    // Step 1: Filter invoices based on date range and invoice amount
+    let filteredInvoices = [...allInvoices];
 
-    // Apply date filters
+    // Filter by date range
     if (filters.dateFrom || filters.dateTo) {
-      filtered = filtered.filter(customer => {
-        if (!customer.oldest_invoice_date) return false;
+      const fromDate = filters.dateFrom ? new Date(filters.dateFrom) : null;
+      const toDate = filters.dateTo ? new Date(filters.dateTo) : null;
 
-        const oldestDate = new Date(customer.oldest_invoice_date);
-        const fromDate = filters.dateFrom ? new Date(filters.dateFrom) : null;
-        const toDate = filters.dateTo ? new Date(filters.dateTo) : null;
+      filteredInvoices = filteredInvoices.filter(inv => {
+        if (!inv.date) return false;
+        const invDate = new Date(inv.date);
 
         if (fromDate && toDate) {
-          // Check if customer had invoices during this period
-          const newestDate = customer.newest_invoice_date ? new Date(customer.newest_invoice_date) : oldestDate;
-          return (oldestDate <= toDate && newestDate >= fromDate);
+          return invDate >= fromDate && invDate <= toDate;
         } else if (fromDate) {
-          return oldestDate >= fromDate;
+          return invDate >= fromDate;
         } else if (toDate) {
-          return oldestDate <= toDate;
+          return invDate <= toDate;
         }
         return true;
       });
     }
 
-    // Apply balance and invoice count filters with logic operator
+    // Filter by invoice amount (individual invoice balance)
+    if (filters.minInvoiceAmount > 0 || filters.maxInvoiceAmount !== Infinity) {
+      filteredInvoices = filteredInvoices.filter(inv => {
+        const balance = inv.balance || 0;
+        return balance >= filters.minInvoiceAmount &&
+               (filters.maxInvoiceAmount === Infinity || balance <= filters.maxInvoiceAmount);
+      });
+    }
+
+    // Step 2: Recalculate customer data based on filtered invoices
+    const customerBalanceMap = new Map<string, number>();
+    const customerInvoiceCountMap = new Map<string, number>();
+    const customerOldestDateMap = new Map<string, Date>();
+    const customerNewestDateMap = new Map<string, Date>();
+
+    filteredInvoices.forEach((inv: any) => {
+      const current = customerBalanceMap.get(inv.customer) || 0;
+      customerBalanceMap.set(inv.customer, current + (inv.balance || 0));
+
+      const count = customerInvoiceCountMap.get(inv.customer) || 0;
+      customerInvoiceCountMap.set(inv.customer, count + 1);
+
+      if (inv.date) {
+        const invDate = new Date(inv.date);
+        const oldestDate = customerOldestDateMap.get(inv.customer);
+        const newestDate = customerNewestDateMap.get(inv.customer);
+
+        if (!oldestDate || invDate < oldestDate) {
+          customerOldestDateMap.set(inv.customer, invDate);
+        }
+        if (!newestDate || invDate > newestDate) {
+          customerNewestDateMap.set(inv.customer, invDate);
+        }
+      }
+    });
+
+    // Step 3: Create customer array with recalculated data
+    const recalculatedCustomers: CustomerData[] = [];
+
+    allCustomers.forEach(customer => {
+      // Only include customers that have invoices after filtering
+      if (customerBalanceMap.has(customer.customer_id)) {
+        recalculatedCustomers.push({
+          ...customer,
+          balance: customerBalanceMap.get(customer.customer_id) || 0,
+          invoice_count: customerInvoiceCountMap.get(customer.customer_id) || 0,
+          oldest_invoice_date: customerOldestDateMap.get(customer.customer_id)?.toISOString().split('T')[0] || null,
+          newest_invoice_date: customerNewestDateMap.get(customer.customer_id)?.toISOString().split('T')[0] || null,
+        });
+      }
+    });
+
+    // Step 4: Apply customer-level filters
+    let filtered = recalculatedCustomers;
+
     if (filters.logicOperator === 'AND') {
       filtered = filtered.filter(customer => {
         const balanceMatch = customer.balance >= filters.minBalance &&
@@ -284,7 +345,7 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
       });
     }
 
-    // Apply sorting
+    // Step 5: Apply sorting
     filtered.sort((a, b) => {
       let comparison = 0;
       if (filters.sortBy === 'balance') {
@@ -306,6 +367,8 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
       maxBalance: Infinity,
       minInvoiceCount: 0,
       maxInvoiceCount: Infinity,
+      minInvoiceAmount: 0,
+      maxInvoiceAmount: Infinity,
       dateFrom: '',
       dateTo: '',
       logicOperator: 'AND',
@@ -348,6 +411,8 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
     filters.maxBalance !== Infinity,
     filters.minInvoiceCount > 0,
     filters.maxInvoiceCount !== Infinity,
+    filters.minInvoiceAmount > 0,
+    filters.maxInvoiceAmount !== Infinity,
     filters.dateFrom !== '',
     filters.dateTo !== ''
   ].filter(Boolean).length;
@@ -415,9 +480,13 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* Balance Filters */}
+              {/* Customer Total Balance Filters */}
+              <div className="col-span-full">
+                <h4 className="text-md font-bold text-gray-800 mb-3 border-b pb-2">Customer Total Balance Range</h4>
+              </div>
+
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Minimum Balance</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Min Customer Balance</label>
                 <input
                   type="number"
                   value={filters.minBalance || ''}
@@ -425,10 +494,11 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
                   placeholder="e.g., 500"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
+                <p className="text-xs text-gray-500 mt-1">Only show customers with total balance ≥ this amount</p>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Maximum Balance</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Max Customer Balance</label>
                 <input
                   type="number"
                   value={filters.maxBalance === Infinity ? '' : filters.maxBalance}
@@ -436,9 +506,43 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
                   placeholder="e.g., 10000"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
+                <p className="text-xs text-gray-500 mt-1">Only show customers with total balance ≤ this amount</p>
+              </div>
+
+              {/* Individual Invoice Amount Filters */}
+              <div className="col-span-full mt-4">
+                <h4 className="text-md font-bold text-gray-800 mb-3 border-b pb-2">Individual Invoice Amount Range</h4>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Min Invoice Amount</label>
+                <input
+                  type="number"
+                  value={filters.minInvoiceAmount || ''}
+                  onChange={(e) => setFilters({ ...filters, minInvoiceAmount: Number(e.target.value) || 0 })}
+                  placeholder="e.g., 20"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Only count invoices with balance ≥ this amount</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Max Invoice Amount</label>
+                <input
+                  type="number"
+                  value={filters.maxInvoiceAmount === Infinity ? '' : filters.maxInvoiceAmount}
+                  onChange={(e) => setFilters({ ...filters, maxInvoiceAmount: e.target.value ? Number(e.target.value) : Infinity })}
+                  placeholder="e.g., 35"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Only count invoices with balance ≤ this amount</p>
               </div>
 
               {/* Invoice Count Filters */}
+              <div className="col-span-full mt-4">
+                <h4 className="text-md font-bold text-gray-800 mb-3 border-b pb-2">Invoice Count Range</h4>
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Minimum Invoice Count</label>
                 <input
@@ -462,6 +566,10 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
               </div>
 
               {/* Date Range Filters */}
+              <div className="col-span-full mt-4">
+                <h4 className="text-md font-bold text-gray-800 mb-3 border-b pb-2">Invoice Date Range</h4>
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Invoice Date From</label>
                 <input
@@ -482,6 +590,11 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
                 />
               </div>
 
+              {/* Other Options */}
+              <div className="col-span-full mt-4">
+                <h4 className="text-md font-bold text-gray-800 mb-3 border-b pb-2">Display & Sorting Options</h4>
+              </div>
+
               {/* Logic Operator */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Filter Logic</label>
@@ -493,6 +606,7 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
                   <option value="AND">AND (Both conditions)</option>
                   <option value="OR">OR (Either condition)</option>
                 </select>
+                <p className="text-xs text-gray-500 mt-1">How to combine balance and invoice count filters</p>
               </div>
 
               {/* Sort By */}
