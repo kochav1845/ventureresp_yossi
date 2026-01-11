@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, Menu, X, ExternalLink, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, Menu, X, ExternalLink, ArrowDown, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { batchedInQuery } from '../lib/batchedQuery';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
@@ -138,6 +138,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [appliedShowOnlyOverdue, setAppliedShowOnlyOverdue] = useState(true);
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
 
+  // Customer exclusions
+  const [excludedCustomerIds, setExcludedCustomerIds] = useState<Set<string>>(new Set());
+  const [excludedCustomersWithReasons, setExcludedCustomersWithReasons] = useState<Map<string, { notes: string; excluded_at: string }>>(new Map());
+
   // Intersection observer for infinite scroll
   const observer = useRef<IntersectionObserver | null>(null);
 
@@ -168,17 +172,40 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     }
   };
 
+  const loadExcludedCustomers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('excluded_customers')
+        .select('customer_id, notes, excluded_at');
+
+      if (error) throw error;
+
+      const excludedIds = new Set(data?.map(item => item.customer_id) || []);
+      const excludedMap = new Map(
+        data?.map(item => [item.customer_id, { notes: item.notes || '', excluded_at: item.excluded_at }]) || []
+      );
+      setExcludedCustomerIds(excludedIds);
+      setExcludedCustomersWithReasons(excludedMap);
+    } catch (error) {
+      console.error('Error loading excluded customers:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadExcludedCustomers();
+  }, []);
+
   useEffect(() => {
     loadMonthlyData();
-  }, [selectedMonth, dateFrom, dateTo]);
+  }, [selectedMonth, dateFrom, dateTo, excludedCustomerIds]);
 
   useEffect(() => {
     filterAndSortPayments();
-  }, [payments, searchTerm, sortField, sortDirection, filterStatus, filterType, filterPaymentMethod, filterInvoicePeriod, selectedDate]);
+  }, [payments, searchTerm, sortField, sortDirection, filterStatus, filterType, filterPaymentMethod, filterInvoicePeriod, selectedDate, excludedCustomerIds]);
 
   useEffect(() => {
     filterAnalyticsData();
-  }, [analyticsData, appliedPaymentDateFrom, appliedPaymentDateTo, appliedMinAmount, appliedMaxAmount, appliedCustomerFilter, appliedSelectedCustomers, appliedTimingFilter, appliedCustomDaysMin, appliedCustomDaysMax, appliedShowOnlyOverdue]);
+  }, [analyticsData, appliedPaymentDateFrom, appliedPaymentDateTo, appliedMinAmount, appliedMaxAmount, appliedCustomerFilter, appliedSelectedCustomers, appliedTimingFilter, appliedCustomDaysMin, appliedCustomDaysMax, appliedShowOnlyOverdue, excludedCustomerIds]);
 
   // Initialize temp filters with applied filter values on mount
   useEffect(() => {
@@ -192,6 +219,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const filterAnalyticsData = () => {
     let filtered = [...analyticsData];
+
+    // Filter out excluded customers
+    if (excludedCustomerIds.size > 0) {
+      filtered = filtered.filter(app => !excludedCustomerIds.has(app.customer_id));
+    }
 
     if (appliedPaymentDateFrom) {
       filtered = filtered.filter(app => new Date(app.payment_date) >= new Date(appliedPaymentDateFrom));
@@ -533,15 +565,16 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           console.log(`Loaded ${allPaymentRows.length} payments so far...`);
           setLoadingBatchInfo(`Loaded ${allPaymentRows.length} payments...`);
 
-          // Update running totals
-          const runningTotal = allPaymentRows.reduce((sum, p) => sum + p.payment_amount, 0);
-          const runningUniqueCustomers = new Set(allPaymentRows.map(p => p.customer_id).filter(Boolean));
-          const runningCreditMemos = allPaymentRows
+          // Update running totals (excluding excluded customers)
+          const nonExcludedPayments = allPaymentRows.filter(p => !excludedCustomerIds.has(p.customer_id));
+          const runningTotal = nonExcludedPayments.reduce((sum, p) => sum + p.payment_amount, 0);
+          const runningUniqueCustomers = new Set(nonExcludedPayments.map(p => p.customer_id).filter(Boolean));
+          const runningCreditMemos = nonExcludedPayments
             .filter(p => p.type === 'Credit Memo')
             .reduce((sum, p) => sum + p.payment_amount, 0);
 
           setMonthlyTotal(runningTotal);
-          setMonthlyPaymentCount(allPaymentRows.length);
+          setMonthlyPaymentCount(nonExcludedPayments.length);
           setMonthlyCustomerCount(runningUniqueCustomers.size);
           setMonthlyCreditMemos(runningCreditMemos);
 
@@ -563,6 +596,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const filterAndSortPayments = () => {
     let filtered = [...payments];
+
+    // Filter out excluded customers
+    if (excludedCustomerIds.size > 0) {
+      filtered = filtered.filter(p => !excludedCustomerIds.has(p.customer_id));
+    }
 
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
@@ -1864,6 +1902,23 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                 </div>
               )
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Exclusion Indicator */}
+      {excludedCustomerIds.size > 0 && (
+        <div className="bg-yellow-900/20 border-b border-yellow-600/30 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <EyeOff className="w-5 h-5 text-yellow-500" />
+            <div className="flex-1">
+              <p className="text-yellow-200 font-medium">
+                {excludedCustomerIds.size} customer{excludedCustomerIds.size !== 1 ? 's' : ''} excluded from payment analytics
+              </p>
+              <p className="text-yellow-300/70 text-sm mt-1">
+                These customers' payments won't appear in the table or affect analytics totals. Manage exclusions in the Customers section.
+              </p>
+            </div>
           </div>
         </div>
       )}

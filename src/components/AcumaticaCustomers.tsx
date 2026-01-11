@@ -812,6 +812,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           </div>
         </div>
 
+        {/* Placeholder Frame */}
+        <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-8 mb-6 shadow-sm">
+          <div className="flex items-center justify-center h-32">
+            <p className="text-gray-500 dark:text-gray-400 text-lg">Customer Analytics Space</p>
+          </div>
+        </div>
+
         {/* Exclusion Indicator */}
         {excludedCustomerIds.size > 0 && (
           <div className="bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-4 mb-6">
