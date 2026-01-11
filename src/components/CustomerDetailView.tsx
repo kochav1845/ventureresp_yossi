@@ -42,8 +42,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [savingNote, setSavingNote] = useState(false);
   const [invoiceCounts, setInvoiceCounts] = useState({ total: 0, open: 0, paid: 0 });
   const [invoiceColorCounts, setInvoiceColorCounts] = useState({ red: 0, yellow: 0, green: 0, total: 0 });
-  const [colorFilter, setColorFilter] = useState<string | null>(null);
-  const [highlightedInvoiceId, setHighlightedInvoiceId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<string>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(0);
@@ -68,6 +66,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
   useEffect(() => {
     loadCustomerData();
+    loadInvoiceStats();
   }, [customerId]);
 
   useEffect(() => {
@@ -82,13 +81,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     setHasMore(true);
     loadInvoices(0, false);
     loadFilteredStats();
-  }, [activeTab, advancedFilters]);
-
-  useEffect(() => {
-    if (customerId) {
-      loadInvoiceStats();
-    }
-  }, [customerId]);
+  }, [activeTab, JSON.stringify(advancedFilters)]);
 
   const loadCustomerData = async () => {
     setLoading(true);
@@ -376,33 +369,19 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   }
 
   const handleColorClick = (color: string) => {
-    setColorFilter(color);
+    // Set color filter in advanced filters
+    setAdvancedFilters(prev => ({
+      ...prev,
+      colorStatus: color
+    }));
     setActiveTab('open-invoices');
-    // Scroll to first invoice of this color after a brief delay
-    setTimeout(() => {
-      const firstInvoice = allInvoices.find(inv => {
-        if (inv.balance <= 0) return false;
-        // For yellow filter, match both yellow and orange
-        if (color === 'yellow') {
-          return inv.color_status === 'yellow' || inv.color_status === 'orange';
-        }
-        return inv.color_status === color;
-      });
-      if (firstInvoice) {
-        setHighlightedInvoiceId(firstInvoice.id);
-        // Scroll to the invoice
-        const element = document.getElementById(`invoice-${firstInvoice.id}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-        setTimeout(() => setHighlightedInvoiceId(null), 3000); // Clear highlight after 3 seconds
-      }
-    }, 100);
   };
 
   const clearColorFilter = () => {
-    setColorFilter(null);
-    setHighlightedInvoiceId(null);
+    setAdvancedFilters(prev => ({
+      ...prev,
+      colorStatus: ''
+    }));
   };
 
   const handleAdvancedFiltersChange = (newFilters: typeof advancedFilters) => {
@@ -572,7 +551,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                   className="text-center transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 rounded-lg"
                 >
                   <div className={`w-20 h-20 rounded-lg bg-red-500 border-4 flex items-center justify-center shadow-lg ${
-                    colorFilter === 'red' ? 'border-red-900 ring-4 ring-red-300' : 'border-red-700'
+                    advancedFilters.colorStatus === 'red' ? 'border-red-900 ring-4 ring-red-300' : 'border-red-700'
                   }`}>
                     <div className="text-center">
                       <div className="text-3xl font-bold text-white">{invoiceColorCounts.red}</div>
@@ -588,7 +567,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                   className="text-center transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 rounded-lg"
                 >
                   <div className={`w-20 h-20 rounded-lg bg-yellow-400 border-4 flex items-center justify-center shadow-lg ${
-                    colorFilter === 'yellow' ? 'border-yellow-800 ring-4 ring-yellow-300' : 'border-yellow-600'
+                    advancedFilters.colorStatus === 'yellow' ? 'border-yellow-800 ring-4 ring-yellow-300' : 'border-yellow-600'
                   }`}>
                     <div className="text-center">
                       <div className="text-3xl font-bold text-gray-900">{invoiceColorCounts.yellow}</div>
@@ -604,7 +583,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                   className="text-center transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 rounded-lg"
                 >
                   <div className={`w-20 h-20 rounded-lg bg-green-500 border-4 flex items-center justify-center shadow-lg ${
-                    colorFilter === 'green' ? 'border-green-900 ring-4 ring-green-300' : 'border-green-700'
+                    advancedFilters.colorStatus === 'green' ? 'border-green-900 ring-4 ring-green-300' : 'border-green-700'
                   }`}>
                     <div className="text-center">
                       <div className="text-3xl font-bold text-white">{invoiceColorCounts.green}</div>
@@ -881,7 +860,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             <button
               onClick={() => {
                 setActiveTab('open-invoices');
-                if (colorFilter) clearColorFilter();
+                if (advancedFilters.colorStatus) clearColorFilter();
               }}
               className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'open-invoices'
@@ -935,12 +914,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
           {activeTab === 'open-invoices' && (
             <div className="overflow-x-auto">
-              {colorFilter && (
+              {advancedFilters.colorStatus && (
                 <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
                   <div className="flex items-center">
                     <Tag className="w-5 h-5 text-blue-600 mr-2" />
                     <p className="text-sm text-blue-900 font-medium">
-                      Showing only <span className="uppercase font-bold">{colorFilter}</span> invoices
+                      Showing only <span className="uppercase font-bold">{advancedFilters.colorStatus}</span> invoices
                     </p>
                   </div>
                   <button
@@ -1009,9 +988,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                           id={`invoice-${invoice.id}`}
                           ref={index === displayedInvoices.length - 1 ? lastInvoiceRef : undefined}
                           className={`transition-all ${
-                            highlightedInvoiceId === invoice.id
-                              ? 'bg-blue-100 ring-2 ring-2-blue-500'
-                              : isOver90Days
+                            isOver90Days
                               ? 'bg-red-50 hover:bg-red-100'
                               : 'hover:bg-gray-50'
                           }`}
