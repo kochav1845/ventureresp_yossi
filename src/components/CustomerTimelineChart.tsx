@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, DollarSign, FileText, Calendar } from 'lucide-react';
+import { TrendingUp, FileText, Calendar } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface CustomerTimelineChartProps {
@@ -73,27 +73,22 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
     }).format(amount);
   };
 
-  // Separate scales for better visualization
-  const maxBalance = Math.max(...data.map(d => d.balance), 1);
-  const maxTransaction = Math.max(
+  // Find max value across all series for consistent scale
+  const maxValue = Math.max(
     ...data.map(d => Math.max(d.invoices, d.payments)),
     1
   );
 
-  const getBalanceY = (value: number) => {
-    return 100 - (value / maxBalance) * 80;
+  const getY = (value: number) => {
+    return 100 - (value / maxValue) * 85;
   };
 
-  const getBarHeight = (value: number) => {
-    return (value / maxTransaction) * 80;
-  };
-
-  const createBalanceLine = () => {
+  const createLine = (values: number[], color: string, label: string) => {
     if (data.length === 0) return null;
 
-    const points = data.map((d, index) => {
+    const points = values.map((value, index) => {
       const x = (index / Math.max(data.length - 1, 1)) * 100;
-      const y = getBalanceY(d.balance);
+      const y = getY(value);
       return `${x},${y}`;
     }).join(' ');
 
@@ -102,69 +97,28 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
         <polyline
           points={points}
           fill="none"
-          stroke="#ef4444"
-          strokeWidth="0.4"
+          stroke={color}
+          strokeWidth="1.2"
           className="transition-all duration-300"
         />
-        {data.map((d, index) => {
+        {values.map((value, index) => {
           const x = (index / Math.max(data.length - 1, 1)) * 100;
-          const y = getBalanceY(d.balance);
+          const y = getY(value);
           return (
             <circle
-              key={`balance-${index}`}
+              key={`${label}-${index}`}
               cx={x}
               cy={y}
-              r="0.5"
-              fill="#ef4444"
+              r="1.2"
+              fill={color}
               className="hover:r-5 transition-all cursor-pointer"
             >
-              <title>{`Balance: ${formatCurrency(d.balance)}\n${d.date}`}</title>
+              <title>{`${label}: ${formatCurrency(value)}\n${data[index].date}`}</title>
             </circle>
           );
         })}
       </>
     );
-  };
-
-  const createBars = () => {
-    const barWidth = 100 / (data.length * 2.5); // Width of each bar
-    const groupWidth = 100 / data.length; // Width of each group
-
-    return data.map((d, index) => {
-      const groupX = (index / data.length) * 100;
-      const invoiceHeight = getBarHeight(d.invoices);
-      const paymentHeight = getBarHeight(d.payments);
-
-      return (
-        <g key={index}>
-          {/* Invoice bar */}
-          <rect
-            x={groupX}
-            y={100 - invoiceHeight}
-            width={barWidth}
-            height={invoiceHeight}
-            fill="#3b82f6"
-            opacity="0.8"
-            className="hover:opacity-100 transition-all cursor-pointer"
-          >
-            <title>{`Invoice: ${formatCurrency(d.invoices)}\n${d.date}`}</title>
-          </rect>
-
-          {/* Payment bar */}
-          <rect
-            x={groupX + barWidth + barWidth * 0.2}
-            y={100 - paymentHeight}
-            width={barWidth}
-            height={paymentHeight}
-            fill="#10b981"
-            opacity="0.8"
-            className="hover:opacity-100 transition-all cursor-pointer"
-          >
-            <title>{`Payment: ${formatCurrency(d.payments)}\n${d.date}`}</title>
-          </rect>
-        </g>
-      );
-    });
   };
 
   if (loading) {
@@ -194,7 +148,7 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Customer Financial Timeline</h2>
-          <p className="text-sm text-gray-600 mt-1">{customerName} - Balance, Invoices & Payments Over Time</p>
+          <p className="text-sm text-gray-600 mt-1">{customerName} - Invoices & Payments Over Time</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -243,16 +197,12 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
       {/* Legend */}
       <div className="flex items-center gap-6 mb-6 pb-4 border-b">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-1 bg-red-500 rounded"></div>
-          <span className="text-sm font-medium text-gray-700">Balance Owed (Line)</span>
+          <div className="w-8 h-1 bg-blue-500 rounded"></div>
+          <span className="text-sm font-medium text-gray-700">Invoices</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-blue-500 rounded"></div>
-          <span className="text-sm font-medium text-gray-700">Invoices (Bar)</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-green-500 rounded"></div>
-          <span className="text-sm font-medium text-gray-700">Payments (Bar)</span>
+          <div className="w-8 h-1 bg-green-500 rounded"></div>
+          <span className="text-sm font-medium text-gray-700">Payments</span>
         </div>
       </div>
 
@@ -277,11 +227,11 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
             />
           ))}
 
-          {/* Bars (rendered first, behind the line) */}
-          {createBars()}
+          {/* Invoice line (blue) */}
+          {createLine(data.map(d => d.invoices), '#3b82f6', 'Invoices')}
 
-          {/* Balance line (rendered last, on top) */}
-          {createBalanceLine()}
+          {/* Payment line (green) */}
+          {createLine(data.map(d => d.payments), '#10b981', 'Payments')}
         </svg>
 
         {/* X-axis labels */}
@@ -293,35 +243,27 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
       </div>
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-        <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-4 border border-red-200">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-red-700">Current Balance</span>
-            <DollarSign className="w-5 h-5 text-red-600" />
-          </div>
-          <p className="text-2xl font-bold text-red-900">
-            {formatCurrency(data[data.length - 1]?.balance || 0)}
-          </p>
-        </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-blue-700">Total Invoiced</span>
+            <span className="text-sm font-medium text-blue-700">Total Invoiced (Period)</span>
             <FileText className="w-5 h-5 text-blue-600" />
           </div>
           <p className="text-2xl font-bold text-blue-900">
             {formatCurrency(data.reduce((sum, d) => sum + d.invoices, 0))}
           </p>
+          <p className="text-xs text-blue-600 mt-1">{data.length} data points</p>
         </div>
 
         <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-green-700">Total Paid</span>
+            <span className="text-sm font-medium text-green-700">Total Paid (Period)</span>
             <TrendingUp className="w-5 h-5 text-green-600" />
           </div>
           <p className="text-2xl font-bold text-green-900">
             {formatCurrency(data.reduce((sum, d) => sum + d.payments, 0))}
           </p>
+          <p className="text-xs text-green-600 mt-1">{data.length} data points</p>
         </div>
       </div>
     </div>
