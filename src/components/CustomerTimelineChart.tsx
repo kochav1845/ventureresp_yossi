@@ -48,10 +48,11 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
       }
 
       const { data: timelineData, error } = await supabase
-        .rpc('get_customer_analytics_timeline', {
+        .rpc('get_single_customer_timeline', {
           p_customer_id: customerId,
           p_date_from: dateFrom?.toISOString().split('T')[0] || null,
-          p_date_to: dateTo.toISOString().split('T')[0]
+          p_date_to: dateTo.toISOString().split('T')[0],
+          p_grouping: 'day'
         });
 
       if (error) throw error;
