@@ -6,7 +6,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import AcumaticaInvoiceTest from './AcumaticaInvoiceTest';
 import CustomerDetailView from './CustomerDetailView';
-import CustomerAnalyticsChart from './CustomerAnalyticsChart';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { exportToExcel } from '../lib/excelExport';
 
@@ -811,11 +810,6 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               </button>
             </div>
           </div>
-        </div>
-
-        {/* Analytics Chart */}
-        <div className="mb-6">
-          <CustomerAnalyticsChart />
         </div>
 
         {/* Exclusion Indicator */}
