@@ -84,6 +84,7 @@ export default function Customers({ onBack }: CustomersProps) {
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [grandTotalCustomers, setGrandTotalCustomers] = useState(0); // Unfiltered total
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -94,7 +95,9 @@ export default function Customers({ onBack }: CustomersProps) {
     active_customers: 0,
     total_balance: 0,
     avg_balance: 0,
-    customers_with_open_invoices: 0
+    customers_with_debt: 0,
+    total_open_invoices: 0,
+    customers_with_overdue: 0
   });
 
   const [filters, setFilters] = useState<FilterConfig>({
@@ -132,6 +135,17 @@ export default function Customers({ onBack }: CustomersProps) {
     setLoading(true);
     setIsSearching(false);
     try {
+      // Get GRAND TOTAL count from acumatica_customers (unfiltered)
+      const { count: totalCustomersCount, error: countError } = await supabase
+        .from('acumatica_customers')
+        .select('*', { count: 'exact', head: true });
+
+      if (countError) {
+        console.error('Error getting total count:', countError);
+      } else {
+        setGrandTotalCustomers(totalCustomersCount || 0);
+      }
+
       // Get customers from customers table
       const { data: customerData, error: customerError } = await supabase
         .from('customers')
@@ -140,7 +154,7 @@ export default function Customers({ onBack }: CustomersProps) {
 
       if (customerError) throw customerError;
 
-      // Get customers with analytics (balance, invoice counts)
+      // Get customers with analytics (balance, invoice counts) - NO FILTERS
       const { data: analyticsData, error: analyticsError } = await supabase
         .rpc('get_customers_with_balance', {
           p_search: null,
@@ -196,19 +210,8 @@ export default function Customers({ onBack }: CustomersProps) {
       setAllCustomers(mergedData);
       setTotalCount(mergedData.length);
 
-      // Calculate stats
-      const activeCount = mergedData.filter(c => c.is_active).length;
-      const totalBalance = mergedData.reduce((sum, c) => sum + (c.balance || 0), 0);
-      const customersWithInvoices = mergedData.filter(c => (c.invoice_count || 0) > 0).length;
-      const avgBalance = customersWithInvoices > 0 ? totalBalance / customersWithInvoices : 0;
-
-      setStats({
-        total_customers: mergedData.length,
-        active_customers: activeCount,
-        total_balance: totalBalance,
-        avg_balance: avgBalance,
-        customers_with_open_invoices: customersWithInvoices
-      });
+      // Load analytics using the database function (NO FILTERS on initial load)
+      await loadAnalytics();
     } catch (error) {
       console.error('Error loading customers:', error);
     } finally {
@@ -216,7 +219,49 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
+  const loadAnalytics = async () => {
+    try {
+      const { data: analyticsResult, error: analyticsError } = await supabase
+        .rpc('get_customer_analytics', {
+          p_search: searchQuery.trim() || null,
+          p_status_filter: 'all',
+          p_country_filter: 'all',
+          p_date_from: filters.dateFrom || null,
+          p_date_to: filters.dateTo || null,
+          p_excluded_customer_ids: null,
+          p_balance_filter: 'all',
+          p_min_balance: filters.minBalance > 0 ? filters.minBalance : null,
+          p_max_balance: filters.maxBalance !== Infinity ? filters.maxBalance : null,
+          p_min_open_invoices: filters.minInvoiceCount > 0 ? filters.minInvoiceCount : null,
+          p_max_open_invoices: filters.maxInvoiceCount !== Infinity ? filters.maxInvoiceCount : null,
+          p_date_context: 'invoice_date'
+        });
+
+      if (analyticsError) {
+        console.error('Analytics error:', analyticsError);
+        return;
+      }
+
+      if (analyticsResult) {
+        setStats({
+          total_customers: analyticsResult.total_customers || 0,
+          active_customers: analyticsResult.active_customers || 0,
+          total_balance: analyticsResult.total_balance || 0,
+          avg_balance: analyticsResult.avg_balance || 0,
+          customers_with_debt: analyticsResult.customers_with_debt || 0,
+          total_open_invoices: analyticsResult.total_open_invoices || 0,
+          customers_with_overdue: analyticsResult.customers_with_overdue || 0
+        });
+      }
+    } catch (error) {
+      console.error('Error loading analytics:', error);
+    }
+  };
+
   const applyFilters = useCallback(async () => {
+    // Reload analytics with current filters
+    await loadAnalytics();
+
     // Check if invoice amount filter is applied - if so, we need to query the database
     const hasInvoiceAmountFilter = filters.minInvoiceAmount > 0 || filters.maxInvoiceAmount !== Infinity;
 
@@ -989,27 +1034,28 @@ export default function Customers({ onBack }: CustomersProps) {
                 <span className="text-gray-600 font-medium text-sm">Total Customers</span>
                 <Users className="w-5 h-5 text-blue-600" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">{stats.total_customers}</p>
-              <p className="text-sm text-gray-600 mt-1">{stats.active_customers} active</p>
+              <p className="text-3xl font-bold text-gray-900">{stats.total_customers.toLocaleString()}</p>
+              <p className="text-sm text-gray-600 mt-1">{stats.active_customers.toLocaleString()} active</p>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-600 font-medium text-sm">With Open Invoices</span>
+                <span className="text-gray-600 font-medium text-sm">With Debt</span>
                 <FileText className="w-5 h-5 text-orange-600" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">{stats.customers_with_open_invoices}</p>
-              <p className="text-sm text-gray-600 mt-1">have outstanding balances</p>
+              <p className="text-3xl font-bold text-gray-900">{stats.customers_with_debt.toLocaleString()}</p>
+              <p className="text-sm text-gray-600 mt-1">{stats.total_open_invoices.toLocaleString()} open invoices</p>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-600 font-medium text-sm">Total Balance</span>
+                <span className="text-gray-600 font-medium text-sm">Total Balance Owed</span>
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
               <p className="text-3xl font-bold text-gray-900">
                 ${stats.total_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
+              <p className="text-sm text-gray-600 mt-1">{stats.customers_with_debt.toLocaleString()} customers</p>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
@@ -1020,6 +1066,7 @@ export default function Customers({ onBack }: CustomersProps) {
               <p className="text-3xl font-bold text-gray-900">
                 ${stats.avg_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
+              <p className="text-sm text-gray-600 mt-1">per customer with debt</p>
             </div>
           </div>
         )}
@@ -1237,7 +1284,7 @@ export default function Customers({ onBack }: CustomersProps) {
               </button>
               <div className="flex-1"></div>
               <div className="text-sm text-gray-600 py-2">
-                Showing <span className="font-bold text-blue-600">{filteredCustomers.length}</span> of {allCustomers.length} customers
+                Showing <span className="font-bold text-blue-600">{filteredCustomers.length}</span> of {grandTotalCustomers.toLocaleString()} customers
               </div>
             </div>
           </div>
