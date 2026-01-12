@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { batchedInQuery } from '../lib/batchedQuery';
-import { ArrowLeft, Plus, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, Lock, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X } from 'lucide-react';
+import { ArrowLeft, Plus, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, Lock, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff } from 'lucide-react';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import CustomerFiles from './CustomerFiles';
 import { exportToExcel as exportExcel, formatDate, formatCurrency } from '../lib/excelExport';
@@ -25,6 +25,9 @@ type Customer = {
   oldest_invoice_date?: string | null;
   newest_invoice_date?: string | null;
   max_days_overdue?: number;
+  // Exclusion fields
+  exclude_from_payment_analytics?: boolean;
+  exclude_from_customer_analytics?: boolean;
 };
 
 type ScheduledEmail = {
@@ -188,7 +191,9 @@ export default function Customers({ onBack }: CustomersProps) {
           max_days_overdue: item.max_days_overdue || 0,
           red_count: item.red_count || 0,
           yellow_count: item.yellow_count || 0,
-          green_count: item.green_count || 0
+          green_count: item.green_count || 0,
+          exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
+          exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
         });
       });
 
@@ -203,7 +208,9 @@ export default function Customers({ onBack }: CustomersProps) {
           max_days_overdue: analytics?.max_days_overdue || 0,
           red_count: analytics?.red_count || 0,
           yellow_count: analytics?.yellow_count || 0,
-          green_count: analytics?.green_count || 0
+          green_count: analytics?.green_count || 0,
+          exclude_from_payment_analytics: analytics?.exclude_from_payment_analytics || false,
+          exclude_from_customer_analytics: analytics?.exclude_from_customer_analytics || false
         };
       });
 
@@ -286,7 +293,9 @@ export default function Customers({ onBack }: CustomersProps) {
           invoice_count: item.open_invoice_count || 0,
           max_days_overdue: item.max_days_overdue || 0,
           oldest_invoice_date: null,
-          newest_invoice_date: null
+          newest_invoice_date: null,
+          exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
+          exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
         }));
 
         setFilteredCustomers(filtered);
@@ -556,6 +565,72 @@ export default function Customers({ onBack }: CustomersProps) {
     } catch (error) {
       console.error('Error removing postponement:', error);
       alert('Error removing postponement');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const togglePaymentAnalyticsExclusion = async (customerId: string, currentValue: boolean) => {
+    setUpdating(customerId);
+    try {
+      const { error } = await supabase
+        .from('acumatica_customers')
+        .update({ exclude_from_payment_analytics: !currentValue })
+        .eq('customer_id', customerId);
+
+      if (error) throw error;
+
+      setAllCustomers(allCustomers.map(c =>
+        c.customer_id === customerId
+          ? { ...c, exclude_from_payment_analytics: !currentValue }
+          : c
+      ));
+      setCustomers(customers.map(c =>
+        c.customer_id === customerId
+          ? { ...c, exclude_from_payment_analytics: !currentValue }
+          : c
+      ));
+      setFilteredCustomers(filteredCustomers.map(c =>
+        c.customer_id === customerId
+          ? { ...c, exclude_from_payment_analytics: !currentValue }
+          : c
+      ));
+    } catch (error) {
+      console.error('Error toggling payment analytics exclusion:', error);
+      alert('Error updating customer exclusion');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const toggleCustomerAnalyticsExclusion = async (customerId: string, currentValue: boolean) => {
+    setUpdating(customerId);
+    try {
+      const { error } = await supabase
+        .from('acumatica_customers')
+        .update({ exclude_from_customer_analytics: !currentValue })
+        .eq('customer_id', customerId);
+
+      if (error) throw error;
+
+      setAllCustomers(allCustomers.map(c =>
+        c.customer_id === customerId
+          ? { ...c, exclude_from_customer_analytics: !currentValue }
+          : c
+      ));
+      setCustomers(customers.map(c =>
+        c.customer_id === customerId
+          ? { ...c, exclude_from_customer_analytics: !currentValue }
+          : c
+      ));
+      setFilteredCustomers(filteredCustomers.map(c =>
+        c.customer_id === customerId
+          ? { ...c, exclude_from_customer_analytics: !currentValue }
+          : c
+      ));
+    } catch (error) {
+      console.error('Error toggling customer analytics exclusion:', error);
+      alert('Error updating customer exclusion');
     } finally {
       setUpdating(null);
     }
@@ -1411,6 +1486,18 @@ export default function Customers({ onBack }: CustomersProps) {
                     </th>
                     <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm">Active</th>
                     <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm">Responded</th>
+                    <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm" title="Exclude from Payment Analytics">
+                      <div className="flex items-center justify-center gap-1">
+                        <EyeOff size={14} />
+                        <span className="text-xs">Payment</span>
+                      </div>
+                    </th>
+                    <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm" title="Exclude from Customer Analytics">
+                      <div className="flex items-center justify-center gap-1">
+                        <EyeOff size={14} />
+                        <span className="text-xs">Customer</span>
+                      </div>
+                    </th>
                     <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm">Actions</th>
                   </tr>
                 </thead>
@@ -1494,6 +1581,42 @@ export default function Customers({ onBack }: CustomersProps) {
                               <CheckSquare className="text-green-600" size={20} />
                             ) : (
                               <Square className="text-gray-400" size={20} />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex justify-center">
+                          <button
+                            onClick={() => togglePaymentAnalyticsExclusion(customer.customer_id || customer.id, customer.exclude_from_payment_analytics || false)}
+                            disabled={updating === customer.customer_id || updating === customer.id}
+                            className={`p-1 rounded-lg transition-colors ${
+                              updating === customer.customer_id || updating === customer.id ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'
+                            }`}
+                            title={customer.exclude_from_payment_analytics ? "Excluded from payment analytics - Click to include" : "Included in payment analytics - Click to exclude"}
+                          >
+                            {customer.exclude_from_payment_analytics ? (
+                              <EyeOff className="text-red-600" size={20} />
+                            ) : (
+                              <Eye className="text-green-600" size={20} />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex justify-center">
+                          <button
+                            onClick={() => toggleCustomerAnalyticsExclusion(customer.customer_id || customer.id, customer.exclude_from_customer_analytics || false)}
+                            disabled={updating === customer.customer_id || updating === customer.id}
+                            className={`p-1 rounded-lg transition-colors ${
+                              updating === customer.customer_id || updating === customer.id ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'
+                            }`}
+                            title={customer.exclude_from_customer_analytics ? "Excluded from customer analytics - Click to include" : "Included in customer analytics - Click to exclude"}
+                          >
+                            {customer.exclude_from_customer_analytics ? (
+                              <EyeOff className="text-red-600" size={20} />
+                            ) : (
+                              <Eye className="text-green-600" size={20} />
                             )}
                           </button>
                         </div>
