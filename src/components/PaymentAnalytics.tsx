@@ -61,6 +61,8 @@ const formatDateString = (dateString: string): string => {
 export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const navigate = useNavigate();
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [calendarView, setCalendarView] = useState<'daily' | 'monthly' | 'yearly'>('daily');
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [filteredPayments, setFilteredPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -208,6 +210,33 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   useEffect(() => {
     loadMonthlyData();
   }, [selectedMonth, dateFrom, dateTo, excludedCustomerIds]);
+
+  // Load data for monthly/yearly views
+  useEffect(() => {
+    const loadViewData = async () => {
+      if (calendarView === 'monthly') {
+        // Load all data for the selected year
+        const startDate = new Date(selectedYear, 0, 1);
+        const endDate = new Date(selectedYear, 11, 31);
+        setDateFrom(startDate.toISOString().split('T')[0]);
+        setDateTo(endDate.toISOString().split('T')[0]);
+      } else if (calendarView === 'yearly') {
+        // Load data for current year and previous 5 years
+        const currentYear = new Date().getFullYear();
+        const startDate = new Date(currentYear - 5, 0, 1);
+        const endDate = new Date(currentYear, 11, 31);
+        setDateFrom(startDate.toISOString().split('T')[0]);
+        setDateTo(endDate.toISOString().split('T')[0]);
+      } else {
+        // Daily view - clear custom date range to use selected month
+        if (dateFrom || dateTo) {
+          setDateFrom('');
+          setDateTo('');
+        }
+      }
+    };
+    loadViewData();
+  }, [calendarView, selectedYear]);
 
   useEffect(() => {
     filterAndSortPayments();
@@ -711,14 +740,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     }
   };
 
-  const previousMonth = () => {
-    setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1));
-  };
-
-  const nextMonth = () => {
-    setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1));
-  };
-
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -749,6 +770,74 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const getDayPayments = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
     return payments.filter(p => p.date.split('T')[0] === dateStr);
+  };
+
+  const getMonthPayments = (year: number, month: number) => {
+    return payments.filter(p => {
+      const paymentDate = new Date(p.date);
+      return paymentDate.getFullYear() === year && paymentDate.getMonth() === month;
+    });
+  };
+
+  const getYearPayments = (year: number) => {
+    return payments.filter(p => {
+      const paymentDate = new Date(p.date);
+      return paymentDate.getFullYear() === year;
+    });
+  };
+
+  const getMonthlyData = () => {
+    const monthlyData = [];
+    for (let month = 0; month < 12; month++) {
+      const monthPayments = getMonthPayments(selectedYear, month);
+      const total = monthPayments.reduce((sum, p) => sum + p.payment_amount, 0);
+      monthlyData.push({
+        month,
+        name: new Date(selectedYear, month, 1).toLocaleDateString('en-US', { month: 'long' }),
+        total,
+        count: monthPayments.length
+      });
+    }
+    return monthlyData;
+  };
+
+  const getYearlyData = () => {
+    const currentYear = new Date().getFullYear();
+    const yearlyData = [];
+    // Show data for current year and previous 5 years
+    for (let year = currentYear; year >= currentYear - 5; year--) {
+      const yearPayments = getYearPayments(year);
+      const total = yearPayments.reduce((sum, p) => sum + p.payment_amount, 0);
+      if (total > 0 || year === currentYear) { // Only show years with data or current year
+        yearlyData.push({
+          year,
+          total,
+          count: yearPayments.length
+        });
+      }
+    }
+    return yearlyData;
+  };
+
+  const previousPeriod = () => {
+    if (calendarView === 'daily') {
+      setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1));
+    } else if (calendarView === 'monthly') {
+      setSelectedYear(selectedYear - 1);
+    } else if (calendarView === 'yearly') {
+      // For yearly view, we could shift the range, but let's keep it simple for now
+      setSelectedYear(selectedYear - 6);
+    }
+  };
+
+  const nextPeriod = () => {
+    if (calendarView === 'daily') {
+      setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1));
+    } else if (calendarView === 'monthly') {
+      setSelectedYear(selectedYear + 1);
+    } else if (calendarView === 'yearly') {
+      setSelectedYear(selectedYear + 6);
+    }
   };
 
   const exportToExcel = () => {
@@ -2216,9 +2305,45 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
         {/* Main Content */}
         <div className="flex-1 p-6 overflow-x-hidden max-w-full">
+          {/* View Toggle */}
+          <div className="flex justify-center mb-6">
+            <div className="inline-flex bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden">
+              <button
+                onClick={() => setCalendarView('daily')}
+                className={`px-6 py-2 text-sm font-medium transition-colors ${
+                  calendarView === 'daily'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Daily
+              </button>
+              <button
+                onClick={() => setCalendarView('monthly')}
+                className={`px-6 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                  calendarView === 'monthly'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setCalendarView('yearly')}
+                className={`px-6 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                  calendarView === 'yearly'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Yearly
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between mb-6">
             <button
-              onClick={previousMonth}
+              onClick={previousPeriod}
               className="p-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors"
             >
               <ChevronLeft className="w-5 h-5" />
@@ -2226,9 +2351,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
             <div className="text-center">
               <h2 className="text-2xl font-bold text-gray-700 flex items-center gap-2 justify-center">
                 <Calendar className="w-6 h-6 text-blue-400" />
-                {monthName}
+                {calendarView === 'daily' ? monthName : calendarView === 'monthly' ? selectedYear : `${selectedYear - 5} - ${selectedYear}`}
               </h2>
-              {selectedDate && (
+              {selectedDate && calendarView === 'daily' && (
                 <button
                   onClick={() => setSelectedDate(null)}
                   className="text-xs text-blue-400 hover:text-blue-300 mt-1"
@@ -2238,7 +2363,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
               )}
             </div>
             <button
-              onClick={nextMonth}
+              onClick={nextPeriod}
               className="p-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors"
             >
               <ChevronRight className="w-5 h-5" />
@@ -2247,53 +2372,129 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
           {/* Calendar Grid */}
           <div className="mb-6 max-w-full">
-            {/* Day Headers */}
-            <div className="grid grid-cols-7 gap-2 mb-2">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                <div key={day} className="text-center text-xs font-semibold text-gray-500 py-2">
-                  {day}
-                </div>
-              ))}
-            </div>
-            {/* Calendar Days */}
-            <div className="grid grid-cols-7 gap-2">
-              {getCalendarDays().map((date, idx) => {
-                const dayPayments = getDayPayments(date);
-                const isCurrentMonth = date.getMonth() === selectedMonth.getMonth();
-                const isToday = date.toDateString() === new Date().toDateString();
-                const isSelected = selectedDate?.toDateString() === date.toDateString();
-                const dayTotal = dayPayments.reduce((sum, p) => sum + p.payment_amount, 0);
-
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => isCurrentMonth ? setSelectedDate(date) : null}
-                    className={`
-                      relative p-2 rounded-lg border transition-all
-                      ${isCurrentMonth ? 'bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300' : 'bg-white border-gray-200 opacity-40'}
-                      ${isSelected ? 'ring-2 ring-blue-500 bg-blue-500/20' : ''}
-                      ${isToday ? 'border-blue-400' : ''}
-                      ${isCurrentMonth ? 'cursor-pointer' : 'cursor-not-allowed'}
-                    `}
-                    disabled={!isCurrentMonth}
-                  >
-                    <div className="text-xs font-semibold text-gray-700 mb-1">
-                      {date.getDate()}
+            {calendarView === 'daily' ? (
+              <>
+                {/* Day Headers */}
+                <div className="grid grid-cols-7 gap-2 mb-2">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                    <div key={day} className="text-center text-xs font-semibold text-gray-500 py-2">
+                      {day}
                     </div>
-                    {dayPayments.length > 0 && isCurrentMonth && (
-                      <div className="space-y-0.5">
-                        <div className="text-xs text-green-400 font-medium">
-                          {formatCurrency(dayTotal)}
+                  ))}
+                </div>
+                {/* Calendar Days */}
+                <div className="grid grid-cols-7 gap-2">
+                  {getCalendarDays().map((date, idx) => {
+                    const dayPayments = getDayPayments(date);
+                    const isCurrentMonth = date.getMonth() === selectedMonth.getMonth();
+                    const isToday = date.toDateString() === new Date().toDateString();
+                    const isSelected = selectedDate?.toDateString() === date.toDateString();
+                    const dayTotal = dayPayments.reduce((sum, p) => sum + p.payment_amount, 0);
+
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => isCurrentMonth ? setSelectedDate(date) : null}
+                        className={`
+                          relative p-2 rounded-lg border transition-all
+                          ${isCurrentMonth ? 'bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300' : 'bg-white border-gray-200 opacity-40'}
+                          ${isSelected ? 'ring-2 ring-blue-500 bg-blue-500/20' : ''}
+                          ${isToday ? 'border-blue-400' : ''}
+                          ${isCurrentMonth ? 'cursor-pointer' : 'cursor-not-allowed'}
+                        `}
+                        disabled={!isCurrentMonth}
+                      >
+                        <div className="text-xs font-semibold text-gray-700 mb-1">
+                          {date.getDate()}
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {dayPayments.length} payment{dayPayments.length !== 1 ? 's' : ''}
-                        </div>
+                        {dayPayments.length > 0 && isCurrentMonth && (
+                          <div className="space-y-0.5">
+                            <div className="text-xs text-green-400 font-medium">
+                              {formatCurrency(dayTotal)}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {dayPayments.length} payment{dayPayments.length !== 1 ? 's' : ''}
+                            </div>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : calendarView === 'monthly' ? (
+              /* Monthly View */
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {getMonthlyData().map((monthData) => {
+                  const isCurrentMonth = monthData.month === new Date().getMonth() && selectedYear === new Date().getFullYear();
+                  return (
+                    <button
+                      key={monthData.month}
+                      onClick={() => {
+                        setSelectedMonth(new Date(selectedYear, monthData.month, 1));
+                        setCalendarView('daily');
+                      }}
+                      className={`
+                        p-5 rounded-lg border transition-all hover:shadow-lg cursor-pointer
+                        ${isCurrentMonth ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-400' : 'bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-200'}
+                      `}
+                    >
+                      <div className="text-base font-bold text-gray-700 mb-3">
+                        {monthData.name}
                       </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                      {monthData.count > 0 ? (
+                        <div className="space-y-1">
+                          <div className="text-xl font-semibold text-green-600">
+                            {formatCurrency(monthData.total)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {monthData.count} payment{monthData.count !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-400">No payments</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Yearly View */
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                {getYearlyData().map((yearData) => {
+                  const isCurrentYear = yearData.year === new Date().getFullYear();
+                  return (
+                    <button
+                      key={yearData.year}
+                      onClick={() => {
+                        setSelectedYear(yearData.year);
+                        setCalendarView('monthly');
+                      }}
+                      className={`
+                        p-8 rounded-xl border-2 transition-all hover:shadow-xl cursor-pointer
+                        ${isCurrentYear ? 'bg-blue-50 border-blue-400 ring-4 ring-blue-200' : 'bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-300'}
+                      `}
+                    >
+                      <div className="text-3xl font-bold text-gray-700 mb-4">
+                        {yearData.year}
+                      </div>
+                      {yearData.count > 0 ? (
+                        <div className="space-y-2">
+                          <div className="text-3xl font-bold text-green-600">
+                            {formatCurrency(yearData.total)}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {yearData.count} payment{yearData.count !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-base text-gray-400">No payments</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 max-w-full">
