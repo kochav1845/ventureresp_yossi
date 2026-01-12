@@ -146,7 +146,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_min_balance: minBalance ? parseFloat(minBalance) : null,
           p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
           p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
-          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null
+          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
+          p_date_context: dateRangeContext
         });
 
       if (error) throw error;
@@ -165,7 +166,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     } catch (error) {
       console.error('Error loading analytics:', error);
     }
-  }, [searchTerm, statusFilter, countryFilter, dateFrom, dateTo, excludedCustomerIds, balanceFilter, minBalance, maxBalance, minOpenInvoices, maxOpenInvoices]);
+  }, [searchTerm, statusFilter, countryFilter, dateFrom, dateTo, excludedCustomerIds, balanceFilter, minBalance, maxBalance, minOpenInvoices, maxOpenInvoices, dateRangeContext]);
 
   const loadExcludedCustomers = async () => {
     try {
