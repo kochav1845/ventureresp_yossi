@@ -174,7 +174,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
       if (data) {
         setAnalyticsStats({
-          totalCustomers: estimatedFilteredCount,
+          totalCustomers: data.total_customers || 0,
           activeCustomers: data.active_customers || 0,
           totalBalance: data.total_balance || 0,
           avgBalance: data.avg_balance || 0,
@@ -182,6 +182,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           totalOpenInvoices: data.total_open_invoices || 0,
           customersWithOverdue: data.customers_with_overdue || 0
         });
+        setFilteredCount(data.total_customers || 0);
       }
     } catch (error) {
       console.error('Error loading analytics:', error);
