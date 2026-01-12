@@ -37,6 +37,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const [hasMore, setHasMore] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [grandTotalCustomers, setGrandTotalCustomers] = useState(0); // Unfiltered total - never changes
+  const [filteredCount, setFilteredCount] = useState(0); // Filtered count excluding excluded customers
   const [hoveredCustomer, setHoveredCustomer] = useState<string | null>(null);
   const [editingThreshold, setEditingThreshold] = useState<string | null>(null);
   const [thresholdValue, setThresholdValue] = useState<number>(30);
@@ -132,43 +133,34 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     loadCustomers();
   }, [searchTerm, statusFilter, countryFilter, balanceFilter, sortBy, sortOrder, dateFrom, dateTo, minOpenInvoices, maxOpenInvoices, minBalance, maxBalance]);
 
-  // Load analytics from database with ALL filters applied
-  const loadAnalytics = useCallback(async () => {
-    try {
-      const excludedArray = Array.from(excludedCustomerIds);
-      const { data, error } = await supabase
-        .rpc('get_customer_analytics', {
-          p_search: searchTerm || null,
-          p_status_filter: statusFilter,
-          p_country_filter: countryFilter,
-          p_date_from: dateFrom ? new Date(dateFrom).toISOString() : null,
-          p_date_to: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : null,
-          p_excluded_customer_ids: excludedArray.length > 0 ? excludedArray : null,
-          p_balance_filter: balanceFilter,
-          p_min_balance: minBalance ? parseFloat(minBalance) : null,
-          p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
-          p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
-          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
-          p_date_context: dateRangeContext
-        });
+  // Calculate analytics from loaded data (avoids slow database queries)
+  const loadAnalytics = useCallback(() => {
+    // Calculate the filtered count (totalCount minus excluded customers)
+    const estimatedFilteredCount = Math.max(0, totalCount - excludedCustomerIds.size);
+    setFilteredCount(estimatedFilteredCount);
 
-      if (error) throw error;
+    // Filter out excluded customers from displayed data
+    const includedCustomers = displayedCustomers.filter(
+      customer => !excludedCustomerIds.has(customer.customer_id)
+    );
 
-      if (data) {
-        setAnalyticsStats({
-          totalCustomers: data.total_customers || 0,
-          activeCustomers: data.active_customers || 0,
-          totalBalance: data.total_balance || 0,
-          avgBalance: data.avg_balance || 0,
-          customersWithDebt: data.customers_with_debt || 0,
-          totalOpenInvoices: data.total_open_invoices || 0,
-          customersWithOverdue: data.customers_with_overdue || 0
-        });
-      }
-    } catch (error) {
-      console.error('Error loading analytics:', error);
-    }
-  }, [searchTerm, statusFilter, countryFilter, dateFrom, dateTo, excludedCustomerIds, balanceFilter, minBalance, maxBalance, minOpenInvoices, maxOpenInvoices, dateRangeContext]);
+    const activeCustomers = includedCustomers.filter(c => c.customer_status === 'Active').length;
+    const totalBalance = includedCustomers.reduce((sum, c) => sum + (c.calculated_balance || 0), 0);
+    const customersWithDebt = includedCustomers.filter(c => (c.calculated_balance || 0) > 0).length;
+    const totalOpenInvoices = includedCustomers.reduce((sum, c) => sum + (c.open_invoice_count || 0), 0);
+    const customersWithOverdue = includedCustomers.filter(c => (c.max_days_overdue || 0) > 0).length;
+    const avgBalance = customersWithDebt > 0 ? totalBalance / customersWithDebt : 0;
+
+    setAnalyticsStats({
+      totalCustomers: estimatedFilteredCount,
+      activeCustomers,
+      totalBalance,
+      avgBalance,
+      customersWithDebt,
+      totalOpenInvoices,
+      customersWithOverdue
+    });
+  }, [displayedCustomers, excludedCustomerIds, totalCount]);
 
   const loadExcludedCustomers = async () => {
     try {
@@ -895,10 +887,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 onClick={handleExportToExcel}
                 disabled={totalCount === 0}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
-                title={`Export ${totalCount - excludedCustomerIds.size} customers to Excel`}
+                title={`Export ${filteredCount} customers to Excel`}
               >
                 <Download className="w-5 h-5" />
-                Export ({totalCount - excludedCustomerIds.size})
+                Export ({filteredCount})
               </button>
 
               <button
