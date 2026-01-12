@@ -16,6 +16,7 @@ interface FetchResult {
 }
 
 export default function AcumaticaInvoiceTest({ onBack }: Props) {
+  const navigate = useNavigate();
   const [acumaticaUrl, setAcumaticaUrl] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -41,6 +42,14 @@ export default function AcumaticaInvoiceTest({ onBack }: Props) {
     // Test component - credentials must be manually entered
     // DO NOT pre-fill from environment variables for security
   }, []);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate('/customers');
+    }
+  };
 
   const testConnection = async () => {
     setTestingConnection(true);
