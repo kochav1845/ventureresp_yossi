@@ -17,6 +17,7 @@ type EmailTemplatesProps = {
 };
 
 export default function EmailTemplates({ onBack }: EmailTemplatesProps) {
+  const navigate = useNavigate();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -37,6 +38,14 @@ export default function EmailTemplates({ onBack }: EmailTemplatesProps) {
   useEffect(() => {
     loadTemplates();
   }, []);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const loadTemplates = async () => {
     setLoading(true);
