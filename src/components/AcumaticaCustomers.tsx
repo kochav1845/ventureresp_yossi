@@ -560,6 +560,24 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     try {
       setLoading(true);
 
+      const { data: countResult, error: countError } = await supabase
+        .rpc('get_customers_with_balance_count', {
+          p_search: searchTerm || null,
+          p_status_filter: statusFilter,
+          p_country_filter: countryFilter,
+          p_date_from: dateFrom ? new Date(dateFrom).toISOString() : null,
+          p_date_to: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : null,
+          p_balance_filter: balanceFilter,
+          p_min_balance: minBalance ? parseFloat(minBalance) : null,
+          p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
+          p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
+          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
+          p_date_context: dateRangeContext
+        });
+
+      if (countError) throw countError;
+      const total = countResult || 0;
+
       const { data, error } = await supabase
         .rpc('get_customers_with_balance', {
           p_search: searchTerm || null,
@@ -567,7 +585,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_country_filter: countryFilter,
           p_sort_by: sortBy,
           p_sort_order: sortOrder,
-          p_limit: 10000,
+          p_limit: total,
           p_offset: 0,
           p_date_from: dateFrom ? new Date(dateFrom).toISOString() : null,
           p_date_to: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : null,
