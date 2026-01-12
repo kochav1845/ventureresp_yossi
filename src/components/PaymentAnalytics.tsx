@@ -1815,11 +1815,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                     <p className="text-xs text-blue-400 mt-1">Payments in Date Range</p>
                   </div>
                   <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-lg p-4">
-                    <p className="text-xs text-gray-500 mb-1">Total Amount</p>
+                    <p className="text-xs text-gray-500 mb-1">Total Amount Paid</p>
                     <p className="text-2xl font-bold text-gray-700">
                       {formatCurrency(filteredAnalyticsData.reduce((sum, app) => sum + app.amount_paid, 0))}
                     </p>
-                    <p className="text-xs text-green-400 mt-1">Applied to Invoices</p>
+                    <p className="text-xs text-green-400 mt-1">Sum of {filteredAnalyticsData.length} payments applied to invoices</p>
                   </div>
                   <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/10 border border-yellow-500/30 rounded-lg p-4">
                     <p className="text-xs text-gray-500 mb-1">Avg. Days to Pay</p>
