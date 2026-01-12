@@ -133,34 +133,60 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     loadCustomers();
   }, [searchTerm, statusFilter, countryFilter, balanceFilter, sortBy, sortOrder, dateFrom, dateTo, minOpenInvoices, maxOpenInvoices, minBalance, maxBalance]);
 
-  // Calculate analytics from loaded data (avoids slow database queries)
-  const loadAnalytics = useCallback(() => {
-    // Calculate the filtered count (totalCount minus excluded customers)
-    const estimatedFilteredCount = Math.max(0, totalCount - excludedCustomerIds.size);
-    setFilteredCount(estimatedFilteredCount);
+  // Load analytics from ALL filtered customers (not just displayed page)
+  const loadAnalytics = useCallback(async () => {
+    try {
+      // Calculate the filtered count (totalCount minus excluded customers)
+      const estimatedFilteredCount = Math.max(0, totalCount - excludedCustomerIds.size);
+      setFilteredCount(estimatedFilteredCount);
 
-    // Filter out excluded customers from displayed data
-    const includedCustomers = displayedCustomers.filter(
-      customer => !excludedCustomerIds.has(customer.customer_id)
-    );
+      const excludedArray = Array.from(excludedCustomerIds);
+      const { data, error } = await supabase
+        .rpc('get_customer_analytics', {
+          p_search: searchTerm || null,
+          p_status_filter: statusFilter,
+          p_country_filter: countryFilter,
+          p_date_from: dateFrom ? new Date(dateFrom).toISOString() : null,
+          p_date_to: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : null,
+          p_excluded_customer_ids: excludedArray.length > 0 ? excludedArray : null,
+          p_balance_filter: balanceFilter,
+          p_min_balance: minBalance ? parseFloat(minBalance) : null,
+          p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
+          p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
+          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
+          p_date_context: dateRangeContext
+        });
 
-    const activeCustomers = includedCustomers.filter(c => c.customer_status === 'Active').length;
-    const totalBalance = includedCustomers.reduce((sum, c) => sum + (c.calculated_balance || 0), 0);
-    const customersWithDebt = includedCustomers.filter(c => (c.calculated_balance || 0) > 0).length;
-    const totalOpenInvoices = includedCustomers.reduce((sum, c) => sum + (c.open_invoice_count || 0), 0);
-    const customersWithOverdue = includedCustomers.filter(c => (c.max_days_overdue || 0) > 0).length;
-    const avgBalance = customersWithDebt > 0 ? totalBalance / customersWithDebt : 0;
+      if (error) {
+        console.error('Error loading analytics:', error);
+        // Fallback to basic stats on error
+        setAnalyticsStats({
+          totalCustomers: estimatedFilteredCount,
+          activeCustomers: 0,
+          totalBalance: 0,
+          avgBalance: 0,
+          customersWithDebt: 0,
+          totalOpenInvoices: 0,
+          customersWithOverdue: 0
+        });
+        return;
+      }
 
-    setAnalyticsStats({
-      totalCustomers: estimatedFilteredCount,
-      activeCustomers,
-      totalBalance,
-      avgBalance,
-      customersWithDebt,
-      totalOpenInvoices,
-      customersWithOverdue
-    });
-  }, [displayedCustomers, excludedCustomerIds, totalCount]);
+      if (data) {
+        setAnalyticsStats({
+          totalCustomers: estimatedFilteredCount,
+          activeCustomers: data.active_customers || 0,
+          totalBalance: data.total_balance || 0,
+          avgBalance: data.avg_balance || 0,
+          customersWithDebt: data.customers_with_debt || 0,
+          totalOpenInvoices: data.total_open_invoices || 0,
+          customersWithOverdue: data.customers_with_overdue || 0
+        });
+      }
+    } catch (error) {
+      console.error('Error loading analytics:', error);
+    }
+  }, [searchTerm, statusFilter, countryFilter, dateFrom, dateTo, excludedCustomerIds, balanceFilter, minBalance, maxBalance, minOpenInvoices, maxOpenInvoices, dateRangeContext, totalCount]);
 
   const loadExcludedCustomers = async () => {
     try {
