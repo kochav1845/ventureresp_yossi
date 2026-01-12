@@ -210,8 +210,8 @@ export default function Customers({ onBack }: CustomersProps) {
       setAllCustomers(mergedData);
       setTotalCount(mergedData.length);
 
-      // Load analytics using the database function (NO FILTERS on initial load)
-      await loadAnalytics();
+      // Calculate analytics from loaded data (NO FILTERS on initial load)
+      loadAnalytics(mergedData);
     } catch (error) {
       console.error('Error loading customers:', error);
     } finally {
@@ -219,49 +219,28 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
-  const loadAnalytics = async () => {
-    try {
-      const { data: analyticsResult, error: analyticsError } = await supabase
-        .rpc('get_customer_analytics', {
-          p_search: searchQuery.trim() || null,
-          p_status_filter: 'all',
-          p_country_filter: 'all',
-          p_date_from: filters.dateFrom || null,
-          p_date_to: filters.dateTo || null,
-          p_excluded_customer_ids: null,
-          p_balance_filter: 'all',
-          p_min_balance: filters.minBalance > 0 ? filters.minBalance : null,
-          p_max_balance: filters.maxBalance !== Infinity ? filters.maxBalance : null,
-          p_min_open_invoices: filters.minInvoiceCount > 0 ? filters.minInvoiceCount : null,
-          p_max_open_invoices: filters.maxInvoiceCount !== Infinity ? filters.maxInvoiceCount : null,
-          p_date_context: 'invoice_date'
-        });
+  const loadAnalytics = useCallback((customers: Customer[]) => {
+    // Calculate analytics from the filtered customer data
+    const totalCustomers = customers.length;
+    const activeCustomers = customers.filter(c => c.is_active).length;
+    const totalBalance = customers.reduce((sum, c) => sum + (c.balance || 0), 0);
+    const customersWithDebt = customers.filter(c => (c.balance || 0) > 0).length;
+    const totalOpenInvoices = customers.reduce((sum, c) => sum + (c.invoice_count || 0), 0);
+    const customersWithOverdue = customers.filter(c => (c.max_days_overdue || 0) > 0).length;
+    const avgBalance = customersWithDebt > 0 ? totalBalance / customersWithDebt : 0;
 
-      if (analyticsError) {
-        console.error('Analytics error:', analyticsError);
-        return;
-      }
-
-      if (analyticsResult) {
-        setStats({
-          total_customers: analyticsResult.total_customers || 0,
-          active_customers: analyticsResult.active_customers || 0,
-          total_balance: analyticsResult.total_balance || 0,
-          avg_balance: analyticsResult.avg_balance || 0,
-          customers_with_debt: analyticsResult.customers_with_debt || 0,
-          total_open_invoices: analyticsResult.total_open_invoices || 0,
-          customers_with_overdue: analyticsResult.customers_with_overdue || 0
-        });
-      }
-    } catch (error) {
-      console.error('Error loading analytics:', error);
-    }
-  };
+    setStats({
+      total_customers: totalCustomers,
+      active_customers: activeCustomers,
+      total_balance: totalBalance,
+      avg_balance: avgBalance,
+      customers_with_debt: customersWithDebt,
+      total_open_invoices: totalOpenInvoices,
+      customers_with_overdue: customersWithOverdue
+    });
+  }, []);
 
   const applyFilters = useCallback(async () => {
-    // Reload analytics with current filters
-    await loadAnalytics();
-
     // Check if invoice amount filter is applied - if so, we need to query the database
     const hasInvoiceAmountFilter = filters.minInvoiceAmount > 0 || filters.maxInvoiceAmount !== Infinity;
 
@@ -312,6 +291,7 @@ export default function Customers({ onBack }: CustomersProps) {
 
         setFilteredCustomers(filtered);
         setTotalCount(filtered.length);
+        loadAnalytics(filtered);
 
         // Paginate
         const start = currentPage * pageSize;
@@ -406,12 +386,13 @@ export default function Customers({ onBack }: CustomersProps) {
 
     setFilteredCustomers(filtered);
     setTotalCount(filtered.length);
+    loadAnalytics(filtered);
 
     // Paginate
     const start = currentPage * pageSize;
     const end = start + pageSize;
     setCustomers(filtered.slice(start, end));
-  }, [allCustomers, filters, searchQuery, currentPage, pageSize]);
+  }, [allCustomers, filters, searchQuery, currentPage, pageSize, loadAnalytics]);
 
   const handleSearch = () => {
     setCurrentPage(0);
