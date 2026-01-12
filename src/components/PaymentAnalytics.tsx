@@ -127,6 +127,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [showAnalyticsFilters, setShowAnalyticsFilters] = useState(true);
 
   const [appliedPaymentDateFrom, setAppliedPaymentDateFrom] = useState('');
+
+  // Analytics table sorting
+  const [analyticsSortField, setAnalyticsSortField] = useState<string>('payment_date');
+  const [analyticsSortDirection, setAnalyticsSortDirection] = useState<'asc' | 'desc'>('desc');
   const [appliedPaymentDateTo, setAppliedPaymentDateTo] = useState('');
   const [appliedMinAmount, setAppliedMinAmount] = useState('');
   const [appliedMaxAmount, setAppliedMaxAmount] = useState('');
@@ -211,7 +215,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   useEffect(() => {
     filterAnalyticsData();
-  }, [analyticsData, appliedPaymentDateFrom, appliedPaymentDateTo, appliedMinAmount, appliedMaxAmount, appliedCustomerFilter, appliedSelectedCustomers, appliedTimingFilter, appliedCustomDaysMin, appliedCustomDaysMax, appliedShowOnlyOverdue, excludedCustomerIds]);
+  }, [analyticsData, appliedPaymentDateFrom, appliedPaymentDateTo, appliedMinAmount, appliedMaxAmount, appliedCustomerFilter, appliedSelectedCustomers, appliedTimingFilter, appliedCustomDaysMin, appliedCustomDaysMax, appliedShowOnlyOverdue, excludedCustomerIds, analyticsSortField, analyticsSortDirection]);
 
   // Initialize temp filters with applied filter values on mount
   useEffect(() => {
@@ -290,6 +294,32 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     if (appliedShowOnlyOverdue) {
       filtered = filtered.filter(app => app.is_overdue === true);
     }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let aVal = a[analyticsSortField];
+      let bVal = b[analyticsSortField];
+
+      // Handle null/undefined values
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+
+      // Handle numeric fields
+      if (analyticsSortField === 'days_to_pay' || analyticsSortField === 'amount_paid') {
+        aVal = parseFloat(aVal);
+        bVal = parseFloat(bVal);
+      }
+
+      // Handle date fields
+      if (analyticsSortField === 'payment_date' || analyticsSortField === 'invoice_date') {
+        aVal = new Date(aVal).getTime();
+        bVal = new Date(bVal).getTime();
+      }
+
+      if (aVal < bVal) return analyticsSortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return analyticsSortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
 
     setFilteredAnalyticsData(filtered);
   };
@@ -742,6 +772,54 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Payment Analytics');
     XLSX.writeFile(workbook, `payment_analytics_${selectedMonth.getFullYear()}_${selectedMonth.getMonth() + 1}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
+
+  const exportAnalyticsToExcel = () => {
+    const exportData = filteredAnalyticsData.map(app => ({
+      'Payment Date': app.payment_date ? formatDateString(app.payment_date) : 'N/A',
+      'Invoice Date': app.invoice_date ? formatDateString(app.invoice_date) : 'N/A',
+      'Days to Pay': app.days_to_pay !== null ? app.days_to_pay : 'N/A',
+      'Payment Reference': app.payment_ref,
+      'Invoice Reference': app.invoice_ref,
+      'Customer': app.customer,
+      'Amount': app.amount_paid,
+      'Payment Method': app.payment_method,
+      'Payment Type': app.payment_type || 'N/A',
+      'Is Overdue': app.is_overdue ? 'Yes' : 'No'
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Payment Application Details');
+
+    const dateRange = appliedPaymentDateFrom && appliedPaymentDateTo
+      ? `${appliedPaymentDateFrom}_to_${appliedPaymentDateTo}`
+      : appliedPaymentDateFrom
+      ? `from_${appliedPaymentDateFrom}`
+      : analyticsDateRange;
+
+    XLSX.writeFile(workbook, `payment_application_details_${dateRange}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const handleAnalyticsSort = (field: string) => {
+    if (analyticsSortField === field) {
+      setAnalyticsSortDirection(analyticsSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setAnalyticsSortField(field);
+      setAnalyticsSortDirection('asc');
+    }
+  };
+
+  const AnalyticsSortableHeader = ({ field, label }: { field: string; label: string }) => (
+    <th
+      onClick={() => handleAnalyticsSort(field)}
+      className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase cursor-pointer hover:bg-gray-100 transition-colors"
+    >
+      <div className="flex items-center gap-1">
+        {label}
+        <ArrowUpDown className={`w-3 h-3 ${analyticsSortField === field ? 'text-blue-600' : 'text-gray-400'}`} />
+      </div>
+    </th>
+  );
 
   const monthName = selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
@@ -1698,21 +1776,28 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
                 {/* Detailed Applications Table */}
                 <div className="bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden">
-                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
                     <h3 className="text-lg font-semibold text-gray-700">Payment Application Details</h3>
+                    <button
+                      onClick={exportAnalyticsToExcel}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all shadow-sm text-sm"
+                    >
+                      <Download className="w-4 h-4" />
+                      Export to Excel
+                    </button>
                   </div>
                   <div className="overflow-x-auto max-h-96">
                     <table className="w-full">
                       <thead className="bg-gray-50 sticky top-0">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Payment Date</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Invoice Date</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Days to Pay</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Payment Ref</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Invoice Ref</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Customer</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Amount</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Method</th>
+                          <AnalyticsSortableHeader field="payment_date" label="Payment Date" />
+                          <AnalyticsSortableHeader field="invoice_date" label="Invoice Date" />
+                          <AnalyticsSortableHeader field="days_to_pay" label="Days to Pay" />
+                          <AnalyticsSortableHeader field="payment_ref" label="Payment Ref" />
+                          <AnalyticsSortableHeader field="invoice_ref" label="Invoice Ref" />
+                          <AnalyticsSortableHeader field="customer" label="Customer" />
+                          <AnalyticsSortableHeader field="amount_paid" label="Amount" />
+                          <AnalyticsSortableHeader field="payment_method" label="Method" />
                           <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase">Actions</th>
                         </tr>
                       </thead>
