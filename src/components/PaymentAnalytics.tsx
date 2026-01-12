@@ -66,6 +66,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [filteredPayments, setFilteredPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [monthlyAggregates, setMonthlyAggregates] = useState<{month: number, total: number, count: number}[]>([]);
+  const [yearlyAggregates, setYearlyAggregates] = useState<{year: number, total: number, count: number}[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -207,36 +209,20 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     }
   }, []);
 
-  useEffect(() => {
-    loadMonthlyData();
-  }, [selectedMonth, dateFrom, dateTo, excludedCustomerIds]);
-
-  // Load data for monthly/yearly views
+  // Load data based on view type
   useEffect(() => {
     const loadViewData = async () => {
       if (calendarView === 'monthly') {
-        // Load all data for the selected year
-        const startDate = new Date(selectedYear, 0, 1);
-        const endDate = new Date(selectedYear, 11, 31);
-        setDateFrom(startDate.toISOString().split('T')[0]);
-        setDateTo(endDate.toISOString().split('T')[0]);
+        await loadMonthlyAggregates(selectedYear);
       } else if (calendarView === 'yearly') {
-        // Load data for current year and previous 5 years
-        const currentYear = new Date().getFullYear();
-        const startDate = new Date(currentYear - 5, 0, 1);
-        const endDate = new Date(currentYear, 11, 31);
-        setDateFrom(startDate.toISOString().split('T')[0]);
-        setDateTo(endDate.toISOString().split('T')[0]);
+        await loadYearlyAggregates();
       } else {
-        // Daily view - clear custom date range to use selected month
-        if (dateFrom || dateTo) {
-          setDateFrom('');
-          setDateTo('');
-        }
+        // Daily view - load detailed payments for the month
+        await loadMonthlyData();
       }
     };
     loadViewData();
-  }, [calendarView, selectedYear]);
+  }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, excludedCustomerIds]);
 
   useEffect(() => {
     filterAndSortPayments();
@@ -517,6 +503,135 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     }
   };
 
+  const loadMonthlyAggregates = async (year: number) => {
+    setLoading(true);
+    setLoadingBatchInfo('Loading monthly data...');
+    try {
+      const startDate = new Date(year, 0, 1);
+      const endDate = new Date(year, 11, 31);
+      const startStr = startDate.toISOString().split('T')[0];
+      const endStr = endDate.toISOString().split('T')[0];
+
+      const aggregates = Array.from({ length: 12 }, (_, month) => ({ month, total: 0, count: 0 }));
+
+      let offset = 0;
+      const batchSize = 1000;
+      let hasMore = true;
+      let batchCount = 0;
+
+      while (hasMore) {
+        batchCount++;
+        setLoadingBatchInfo(`Loading monthly data batch ${batchCount}...`);
+
+        const { data, error } = await supabase
+          .from('acumatica_payments')
+          .select('application_date, payment_amount')
+          .gte('application_date', startStr)
+          .lte('application_date', endStr)
+          .range(offset, offset + batchSize - 1);
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        data.forEach(payment => {
+          const paymentDate = new Date(payment.application_date);
+          const month = paymentDate.getMonth();
+          aggregates[month].total += payment.payment_amount || 0;
+          aggregates[month].count += 1;
+        });
+
+        if (data.length < batchSize) {
+          hasMore = false;
+        }
+
+        offset += batchSize;
+      }
+
+      setMonthlyAggregates(aggregates);
+    } catch (error) {
+      console.error('Error loading monthly aggregates:', error);
+    } finally {
+      setLoading(false);
+      setLoadingBatchInfo('');
+    }
+  };
+
+  const loadYearlyAggregates = async () => {
+    setLoading(true);
+    setLoadingBatchInfo('Loading yearly data...');
+    try {
+      const currentYear = new Date().getFullYear();
+      const startDate = new Date(currentYear - 5, 0, 1);
+      const endDate = new Date(currentYear, 11, 31);
+      const startStr = startDate.toISOString().split('T')[0];
+      const endStr = endDate.toISOString().split('T')[0];
+
+      const yearMap = new Map<number, { total: number, count: number }>();
+
+      let offset = 0;
+      const batchSize = 1000;
+      let hasMore = true;
+      let batchCount = 0;
+
+      while (hasMore) {
+        batchCount++;
+        setLoadingBatchInfo(`Loading yearly data batch ${batchCount}...`);
+
+        const { data, error } = await supabase
+          .from('acumatica_payments')
+          .select('application_date, payment_amount')
+          .gte('application_date', startStr)
+          .lte('application_date', endStr)
+          .range(offset, offset + batchSize - 1);
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        data.forEach(payment => {
+          const paymentDate = new Date(payment.application_date);
+          const year = paymentDate.getFullYear();
+
+          if (!yearMap.has(year)) {
+            yearMap.set(year, { total: 0, count: 0 });
+          }
+
+          const yearData = yearMap.get(year)!;
+          yearData.total += payment.payment_amount || 0;
+          yearData.count += 1;
+        });
+
+        if (data.length < batchSize) {
+          hasMore = false;
+        }
+
+        offset += batchSize;
+      }
+
+      const aggregates = [];
+      for (let year = currentYear; year >= currentYear - 5; year--) {
+        const data = yearMap.get(year) || { total: 0, count: 0 };
+        if (data.total > 0 || year === currentYear) {
+          aggregates.push({ year, total: data.total, count: data.count });
+        }
+      }
+
+      setYearlyAggregates(aggregates);
+    } catch (error) {
+      console.error('Error loading yearly aggregates:', error);
+    } finally {
+      setLoading(false);
+      setLoadingBatchInfo('');
+    }
+  };
+
   const loadMonthlyData = async () => {
     setLoading(true);
     setLoadingBatchInfo('');
@@ -772,51 +887,17 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     return payments.filter(p => p.date.split('T')[0] === dateStr);
   };
 
-  const getMonthPayments = (year: number, month: number) => {
-    return payments.filter(p => {
-      const paymentDate = new Date(p.date);
-      return paymentDate.getFullYear() === year && paymentDate.getMonth() === month;
-    });
-  };
-
-  const getYearPayments = (year: number) => {
-    return payments.filter(p => {
-      const paymentDate = new Date(p.date);
-      return paymentDate.getFullYear() === year;
-    });
-  };
-
   const getMonthlyData = () => {
-    const monthlyData = [];
-    for (let month = 0; month < 12; month++) {
-      const monthPayments = getMonthPayments(selectedYear, month);
-      const total = monthPayments.reduce((sum, p) => sum + p.payment_amount, 0);
-      monthlyData.push({
-        month,
-        name: new Date(selectedYear, month, 1).toLocaleDateString('en-US', { month: 'long' }),
-        total,
-        count: monthPayments.length
-      });
-    }
-    return monthlyData;
+    return monthlyAggregates.map(agg => ({
+      month: agg.month,
+      name: new Date(selectedYear, agg.month, 1).toLocaleDateString('en-US', { month: 'long' }),
+      total: agg.total,
+      count: agg.count
+    }));
   };
 
   const getYearlyData = () => {
-    const currentYear = new Date().getFullYear();
-    const yearlyData = [];
-    // Show data for current year and previous 5 years
-    for (let year = currentYear; year >= currentYear - 5; year--) {
-      const yearPayments = getYearPayments(year);
-      const total = yearPayments.reduce((sum, p) => sum + p.payment_amount, 0);
-      if (total > 0 || year === currentYear) { // Only show years with data or current year
-        yearlyData.push({
-          year,
-          total,
-          count: yearPayments.length
-        });
-      }
-    }
-    return yearlyData;
+    return yearlyAggregates;
   };
 
   const previousPeriod = () => {
