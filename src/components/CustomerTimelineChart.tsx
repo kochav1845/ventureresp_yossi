@@ -1,6 +1,16 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, FileText, Calendar, TrendingDown, Minus, DollarSign } from 'lucide-react';
+import { TrendingUp, FileText, Calendar, DollarSign } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from 'recharts';
 
 interface CustomerTimelineChartProps {
   customerId: string;
@@ -15,22 +25,10 @@ interface TimelineData {
   overdue_90_days: number;
 }
 
-interface HoverData {
-  x: number;
-  y: number;
-  date: string;
-  balance: number;
-  invoices: number;
-  payments: number;
-  overdue_90_days: number;
-  index: number;
-}
-
 export default function CustomerTimelineChart({ customerId, customerName }: CustomerTimelineChartProps) {
   const [data, setData] = useState<TimelineData[]>([]);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<'3month' | '6month' | 'year' | 'all'>('6month');
-  const [hoveredPoint, setHoveredPoint] = useState<HoverData | null>(null);
   const [showBalance, setShowBalance] = useState(true);
   const [showInvoices, setShowInvoices] = useState(true);
   const [showPayments, setShowPayments] = useState(true);
@@ -101,218 +99,25 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
     }
   };
 
-  // Find max value across all series for consistent scale
-  const maxValue = Math.max(
-    ...data.map(d => Math.max(d.balance, d.invoices, d.payments, d.overdue_90_days)),
-    1
-  );
-
-  // Round up to nearest nice number for y-axis
-  const getMaxYAxis = () => {
-    const rounded = Math.ceil(maxValue / 1000) * 1000;
-    return rounded || 1000;
-  };
-
-  const maxYAxis = getMaxYAxis();
-
-  // Generate y-axis labels
-  const getYAxisLabels = () => {
-    const labels = [];
-    const steps = 5;
-    for (let i = 0; i <= steps; i++) {
-      labels.push((maxYAxis / steps) * i);
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-3">
+          <p className="text-xs font-semibold text-gray-300 mb-2">{formatDate(label)}</p>
+          {payload.map((entry: any, index: number) => (
+            <div key={index} className="flex items-center gap-2 mb-1">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }}></div>
+              <span className="text-xs text-gray-400">{entry.name}:</span>
+              <span className="text-xs font-bold text-white">
+                {formatCurrency(entry.value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      );
     }
-    return labels.reverse();
+    return null;
   };
-
-  const yAxisLabels = getYAxisLabels();
-
-  // Chart coordinates (with padding for axes)
-  const CHART_PADDING = { left: 10, right: 5, top: 5, bottom: 10 };
-  const CHART_WIDTH = 100 - CHART_PADDING.left - CHART_PADDING.right;
-  const CHART_HEIGHT = 100 - CHART_PADDING.top - CHART_PADDING.bottom;
-
-  const getY = (value: number) => {
-    const percentage = value / maxYAxis;
-    return CHART_PADDING.top + (CHART_HEIGHT * (1 - percentage));
-  };
-
-  const getX = (index: number) => {
-    if (data.length <= 1) return CHART_PADDING.left;
-    return CHART_PADDING.left + (index / (data.length - 1)) * CHART_WIDTH;
-  };
-
-  // Create smooth curve using Bezier interpolation
-  const createSmoothPath = (values: number[]) => {
-    if (values.length === 0) return '';
-    if (values.length === 1) {
-      const x = getX(0);
-      const y = getY(values[0]);
-      return `M ${x},${y}`;
-    }
-
-    let path = '';
-    for (let i = 0; i < values.length; i++) {
-      const x = getX(i);
-      const y = getY(values[i]);
-
-      if (i === 0) {
-        path += `M ${x},${y}`;
-      } else {
-        const prevX = getX(i - 1);
-        const prevY = getY(values[i - 1]);
-
-        const controlPointX = prevX + (x - prevX) / 2;
-
-        path += ` C ${controlPointX},${prevY} ${controlPointX},${y} ${x},${y}`;
-      }
-    }
-    return path;
-  };
-
-  // Create area fill path for under the line
-  const createAreaPath = (values: number[]) => {
-    if (values.length === 0) return '';
-
-    const linePath = createSmoothPath(values);
-    const lastX = getX(values.length - 1);
-    const firstX = getX(0);
-    const bottomY = CHART_PADDING.top + CHART_HEIGHT;
-
-    return `${linePath} L ${lastX},${bottomY} L ${firstX},${bottomY} Z`;
-  };
-
-  const createLine = (values: number[], color: string, areaColor: string, label: string, isVisible: boolean) => {
-    if (data.length === 0 || !isVisible) return null;
-
-    const pathData = createSmoothPath(values);
-    const areaPathData = createAreaPath(values);
-
-    return (
-      <g>
-        {/* Area fill under the line */}
-        <path
-          d={areaPathData}
-          fill={areaColor}
-          opacity="0.1"
-          className="transition-all duration-300"
-        />
-
-        {/* Main line with glow effect */}
-        <path
-          d={pathData}
-          fill="none"
-          stroke={color}
-          strokeWidth="0.5"
-          opacity="0.3"
-          filter="blur(2px)"
-        />
-        <path
-          d={pathData}
-          fill="none"
-          stroke={color}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="transition-all duration-300"
-        />
-
-        {/* Data points */}
-        {values.map((value, index) => {
-          const x = getX(index);
-          const y = getY(value);
-          const isHovered = hoveredPoint?.index === index;
-
-          return (
-            <g key={`${label}-${index}`}>
-              <circle
-                cx={x}
-                cy={y}
-                r={isHovered ? "1.8" : "1"}
-                fill="white"
-                stroke={color}
-                strokeWidth={isHovered ? "0.8" : "0.5"}
-                className="transition-all cursor-pointer"
-                onMouseEnter={() => setHoveredPoint({
-                  x,
-                  y,
-                  date: data[index].date,
-                  balance: data[index].balance,
-                  invoices: data[index].invoices,
-                  payments: data[index].payments,
-                  overdue_90_days: data[index].overdue_90_days,
-                  index
-                })}
-                onMouseLeave={() => setHoveredPoint(null)}
-              />
-              {isHovered && (
-                <>
-                  {/* Crosshair vertical line */}
-                  <line
-                    x1={x}
-                    y1={CHART_PADDING.top}
-                    x2={x}
-                    y2={CHART_PADDING.top + CHART_HEIGHT}
-                    stroke="#94a3b8"
-                    strokeWidth="0.3"
-                    strokeDasharray="2,2"
-                  />
-                  {/* Crosshair horizontal line */}
-                  <line
-                    x1={CHART_PADDING.left}
-                    y1={y}
-                    x2={CHART_PADDING.left + CHART_WIDTH}
-                    y2={y}
-                    stroke="#94a3b8"
-                    strokeWidth="0.3"
-                    strokeDasharray="2,2"
-                  />
-                </>
-              )}
-            </g>
-          );
-        })}
-      </g>
-    );
-  };
-
-  // Calculate trend
-  const calculateTrend = (values: number[]) => {
-    if (values.length < 2) return { direction: 'flat', percentage: 0 };
-
-    const firstHalf = values.slice(0, Math.floor(values.length / 2));
-    const secondHalf = values.slice(Math.floor(values.length / 2));
-
-    const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
-    const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
-
-    const change = avgSecond - avgFirst;
-    const percentage = avgFirst > 0 ? (change / avgFirst) * 100 : 0;
-
-    return {
-      direction: change > 0 ? 'up' : change < 0 ? 'down' : 'flat',
-      percentage: Math.abs(percentage)
-    };
-  };
-
-  const invoiceTrend = calculateTrend(data.map(d => d.invoices));
-  const paymentTrend = calculateTrend(data.map(d => d.payments));
-
-  // Get X-axis date labels (7 evenly distributed points)
-  const getXAxisLabels = () => {
-    if (data.length <= 7) return data.map((d, i) => ({ date: d.date, index: i }));
-
-    const labels = [];
-    const step = (data.length - 1) / 6;
-
-    for (let i = 0; i < 7; i++) {
-      const index = Math.round(i * step);
-      labels.push({ date: data[index].date, index });
-    }
-    return labels;
-  };
-
-  const xAxisLabels = getXAxisLabels();
 
   if (loading) {
     return (
@@ -436,138 +241,90 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
       </div>
 
       {/* Chart */}
-      <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 relative">
-        <div className="flex gap-2">
-          {/* Y-axis labels */}
-          <div className="flex flex-col justify-between h-80 text-xs text-gray-500 pr-2 pt-1 pb-6">
-            {yAxisLabels.map((label, index) => (
-              <div key={index} className="text-right">
-                {formatCurrency(label)}
-              </div>
-            ))}
-          </div>
-
-          {/* Chart SVG */}
-          <div className="flex-1 relative">
-            <svg
-              viewBox="0 0 100 100"
-              className="w-full h-80"
-              preserveAspectRatio="none"
-            >
-              {/* Grid lines aligned with y-axis labels */}
-              {yAxisLabels.map((label, index) => {
-                const y = CHART_PADDING.top + (index / (yAxisLabels.length - 1)) * CHART_HEIGHT;
-                return (
-                  <line
-                    key={`grid-${index}`}
-                    x1={CHART_PADDING.left}
-                    y1={y}
-                    x2={CHART_PADDING.left + CHART_WIDTH}
-                    y2={y}
-                    stroke="#e5e7eb"
-                    strokeWidth="0.2"
-                    strokeDasharray="1,1"
-                  />
-                );
-              })}
-
-              {/* X-axis tick marks */}
-              {xAxisLabels.map((label) => {
-                const x = getX(label.index);
-                return (
-                  <line
-                    key={`tick-${label.index}`}
-                    x1={x}
-                    y1={CHART_PADDING.top + CHART_HEIGHT}
-                    x2={x}
-                    y2={CHART_PADDING.top + CHART_HEIGHT + 1}
-                    stroke="#9ca3af"
-                    strokeWidth="0.3"
-                  />
-                );
-              })}
-
-              {/* Balance line (red) */}
-              {createLine(data.map(d => d.balance), '#ef4444', '#ef4444', 'Balance', showBalance)}
-
-              {/* Invoice line (blue) */}
-              {createLine(data.map(d => d.invoices), '#3b82f6', '#3b82f6', 'Invoices', showInvoices)}
-
-              {/* Payment line (green) */}
-              {createLine(data.map(d => d.payments), '#10b981', '#10b981', 'Payments', showPayments)}
-
-              {/* Overdue 90+ Days line (orange) */}
-              {createLine(data.map(d => d.overdue_90_days), '#f97316', '#f97316', 'Overdue 90+', showOverdue)}
-            </svg>
-
-            {/* Custom floating tooltip */}
-            {hoveredPoint && (
-              <div
-                className="absolute bg-white border-2 border-gray-300 rounded-lg shadow-xl p-3 pointer-events-none z-10 transform -translate-x-1/2 -translate-y-full"
-                style={{
-                  left: `${(hoveredPoint.x / 100) * 100}%`,
-                  top: '0',
-                  marginTop: '-10px'
-                }}
-              >
-                <div className="text-xs font-semibold text-gray-700 mb-2 whitespace-nowrap">
-                  {formatDate(hoveredPoint.date)}
-                </div>
-                <div className="space-y-1">
-                  {showBalance && (
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                      <span className="text-xs text-gray-600">Balance:</span>
-                      <span className="text-xs font-bold text-red-700">
-                        {formatCurrency(hoveredPoint.balance)}
-                      </span>
-                    </div>
-                  )}
-                  {showInvoices && (
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                      <span className="text-xs text-gray-600">Invoices:</span>
-                      <span className="text-xs font-bold text-blue-700">
-                        {formatCurrency(hoveredPoint.invoices)}
-                      </span>
-                    </div>
-                  )}
-                  {showPayments && (
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                      <span className="text-xs text-gray-600">Payments:</span>
-                      <span className="text-xs font-bold text-green-700">
-                        {formatCurrency(hoveredPoint.payments)}
-                      </span>
-                    </div>
-                  )}
-                  {showOverdue && (
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                      <span className="text-xs text-gray-600">Overdue 90+:</span>
-                      <span className="text-xs font-bold text-orange-700">
-                        {formatCurrency(hoveredPoint.overdue_90_days)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
+      <div className="bg-gradient-to-br from-gray-900 via-gray-950 to-black rounded-lg p-6 border border-gray-800 relative">
+        <ResponsiveContainer width="100%" height={500}>
+          <LineChart
+            data={data}
+            margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="#1f2937"
+              strokeOpacity={0.3}
+              vertical={true}
+              horizontal={true}
+            />
+            <XAxis
+              dataKey="date"
+              tickFormatter={formatDate}
+              stroke="#4b5563"
+              style={{ fontSize: '11px' }}
+              tick={{ fill: '#6b7280' }}
+              axisLine={{ stroke: '#1f2937' }}
+              tickLine={{ stroke: '#1f2937' }}
+              hide={true}
+            />
+            <YAxis
+              tickFormatter={(value) => formatCurrency(value)}
+              stroke="#4b5563"
+              style={{ fontSize: '11px' }}
+              tick={{ fill: '#6b7280' }}
+              axisLine={{ stroke: '#1f2937' }}
+              tickLine={{ stroke: '#1f2937' }}
+              hide={true}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend
+              wrapperStyle={{ paddingTop: '20px' }}
+              iconType="line"
+              formatter={(value) => <span className="text-gray-400 text-sm">{value}</span>}
+            />
+            {showBalance && (
+              <Line
+                type="monotone"
+                dataKey="balance"
+                stroke="#ef4444"
+                strokeWidth={2.5}
+                dot={false}
+                name="Balance Owed"
+                activeDot={{ r: 6, fill: '#ef4444', strokeWidth: 0 }}
+              />
             )}
-
-            {/* X-axis labels */}
-            <div className="flex justify-between mt-2 px-2">
-              {xAxisLabels.map((label, index) => (
-                <div
-                  key={index}
-                  className="text-xs text-gray-600 transform -rotate-45 origin-top-left"
-                  style={{ width: '60px' }}
-                >
-                  {formatDate(label.date)}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+            {showInvoices && (
+              <Line
+                type="monotone"
+                dataKey="invoices"
+                stroke="#60a5fa"
+                strokeWidth={2.5}
+                dot={false}
+                name="Invoices"
+                activeDot={{ r: 6, fill: '#60a5fa', strokeWidth: 0 }}
+              />
+            )}
+            {showPayments && (
+              <Line
+                type="monotone"
+                dataKey="payments"
+                stroke="#10b981"
+                strokeWidth={2.5}
+                dot={false}
+                name="Payments"
+                activeDot={{ r: 6, fill: '#10b981', strokeWidth: 0 }}
+              />
+            )}
+            {showOverdue && (
+              <Line
+                type="monotone"
+                dataKey="overdue_90_days"
+                stroke="#f97316"
+                strokeWidth={2.5}
+                dot={false}
+                name="Overdue 90+ Days"
+                activeDot={{ r: 6, fill: '#f97316', strokeWidth: 0 }}
+              />
+            )}
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Enhanced Stats Summary */}
