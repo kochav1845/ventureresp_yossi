@@ -558,25 +558,41 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
   const handleExportToExcel = () => {
     const exportData = filteredCustomers.map(customer => ({
-      'Customer ID': customer.customer_id,
-      'Customer Name': customer.customer_name,
-      'Balance Owed': customer.calculated_balance || 0,
-      'Open Invoices': customer.open_invoice_count || 0,
-      'Max Days Overdue': customer.max_days_overdue || 0,
-      'Red After (Days)': customer.days_past_due_threshold || 30,
-      'Status': customer.customer_status || 'Unknown',
-      'City': customer.city || '',
-      'Country': customer.country || '',
-      'Class': customer.customer_class || '',
-      'Email': customer.email_address || '',
-      'Last Synced': formatDateUtil(customer.synced_at),
+      customer_id: customer.customer_id,
+      customer_name: customer.customer_name,
+      balance_owed: customer.calculated_balance || 0,
+      open_invoices: customer.open_invoice_count || 0,
+      max_days_overdue: customer.max_days_overdue || 0,
+      red_after_days: customer.days_past_due_threshold || 30,
+      status: customer.customer_status || 'Unknown',
+      city: customer.city || '',
+      country: customer.country || '',
+      customer_class: customer.customer_class || '',
+      email: customer.email_address || '',
+      last_synced: formatDateUtil(customer.synced_at),
     }));
 
-    exportToExcel(
-      exportData,
-      'Customer List',
-      `customers_${new Date().toISOString().split('T')[0]}`
-    );
+    exportToExcel({
+      filename: `customers_${new Date().toISOString().split('T')[0]}`,
+      sheetName: 'Customers',
+      title: 'Customer List',
+      subtitle: `Exported on ${new Date().toLocaleDateString()}`,
+      columns: [
+        { header: 'Customer ID', key: 'customer_id', width: 15 },
+        { header: 'Customer Name', key: 'customer_name', width: 30 },
+        { header: 'Balance Owed', key: 'balance_owed', width: 15 },
+        { header: 'Open Invoices', key: 'open_invoices', width: 15 },
+        { header: 'Max Days Overdue', key: 'max_days_overdue', width: 18 },
+        { header: 'Red After (Days)', key: 'red_after_days', width: 18 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'City', key: 'city', width: 20 },
+        { header: 'Country', key: 'country', width: 15 },
+        { header: 'Class', key: 'customer_class', width: 15 },
+        { header: 'Email', key: 'email', width: 30 },
+        { header: 'Last Synced', key: 'last_synced', width: 20 },
+      ],
+      data: exportData,
+    });
   };
 
   const handleColumnSort = (column: string) => {
