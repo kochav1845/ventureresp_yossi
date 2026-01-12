@@ -2377,6 +2377,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Applied</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Available</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Description</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Applications</th>
                   </tr>
                 </thead>
@@ -2410,8 +2411,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                       <td className="px-4 py-4 border-r border-gray-200">
                         <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded w-16 animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '0.8s' }}></div>
                       </td>
+                      <td className="px-4 py-4 border-r border-gray-200">
+                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded w-3/4 animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '0.9s' }}></div>
+                      </td>
                       <td className="px-4 py-4">
-                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '0.9s' }}></div>
+                        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: '1s' }}></div>
                       </td>
                     </tr>
                   ))}
@@ -2442,9 +2446,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                     <SortableHeader field="total_applied" label="Applied" />
                     <SortableHeader field="available_balance" label="Available" />
                     <SortableHeader field="status" label="Status" />
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">
-                      Applications
-                    </th>
+                    <SortableHeader field="description" label="Description" />
+                    <SortableHeader field="invoice_applications" label="Applications" />
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -2489,6 +2492,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                           {payment.status}
                         </span>
                       </td>
+                      <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-200/50 max-w-xs truncate" title={payment.description || '-'}>
+                        {payment.description || '-'}
+                      </td>
                       <td
                         className="px-4 py-3 text-sm text-gray-700 max-w-md truncate cursor-pointer hover:text-blue-600 hover:bg-gray-50 transition-colors"
                         title="Click to view invoice details"
@@ -2518,7 +2524,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                     <td className="px-4 py-3 text-sm font-bold text-gray-700 border-r border-gray-200">
                       {formatCurrency(filteredPayments.reduce((sum, p) => sum + p.available_balance, 0))}
                     </td>
-                    <td colSpan={2} className="px-4 py-3 text-sm text-gray-500"></td>
+                    <td colSpan={3} className="px-4 py-3 text-sm text-gray-500"></td>
                   </tr>
                 </tfoot>
               </table>
