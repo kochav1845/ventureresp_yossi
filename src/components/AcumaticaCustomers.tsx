@@ -36,6 +36,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
+  const [grandTotalCustomers, setGrandTotalCustomers] = useState(0); // Unfiltered total - never changes
   const [hoveredCustomer, setHoveredCustomer] = useState<string | null>(null);
   const [editingThreshold, setEditingThreshold] = useState<string | null>(null);
   const [thresholdValue, setThresholdValue] = useState<number>(30);
@@ -77,6 +78,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const ITEMS_PER_PAGE = 100;
 
   useEffect(() => {
+    loadGrandTotal();
     loadExcludedCustomers();
     loadSavedFilters();
     loadCustomers();
@@ -390,6 +392,20 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     } catch (error) {
       console.error('Error deleting filter:', error);
       alert('Failed to delete filter');
+    }
+  };
+
+  const loadGrandTotal = async () => {
+    try {
+      // Get TOTAL customers count from acumatica_customers (NO FILTERS)
+      const { count, error } = await supabase
+        .from('acumatica_customers')
+        .select('*', { count: 'exact', head: true });
+
+      if (error) throw error;
+      setGrandTotalCustomers(count || 0);
+    } catch (error) {
+      console.error('Error loading grand total:', error);
     }
   };
 
@@ -827,7 +843,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Acumatica Customers</h1>
               <p className="text-gray-600">
-                Showing {displayedCustomers.length} of {totalCount} customer{totalCount !== 1 ? 's' : ''}
+                Showing {displayedCustomers.length} of {grandTotalCustomers.toLocaleString()} customer{grandTotalCustomers !== 1 ? 's' : ''}
               </p>
             </div>
 
