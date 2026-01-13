@@ -644,17 +644,20 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     try {
       let startStr: string;
       let endStr: string;
+      let useInclusiveEnd = false; // Flag to determine if we should include the end date
 
       // Use custom date range if provided, otherwise use selected month
       if (dateFrom && dateTo) {
         startStr = dateFrom;
         endStr = dateTo;
-        console.log(`Using custom date range: ${startStr} to ${endStr}`);
+        useInclusiveEnd = true; // User-specified dates should be inclusive
+        console.log(`Using custom date range: ${startStr} to ${endStr} (inclusive)`);
       } else if (dateFrom) {
         // If only start date provided, use it to current date
         startStr = dateFrom;
         endStr = new Date().toISOString().split('T')[0];
-        console.log(`Using from date to today: ${startStr} to ${endStr}`);
+        useInclusiveEnd = true; // Include today
+        console.log(`Using from date to today: ${startStr} to ${endStr} (inclusive)`);
       } else {
         // Default to selected month
         const year = selectedMonth.getFullYear();
@@ -663,7 +666,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         const endDate = new Date(year, month + 1, 1);
         startStr = startDate.toISOString().split('T')[0];
         endStr = endDate.toISOString().split('T')[0];
-        console.log(`Using selected month: ${startStr} to ${endStr}`);
+        useInclusiveEnd = false; // Exclude the first day of next month
+        console.log(`Using selected month: ${startStr} to ${endStr} (exclusive)`);
       }
 
       // Fetch all payments in batches to avoid 1000-row limit
@@ -678,11 +682,20 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         console.log(`Fetching payment batch ${batchCount}...`);
         setLoadingBatchInfo(`Loading batch ${batchCount}...`);
 
-        const { data: batch, error } = await supabase
+        // Build query with appropriate end date filter
+        let query = supabase
           .from('acumatica_payments')
           .select('*')
-          .gte('application_date', startStr)
-          .lt('application_date', endStr)
+          .gte('application_date', startStr);
+
+        // Use .lte() for inclusive end dates (custom range), .lt() for exclusive (month boundary)
+        if (useInclusiveEnd) {
+          query = query.lte('application_date', endStr);
+        } else {
+          query = query.lt('application_date', endStr);
+        }
+
+        const { data: batch, error } = await query
           .order('application_date', { ascending: false })
           .range(offset, offset + batchSize - 1);
 
