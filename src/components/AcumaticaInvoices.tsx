@@ -49,25 +49,35 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   const pageSize = 50;
 
   const enrichInvoicesWithUserColors = async (invoices: any[]) => {
-    if (invoices.length === 0) return invoices;
+    console.log('🎨 [ENRICH] Starting enrichment for', invoices.length, 'invoices');
+    if (invoices.length === 0) {
+      console.log('🎨 [ENRICH] No invoices to enrich, returning empty array');
+      return invoices;
+    }
 
     const invoiceRefs = invoices.map(inv => inv.reference_nbr || inv.reference_number);
+    console.log('🎨 [ENRICH] Invoice refs:', invoiceRefs.length);
     const refLimit = 1000;
 
+    console.log('🎨 [ENRICH] Fetching invoice memos...');
     const { data: lastMemos } = await supabase
       .from('invoice_memos')
       .select('invoice_reference, created_by_user_id, created_at')
       .in('invoice_reference', invoiceRefs.slice(0, refLimit))
       .order('created_at', { ascending: false })
       .limit(refLimit);
+    console.log('🎨 [ENRICH] Found', lastMemos?.length || 0, 'memos');
 
+    console.log('🎨 [ENRICH] Fetching status changes...');
     const { data: lastStatusChanges } = await supabase
       .from('invoice_status_history')
       .select('invoice_reference, changed_by, changed_at')
       .in('invoice_reference', invoiceRefs.slice(0, refLimit))
       .order('changed_at', { ascending: false })
       .limit(refLimit);
+    console.log('🎨 [ENRICH] Found', lastStatusChanges?.length || 0, 'status changes');
 
+    console.log('🎨 [ENRICH] Fetching assignments...');
     const { data: assignments } = await supabase
       .from('invoice_assignments')
       .select(`
@@ -81,6 +91,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
         )
       `)
       .in('invoice_reference_number', invoiceRefs.slice(0, refLimit));
+    console.log('🎨 [ENRICH] Found', assignments?.length || 0, 'assignments');
 
     const lastActivityMap = new Map();
 
@@ -121,15 +132,18 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     const userIds = Array.from(new Set(
       Array.from(lastActivityMap.values()).map(a => a.userId)
     ));
+    console.log('🎨 [ENRICH] Fetching colors for', userIds.length, 'users');
 
     const { data: users } = await supabase
       .from('user_profiles')
       .select('id, assigned_color')
       .in('id', userIds);
+    console.log('🎨 [ENRICH] Found', users?.length || 0, 'user profiles');
 
     const userColorMap = new Map(
       users?.map(u => [u.id, u.assigned_color]) || []
     );
+    console.log('🎨 [ENRICH] Created color map with', userColorMap.size, 'entries');
 
     const assignmentMap = new Map(
       assignments?.map(a => [
@@ -142,7 +156,8 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
       ]) || []
     );
 
-    return invoices.map(invoice => {
+    console.log('🎨 [ENRICH] Mapping enriched data to invoices...');
+    const enriched = invoices.map(invoice => {
       const refNum = invoice.reference_nbr || invoice.reference_number;
       const lastActivity = lastActivityMap.get(refNum);
       const assignment = assignmentMap.get(refNum);
@@ -154,6 +169,8 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
         assigned_collector_color: assignment?.collectorColor
       };
     });
+    console.log('🎨 [ENRICH] Enrichment complete! Returning', enriched.length, 'invoices');
+    return enriched;
   };
 
   const fetchInvoiceDetails = async (invoiceId: string) => {
@@ -308,6 +325,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   };
 
   const loadInvoices = async (append = false) => {
+    console.log('📋 [LOAD] Loading invoices...', append ? '(appending)' : '(fresh)');
     if (append) {
       setLoadingMore(true);
     } else {
@@ -318,24 +336,37 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
 
     try {
       const offset = append ? displayedInvoices.length : 0;
+      console.log('📋 [LOAD] Offset:', offset, 'Limit:', pageSize);
 
-      const { data, error } = await supabase
-        .rpc('search_invoices_paginated', {
-          search_term: null,
-          status_filter: null,
-          customer_filter: null,
-          customer_ids: null,
-          balance_filter: null,
-          color_filter: null,
-          date_from: null,
-          date_to: null,
-          sort_by: sortBy,
-          sort_order: sortOrder,
-          p_limit: pageSize,
-          p_offset: offset
-        });
+      const params = {
+        search_term: null,
+        status_filter: null,
+        customer_filter: null,
+        customer_ids: null,
+        balance_filter: null,
+        color_filter: null,
+        date_from: null,
+        date_to: null,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+        p_limit: pageSize,
+        p_offset: offset
+      };
 
-      if (error) throw error;
+      console.log('📋 [LOAD] Calling search_invoices_paginated with params:', params);
+      const startTime = performance.now();
+
+      const { data, error } = await supabase.rpc('search_invoices_paginated', params);
+
+      const endTime = performance.now();
+      console.log(`📋 [LOAD] RPC call completed in ${(endTime - startTime).toFixed(2)}ms`);
+
+      if (error) {
+        console.error('📋 [LOAD] RPC error:', error);
+        throw error;
+      }
+
+      console.log('📋 [LOAD] Received', data?.length || 0, 'invoices');
 
       const invoices = (data || []).map(invoice => ({
         ...invoice,
@@ -344,7 +375,11 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
         reference_nbr: invoice.reference_number
       }));
 
+      console.log('📋 [LOAD] Enriching invoices...');
+      const enrichStartTime = performance.now();
       const enrichedInvoices = await enrichInvoicesWithUserColors(invoices);
+      const enrichEndTime = performance.now();
+      console.log(`📋 [LOAD] Enrichment completed in ${(enrichEndTime - enrichStartTime).toFixed(2)}ms`);
 
       if (append) {
         setDisplayedInvoices(prev => [...prev, ...enrichedInvoices]);
@@ -353,8 +388,11 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
       }
 
       setHasMoreResults(enrichedInvoices.length === pageSize);
+      console.log('📋 [LOAD] Load completed successfully!');
     } catch (error) {
-      console.error('Error loading invoices:', error);
+      console.error('📋 [LOAD] Error loading invoices:', error);
+      console.error('📋 [LOAD] Error code:', error?.code);
+      console.error('📋 [LOAD] Error message:', error?.message);
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -362,18 +400,30 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   };
 
   const handleSearch = async (resetResults = true) => {
+    console.log('🔍 [SEARCH] Starting search...');
     const searchTermTrimmed = searchTerm.trim();
     const hasSearchTerm = searchTermTrimmed.length >= 3;
     const hasFilters = hasSearchTerm || statusFilter !== 'all' || customerFilter !== 'all' ||
                        selectedCustomers.length > 0 || balanceFilter !== 'all' || colorFilter !== 'all' ||
                        dateFrom || dateTo;
 
+    console.log('🔍 [SEARCH] Has filters:', hasFilters);
+    console.log('🔍 [SEARCH] Search term:', searchTermTrimmed);
+    console.log('🔍 [SEARCH] Status filter:', statusFilter);
+    console.log('🔍 [SEARCH] Balance filter:', balanceFilter);
+    console.log('🔍 [SEARCH] Color filter:', colorFilter);
+    console.log('🔍 [SEARCH] Date from:', dateFrom);
+    console.log('🔍 [SEARCH] Date to:', dateTo);
+    console.log('🔍 [SEARCH] Selected customers:', selectedCustomers.length);
+
     if (!hasFilters) {
+      console.log('🔍 [SEARCH] No filters, loading all invoices...');
       loadInvoices();
       return;
     }
 
     if (searchTermTrimmed.length > 0 && searchTermTrimmed.length < 3) {
+      console.log('🔍 [SEARCH] Search term too short, aborting...');
       return;
     }
 
@@ -381,19 +431,25 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     const currentController = searchAbortController.current;
 
     if (resetResults) {
+      console.log('🔍 [SEARCH] Resetting results, showing loading state...');
       setLoading(true);
       setDisplayedInvoices([]);
     } else {
+      console.log('🔍 [SEARCH] Loading more results...');
       setLoadingMore(true);
     }
     setIsSearching(true);
 
     try {
-      if (currentController.signal.aborted) return;
+      if (currentController.signal.aborted) {
+        console.log('🔍 [SEARCH] Request was aborted');
+        return;
+      }
 
       const offset = resetResults ? 0 : displayedInvoices.length;
+      console.log('🔍 [SEARCH] Offset:', offset, 'Limit:', pageSize);
 
-      const { data, error } = await supabase.rpc('search_invoices_paginated', {
+      const searchParams = {
         search_term: hasSearchTerm ? searchTermTrimmed : null,
         status_filter: statusFilter !== 'all' ? statusFilter : null,
         customer_filter: customerFilter !== 'all' ? customerFilter : null,
@@ -406,9 +462,22 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
         sort_order: sortOrder,
         p_limit: pageSize,
         p_offset: offset
-      });
+      };
 
-      if (error) throw error;
+      console.log('🔍 [SEARCH] Calling search_invoices_paginated with params:', searchParams);
+      const startTime = performance.now();
+
+      const { data, error } = await supabase.rpc('search_invoices_paginated', searchParams);
+
+      const endTime = performance.now();
+      console.log(`🔍 [SEARCH] RPC call completed in ${(endTime - startTime).toFixed(2)}ms`);
+
+      if (error) {
+        console.error('🔍 [SEARCH] RPC error:', error);
+        throw error;
+      }
+
+      console.log('🔍 [SEARCH] Received', data?.length || 0, 'invoices from database');
 
       const invoices = (data || []).map(invoice => ({
         ...invoice,
@@ -417,21 +486,36 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
         reference_nbr: invoice.reference_number
       }));
 
+      console.log('🔍 [SEARCH] Mapped invoices, now enriching with user colors...');
+      const enrichStartTime = performance.now();
       const enrichedInvoices = await enrichInvoicesWithUserColors(invoices);
+      const enrichEndTime = performance.now();
+      console.log(`🔍 [SEARCH] Enrichment completed in ${(enrichEndTime - enrichStartTime).toFixed(2)}ms`);
 
       if (resetResults) {
+        console.log('🔍 [SEARCH] Setting', enrichedInvoices.length, 'invoices as displayed results');
         setDisplayedInvoices(enrichedInvoices);
       } else {
+        console.log('🔍 [SEARCH] Appending', enrichedInvoices.length, 'invoices to existing results');
         setDisplayedInvoices(prev => [...prev, ...enrichedInvoices]);
       }
 
       setHasMoreResults(enrichedInvoices.length === pageSize);
+      console.log('🔍 [SEARCH] Has more results:', enrichedInvoices.length === pageSize);
+      console.log('🔍 [SEARCH] Search completed successfully!');
     } catch (error) {
-      console.error('Error searching invoices:', error);
+      console.error('🔍 [SEARCH] Error during search:', error);
+      console.error('🔍 [SEARCH] Error code:', error?.code);
+      console.error('🔍 [SEARCH] Error message:', error?.message);
+      console.error('🔍 [SEARCH] Full error object:', JSON.stringify(error, null, 2));
+
       if (error?.code === '57014') {
         alert('Search timed out. Please add more specific filters or search terms.');
+      } else {
+        alert(`Search error: ${error?.message || 'Unknown error'}`);
       }
     } finally {
+      console.log('🔍 [SEARCH] Cleaning up loading states...');
       setLoading(false);
       setLoadingMore(false);
     }
