@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw } from 'lucide-react';
 
 interface Tool {
   id: string;
@@ -117,6 +117,14 @@ export function DeveloperTools() {
       description: 'Find orphaned payment applications',
       icon: AlertCircle,
       path: '/orphaned-application-diagnostic',
+      category: 'payment'
+    },
+    {
+      id: 'payment-app-resync',
+      name: 'Payment Application Re-sync',
+      description: 'Re-fetch all payment applications from Acumatica with correct doc types',
+      icon: RotateCcw,
+      path: '/payment-app-resync',
       category: 'payment'
     },
     {

@@ -34,6 +34,7 @@ import PaymentAttachmentTest from './components/PaymentAttachmentTest';
 import RecentSyncApplicationCheck from './components/RecentSyncApplicationCheck';
 import PaymentCountComparison from './components/PaymentCountComparison';
 import PaymentApplicationStatus from './components/PaymentApplicationStatus';
+import PaymentApplicationResync from './components/PaymentApplicationResync';
 import OrphanedInvoiceFixer from './components/OrphanedInvoiceFixer';
 import ApplicationDateDiagnostic from './components/ApplicationDateDiagnostic';
 import InvoiceFormatChecker from './components/InvoiceFormatChecker';
@@ -133,6 +134,7 @@ function AppContent() {
         <Route path="recent-sync-app-check" element={<RecentSyncApplicationCheck />} />
         <Route path="payment-count" element={<PaymentCountComparison />} />
         <Route path="payment-app-status" element={<PaymentApplicationStatus />} />
+        <Route path="payment-app-resync" element={<PaymentApplicationResync onBack={() => window.history.back()} />} />
         <Route path="orphaned-invoice-fixer" element={<OrphanedInvoiceFixer />} />
         <Route path="application-date-diagnostic" element={<ApplicationDateDiagnostic />} />
         <Route path="invoice-format-checker" element={<InvoiceFormatChecker />} />
