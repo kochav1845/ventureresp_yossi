@@ -200,15 +200,10 @@ Deno.serve(async (req: Request) => {
 
         const paymentWithApplications = await applicationResponse.json();
 
-        // Process applications - use ApplicationHistory for closed payments, DocumentsToApply for open ones
         const applications = paymentWithApplications.ApplicationHistory || paymentWithApplications.DocumentsToApply || [];
         console.log(`[Auto-backfill] Found ${applications.length} application(s) for payment ${payment.reference_number}`);
         if (applications && Array.isArray(applications) && applications.length > 0) {
           const applicationRecords = applications
-            .filter((app: any) => {
-              const docType = app.DocType?.value || app.AdjustedDocType?.value;
-              return docType === 'Invoice';
-            })
             .map((app: any) => {
               // Handle reference number from either ReferenceNbr or RefNbr
               let invoiceRefNbr = app.ReferenceNbr?.value || app.RefNbr?.value || app.AdjustedRefNbr?.value;

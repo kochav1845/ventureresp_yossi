@@ -48,18 +48,12 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      const invoiceApplications = applicationHistory.filter((app: any) => {
-        const docType = app.DisplayDocType?.value || app.AdjustedDocType?.value || "";
-        return docType.toLowerCase().includes("invoice");
-      });
-
-      if (invoiceApplications.length === 0) {
+      if (applicationHistory.length === 0) {
         continue;
       }
 
-      const linksToInsert = invoiceApplications.map((app: any) => {
+      const linksToInsert = applicationHistory.map((app: any) => {
         const invoiceRef = app.DisplayRefNbr?.value || app.AdjustedRefNbr?.value || "Unknown";
-        // Normalize invoice reference number by removing leading zeros
         const normalizedInvoiceRef = invoiceRef.replace(/^0+(?=\d)/, '');
 
         return {
@@ -68,15 +62,16 @@ Deno.serve(async (req: Request) => {
           invoice_reference_number: normalizedInvoiceRef,
           customer_id: app.Customer?.value || payment.customer_id,
           application_date: app.Date?.value || null,
-          amount_paid: parseFloat(app.AmountPaid?.value || 0),
-          balance: parseFloat(app.Balance?.value || 0),
-          cash_discount_taken: parseFloat(app.CashDiscountTaken?.value || 0),
+          amount_paid: app.AmountPaid?.value !== undefined ? parseFloat(app.AmountPaid.value) : 0,
+          balance: app.Balance?.value !== undefined ? parseFloat(app.Balance.value) : 0,
+          cash_discount_taken: app.CashDiscountTaken?.value !== undefined ? parseFloat(app.CashDiscountTaken.value) : 0,
           post_period: app.PostPeriod?.value || null,
           application_period: app.ApplicationPeriod?.value || null,
           due_date: app.DueDate?.value || null,
           customer_order: app.CustomerOrder?.value || null,
           description: app.Description?.value || null,
           invoice_date: app.Date?.value || null,
+          doc_type: app.DisplayDocType?.value || app.AdjustedDocType?.value || 'Invoice',
         };
       });
 

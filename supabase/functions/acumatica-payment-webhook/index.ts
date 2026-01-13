@@ -232,20 +232,17 @@ Deno.serve(async (req: Request) => {
       throw new Error(`Database error: ${result.error.message}`);
     }
 
-    let invoiceLinksCreated = 0;
+    let applicationsCreated = 0;
     if (paymentId && paymentData.ApplicationHistory && Array.isArray(paymentData.ApplicationHistory)) {
-      const invoiceApplications = paymentData.ApplicationHistory.filter((app: any) => {
-        const docType = app.DisplayDocType?.value || app.AdjustedDocType?.value || "";
-        return docType.toLowerCase().includes("invoice");
-      });
+      const applications = paymentData.ApplicationHistory;
 
-      if (invoiceApplications.length > 0) {
+      if (applications.length > 0) {
         await supabase
           .from('payment_invoice_applications')
           .delete()
           .eq('payment_id', paymentId);
 
-        const linksToInsert = invoiceApplications.map((app: any) => {
+        const linksToInsert = applications.map((app: any) => {
           let invoiceRefNbr = app.DisplayRefNbr?.value || app.AdjustedRefNbr?.value || "Unknown";
 
           if (/^[0-9]+$/.test(invoiceRefNbr) && invoiceRefNbr.length < 6) {
@@ -258,9 +255,9 @@ Deno.serve(async (req: Request) => {
             invoice_reference_number: invoiceRefNbr,
             customer_id: app.Customer?.value || transformedPayment.customer_id,
             application_date: app.Date?.value || null,
-            amount_applied: parseFloat(app.AmountPaid?.value || 0),
-            balance: parseFloat(app.Balance?.value || 0),
-            cash_discount_taken: parseFloat(app.CashDiscountTaken?.value || 0),
+            amount_paid: app.AmountPaid?.value !== undefined ? parseFloat(app.AmountPaid.value) : 0,
+            balance: app.Balance?.value !== undefined ? parseFloat(app.Balance.value) : 0,
+            cash_discount_taken: app.CashDiscountTaken?.value !== undefined ? parseFloat(app.CashDiscountTaken.value) : 0,
             post_period: app.PostPeriod?.value || null,
             application_period: app.ApplicationPeriod?.value || null,
             due_date: app.DueDate?.value || null,
@@ -276,8 +273,8 @@ Deno.serve(async (req: Request) => {
           .insert(linksToInsert);
 
         if (!insertError) {
-          invoiceLinksCreated = linksToInsert.length;
-          console.log(`Created ${invoiceLinksCreated} invoice links for payment ${referenceNbr}`);
+          applicationsCreated = linksToInsert.length;
+          console.log(`Created ${applicationsCreated} application links for payment ${referenceNbr}`);
         }
       }
     }
@@ -296,7 +293,7 @@ Deno.serve(async (req: Request) => {
         message: 'Payment synced successfully',
         referenceNbr,
         action: existing ? 'updated' : 'created',
-        invoiceLinksCreated
+        applicationsCreated
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

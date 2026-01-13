@@ -136,10 +136,6 @@ Deno.serve(async (req: Request) => {
           console.log(`Found ${applications.length} applications for payment ${payment.reference_number}`);
 
           const applicationRecords = applications
-            .filter((app: any) => {
-              const docType = app.DocType?.value || app.AdjustedDocType?.value;
-              return docType === 'Invoice';
-            })
             .map((app: any) => {
               let invoiceRefNbr = app.ReferenceNbr?.value || app.AdjustedRefNbr?.value;
               if (invoiceRefNbr && /^[0-9]+$/.test(invoiceRefNbr) && invoiceRefNbr.length < 6) {

@@ -271,10 +271,7 @@ Deno.serve(async (req: Request) => {
           }
 
           if (paymentDbId && applicationHistory.length > 0) {
-            const applications = applicationHistory.filter((app: any) => {
-              const docType = app.DocType?.value || app.AdjustedDocType?.value;
-              return docType === 'Invoice';
-            });
+            const applications = applicationHistory;
 
             console.log(`Processing ${applications.length} applications for payment ${refNbr}`);
 

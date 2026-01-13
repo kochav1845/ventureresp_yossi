@@ -115,30 +115,25 @@ Deno.serve(async (req: Request) => {
         }
 
         const paymentData = await paymentResponse.json();
-        const applicationHistory = paymentData.ApplicationHistory || [];
+        const applications = paymentData.ApplicationHistory || [];
 
-        // Extract invoice applications
-        const invoiceApplications = applicationHistory.filter((app: any) => {
-          const docType = app.DisplayDocType?.value || app.AdjustedDocType?.value || "";
-          return docType.toLowerCase().includes("invoice");
-        });
-
-        if (invoiceApplications.length > 0) {
-          const linksToInsert = invoiceApplications.map((app: any) => ({
+        if (applications.length > 0) {
+          const linksToInsert = applications.map((app: any) => ({
             payment_id: payment.id,
             payment_reference_number: payment.reference_number,
             invoice_reference_number: app.DisplayRefNbr?.value || app.AdjustedRefNbr?.value || "Unknown",
             customer_id: app.Customer?.value || paymentData.CustomerID?.value,
             application_date: app.Date?.value || null,
-            amount_paid: parseFloat(app.AmountPaid?.value || 0),
-            balance: parseFloat(app.Balance?.value || 0),
-            cash_discount_taken: parseFloat(app.CashDiscountTaken?.value || 0),
+            amount_paid: app.AmountPaid?.value !== undefined ? parseFloat(app.AmountPaid.value) : 0,
+            balance: app.Balance?.value !== undefined ? parseFloat(app.Balance.value) : 0,
+            cash_discount_taken: app.CashDiscountTaken?.value !== undefined ? parseFloat(app.CashDiscountTaken.value) : 0,
             post_period: app.PostPeriod?.value || null,
             application_period: app.ApplicationPeriod?.value || null,
             due_date: app.DueDate?.value || null,
             customer_order: app.CustomerOrder?.value || null,
             description: app.Description?.value || null,
             invoice_date: app.Date?.value || null,
+            doc_type: app.DisplayDocType?.value || app.AdjustedDocType?.value || 'Invoice',
           }));
 
           const { error: insertError } = await supabase
