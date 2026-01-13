@@ -20,7 +20,6 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   const handleBack = onBack || (() => navigate(-1));
   const canPerformFetch = profile?.role === 'admin' || (profile as any)?.can_perform_fetch;
 
-  // Check if user has permission to view this page
   const hasAccess = hasPermission(PERMISSION_KEYS.INVOICES, 'view');
   const [displayedInvoices, setDisplayedInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,8 +38,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   const [dateTo, setDateTo] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [currentPage, setCurrentPage] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
+  const [hasMoreResults, setHasMoreResults] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [memoModalInvoice, setMemoModalInvoice] = useState<any>(null);
   const [availableCustomers, setAvailableCustomers] = useState<{id: string, name: string}[]>([]);
@@ -49,15 +47,6 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   const [exporting, setExporting] = useState(false);
   const searchAbortController = useRef<AbortController | null>(null);
   const pageSize = 50;
-  const maxCountLimit = 10000;
-
-  // Helper function to format count display
-  const formatTotalCount = (count: number) => {
-    if (count >= maxCountLimit) {
-      return `${maxCountLimit.toLocaleString()}+`;
-    }
-    return count.toLocaleString();
-  };
 
   const enrichInvoicesWithUserColors = async (invoices: any[]) => {
     if (invoices.length === 0) return invoices;
@@ -241,7 +230,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     }
 
     const debounceTimer = setTimeout(() => {
-      handleSearch();
+      handleSearch(true);
     }, 300);
 
     return () => {
@@ -254,7 +243,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
 
   const loadInitialData = async () => {
     await Promise.all([
-      loadInvoices(0),
+      loadInvoices(),
       loadAvailableCustomers(),
       loadAvailableColors()
     ]);
@@ -318,27 +307,18 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     }
   };
 
-  const loadInvoices = async (page = 0) => {
-    setLoading(true);
+  const loadInvoices = async (append = false) => {
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+      setDisplayedInvoices([]);
+    }
     setIsSearching(false);
+
     try {
-      // Get total count
-      const { data: countData, error: countError } = await supabase
-        .rpc('search_invoices_count', {
-          search_term: null,
-          status_filter: null,
-          customer_filter: null,
-          customer_ids: null,
-          balance_filter: null,
-          color_filter: null,
-          date_from: null,
-          date_to: null
-        });
+      const offset = append ? displayedInvoices.length : 0;
 
-      if (countError) throw countError;
-      setTotalCount(Number(countData) || 0);
-
-      // Get paginated data
       const { data, error } = await supabase
         .rpc('search_invoices_paginated', {
           search_term: null,
@@ -352,7 +332,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
           sort_by: sortBy,
           sort_order: sortOrder,
           p_limit: pageSize,
-          p_offset: page * pageSize
+          p_offset: offset
         });
 
       if (error) throw error;
@@ -366,16 +346,22 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
 
       const enrichedInvoices = await enrichInvoicesWithUserColors(invoices);
 
-      setDisplayedInvoices(enrichedInvoices);
-      setCurrentPage(page);
+      if (append) {
+        setDisplayedInvoices(prev => [...prev, ...enrichedInvoices]);
+      } else {
+        setDisplayedInvoices(enrichedInvoices);
+      }
+
+      setHasMoreResults(enrichedInvoices.length === pageSize);
     } catch (error) {
       console.error('Error loading invoices:', error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
-  const handleSearch = async (page = 0) => {
+  const handleSearch = async (resetResults = true) => {
     const searchTermTrimmed = searchTerm.trim();
     const hasSearchTerm = searchTermTrimmed.length >= 3;
     const hasFilters = hasSearchTerm || statusFilter !== 'all' || customerFilter !== 'all' ||
@@ -383,7 +369,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
                        dateFrom || dateTo;
 
     if (!hasFilters) {
-      loadInvoices(page);
+      loadInvoices();
       return;
     }
 
@@ -394,13 +380,19 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     searchAbortController.current = new AbortController();
     const currentController = searchAbortController.current;
 
-    setLoading(true);
+    if (resetResults) {
+      setLoading(true);
+      setDisplayedInvoices([]);
+    } else {
+      setLoadingMore(true);
+    }
     setIsSearching(true);
+
     try {
       if (currentController.signal.aborted) return;
 
-      // Skip count query for searches - it causes timeouts on large tables
-      // Instead, load data and estimate count based on results
+      const offset = resetResults ? 0 : displayedInvoices.length;
+
       const { data, error } = await supabase.rpc('search_invoices_paginated', {
         search_term: hasSearchTerm ? searchTermTrimmed : null,
         status_filter: statusFilter !== 'all' ? statusFilter : null,
@@ -413,7 +405,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
         sort_by: sortBy,
         sort_order: sortOrder,
         p_limit: pageSize,
-        p_offset: page * pageSize
+        p_offset: offset
       });
 
       if (error) throw error;
@@ -425,19 +417,15 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
         reference_nbr: invoice.reference_number
       }));
 
-      // Enrich search results with assignment data
       const enrichedInvoices = await enrichInvoicesWithUserColors(invoices);
 
-      setDisplayedInvoices(enrichedInvoices);
-      setCurrentPage(page);
-
-      // Set estimated count based on results
-      // If we got a full page, there are likely more results
-      if (enrichedInvoices.length === pageSize) {
-        setTotalCount((page + 2) * pageSize); // Estimate at least one more page
+      if (resetResults) {
+        setDisplayedInvoices(enrichedInvoices);
       } else {
-        setTotalCount(page * pageSize + enrichedInvoices.length);
+        setDisplayedInvoices(prev => [...prev, ...enrichedInvoices]);
       }
+
+      setHasMoreResults(enrichedInvoices.length === pageSize);
     } catch (error) {
       console.error('Error searching invoices:', error);
       if (error?.code === '57014') {
@@ -445,28 +433,15 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
       }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
-  const goToNextPage = () => {
-    if ((currentPage + 1) * pageSize < totalCount) {
-      if (isSearching) {
-        handleSearch(currentPage + 1);
-      } else {
-        loadInvoices(currentPage + 1);
-      }
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
-
-  const goToPreviousPage = () => {
-    if (currentPage > 0) {
-      if (isSearching) {
-        handleSearch(currentPage - 1);
-      } else {
-        loadInvoices(currentPage - 1);
-      }
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  const loadMoreResults = () => {
+    if (isSearching) {
+      handleSearch(false);
+    } else {
+      loadInvoices(true);
     }
   };
 
@@ -519,7 +494,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     setDateTo('');
     setSortBy('date');
     setSortOrder('desc');
-    loadInvoices(0);
+    loadInvoices();
   };
 
   const showAllInvoices = () => {
@@ -622,9 +597,9 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     dateTo !== ''
   ].filter(Boolean).length;
 
-  const formatDate = formatDateUtil;
+  const formatDateDisplay = formatDateUtil;
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrencyDisplay = (amount: number) => {
     if (amount === null || amount === undefined) return 'N/A';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -636,7 +611,6 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     return <AcumaticaInvoiceFetch onBack={() => setShowFetchPage(false)} />;
   }
 
-  // Wait for permissions to load before checking access
   if (permissionsLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -648,7 +622,6 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     );
   }
 
-  // Show unauthorized message if user doesn't have access
   if (!hasAccess) {
     return (
       <div className="min-h-screen bg-gray-100 p-6">
@@ -694,7 +667,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Acumatica Invoices</h1>
               <p className="text-gray-600">
-                Page {currentPage + 1} of {Math.ceil(totalCount / pageSize)} ({formatTotalCount(totalCount)} total {isSearching ? 'results' : 'invoices'})
+                Showing {displayedInvoices.length} invoices {hasMoreResults && '(Load more to see additional results)'}
               </p>
             </div>
 
@@ -710,7 +683,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
               )}
 
               <button
-                onClick={() => loadInvoices(0)}
+                onClick={() => loadInvoices()}
                 disabled={loading}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
               >
@@ -738,7 +711,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
                 placeholder="Search by reference number, customer, order, description, or type (min 3 characters)..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch(true)}
                 className={`w-full pl-12 pr-4 py-3 bg-white border rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 transition-colors ${
                   searchTerm.trim().length > 0 && searchTerm.trim().length < 3
                     ? 'border-yellow-400 focus:border-yellow-500 focus:ring-yellow-500'
@@ -752,7 +725,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
               )}
             </div>
             <button
-              onClick={handleSearch}
+              onClick={() => handleSearch(true)}
               disabled={loading}
               className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
             >
@@ -980,39 +953,12 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
               <div className="pt-4 border-t border-gray-300">
                 <p className="text-sm text-gray-600">
                   Showing <span className="text-gray-900 font-semibold">{filteredInvoices.length}</span> of{' '}
-                  <span className="text-gray-900 font-semibold">{displayedInvoices.length}</span> loaded
-                  {totalCount > displayedInvoices.length && (
-                    <span> ({formatTotalCount(totalCount)} total in database)</span>
-                  )}
+                  <span className="text-gray-900 font-semibold">{displayedInvoices.length}</span> loaded invoices
                 </p>
               </div>
             </div>
           )}
         </div>
-
-        {!isSearching && !loading && filteredInvoices.length > 0 && (
-          <div className="flex items-center justify-between mb-4 px-4">
-            <button
-              onClick={goToPreviousPage}
-              disabled={currentPage === 0 || loading}
-              className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
-            >
-              <ChevronLeft size={20} />
-              Previous
-            </button>
-            <span className="text-gray-600">
-              Page {currentPage + 1} of {Math.ceil(totalCount / pageSize)} (Showing {currentPage * pageSize + 1}-{Math.min((currentPage + 1) * pageSize, totalCount)})
-            </span>
-            <button
-              onClick={goToNextPage}
-              disabled={(currentPage + 1) * pageSize >= totalCount || loading}
-              className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
-            >
-              Next
-              <ChevronRight size={20} />
-            </button>
-          </div>
-        )}
 
         {loading ? (
           <div className="text-center py-12">
@@ -1212,13 +1158,13 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
                         </select>
                       </td>
                       <td className="py-3 px-4 text-gray-900 text-sm border-r border-gray-300">
-                        {formatDate(invoice.date)}
+                        {formatDateDisplay(invoice.date)}
                       </td>
                       <td className="py-3 px-4 text-gray-900 text-sm border-r border-gray-300">
-                        {formatDate(invoice.due_date)}
+                        {formatDateDisplay(invoice.due_date)}
                       </td>
                       <td className="py-3 px-4 text-gray-900 text-sm text-right font-medium border-r border-gray-300">
-                        {formatCurrency(invoice.amount)}
+                        {formatCurrencyDisplay(invoice.amount)}
                       </td>
                       <td className={`py-3 px-4 text-sm text-right font-medium border-r border-gray-300 ${
                         invoice.balance === 0
@@ -1227,7 +1173,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
                           ? 'text-yellow-600'
                           : 'text-blue-600'
                       }`}>
-                        {formatCurrency(invoice.balance)}
+                        {formatCurrencyDisplay(invoice.balance)}
                       </td>
                       <td className="py-3 px-4 text-gray-900 text-sm border-r border-gray-300">
                         {invoice.terms || 'N/A'}
@@ -1251,32 +1197,22 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
               </table>
             </div>
 
-            {!isSearching && filteredInvoices.length > 0 && (
-              <div className="flex items-center justify-between p-4 bg-gray-50 border-t border-gray-300">
+            {hasMoreResults && (
+              <div className="p-4 text-center bg-gray-50 border-t border-gray-300">
                 <button
-                  onClick={goToPreviousPage}
-                  disabled={currentPage === 0 || loading}
-                  className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
+                  onClick={loadMoreResults}
+                  disabled={loadingMore}
+                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
                 >
-                  <ChevronLeft size={20} />
-                  Previous
+                  {loadingMore ? (
+                    <span className="flex items-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Loading...
+                    </span>
+                  ) : (
+                    `Load More (${displayedInvoices.length} loaded)`
+                  )}
                 </button>
-                <span className="text-gray-600">
-                  Page {currentPage + 1} of {Math.ceil(totalCount / pageSize)}
-                </span>
-                <button
-                  onClick={goToNextPage}
-                  disabled={(currentPage + 1) * pageSize >= totalCount || loading}
-                  className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
-                >
-                  Next
-                  <ChevronRight size={20} />
-                </button>
-              </div>
-            )}
-            {isSearching && (
-              <div className="p-4 text-center text-gray-600 text-sm bg-gray-50 border-t border-gray-300">
-                Showing {filteredInvoices.length} search result{filteredInvoices.length !== 1 ? 's' : ''} from entire database
               </div>
             )}
           </div>
@@ -1334,9 +1270,9 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
                       } else if (value === null || value === undefined || value === '') {
                         displayValue = 'N/A';
                       } else if (key.includes('date') || key.includes('time')) {
-                        displayValue = formatDate(value as string);
+                        displayValue = formatDateDisplay(value as string);
                       } else if (typeof value === 'number' && (key.includes('balance') || key.includes('limit') || key.includes('amount') || key.includes('total') || key.includes('tax'))) {
-                        displayValue = formatCurrency(value);
+                        displayValue = formatCurrencyDisplay(value);
                       }
 
                       return (
