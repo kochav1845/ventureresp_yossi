@@ -21,6 +21,8 @@ interface ResyncResult {
   error?: string;
 }
 
+type RunMode = 'single' | 'continuous';
+
 interface BatchLog {
   batch: number;
   skip: number;
@@ -47,6 +49,7 @@ export default function PaymentApplicationResync({ onBack }: { onBack: () => voi
     errors: 0
   });
   const [error, setError] = useState<string | null>(null);
+  const [lastBatchErrors, setLastBatchErrors] = useState<string[]>([]);
   const abortRef = useRef(false);
   const batchCountRef = useRef(0);
 
@@ -73,10 +76,11 @@ export default function PaymentApplicationResync({ onBack }: { onBack: () => voi
     return response.json();
   };
 
-  const startResync = async () => {
+  const startResync = async (mode: RunMode = 'continuous') => {
     setIsRunning(true);
     setIsPaused(false);
     setError(null);
+    setLastBatchErrors([]);
     abortRef.current = false;
     batchCountRef.current = 0;
 
@@ -109,6 +113,10 @@ export default function PaymentApplicationResync({ onBack }: { onBack: () => voi
         setProgress(result);
         setCurrentSkip(result.nextSkip || skip + batchSize);
 
+        if (result.errors && result.errors.length > 0) {
+          setLastBatchErrors(result.errors);
+        }
+
         const log: BatchLog = {
           batch: batchCountRef.current,
           skip,
@@ -128,7 +136,7 @@ export default function PaymentApplicationResync({ onBack }: { onBack: () => voi
           errors: prev.errors + (result.errors?.length || 0)
         }));
 
-        if (result.complete) {
+        if (mode === 'single' || result.complete) {
           break;
         }
 
@@ -164,6 +172,7 @@ export default function PaymentApplicationResync({ onBack }: { onBack: () => voi
       errors: 0
     });
     setError(null);
+    setLastBatchErrors([]);
   };
 
   const progressPercent = progress?.totalPayments
@@ -253,15 +262,24 @@ export default function PaymentApplicationResync({ onBack }: { onBack: () => voi
             <p className="text-xs text-gray-500 ml-6 mt-1">Recommended for a clean re-sync</p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             {!isRunning ? (
-              <button
-                onClick={startResync}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Play className="w-4 h-4" />
-                {isPaused ? 'Resume' : 'Start Re-sync'}
-              </button>
+              <>
+                <button
+                  onClick={() => startResync('single')}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <Play className="w-4 h-4" />
+                  Run Single Batch
+                </button>
+                <button
+                  onClick={() => startResync('continuous')}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Play className="w-4 h-4" />
+                  {isPaused ? 'Resume All' : 'Run All'}
+                </button>
+              </>
             ) : (
               <button
                 onClick={pauseResync}
@@ -346,6 +364,17 @@ export default function PaymentApplicationResync({ onBack }: { onBack: () => voi
             {totalStats.errors > 0 && (
               <div className="mt-3 text-sm text-amber-600">
                 Errors encountered: {totalStats.errors}
+              </div>
+            )}
+
+            {lastBatchErrors.length > 0 && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm font-medium text-red-800 mb-2">Last batch errors:</p>
+                <ul className="text-xs text-red-700 space-y-1 max-h-32 overflow-y-auto">
+                  {lastBatchErrors.map((err, i) => (
+                    <li key={i} className="font-mono">{err}</li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
