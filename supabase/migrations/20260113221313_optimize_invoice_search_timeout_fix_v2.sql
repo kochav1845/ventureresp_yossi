@@ -1,0 +1,244 @@
+/*
+  # Fix Invoice Search Timeout Issues
+  
+  1. New Indexes
+    - Add trigram index on customer_name for fast ILIKE searches
+  
+  2. Function Optimizations
+    - Simplify search_invoices_count to avoid expensive pattern matching
+    - Use early termination for count queries
+    - Rewrite search_invoices_paginated with simplified ORDER BY
+*/
+
+-- Add trigram index on customer_name (this is the missing one causing slow searches)
+CREATE INDEX IF NOT EXISTS idx_invoices_customer_name_trgm 
+ON acumatica_invoices USING gin (customer_name gin_trgm_ops);
+
+-- Drop and recreate the paginated function
+DROP FUNCTION IF EXISTS search_invoices_paginated(text,text,text,text[],text,text,date,date,text,text,integer,integer);
+
+-- Optimized count function - much faster by avoiding expensive full scans
+CREATE OR REPLACE FUNCTION search_invoices_count(
+  search_term TEXT DEFAULT NULL,
+  status_filter TEXT DEFAULT 'all',
+  customer_filter TEXT DEFAULT 'all',
+  customer_ids TEXT[] DEFAULT NULL,
+  balance_filter TEXT DEFAULT 'all',
+  color_filter TEXT DEFAULT 'all',
+  date_from DATE DEFAULT NULL,
+  date_to DATE DEFAULT NULL,
+  max_count BIGINT DEFAULT 10000
+)
+RETURNS BIGINT
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  is_numeric BOOLEAN;
+  clean_search TEXT;
+  padded_search TEXT;
+  result_count BIGINT := 0;
+  has_filters BOOLEAN := FALSE;
+  has_search BOOLEAN := FALSE;
+BEGIN
+  -- Check if we have search term
+  has_search := (search_term IS NOT NULL AND search_term != '');
+  
+  -- Check if we have any filters applied
+  has_filters := (
+    (status_filter IS NOT NULL AND status_filter != 'all') OR
+    (customer_filter IS NOT NULL AND customer_filter != 'all') OR
+    customer_ids IS NOT NULL OR
+    (balance_filter IS NOT NULL AND balance_filter != 'all') OR
+    (color_filter IS NOT NULL AND color_filter != 'all') OR
+    date_from IS NOT NULL OR
+    date_to IS NOT NULL
+  );
+
+  -- Fast path: no search, no filters - use table statistics
+  IF NOT has_search AND NOT has_filters THEN
+    SELECT reltuples::BIGINT INTO result_count
+    FROM pg_class
+    WHERE relname = 'acumatica_invoices';
+    RETURN LEAST(result_count, max_count);
+  END IF;
+
+  -- Prepare search term if provided
+  IF has_search THEN
+    clean_search := trim(search_term);
+    is_numeric := clean_search ~ '^\d+$';
+    
+    IF is_numeric AND length(clean_search) < 6 THEN
+      padded_search := lpad(clean_search, 6, '0');
+    ELSE
+      padded_search := clean_search;
+    END IF;
+
+    -- For exact reference number match (very fast with index)
+    SELECT COUNT(*) INTO result_count
+    FROM acumatica_invoices i
+    WHERE i.reference_number IN (clean_search, padded_search)
+      AND (status_filter IS NULL OR status_filter = 'all' OR i.status = status_filter)
+      AND (customer_filter IS NULL OR customer_filter = 'all' OR i.customer = customer_filter)
+      AND (customer_ids IS NULL OR i.customer = ANY(customer_ids))
+      AND (balance_filter IS NULL OR balance_filter = 'all' OR 
+           (balance_filter = 'paid' AND i.balance = 0) OR
+           (balance_filter = 'unpaid' AND i.balance > 0))
+      AND (color_filter IS NULL OR color_filter = 'all' OR i.color_status = color_filter)
+      AND (date_from IS NULL OR i.date >= date_from)
+      AND (date_to IS NULL OR i.date <= date_to);
+
+    IF result_count > 0 THEN
+      RETURN result_count;
+    END IF;
+
+    -- For pattern search, just return max_count if matches exist
+    -- This avoids the expensive COUNT on ILIKE queries
+    IF EXISTS (
+      SELECT 1
+      FROM acumatica_invoices i
+      WHERE (i.reference_number ILIKE clean_search || '%' OR 
+             i.customer_name ILIKE '%' || clean_search || '%')
+        AND (status_filter IS NULL OR status_filter = 'all' OR i.status = status_filter)
+        AND (customer_filter IS NULL OR customer_filter = 'all' OR i.customer = customer_filter)
+        AND (customer_ids IS NULL OR i.customer = ANY(customer_ids))
+        AND (balance_filter IS NULL OR balance_filter = 'all' OR 
+             (balance_filter = 'paid' AND i.balance = 0) OR
+             (balance_filter = 'unpaid' AND i.balance > 0))
+        AND (color_filter IS NULL OR color_filter = 'all' OR i.color_status = color_filter)
+        AND (date_from IS NULL OR i.date >= date_from)
+        AND (date_to IS NULL OR i.date <= date_to)
+      LIMIT 1
+    ) THEN
+      RETURN max_count;
+    ELSE
+      RETURN 0;
+    END IF;
+  ELSE
+    -- No search term, just filters - use efficient counted subquery
+    SELECT COUNT(*) INTO result_count
+    FROM (
+      SELECT 1
+      FROM acumatica_invoices i
+      WHERE (status_filter IS NULL OR status_filter = 'all' OR i.status = status_filter)
+        AND (customer_filter IS NULL OR customer_filter = 'all' OR i.customer = customer_filter)
+        AND (customer_ids IS NULL OR i.customer = ANY(customer_ids))
+        AND (balance_filter IS NULL OR balance_filter = 'all' OR 
+             (balance_filter = 'paid' AND i.balance = 0) OR
+             (balance_filter = 'unpaid' AND i.balance > 0))
+        AND (color_filter IS NULL OR color_filter = 'all' OR i.color_status = color_filter)
+        AND (date_from IS NULL OR i.date >= date_from)
+        AND (date_to IS NULL OR i.date <= date_to)
+      LIMIT max_count
+    ) limited;
+    
+    RETURN result_count;
+  END IF;
+END;
+$$;
+
+-- Optimized paginated search with simplified dynamic ORDER BY
+CREATE FUNCTION search_invoices_paginated(
+  search_term TEXT DEFAULT NULL,
+  status_filter TEXT DEFAULT 'all',
+  customer_filter TEXT DEFAULT 'all',
+  customer_ids TEXT[] DEFAULT NULL,
+  balance_filter TEXT DEFAULT 'all',
+  color_filter TEXT DEFAULT 'all',
+  date_from DATE DEFAULT NULL,
+  date_to DATE DEFAULT NULL,
+  sort_by TEXT DEFAULT 'date',
+  sort_order TEXT DEFAULT 'desc',
+  p_limit INTEGER DEFAULT 50,
+  p_offset INTEGER DEFAULT 0
+)
+RETURNS TABLE (
+  id UUID,
+  customer TEXT,
+  customer_name TEXT,
+  reference_number TEXT,
+  type TEXT,
+  status TEXT,
+  color_status TEXT,
+  date DATE,
+  due_date DATE,
+  amount NUMERIC,
+  balance NUMERIC,
+  terms TEXT,
+  last_modified_by_color UUID,
+  customer_order TEXT,
+  description TEXT
+)
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  is_numeric BOOLEAN;
+  clean_search TEXT;
+  padded_search TEXT;
+  search_pattern TEXT;
+BEGIN
+  IF search_term IS NOT NULL AND search_term != '' THEN
+    clean_search := trim(search_term);
+    is_numeric := clean_search ~ '^\d+$';
+    IF is_numeric AND length(clean_search) < 6 THEN
+      padded_search := lpad(clean_search, 6, '0');
+    ELSE
+      padded_search := clean_search;
+    END IF;
+    search_pattern := '%' || clean_search || '%';
+  END IF;
+
+  RETURN QUERY
+  SELECT 
+    i.id, i.customer, i.customer_name, i.reference_number,
+    i.type, i.status, i.color_status, i.date, i.due_date,
+    i.amount, i.balance, i.terms, i.last_modified_by_color,
+    i.customer_order, i.description
+  FROM acumatica_invoices i
+  WHERE 
+    -- Search conditions
+    (search_term IS NULL OR search_term = '' OR
+     i.reference_number = clean_search OR 
+     i.reference_number = padded_search OR
+     i.reference_number ILIKE search_pattern OR
+     i.customer_name ILIKE search_pattern)
+    -- Filter conditions
+    AND (status_filter IS NULL OR status_filter = 'all' OR i.status = status_filter)
+    AND (customer_filter IS NULL OR customer_filter = 'all' OR i.customer = customer_filter)
+    AND (customer_ids IS NULL OR i.customer = ANY(customer_ids))
+    AND (balance_filter IS NULL OR balance_filter = 'all' OR
+         (balance_filter = 'paid' AND i.balance = 0) OR
+         (balance_filter = 'unpaid' AND i.balance > 0))
+    AND (color_filter IS NULL OR color_filter = 'all' OR i.color_status = color_filter)
+    AND (date_from IS NULL OR i.date >= date_from)
+    AND (date_to IS NULL OR i.date <= date_to)
+  ORDER BY
+    CASE WHEN sort_by = 'date' AND sort_order = 'desc' THEN i.date END DESC NULLS LAST,
+    CASE WHEN sort_by = 'date' AND sort_order = 'asc' THEN i.date END ASC NULLS LAST,
+    CASE WHEN sort_by = 'balance' AND sort_order = 'desc' THEN i.balance END DESC NULLS LAST,
+    CASE WHEN sort_by = 'balance' AND sort_order = 'asc' THEN i.balance END ASC NULLS LAST,
+    CASE WHEN sort_by = 'amount' AND sort_order = 'desc' THEN i.amount END DESC NULLS LAST,
+    CASE WHEN sort_by = 'amount' AND sort_order = 'asc' THEN i.amount END ASC NULLS LAST,
+    CASE WHEN sort_by = 'due_date' AND sort_order = 'desc' THEN i.due_date END DESC NULLS LAST,
+    CASE WHEN sort_by = 'due_date' AND sort_order = 'asc' THEN i.due_date END ASC NULLS LAST,
+    CASE WHEN sort_by = 'reference_number' AND sort_order = 'desc' THEN i.reference_number END DESC NULLS LAST,
+    CASE WHEN sort_by = 'reference_number' AND sort_order = 'asc' THEN i.reference_number END ASC NULLS LAST,
+    CASE WHEN sort_by = 'customer_name' AND sort_order = 'desc' THEN i.customer_name END DESC NULLS LAST,
+    CASE WHEN sort_by = 'customer_name' AND sort_order = 'asc' THEN i.customer_name END ASC NULLS LAST,
+    CASE WHEN sort_by = 'status' AND sort_order = 'desc' THEN i.status END DESC NULLS LAST,
+    CASE WHEN sort_by = 'status' AND sort_order = 'asc' THEN i.status END ASC NULLS LAST,
+    CASE WHEN sort_by = 'type' AND sort_order = 'desc' THEN i.type END DESC NULLS LAST,
+    CASE WHEN sort_by = 'type' AND sort_order = 'asc' THEN i.type END ASC NULLS LAST,
+    CASE WHEN sort_by = 'color' AND sort_order = 'desc' THEN 
+      CASE WHEN i.color_status IS NULL OR i.color_status = 'none' THEN 1 ELSE 0 END
+    END ASC,
+    CASE WHEN sort_by = 'color' AND sort_order = 'desc' THEN i.color_status END DESC NULLS LAST,
+    CASE WHEN sort_by = 'color' AND sort_order = 'asc' THEN 
+      CASE WHEN i.color_status IS NULL OR i.color_status = 'none' THEN 0 ELSE 1 END
+    END ASC,
+    CASE WHEN sort_by = 'color' AND sort_order = 'asc' THEN i.color_status END ASC NULLS LAST,
+    i.date DESC NULLS LAST
+  LIMIT p_limit OFFSET p_offset;
+END;
+$$;
