@@ -8,6 +8,7 @@ interface InvoiceApplication {
   payment_id: string;
   payment_reference_number: string;
   invoice_reference_number: string;
+  doc_type: string;
   customer_id: string;
   application_date: string;
   amount_paid: number;
@@ -162,7 +163,9 @@ export default function PaymentApplicationViewer() {
         }
 
         const payment = paymentMap.get(key)!;
-        payment.total_amount += app.amount_paid;
+        if (app.doc_type === 'Invoice') {
+          payment.total_amount += app.amount_paid;
+        }
         payment.application_count++;
         payment.applications.push(app);
       });

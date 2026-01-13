@@ -717,7 +717,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           // Create payment rows for this batch
           const batchPaymentRows: PaymentRow[] = batch.map((payment: any) => {
             const apps = applicationsByPayment.get(payment.id) || [];
-            const totalApplied = apps.reduce((sum, app) => sum + (parseFloat(app.amount_paid) || 0), 0);
+            const totalApplied = apps
+              .filter(app => app.doc_type === 'Invoice')
+              .reduce((sum, app) => sum + (parseFloat(app.amount_paid) || 0), 0);
             const invoiceList = apps.map(app => `${app.doc_type}: ${app.invoice_reference_number}`).join(', ');
 
             return {
@@ -1815,11 +1817,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                     <p className="text-xs text-blue-400 mt-1">Payments in Date Range</p>
                   </div>
                   <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-lg p-4">
-                    <p className="text-xs text-gray-500 mb-1">Total Amount Paid</p>
+                    <p className="text-xs text-gray-500 mb-1">Total Applied (Invoices Only)</p>
                     <p className="text-2xl font-bold text-gray-700">
-                      {formatCurrency(filteredAnalyticsData.reduce((sum, app) => sum + app.amount_paid, 0))}
+                      {formatCurrency(filteredAnalyticsData.filter(app => app.doc_type === 'Invoice').reduce((sum, app) => sum + app.amount_paid, 0))}
                     </p>
-                    <p className="text-xs text-green-400 mt-1">Sum of {filteredAnalyticsData.length} payments applied to invoices</p>
+                    <p className="text-xs text-green-400 mt-1">{filteredAnalyticsData.filter(app => app.doc_type === 'Invoice').length} invoice applications</p>
                   </div>
                   <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/10 border border-yellow-500/30 rounded-lg p-4">
                     <p className="text-xs text-gray-500 mb-1">Avg. Days to Pay</p>
@@ -3084,13 +3086,15 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs text-gray-500 mb-1">Total Applied</p>
+                        <p className="text-xs text-gray-500 mb-1">Total Applied (Invoices)</p>
                         <p className="text-2xl font-bold text-green-400">
                           {formatCurrency(
-                            invoiceApplications.reduce(
-                              (sum, app) => sum + parseFloat(app.amount_paid.toString()),
-                              0
-                            )
+                            invoiceApplications
+                              .filter(app => app.doc_type === 'Invoice')
+                              .reduce(
+                                (sum, app) => sum + parseFloat(app.amount_paid.toString()),
+                                0
+                              )
                           )}
                         </p>
                       </div>
