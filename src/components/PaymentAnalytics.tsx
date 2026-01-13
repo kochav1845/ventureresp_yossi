@@ -48,8 +48,12 @@ type SortDirection = 'asc' | 'desc';
 const formatDateString = (dateString: string): string => {
   if (!dateString) return 'N/A';
   try {
-    if (dateString.includes('T')) {
-      return format(parseISO(dateString), 'M/d/yyyy');
+    if (dateString.includes('T') || dateString.includes(' ')) {
+      const date = new Date(dateString);
+      const month = date.getUTCMonth() + 1;
+      const day = date.getUTCDate();
+      const year = date.getUTCFullYear();
+      return `${month}/${day}/${year}`;
     }
     const [year, month, day] = dateString.split('-');
     return `${parseInt(month)}/${parseInt(day)}/${year}`;

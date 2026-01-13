@@ -384,9 +384,10 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
 
   const formatMonth = (monthKey: string) => {
     const [year, month] = monthKey.split('-');
-    return new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-US', {
+    return new Date(Date.UTC(parseInt(year), parseInt(month) - 1)).toLocaleDateString('en-US', {
       year: 'numeric',
-      month: 'long'
+      month: 'long',
+      timeZone: 'UTC'
     });
   };
 
@@ -889,6 +890,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
                 {new Date(selectedDay).toLocaleDateString('en-US', {
                   weekday: 'long',
                   year: 'numeric',
+                  timeZone: 'UTC',
                   month: 'long',
                   day: 'numeric'
                 })}
@@ -1039,6 +1041,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
                               {new Date(day).toLocaleDateString('en-US', {
                                 weekday: 'short',
                                 month: 'short',
+                                timeZone: 'UTC',
                                 day: 'numeric',
                                 year: 'numeric'
                               })}
@@ -1081,6 +1084,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
                                 {new Date(payment.application_date).toLocaleDateString('en-US', {
                                   year: 'numeric',
                                   month: 'short',
+                                  timeZone: 'UTC',
                                   day: 'numeric'
                                 })}
                               </td>
