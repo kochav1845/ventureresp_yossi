@@ -682,7 +682,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           .from('acumatica_payments')
           .select('*')
           .gte('application_date', startStr)
-          .lte('application_date', endStr)
+          .lt('application_date', endStr)
           .order('application_date', { ascending: false })
           .range(offset, offset + batchSize - 1);
 
