@@ -399,23 +399,8 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     try {
       if (currentController.signal.aborted) return;
 
-      // Get count of matching results
-      const { data: countData, error: countError } = await supabase
-        .rpc('search_invoices_count', {
-          search_term: hasSearchTerm ? searchTermTrimmed : null,
-          status_filter: statusFilter !== 'all' ? statusFilter : null,
-          customer_filter: customerFilter !== 'all' ? customerFilter : null,
-          customer_ids: selectedCustomers.length > 0 ? selectedCustomers : null,
-          balance_filter: balanceFilter !== 'all' ? balanceFilter : null,
-          color_filter: colorFilter !== 'all' ? colorFilter : null,
-          date_from: dateFrom || null,
-          date_to: dateTo || null
-        });
-
-      if (countError) throw countError;
-      setTotalCount(Number(countData) || 0);
-
-      // Get paginated results
+      // Skip count query for searches - it causes timeouts on large tables
+      // Instead, load data and estimate count based on results
       const { data, error } = await supabase.rpc('search_invoices_paginated', {
         search_term: hasSearchTerm ? searchTermTrimmed : null,
         status_filter: statusFilter !== 'all' ? statusFilter : null,
@@ -445,6 +430,14 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
 
       setDisplayedInvoices(enrichedInvoices);
       setCurrentPage(page);
+
+      // Set estimated count based on results
+      // If we got a full page, there are likely more results
+      if (enrichedInvoices.length === pageSize) {
+        setTotalCount((page + 2) * pageSize); // Estimate at least one more page
+      } else {
+        setTotalCount(page * pageSize + enrichedInvoices.length);
+      }
     } catch (error) {
       console.error('Error searching invoices:', error);
       if (error?.code === '57014') {
