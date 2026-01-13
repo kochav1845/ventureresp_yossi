@@ -236,6 +236,20 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     filterAnalyticsData();
   }, [analyticsData, appliedPaymentDateFrom, appliedPaymentDateTo, appliedMinAmount, appliedMaxAmount, appliedCustomerFilter, appliedSelectedCustomers, appliedTimingFilter, appliedCustomDaysMin, appliedCustomDaysMax, appliedShowOnlyOverdue, excludedCustomerIds, analyticsSortField, analyticsSortDirection]);
 
+  // Update summary stats based on filtered payments (including date selection)
+  useEffect(() => {
+    const total = filteredPayments.reduce((sum, p) => sum + p.payment_amount, 0);
+    const uniqueCustomers = new Set(filteredPayments.map(p => p.customer_id).filter(Boolean));
+    const creditMemos = filteredPayments
+      .filter(p => p.type === 'Credit Memo')
+      .reduce((sum, p) => sum + p.payment_amount, 0);
+
+    setMonthlyTotal(total);
+    setMonthlyPaymentCount(filteredPayments.length);
+    setMonthlyCustomerCount(uniqueCustomers.size);
+    setMonthlyCreditMemos(creditMemos);
+  }, [filteredPayments]);
+
   // Initialize temp filters with applied filter values on mount
   useEffect(() => {
     setTempFilterStatus(filterStatus);
