@@ -149,6 +149,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [appliedShowOnlyOverdue, setAppliedShowOnlyOverdue] = useState(true);
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
 
+  // View mode state
+  const [viewMode, setViewMode] = useState<'payment' | 'application'>('payment');
+  const [applicationRows, setApplicationRows] = useState<any[]>([]);
+  const [filteredApplicationRows, setFilteredApplicationRows] = useState<any[]>([]);
+
   // Customer exclusions
   const [excludedCustomerIds, setExcludedCustomerIds] = useState<Set<string>>(new Set());
   const [excludedCustomersWithReasons, setExcludedCustomersWithReasons] = useState<Map<string, { notes: string; excluded_at: string }>>(new Map());
@@ -230,6 +235,34 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   useEffect(() => {
     filterAndSortPayments();
   }, [payments, searchTerm, sortField, sortDirection, filterStatus, filterType, filterPaymentMethod, filterInvoicePeriod, selectedDate, excludedCustomerIds]);
+
+  // Create application rows when filtered payments change
+  useEffect(() => {
+    if (viewMode === 'application') {
+      createApplicationRows(filteredPayments);
+    }
+  }, [filteredPayments, viewMode]);
+
+  // Filter application rows based on search term
+  useEffect(() => {
+    if (viewMode === 'application') {
+      let filtered = [...applicationRows];
+
+      if (searchTerm) {
+        const search = searchTerm.toLowerCase();
+        filtered = filtered.filter(app =>
+          app.invoice_reference_number?.toLowerCase().includes(search) ||
+          app.payment_reference?.toLowerCase().includes(search) ||
+          app.customer_name?.toLowerCase().includes(search) ||
+          app.customer_id?.toLowerCase().includes(search) ||
+          app.payment_method?.toLowerCase().includes(search) ||
+          app.doc_type?.toLowerCase().includes(search)
+        );
+      }
+
+      setFilteredApplicationRows(filtered);
+    }
+  }, [applicationRows, searchTerm, viewMode]);
 
   useEffect(() => {
     filterAnalyticsData();
@@ -801,6 +834,70 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     }
   };
 
+  const createApplicationRows = async (paymentsToProcess: PaymentRow[]) => {
+    if (paymentsToProcess.length === 0) {
+      setApplicationRows([]);
+      return;
+    }
+
+    try {
+      const paymentIds = paymentsToProcess.map(p => p.id);
+
+      // Fetch all invoice applications for these payments
+      const applications = await batchedInQuery(
+        supabase,
+        'payment_invoice_applications',
+        '*',
+        'payment_id',
+        paymentIds
+      );
+
+      if (!applications || applications.length === 0) {
+        setApplicationRows([]);
+        return;
+      }
+
+      // Create a map of payments for quick lookup
+      const paymentMap = new Map(paymentsToProcess.map(p => [p.id, p]));
+
+      // Create flattened rows - one row per invoice application
+      const flattenedRows = applications.map((app: any) => {
+        const payment = paymentMap.get(app.payment_id);
+
+        return {
+          // Application-specific fields
+          application_id: app.id,
+          invoice_reference_number: app.invoice_reference_number,
+          doc_type: app.doc_type,
+          amount_paid: parseFloat(app.amount_paid) || 0,
+          invoice_date: app.invoice_date,
+          invoice_due_date: app.invoice_due_date,
+          invoice_balance: app.invoice_balance,
+          invoice_amount: app.invoice_amount,
+          invoice_status: app.invoice_status,
+
+          // Payment fields
+          payment_id: app.payment_id,
+          payment_date: payment?.date || '',
+          payment_reference: payment?.reference_number || '',
+          payment_amount: payment?.payment_amount || 0,
+          payment_method: payment?.payment_method || '',
+          payment_type: payment?.type || '',
+          payment_status: payment?.status || '',
+          payment_available_balance: payment?.available_balance || 0,
+          payment_description: payment?.description || '',
+          customer_id: payment?.customer_id || '',
+          customer_name: payment?.customer_name || ''
+        };
+      });
+
+      setApplicationRows(flattenedRows);
+    } catch (error) {
+      console.error('Error creating application rows:', error);
+      setApplicationRows([]);
+    }
+  };
+
   const filterAndSortPayments = () => {
     let filtered = [...payments];
 
@@ -952,25 +1049,52 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   };
 
   const exportToExcel = () => {
-    const exportData = filteredPayments.map(p => ({
-      'Date': p.date,
-      'Reference': p.reference_number,
-      'Customer ID': p.customer_id,
-      'Customer Name': p.customer_name,
-      'Payment Method': p.payment_method,
-      'Type': p.type,
-      'Amount': p.payment_amount,
-      'Status': p.status,
-      'Invoice Applications': p.invoice_applications,
-      'Total Applied': p.total_applied,
-      'Available Balance': p.available_balance,
-      'Description': p.description
-    }));
+    if (viewMode === 'payment') {
+      // Export payment view
+      const exportData = filteredPayments.map(p => ({
+        'Date': p.date,
+        'Reference': p.reference_number,
+        'Customer ID': p.customer_id,
+        'Customer Name': p.customer_name,
+        'Payment Method': p.payment_method,
+        'Type': p.type,
+        'Amount': p.payment_amount,
+        'Status': p.status,
+        'Invoice Applications': p.invoice_applications,
+        'Total Applied': p.total_applied,
+        'Available Balance': p.available_balance,
+        'Description': p.description
+      }));
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Payment Analytics');
-    XLSX.writeFile(workbook, `payment_analytics_${selectedMonth.getFullYear()}_${selectedMonth.getMonth() + 1}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Payment Analytics');
+      XLSX.writeFile(workbook, `payment_analytics_${selectedMonth.getFullYear()}_${selectedMonth.getMonth() + 1}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } else {
+      // Export application view
+      const exportData = filteredApplicationRows.map(app => ({
+        'Payment Date': formatDateString(app.payment_date),
+        'Payment Reference': app.payment_reference,
+        'Customer ID': app.customer_id,
+        'Customer Name': app.customer_name,
+        'Payment Method': app.payment_method,
+        'Payment Type': app.payment_type,
+        'Payment Amount': app.payment_amount,
+        'Payment Status': app.payment_status,
+        'Invoice Reference': app.invoice_reference_number,
+        'Document Type': app.doc_type,
+        'Invoice Date': app.invoice_date ? formatDateString(app.invoice_date) : 'N/A',
+        'Invoice Due Date': app.invoice_due_date ? formatDateString(app.invoice_due_date) : 'N/A',
+        'Amount Applied': app.amount_paid,
+        'Invoice Balance': app.invoice_balance != null ? app.invoice_balance : 'N/A',
+        'Invoice Status': app.invoice_status || 'N/A'
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Invoice Applications');
+      XLSX.writeFile(workbook, `invoice_applications_${selectedMonth.getFullYear()}_${selectedMonth.getMonth() + 1}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    }
   };
 
   const exportAnalyticsToExcel = () => {
@@ -2681,6 +2805,28 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
               <RefreshCw className={`w-5 h-5 ${fetchingAttachments ? 'animate-spin' : ''}`} />
               {fetchingAttachments ? 'Fetching...' : 'Fetch Attachments'}
             </button>
+            <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1 border border-gray-300">
+              <button
+                onClick={() => setViewMode('payment')}
+                className={`px-4 py-2 rounded-md font-semibold transition-all ${
+                  viewMode === 'payment'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                By Payment
+              </button>
+              <button
+                onClick={() => setViewMode('application')}
+                className={`px-4 py-2 rounded-md font-semibold transition-all ${
+                  viewMode === 'application'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                By Invoice
+              </button>
+            </div>
             <button
               onClick={exportToExcel}
               className="flex items-center gap-2 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all shadow-sm"
@@ -2749,6 +2895,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
               scrollbarColor: '#64748b #1e293b'
             }}
           >
+            {viewMode === 'payment' ? (
+              <>
             {loading && filteredPayments.length === 0 ? (
               <table className="divide-y divide-gray-200" style={{ minWidth: '1400px', width: 'max-content' }}>
                 <thead>
@@ -2914,10 +3062,139 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                 </tfoot>
               </table>
             )}
+              </>
+            ) : (
+              /* Application View */
+              loading && filteredApplicationRows.length === 0 ? (
+                <table className="divide-y divide-gray-200" style={{ minWidth: '1600px', width: 'max-content' }}>
+                  <thead>
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Ref</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Customer</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Method</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Amount</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Invoice Ref</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Doc Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Invoice Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Due Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Amount Applied</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Invoice Balance</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {[...Array(8)].map((_, i) => (
+                      <tr key={i} className="animate-pulse">
+                        {[...Array(12)].map((_, j) => (
+                          <td key={j} className="px-4 py-4 border-r border-gray-200">
+                            <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]" style={{ animationDelay: `${j * 0.1}s` }}></div>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="divide-y divide-gray-200" style={{ minWidth: '1600px', width: 'max-content' }}>
+                  <thead>
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Ref</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Customer</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Method</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Amount</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Invoice Ref</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Doc Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Invoice Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Due Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Amount Applied</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Invoice Balance</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredApplicationRows.map((app, index) => (
+                      <tr key={app.application_id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
+                          {formatDateString(app.payment_date)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 border-r border-gray-200/50">
+                          {app.payment_reference}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-200/50 max-w-xs truncate" title={app.customer_name}>
+                          {app.customer_name}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
+                          {app.payment_method}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-600 border-r border-gray-200/50">
+                          {formatCurrency(app.payment_amount)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-blue-600 border-r border-gray-200/50">
+                          {app.invoice_reference_number}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap border-r border-gray-200/50">
+                          <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                            app.doc_type === 'Invoice'
+                              ? 'bg-blue-500/20 text-blue-600'
+                              : app.doc_type === 'Credit Memo'
+                              ? 'bg-orange-500/20 text-orange-600'
+                              : 'bg-gray-500/20 text-gray-600'
+                          }`}>
+                            {app.doc_type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
+                          {app.invoice_date ? formatDateString(app.invoice_date) : 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
+                          {app.invoice_due_date ? formatDateString(app.invoice_due_date) : 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-blue-600 border-r border-gray-200/50">
+                          {formatCurrency(app.amount_paid)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
+                          {app.invoice_balance != null ? formatCurrency(app.invoice_balance) : 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap border-r border-gray-200/50">
+                          {app.invoice_status && (
+                            <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                              app.invoice_status === 'Open'
+                                ? 'bg-green-500/20 text-green-600'
+                                : app.invoice_status === 'Closed'
+                                ? 'bg-blue-500/20 text-blue-600'
+                                : 'bg-gray-500/20 text-gray-600'
+                            }`}>
+                              {app.invoice_status}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                    <tr>
+                      <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-700 border-r border-gray-200">
+                        TOTAL ({filteredApplicationRows.length} invoice applications)
+                      </td>
+                      <td className="px-4 py-3 text-sm font-bold text-green-600 border-r border-gray-200">
+                        {formatCurrency(filteredApplicationRows.reduce((sum, a) => sum + a.payment_amount, 0))}
+                      </td>
+                      <td colSpan={4} className="px-4 py-3 text-sm text-gray-500 border-r border-gray-200"></td>
+                      <td className="px-4 py-3 text-sm font-bold text-blue-600 border-r border-gray-200">
+                        {formatCurrency(filteredApplicationRows.reduce((sum, a) => sum + a.amount_paid, 0))}
+                      </td>
+                      <td colSpan={2} className="px-4 py-3 text-sm text-gray-500"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              )
+            )}
           </div>
 
           {/* Loading indicator for infinite scroll */}
-          {loadingMorePayments && (
+          {loadingMorePayments && viewMode === 'payment' && (
             <div className="border-t border-gray-200 bg-gray-50 px-6 py-4 flex justify-center">
               <div className="flex items-center gap-2 text-gray-600">
                 <RefreshCw className="w-5 h-5 animate-spin" />
