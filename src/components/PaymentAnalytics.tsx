@@ -539,6 +539,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         const { data, error } = await supabase
           .from('acumatica_payments')
           .select('application_date, payment_amount')
+          .neq('type', 'Credit Memo')
           .gte('application_date', startStr)
           .lte('application_date', endStr)
           .range(offset, offset + batchSize - 1);
@@ -597,6 +598,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         const { data, error } = await supabase
           .from('acumatica_payments')
           .select('application_date, payment_amount')
+          .neq('type', 'Credit Memo')
           .gte('application_date', startStr)
           .lte('application_date', endStr)
           .range(offset, offset + batchSize - 1);
@@ -695,6 +697,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         let query = supabase
           .from('acumatica_payments')
           .select('*')
+          .neq('type', 'Credit Memo')
           .gte('application_date', startStr);
 
         // Use .lte() for inclusive end dates (custom range), .lt() for exclusive (month boundary)
@@ -911,7 +914,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const getDayPayments = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
-    return payments.filter(p => p.date.split('T')[0] === dateStr);
+    return payments.filter(p => p.type !== 'Credit Memo' && p.date.split('T')[0] === dateStr);
   };
 
   const getMonthlyData = () => {
