@@ -41,6 +41,11 @@ Deno.serve(async (req: Request) => {
       fetchApplicationHistory = true
     } = body;
 
+    // Block fetching credit memos
+    if (docType === 'Credit Memo') {
+      throw new Error("Credit memos are not supported. Only 'Payment' and 'Prepayment' types are allowed.");
+    }
+
     const { data: credentials, error: credsError } = await supabase
       .from('acumatica_sync_credentials')
       .select('*')

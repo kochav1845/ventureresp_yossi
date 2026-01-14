@@ -79,10 +79,10 @@ Deno.serve(async (req: Request) => {
 
     if (paymentRefNbr) {
       console.log(`Fetching specific payment ${paymentRefNbr}`);
-      paymentUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=ReferenceNbr eq '${paymentRefNbr}'`;
+      paymentUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=ReferenceNbr eq '${paymentRefNbr}' and Type ne 'Credit Memo'`;
     } else {
       console.log('Fetching first payment to discover structure');
-      paymentUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$top=1`;
+      paymentUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$top=1&$filter=Type ne 'Credit Memo'`;
     }
 
     const paymentResponse = await fetch(paymentUrl, {

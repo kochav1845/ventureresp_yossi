@@ -86,7 +86,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [monthlyTotal, setMonthlyTotal] = useState(0);
   const [monthlyPaymentCount, setMonthlyPaymentCount] = useState(0);
   const [monthlyCustomerCount, setMonthlyCustomerCount] = useState(0);
-  const [monthlyCreditMemos, setMonthlyCreditMemos] = useState(0);
 
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
@@ -240,14 +239,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   useEffect(() => {
     const total = filteredPayments.reduce((sum, p) => sum + p.payment_amount, 0);
     const uniqueCustomers = new Set(filteredPayments.map(p => p.customer_id).filter(Boolean));
-    const creditMemos = filteredPayments
-      .filter(p => p.type === 'Credit Memo')
-      .reduce((sum, p) => sum + p.payment_amount, 0);
 
     setMonthlyTotal(total);
     setMonthlyPaymentCount(filteredPayments.length);
     setMonthlyCustomerCount(uniqueCustomers.size);
-    setMonthlyCreditMemos(creditMemos);
   }, [filteredPayments]);
 
   // Initialize temp filters with applied filter values on mount
@@ -782,14 +777,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           const nonExcludedPayments = allPaymentRows.filter(p => !excludedCustomerIds.has(p.customer_id));
           const runningTotal = nonExcludedPayments.reduce((sum, p) => sum + p.payment_amount, 0);
           const runningUniqueCustomers = new Set(nonExcludedPayments.map(p => p.customer_id).filter(Boolean));
-          const runningCreditMemos = nonExcludedPayments
-            .filter(p => p.type === 'Credit Memo')
-            .reduce((sum, p) => sum + p.payment_amount, 0);
 
           setMonthlyTotal(runningTotal);
           setMonthlyPaymentCount(nonExcludedPayments.length);
           setMonthlyCustomerCount(runningUniqueCustomers.size);
-          setMonthlyCreditMemos(runningCreditMemos);
 
           offset += batchSize;
           hasMore = batch.length === batchSize;
@@ -809,6 +800,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const filterAndSortPayments = () => {
     let filtered = [...payments];
+
+    // Filter out credit memos
+    filtered = filtered.filter(p => p.type !== 'Credit Memo');
 
     // Filter out excluded customers
     if (excludedCustomerIds.size > 0) {
@@ -2611,7 +2605,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 max-w-full">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 max-w-full">
             <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-lg p-4 overflow-hidden">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-green-500/20 rounded-lg flex-shrink-0">
@@ -2644,18 +2638,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                 <div className="min-w-0 flex-1">
                   <p className="text-gray-500 text-xs mb-1">Unique Customers</p>
                   <p className="text-base font-bold text-gray-700 break-words">{monthlyCustomerCount}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-orange-500/20 to-orange-600/10 border border-orange-500/30 rounded-lg p-4 overflow-hidden">
-              <div className="flex items-start gap-3">
-                <div className="p-2 bg-orange-500/20 rounded-lg flex-shrink-0">
-                  <FileText className="w-5 h-5 text-orange-400" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-gray-500 text-xs mb-1">Credit Memos</p>
-                  <p className="text-base font-bold text-gray-700 break-words">{formatCurrency(monthlyCreditMemos)}</p>
                 </div>
               </div>
             </div>

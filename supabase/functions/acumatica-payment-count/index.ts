@@ -15,7 +15,7 @@ async function binarySearchCount(acumaticaUrl: string, cookies: string): Promise
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
 
-    const testUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$top=1&$skip=${mid}&$select=ReferenceNbr`;
+    const testUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$top=1&$skip=${mid}&$select=ReferenceNbr&$filter=Type ne 'Credit Memo'`;
 
     const response = await fetch(testUrl, {
       method: 'GET',

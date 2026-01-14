@@ -79,7 +79,7 @@ Deno.serve(async (req: Request) => {
     const filterStartDate = new Date(startDate).toISOString().split('.')[0];
     const filterEndDate = new Date(endDate).toISOString().split('.')[0];
 
-    const paymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=LastModifiedDateTime ge datetimeoffset'${filterStartDate}' and LastModifiedDateTime le datetimeoffset'${filterEndDate}'`;
+    const paymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=LastModifiedDateTime ge datetimeoffset'${filterStartDate}' and LastModifiedDateTime le datetimeoffset'${filterEndDate}' and Type ne 'Credit Memo'`;
 
     console.log(`Fetching payments from ${filterStartDate} to ${filterEndDate}`);
 

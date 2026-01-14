@@ -25,7 +25,18 @@ Deno.serve(async (req: Request) => {
 
     const paymentType = webhookData.Entity?.Type?.value || webhookData.Type || 'Payment';
     const referenceNbr = webhookData.Entity?.ReferenceNbr?.value || webhookData.ReferenceNbr;
-    
+
+    // Ignore credit memo webhooks
+    if (paymentType === 'Credit Memo') {
+      console.log('Ignoring credit memo webhook');
+      return new Response(
+        JSON.stringify({ success: true, message: 'Credit memos are ignored' }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     if (!referenceNbr) {
       console.error('No reference number found in webhook data');
       return new Response(
