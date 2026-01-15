@@ -7,6 +7,78 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+async function fetchAndUpsertMissingInvoice(
+  supabase: any,
+  acumaticaUrl: string,
+  cookies: string,
+  invoiceRefNbr: string
+): Promise<{ success: boolean; invoiceId?: string; error?: string }> {
+  try {
+    console.log(`[FETCH-MISSING-INVOICE] Fetching invoice ${invoiceRefNbr} from Acumatica...`);
+
+    const invoiceUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice/${invoiceRefNbr}`;
+    const response = await fetch(invoiceUrl, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookies,
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404 || response.status === 500) {
+        console.log(`[FETCH-MISSING-INVOICE] Invoice ${invoiceRefNbr} not found in Acumatica (may be deleted or credit memo)`);
+        return { success: false, error: 'Invoice not found in Acumatica' };
+      }
+      throw new Error(`Failed to fetch invoice: ${response.status}`);
+    }
+
+    const invoice = await response.json();
+    console.log(`[FETCH-MISSING-INVOICE] Successfully fetched invoice ${invoiceRefNbr} from Acumatica`);
+
+    const invoiceData = {
+      type: invoice.Type?.value || 'Invoice',
+      reference_number: invoice.ReferenceNbr?.value,
+      customer_id: invoice.CustomerID?.value,
+      customer_name: invoice.Customer?.value,
+      status: invoice.Status?.value,
+      date: invoice.Date?.value,
+      due_date: invoice.DueDate?.value,
+      invoice_amount: parseFloat(invoice.Amount?.value || 0),
+      balance: parseFloat(invoice.Balance?.value || 0),
+      description: invoice.Description?.value || null,
+      customer_order: invoice.CustomerOrder?.value || null,
+      terms: invoice.Terms?.value || null,
+      location_id: invoice.LocationID?.value || null,
+      currency_id: invoice.CurrencyID?.value || null,
+      post_period: invoice.PostPeriod?.value || null,
+      last_modified_date_time: invoice.LastModifiedDateTime?.value || new Date().toISOString(),
+      created_date_time: invoice.CreatedDateTime?.value || null,
+      last_sync_timestamp: new Date().toISOString(),
+    };
+
+    const { data: upsertedInvoice, error: upsertError } = await supabase
+      .from('acumatica_invoices')
+      .upsert(invoiceData, {
+        onConflict: 'reference_number',
+        ignoreDuplicates: false,
+      })
+      .select('id')
+      .single();
+
+    if (upsertError) {
+      console.error(`[FETCH-MISSING-INVOICE] Failed to upsert invoice ${invoiceRefNbr}:`, upsertError.message);
+      return { success: false, error: upsertError.message };
+    }
+
+    console.log(`[FETCH-MISSING-INVOICE] ✓ Successfully upserted invoice ${invoiceRefNbr} into database`);
+    return { success: true, invoiceId: upsertedInvoice.id };
+  } catch (error: any) {
+    console.error(`[FETCH-MISSING-INVOICE] Error fetching invoice ${invoiceRefNbr}:`, error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -299,8 +371,21 @@ Deno.serve(async (req: Request) => {
                 .maybeSingle();
 
               if (!invoiceExists && docType === 'Invoice') {
-                console.warn(`[PAYMENT-SYNC] WARNING: Invoice ${invoiceRefNbr} does not exist in database yet! Payment ${refNbr} is trying to link to a missing invoice. This may cause display issues.`);
-                errors.push(`Invoice ${invoiceRefNbr} not found for payment ${refNbr} application - possible race condition`);
+                console.warn(`[PAYMENT-SYNC] Invoice ${invoiceRefNbr} not found in database! Attempting to fetch from Acumatica...`);
+
+                const fetchResult = await fetchAndUpsertMissingInvoice(
+                  supabase,
+                  acumaticaUrl,
+                  cookies,
+                  invoiceRefNbr
+                );
+
+                if (fetchResult.success) {
+                  console.log(`[PAYMENT-SYNC] ✓ Successfully fetched and stored missing invoice ${invoiceRefNbr}`);
+                } else {
+                  console.warn(`[PAYMENT-SYNC] ✗ Could not fetch invoice ${invoiceRefNbr}: ${fetchResult.error}`);
+                  errors.push(`Invoice ${invoiceRefNbr} not found in database or Acumatica for payment ${refNbr}`);
+                }
               }
 
               try {
