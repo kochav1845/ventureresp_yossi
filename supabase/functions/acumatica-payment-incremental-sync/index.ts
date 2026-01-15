@@ -321,8 +321,10 @@ Deno.serve(async (req: Request) => {
           let applicationHistory: any[] = [];
           if (paymentDbId) {
             try {
-              const paymentDetailUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$expand=ApplicationHistory&$filter=ReferenceNbr eq '${refNbr}' and Type eq '${type}'`;
-              const detailResponse = await fetch(paymentDetailUrl, {
+              const directUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(type)}/${encodeURIComponent(refNbr)}?$expand=ApplicationHistory`;
+              console.log(`[APP-HISTORY] Fetching ApplicationHistory for ${type} ${refNbr} via direct endpoint`);
+
+              const detailResponse = await fetch(directUrl, {
                 method: "GET",
                 headers: {
                   "Content-Type": "application/json",
@@ -333,12 +335,41 @@ Deno.serve(async (req: Request) => {
 
               if (detailResponse.ok) {
                 const detailData = await detailResponse.json();
-                if (Array.isArray(detailData) && detailData.length > 0 && detailData[0].ApplicationHistory) {
+
+                if (detailData.ApplicationHistory && Array.isArray(detailData.ApplicationHistory)) {
+                  applicationHistory = detailData.ApplicationHistory;
+                  console.log(`[APP-HISTORY] Found ${applicationHistory.length} applications for ${refNbr} via direct endpoint`);
+                } else if (Array.isArray(detailData) && detailData.length > 0 && detailData[0].ApplicationHistory) {
                   applicationHistory = detailData[0].ApplicationHistory;
+                  console.log(`[APP-HISTORY] Found ${applicationHistory.length} applications for ${refNbr} via array response`);
+                } else {
+                  console.log(`[APP-HISTORY] No ApplicationHistory found for ${refNbr}. Response keys: ${Object.keys(detailData || {}).join(', ')}`);
+                }
+              } else {
+                console.error(`[APP-HISTORY] Failed to fetch for ${refNbr}: ${detailResponse.status} ${detailResponse.statusText}`);
+
+                const filterUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$expand=ApplicationHistory&$filter=ReferenceNbr eq '${refNbr}' and Type eq '${type}'`;
+                console.log(`[APP-HISTORY] Trying filter-based fallback for ${refNbr}`);
+
+                const fallbackResponse = await fetch(filterUrl, {
+                  method: "GET",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "Cookie": cookies,
+                  },
+                });
+
+                if (fallbackResponse.ok) {
+                  const fallbackData = await fallbackResponse.json();
+                  if (Array.isArray(fallbackData) && fallbackData.length > 0 && fallbackData[0].ApplicationHistory) {
+                    applicationHistory = fallbackData[0].ApplicationHistory;
+                    console.log(`[APP-HISTORY] Found ${applicationHistory.length} applications via fallback for ${refNbr}`);
+                  }
                 }
               }
             } catch (historyError: any) {
-              console.error(`Failed to fetch ApplicationHistory for ${refNbr}:`, historyError.message);
+              console.error(`[APP-HISTORY] Error fetching ApplicationHistory for ${refNbr}:`, historyError.message);
             }
           }
 

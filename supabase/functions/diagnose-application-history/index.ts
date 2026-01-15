@@ -17,7 +17,7 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { payment_reference_number = "025915" } = await req.json();
+    const { payment_reference_number = "025915", payment_type = "Payment" } = await req.json();
 
     const { data: config } = await supabase
       .from('acumatica_sync_credentials')
@@ -67,7 +67,8 @@ Deno.serve(async (req: Request) => {
 
     const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
 
-    const paymentUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/Payment/${payment_reference_number}?$expand=ApplicationHistory`;
+    const paymentUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(payment_type)}/${encodeURIComponent(payment_reference_number)}?$expand=ApplicationHistory`;
+    console.log(`Fetching: ${paymentUrl}`);
     const paymentResponse = await fetch(paymentUrl, {
       method: "GET",
       headers: {
