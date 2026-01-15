@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
 
     const entityTypes = ['customer', 'invoice', 'payment'];
 
-    const syncPromises = entityTypes.map(async (entityType) => {
+    const syncEntity = async (entityType: string) => {
       try {
         const { data: syncStatus } = await supabase
           .from('sync_status')
@@ -199,9 +199,15 @@ Deno.serve(async (req: Request) => {
           })
           .eq('entity_type', entityType);
       }
-    });
+    };
 
-    await Promise.all(syncPromises);
+    console.log('[MASTER-SYNC] Running syncs SEQUENTIALLY to prevent race conditions');
+    console.log('[MASTER-SYNC] Order: customer → invoice → payment');
+
+    for (const entityType of entityTypes) {
+      await syncEntity(entityType);
+      console.log(`[MASTER-SYNC] ${entityType} sync completed, moving to next entity`);
+    }
 
     const totalDuration = Date.now() - syncStartTime;
     const totalCreated = results.customer.created + results.invoice.created + results.payment.created;

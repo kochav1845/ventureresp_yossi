@@ -259,18 +259,41 @@ Deno.serve(async (req: Request) => {
     if (applications.length > 0) {
       console.log(`[FETCH-APP] Preparing ${applications.length} applications for insert...`);
 
-      const applicationsToInsert = applications.map((app: any, index: number) => {
-        let refNbr = app.DisplayRefNbr?.value || app.AdjustedRefNbr?.value || "Unknown";
+      const applicationsToInsert = [];
+      const validationWarnings = [];
 
+      for (let index = 0; index < applications.length; index++) {
+        const app = applications[index];
+        let refNbr = app.DisplayRefNbr?.value || app.ReferenceNbr?.value || app.AdjustedRefNbr?.value;
+
+        if (!refNbr) {
+          console.warn(`[FETCH-APP] Skipping application ${index + 1} with no reference number`);
+          continue;
+        }
+
+        const originalRefNbr = refNbr;
         if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) {
-          const originalRefNbr = refNbr;
           refNbr = refNbr.padStart(6, '0');
           console.log(`[FETCH-APP] App ${index + 1}: Normalized invoice ref ${originalRefNbr} -> ${refNbr}`);
         }
 
-        const docType = app.DisplayDocType?.value || app.AdjustedDocType?.value || "Unknown";
+        const docType = app.DisplayDocType?.value || app.DocType?.value || app.AdjustedDocType?.value || "Invoice";
 
-        return {
+        const { data: invoiceExists } = await supabase
+          .from('acumatica_invoices')
+          .select('id, reference_number')
+          .eq('reference_number', refNbr)
+          .maybeSingle();
+
+        if (!invoiceExists && docType === 'Invoice') {
+          const warning = `Invoice ${refNbr} not found in database - may need to sync invoices first`;
+          console.warn(`[FETCH-APP] WARNING: ${warning}`);
+          validationWarnings.push(warning);
+        } else if (invoiceExists) {
+          console.log(`[FETCH-APP] ✓ Invoice ${refNbr} exists in database`);
+        }
+
+        applicationsToInsert.push({
           payment_id: paymentData.id,
           payment_reference_number: paymentRef,
           invoice_reference_number: refNbr,
@@ -286,18 +309,25 @@ Deno.serve(async (req: Request) => {
           customer_order: app.CustomerOrder?.value || null,
           description: app.Description?.value || null,
           invoice_date: app.Date?.value || null,
-        };
-      });
+        });
+      }
 
-      console.log(`[FETCH-APP] Inserting ${applicationsToInsert.length} applications...`);
-      const { error: insertError } = await supabase
-        .from("payment_invoice_applications")
-        .insert(applicationsToInsert);
+      if (applicationsToInsert.length > 0) {
+        console.log(`[FETCH-APP] Inserting ${applicationsToInsert.length} applications...`);
+        const { error: insertError } = await supabase
+          .from("payment_invoice_applications")
+          .insert(applicationsToInsert);
 
-      if (insertError) {
-        console.error("[FETCH-APP] Failed to insert applications:", insertError.message);
+        if (insertError) {
+          console.error("[FETCH-APP] Failed to insert applications:", insertError.message);
+        } else {
+          console.log(`[FETCH-APP] Successfully inserted ${applicationsToInsert.length} applications`);
+          if (validationWarnings.length > 0) {
+            console.log(`[FETCH-APP] ${validationWarnings.length} validation warnings:`, validationWarnings);
+          }
+        }
       } else {
-        console.log(`[FETCH-APP] Successfully inserted ${applicationsToInsert.length} applications`);
+        console.log(`[FETCH-APP] No valid applications to insert after validation`);
       }
     } else {
       console.log(`[FETCH-APP] No applications to insert`);

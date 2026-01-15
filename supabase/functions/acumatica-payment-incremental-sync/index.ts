@@ -276,14 +276,31 @@ Deno.serve(async (req: Request) => {
             console.log(`Processing ${applications.length} applications for payment ${refNbr}`);
 
             for (const app of applications) {
-              let invoiceRefNbr = app.ReferenceNbr?.value || app.AdjustedRefNbr?.value;
+              let invoiceRefNbr = app.DisplayRefNbr?.value || app.ReferenceNbr?.value || app.AdjustedRefNbr?.value;
               const amountPaid = app.AmountPaid?.value;
               const appDate = app.ApplicationDate?.value || app.Date?.value;
+              const docType = app.DisplayDocType?.value || app.DocType?.value || app.AdjustedDocType?.value || 'Invoice';
 
-              if (!invoiceRefNbr) continue;
+              if (!invoiceRefNbr) {
+                console.warn(`[PAYMENT-SYNC] Skipping application with no reference number for payment ${refNbr}`);
+                continue;
+              }
 
+              const originalInvoiceRef = invoiceRefNbr;
               if (/^[0-9]+$/.test(invoiceRefNbr) && invoiceRefNbr.length < 6) {
                 invoiceRefNbr = invoiceRefNbr.padStart(6, '0');
+                console.log(`[PAYMENT-SYNC] Normalized invoice ref: ${originalInvoiceRef} -> ${invoiceRefNbr}`);
+              }
+
+              const { data: invoiceExists } = await supabase
+                .from('acumatica_invoices')
+                .select('id, reference_number')
+                .eq('reference_number', invoiceRefNbr)
+                .maybeSingle();
+
+              if (!invoiceExists && docType === 'Invoice') {
+                console.warn(`[PAYMENT-SYNC] WARNING: Invoice ${invoiceRefNbr} does not exist in database yet! Payment ${refNbr} is trying to link to a missing invoice. This may cause display issues.`);
+                errors.push(`Invoice ${invoiceRefNbr} not found for payment ${refNbr} application - possible race condition`);
               }
 
               try {
@@ -296,7 +313,7 @@ Deno.serve(async (req: Request) => {
                     customer_id: paymentData.customer_id || '',
                     amount_paid: amountPaid || 0,
                     application_date: appDate || null,
-                    doc_type: app.DocType?.value || app.AdjustedDocType?.value || 'Invoice',
+                    doc_type: docType,
                     balance: app.Balance?.value || 0,
                     cash_discount_taken: app.CashDiscountTaken?.value || 0,
                     post_period: app.PostPeriod?.value || null,
@@ -310,6 +327,12 @@ Deno.serve(async (req: Request) => {
                   });
 
                 applicationsSynced++;
+
+                if (invoiceExists) {
+                  console.log(`[PAYMENT-SYNC] ✓ Linked payment ${refNbr} to existing invoice ${invoiceRefNbr}`);
+                } else {
+                  console.log(`[PAYMENT-SYNC] ⚠ Stored application ${refNbr} -> ${invoiceRefNbr}, but invoice not in DB yet`);
+                }
 
                 console.log(`Logging application_fetched for ${refNbr} -> ${invoiceRefNbr}`);
                 await supabase.rpc('log_sync_change', {
