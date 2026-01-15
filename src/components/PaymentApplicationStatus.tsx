@@ -23,11 +23,20 @@ interface FetchStatus {
 }
 
 export default function PaymentApplicationStatus({ onBack }: { onBack: () => void }) {
+  const navigate = useNavigate();
   const [payments, setPayments] = useState<PaymentWithAppCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchStatus, setFetchStatus] = useState<FetchStatus>({});
   const [filter, setFilter] = useState<'all' | 'missing' | 'has-apps'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   useEffect(() => {
     loadPayments();
