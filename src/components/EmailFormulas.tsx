@@ -22,6 +22,7 @@ type EmailFormulasProps = {
 };
 
 export default function EmailFormulas({ onBack }: EmailFormulasProps) {
+  const navigate = useNavigate();
   const [formulas, setFormulas] = useState<EmailFormula[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -36,6 +37,14 @@ export default function EmailFormulas({ onBack }: EmailFormulasProps) {
   const [newScheduleDay, setNewScheduleDay] = useState(1);
   const [newScheduleTimes, setNewScheduleTimes] = useState<string[]>([]);
   const [newTimeInput, setNewTimeInput] = useState('09:00');
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   useEffect(() => {
     loadFormulas();

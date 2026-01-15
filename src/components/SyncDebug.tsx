@@ -7,9 +7,18 @@ interface SyncDebugProps {
 }
 
 export default function SyncDebug({ onBack }: SyncDebugProps) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [lookbackMinutes, setLookbackMinutes] = useState(60);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const testSync = async () => {
     setLoading(true);

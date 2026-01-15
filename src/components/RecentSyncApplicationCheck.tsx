@@ -20,6 +20,7 @@ interface SyncChangeLog {
 }
 
 export default function RecentSyncApplicationCheck({ onBack }: Props) {
+  const navigate = useNavigate();
   const [logs, setLogs] = useState<SyncChangeLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState({
@@ -29,6 +30,14 @@ export default function RecentSyncApplicationCheck({ onBack }: Props) {
     applicationsFailed: 0,
     applicationsSkipped: 0,
   });
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   useEffect(() => {
     loadRecentSyncLogs();

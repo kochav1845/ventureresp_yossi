@@ -8,12 +8,21 @@ interface InvoiceFieldDiscoveryProps {
 
 export default function InvoiceFieldDiscovery({ onBack }: InvoiceFieldDiscoveryProps) {
   // SECURITY: Credentials are stored in edge functions, NOT in frontend code
+  const navigate = useNavigate();
 
   const [entityType, setEntityType] = useState<'invoice' | 'payment'>('invoice');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [sampleData, setSampleData] = useState<any>(null);
   const [discoveredFields, setDiscoveredFields] = useState<any[]>([]);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const handleDiscoverFields = async () => {
     setLoading(true);

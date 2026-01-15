@@ -7,10 +7,19 @@ interface PaymentDiagnosticProps {
 }
 
 export default function PaymentStructureDiagnostic({ onBack }: PaymentDiagnosticProps) {
+  const navigate = useNavigate();
   const [paymentRef, setPaymentRef] = useState('000001');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const runDiagnostic = async () => {
     setLoading(true);

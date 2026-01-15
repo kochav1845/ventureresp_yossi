@@ -36,6 +36,7 @@ interface LogEntry {
 }
 
 export default function PaymentAttachmentsBatchFetch({ onBack }: PaymentAttachmentsBatchFetchProps) {
+  const navigate = useNavigate();
   const [totalPayments, setTotalPayments] = useState(0);
   const [startOffset, setStartOffset] = useState(0);
   const [endOffset, setEndOffset] = useState<number | null>(null);
@@ -56,6 +57,14 @@ export default function PaymentAttachmentsBatchFetch({ onBack }: PaymentAttachme
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [shouldStop, setShouldStop] = useState(false);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   useEffect(() => {
     loadTotalPaymentCount();

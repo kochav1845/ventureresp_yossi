@@ -20,9 +20,18 @@ interface DiagnosticResults {
 }
 
 export default function OrphanedApplicationDiagnostic({ onBack }: { onBack: () => void }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<DiagnosticResults | null>(null);
   const [cleaning, setCleaning] = useState(false);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const runDiagnostic = async () => {
     setLoading(true);

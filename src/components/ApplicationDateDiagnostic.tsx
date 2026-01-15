@@ -7,10 +7,19 @@ interface ApplicationDateDiagnosticProps {
 }
 
 export default function ApplicationDateDiagnostic({ onBack }: ApplicationDateDiagnosticProps) {
+  const navigate = useNavigate();
   const [paymentRef, setPaymentRef] = useState('022543');
   const [paymentType, setPaymentType] = useState('Payment');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const diagnose = async () => {
     setLoading(true);

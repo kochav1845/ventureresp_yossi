@@ -9,9 +9,18 @@ interface WebhookConfigurationProps {
 }
 
 export default function WebhookConfiguration({ onBack }: WebhookConfigurationProps) {
+  const navigate = useNavigate();
   const [copied, setCopied] = useState<string | null>(null);
   const [webhookLogs, setWebhookLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 

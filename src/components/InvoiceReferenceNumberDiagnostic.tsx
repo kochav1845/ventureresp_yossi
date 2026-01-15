@@ -19,10 +19,19 @@ interface InvoiceTestResult {
 }
 
 export default function InvoiceReferenceNumberDiagnostic({ onBack }: { onBack: () => void }) {
+  const navigate = useNavigate();
   const [testNumbers, setTestNumbers] = useState('99689,99686,99687,99700,99710,99720');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<InvoiceTestResult[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const testInvoices = async () => {
     setLoading(true);

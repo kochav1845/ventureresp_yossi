@@ -24,12 +24,21 @@ interface FileRecord {
 }
 
 export default function PaymentAttachmentTest({ onBack }: { onBack: () => void }) {
+  const navigate = useNavigate();
   const [payments, setPayments] = useState<PaymentWithNoteId[]>([]);
   const [selectedPayment, setSelectedPayment] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string>('');
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   useEffect(() => {
     fetchPaymentsWithNoteId();

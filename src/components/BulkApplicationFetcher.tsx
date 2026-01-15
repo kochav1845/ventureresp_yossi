@@ -16,11 +16,20 @@ interface FetchResult {
 }
 
 export default function BulkApplicationFetcher({ onBack }: { onBack: () => void }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<{ total: number; without_apps: number; synced_today: number } | null>(null);
   const [result, setResult] = useState<FetchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fetchMode, setFetchMode] = useState<'all' | 'today'>('today');
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const loadStats = async () => {
     setLoading(true);

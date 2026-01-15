@@ -8,11 +8,20 @@ interface PaymentApplicationDiscoveryProps {
 
 export default function PaymentApplicationDiscovery({ onBack }: PaymentApplicationDiscoveryProps) {
   // SECURITY: Credentials are stored in edge functions, NOT in frontend code
+  const navigate = useNavigate();
 
   const [paymentRefNbr, setPaymentRefNbr] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState('');
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const handleDiscover = async () => {
     if (!paymentRefNbr.trim()) {

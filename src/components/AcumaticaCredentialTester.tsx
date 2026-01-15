@@ -10,6 +10,7 @@ interface TestResult {
 }
 
 export default function AcumaticaCredentialTester({ onBack }: { onBack: () => void }) {
+  const navigate = useNavigate();
   const [url, setUrl] = useState('ventureresp.acumatica.com');
   const [username, setUsername] = useState('Dev');
   const [password, setPassword] = useState('');
@@ -17,6 +18,14 @@ export default function AcumaticaCredentialTester({ onBack }: { onBack: () => vo
   const [branch, setBranch] = useState('');
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<TestResult | null>(null);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const testCredentials = async () => {
     setTesting(true);

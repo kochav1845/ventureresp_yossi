@@ -8,6 +8,7 @@ interface AcumaticaInvoiceFetchProps {
 
 export default function AcumaticaInvoiceFetch({ onBack }: AcumaticaInvoiceFetchProps) {
   // SECURITY: Credentials are stored in edge functions, NOT in frontend code
+  const navigate = useNavigate();
 
   const [batchSize, setBatchSize] = useState(100);
   const [startFrom, setStartFrom] = useState(0);
@@ -18,6 +19,14 @@ export default function AcumaticaInvoiceFetch({ onBack }: AcumaticaInvoiceFetchP
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const handleBulkFetch = async () => {
     setLoading(true);

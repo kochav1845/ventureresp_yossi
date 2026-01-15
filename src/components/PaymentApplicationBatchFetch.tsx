@@ -28,6 +28,7 @@ interface BatchProgress {
 }
 
 export default function PaymentApplicationBatchFetch({ onBack }: PaymentApplicationBatchFetchProps) {
+  const navigate = useNavigate();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [selectedPayments, setSelectedPayments] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -48,6 +49,14 @@ export default function PaymentApplicationBatchFetch({ onBack }: PaymentApplicat
   const [dateTo, setDateTo] = useState('');
   const [showBalancedOnly, setShowBalancedOnly] = useState(false);
   const [fetchLimit, setFetchLimit] = useState<number>(5000);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   useEffect(() => {
     loadPaymentsWithoutApplications();

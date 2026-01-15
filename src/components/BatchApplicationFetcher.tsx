@@ -33,6 +33,7 @@ interface LogEntry {
 }
 
 export default function BatchApplicationFetcher({ onBack }: BatchApplicationFetcherProps) {
+  const navigate = useNavigate();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
@@ -51,6 +52,14 @@ export default function BatchApplicationFetcher({ onBack }: BatchApplicationFetc
   });
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [shouldStop, setShouldStop] = useState(false);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const BATCH_SIZE = 10;
   const MILESTONE_SIZE = 5000;

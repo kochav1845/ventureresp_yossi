@@ -7,6 +7,7 @@ interface ContractApiTestProps {
 }
 
 export default function ContractApiTest({ onBack }: ContractApiTestProps) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +21,14 @@ export default function ContractApiTest({ onBack }: ContractApiTestProps) {
     paymentType: 'Payment',
     paymentReferenceNumber: ''
   });
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const handleTest = async () => {
     setLoading(true);

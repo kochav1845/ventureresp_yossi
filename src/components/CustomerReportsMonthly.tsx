@@ -33,6 +33,7 @@ interface Invoice {
 type DateFilter = 'current_month' | 'all' | 'custom';
 
 export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthlyProps) {
+  const navigate = useNavigate();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set());
@@ -51,6 +52,14 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
   const [sortBy, setSortBy] = useState<'name' | 'balance' | 'invoices'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [exportingExcel, setExportingExcel] = useState(false);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   useEffect(() => {
     loadCustomersWithInvoices();

@@ -18,10 +18,19 @@ interface AcumaticaInvoiceVariationCheckerProps {
 }
 
 export default function AcumaticaInvoiceVariationChecker({ onBack }: AcumaticaInvoiceVariationCheckerProps) {
+  const navigate = useNavigate();
   const [results, setResults] = useState<InvoiceCheckResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const invoiceNumbers = [
     '96452', '96451', '96441', '96390', '96388', '96397',

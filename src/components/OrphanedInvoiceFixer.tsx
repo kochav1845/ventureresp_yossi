@@ -25,11 +25,20 @@ interface FixResult {
 }
 
 export default function OrphanedInvoiceFixer({ onBack }: { onBack: () => void }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [dryRunning, setDryRunning] = useState(false);
   const [result, setResult] = useState<FixResult | null>(null);
   const [dryRunResult, setDryRunResult] = useState<{ count: number; orphanedInvoices: string[] } | null>(null);
   const [error, setError] = useState('');
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const runDryRun = async () => {
     setDryRunning(true);

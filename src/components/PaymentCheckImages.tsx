@@ -48,6 +48,15 @@ interface Payment {
 
 export default function PaymentCheckImages({ onBack }: PaymentCheckImagesProps) {
   // SECURITY: Credentials are stored in edge functions, NOT in frontend code
+  const navigate = useNavigate();
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [allPaymentsForBatch, setAllPaymentsForBatch] = useState<Payment[]>([]);

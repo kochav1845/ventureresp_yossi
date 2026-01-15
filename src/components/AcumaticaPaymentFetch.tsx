@@ -8,6 +8,7 @@ interface AcumaticaPaymentFetchProps {
 
 export default function AcumaticaPaymentFetch({ onBack }: AcumaticaPaymentFetchProps) {
   // SECURITY: Credentials are stored in edge functions, NOT in frontend code
+  const navigate = useNavigate();
 
   const [batchSize, setBatchSize] = useState(50);
   const [startFrom, setStartFrom] = useState(0);
@@ -19,6 +20,14 @@ export default function AcumaticaPaymentFetch({ onBack }: AcumaticaPaymentFetchP
   const [logs, setLogs] = useState<string[]>([]);
   const [syncingLinks, setSyncingLinks] = useState(false);
   const [fetchingMissing, setFetchingMissing] = useState(false);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();

@@ -15,9 +15,18 @@ interface PaymentCountComparisonProps {
 }
 
 export default function PaymentCountComparison({ onBack }: PaymentCountComparisonProps) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [countData, setCountData] = useState<CountData | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const fetchCounts = async () => {
     setLoading(true);

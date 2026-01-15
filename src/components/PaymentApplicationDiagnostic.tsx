@@ -8,9 +8,18 @@ interface PaymentApplicationDiagnosticProps {
 }
 
 export default function PaymentApplicationDiagnostic({ onBack }: PaymentApplicationDiagnosticProps) {
+  const navigate = useNavigate();
   const [paymentRef, setPaymentRef] = useState('025835');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const runDiagnostic = async () => {
     if (!paymentRef.trim()) {

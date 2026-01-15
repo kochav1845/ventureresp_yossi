@@ -22,8 +22,17 @@ interface SystemStats {
 }
 
 export default function SystemDocumentation({ onBack }: SystemDocumentationProps) {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   useEffect(() => {
     loadSystemStats();

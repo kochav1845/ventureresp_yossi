@@ -22,10 +22,19 @@ const defaultInvoices = [
 ];
 
 export default function InvoiceFormatChecker({ onBack }: { onBack: () => void }) {
+  const navigate = useNavigate();
   const [invoiceNumbers, setInvoiceNumbers] = useState(defaultInvoices.join('\n'));
   const [results, setResults] = useState<InvoiceCheckResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate(-1);
+    }
+  };
 
   const checkInvoices = async () => {
     setLoading(true);
