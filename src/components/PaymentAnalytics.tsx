@@ -490,9 +490,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       const { data: monthPayments, error } = await supabase
         .from('acumatica_payments')
         .select('reference_number')
-        .gte('application_date', startDate.toISOString().split('T')[0])
-        .lte('application_date', endDate.toISOString().split('T')[0])
-        .order('application_date', { ascending: true });
+        .gte('created_at', startDate.toISOString().split('T')[0])
+        .lte('created_at', endDate.toISOString().split('T')[0])
+        .order('created_at', { ascending: true });
 
       if (error) throw error;
 
@@ -571,10 +571,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
         const { data, error } = await supabase
           .from('acumatica_payments')
-          .select('application_date, payment_amount')
+          .select('created_at, payment_amount')
           .neq('type', 'Credit Memo')
-          .gte('application_date', startStr)
-          .lte('application_date', endStr)
+          .gte('created_at', startStr)
+          .lte('created_at', endStr)
           .range(offset, offset + batchSize - 1);
 
         if (error) throw error;
@@ -585,7 +585,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         }
 
         data.forEach(payment => {
-          const paymentDate = new Date(payment.application_date);
+          const paymentDate = new Date(payment.created_at);
           const month = paymentDate.getMonth();
           aggregates[month].total += payment.payment_amount || 0;
           aggregates[month].count += 1;
@@ -630,10 +630,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
         const { data, error } = await supabase
           .from('acumatica_payments')
-          .select('application_date, payment_amount')
+          .select('created_at, payment_amount')
           .neq('type', 'Credit Memo')
-          .gte('application_date', startStr)
-          .lte('application_date', endStr)
+          .gte('created_at', startStr)
+          .lte('created_at', endStr)
           .range(offset, offset + batchSize - 1);
 
         if (error) throw error;
@@ -644,7 +644,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         }
 
         data.forEach(payment => {
-          const paymentDate = new Date(payment.application_date);
+          const paymentDate = new Date(payment.created_at);
           const year = paymentDate.getFullYear();
 
           if (!yearMap.has(year)) {
@@ -731,17 +731,17 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           .from('acumatica_payments')
           .select('*')
           .neq('type', 'Credit Memo')
-          .gte('application_date', startStr);
+          .gte('created_at', startStr);
 
         // Use .lte() for inclusive end dates (custom range), .lt() for exclusive (month boundary)
         if (useInclusiveEnd) {
-          query = query.lte('application_date', endStr);
+          query = query.lte('created_at', endStr);
         } else {
-          query = query.lt('application_date', endStr);
+          query = query.lt('created_at', endStr);
         }
 
         const { data: batch, error } = await query
-          .order('application_date', { ascending: false })
+          .order('created_at', { ascending: false })
           .range(offset, offset + batchSize - 1);
 
         if (error) throw error;
@@ -786,7 +786,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
             return {
               id: payment.id,
-              date: payment.application_date || '',
+              date: payment.created_at || '',
               reference_number: payment.reference_number || '',
               customer_id: payment.customer_id || '',
               customer_name: customerMap.get(payment.customer_id) || payment.customer_id || 'N/A',
@@ -1232,10 +1232,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       while (hasMore) {
         const { data: batch, error: paymentsError } = await supabase
           .from('acumatica_payments')
-          .select('id, reference_number, customer_id, payment_method, type, payment_amount, application_date, status')
-          .gte('application_date', startStr)
-          .lte('application_date', endStr)
-          .not('application_date', 'is', null)
+          .select('id, reference_number, customer_id, payment_method, type, payment_amount, created_at, status')
+          .gte('created_at', startStr)
+          .lte('created_at', endStr)
+          .not('created_at', 'is', null)
           .range(offset, offset + batchSize - 1);
 
         if (paymentsError) {
@@ -1330,7 +1330,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         const invoiceRef = firstApp?.invoice_reference_number || null;
         const amountPaid = firstApp?.amount_paid || payment.payment_amount;
 
-        const paymentDate = payment.application_date;
+        const paymentDate = payment.created_at;
 
         if (index < 3) {
           console.log(`Processing payment ${index}:`, {
