@@ -490,9 +490,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       const { data: monthPayments, error } = await supabase
         .from('acumatica_payments')
         .select('reference_number')
-        .gte('created_at', startDate.toISOString().split('T')[0])
-        .lte('created_at', endDate.toISOString().split('T')[0])
-        .order('created_at', { ascending: true });
+        .gte('application_date', startDate.toISOString().split('T')[0])
+        .lte('application_date', endDate.toISOString().split('T')[0])
+        .order('application_date', { ascending: true });
 
       if (error) throw error;
 
@@ -786,7 +786,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
             return {
               id: payment.id,
-              date: payment.created_at || '',
+              date: payment.application_date || '',
               reference_number: payment.reference_number || '',
               customer_id: payment.customer_id || '',
               customer_name: customerMap.get(payment.customer_id) || payment.customer_id || 'N/A',
@@ -1232,10 +1232,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       while (hasMore) {
         const { data: batch, error: paymentsError } = await supabase
           .from('acumatica_payments')
-          .select('id, reference_number, customer_id, payment_method, type, payment_amount, created_at, status')
-          .gte('created_at', startStr)
-          .lte('created_at', endStr)
-          .not('created_at', 'is', null)
+          .select('id, reference_number, customer_id, payment_method, type, payment_amount, application_date, status')
+          .gte('application_date', startStr)
+          .lte('application_date', endStr)
+          .not('application_date', 'is', null)
           .range(offset, offset + batchSize - 1);
 
         if (paymentsError) {
@@ -1330,7 +1330,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         const invoiceRef = firstApp?.invoice_reference_number || null;
         const amountPaid = firstApp?.amount_paid || payment.payment_amount;
 
-        const paymentDate = payment.created_at;
+        const paymentDate = payment.application_date;
 
         if (index < 3) {
           console.log(`Processing payment ${index}:`, {
