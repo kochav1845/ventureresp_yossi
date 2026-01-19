@@ -571,10 +571,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
         const { data, error } = await supabase
           .from('acumatica_payments')
-          .select('created_at, payment_amount')
+          .select('application_date, payment_amount')
           .neq('type', 'Credit Memo')
-          .gte('created_at', startStr)
-          .lte('created_at', endStr)
+          .gte('application_date', startStr)
+          .lte('application_date', endStr)
           .range(offset, offset + batchSize - 1);
 
         if (error) throw error;
@@ -585,7 +585,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         }
 
         data.forEach(payment => {
-          const paymentDate = new Date(payment.created_at);
+          const paymentDate = new Date(payment.application_date);
           const month = paymentDate.getMonth();
           aggregates[month].total += payment.payment_amount || 0;
           aggregates[month].count += 1;
@@ -630,10 +630,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
         const { data, error } = await supabase
           .from('acumatica_payments')
-          .select('created_at, payment_amount')
+          .select('application_date, payment_amount')
           .neq('type', 'Credit Memo')
-          .gte('created_at', startStr)
-          .lte('created_at', endStr)
+          .gte('application_date', startStr)
+          .lte('application_date', endStr)
           .range(offset, offset + batchSize - 1);
 
         if (error) throw error;
@@ -644,7 +644,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         }
 
         data.forEach(payment => {
-          const paymentDate = new Date(payment.created_at);
+          const paymentDate = new Date(payment.application_date);
           const year = paymentDate.getFullYear();
 
           if (!yearMap.has(year)) {
@@ -731,17 +731,17 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           .from('acumatica_payments')
           .select('*')
           .neq('type', 'Credit Memo')
-          .gte('created_at', startStr);
+          .gte('application_date', startStr);
 
         // Use .lte() for inclusive end dates (custom range), .lt() for exclusive (month boundary)
         if (useInclusiveEnd) {
-          query = query.lte('created_at', endStr);
+          query = query.lte('application_date', endStr);
         } else {
-          query = query.lt('created_at', endStr);
+          query = query.lt('application_date', endStr);
         }
 
         const { data: batch, error } = await query
-          .order('created_at', { ascending: false })
+          .order('application_date', { ascending: false })
           .range(offset, offset + batchSize - 1);
 
         if (error) throw error;
