@@ -74,19 +74,29 @@ Deno.serve(async (req: Request) => {
 
     const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
 
-    // Fetch the payment
+    // First get our stored data to know the payment type
+    const { data: storedPayment } = await supabase
+      .from('acumatica_payments')
+      .select('*')
+      .eq('reference_number', paymentRef)
+      .maybeSingle();
+
+    const paymentType = storedPayment?.type || 'Payment';
+
+    // Fetch the payment from Acumatica using the correct endpoint format
     const paymentResponse = await fetch(
-      `${credentials.acumatica_url}/entity/Default/23.200.001/Payment?$filter=ReferenceNbr eq '${paymentRef}'&$expand=ApplicationHistory`,
+      `${credentials.acumatica_url}/entity/Default/24.200.001/Payment/${encodeURIComponent(paymentType)}/${encodeURIComponent(paymentRef)}?$expand=ApplicationHistory`,
       {
         headers: {
-          'Cookie': cookies || '',
+          'Cookie': cookies,
           'Accept': 'application/json'
         }
       }
     );
 
     if (!paymentResponse.ok) {
-      throw new Error(`Failed to fetch payment: ${paymentResponse.status}`);
+      const errorText = await paymentResponse.text();
+      throw new Error(`Failed to fetch payment: ${paymentResponse.status} - ${errorText}`);
     }
 
     const paymentData = await paymentResponse.json();
@@ -94,25 +104,18 @@ Deno.serve(async (req: Request) => {
     // Logout
     await fetch(`${credentials.acumatica_url}/entity/auth/logout`, {
       method: 'POST',
-      headers: { 'Cookie': cookies || '' }
+      headers: { 'Cookie': cookies }
     });
-
-    // Also get our stored data
-    const { data: storedPayment } = await supabase
-      .from('acumatica_payments')
-      .select('*')
-      .eq('reference_number', paymentRef)
-      .maybeSingle();
 
     return new Response(JSON.stringify({
       acumaticaData: paymentData,
       storedData: storedPayment,
       comparison: {
-        acumaticaStatus: paymentData[0]?.Status?.value,
+        acumaticaStatus: paymentData?.Status?.value,
         storedStatus: storedPayment?.status,
-        acumaticaLastModified: paymentData[0]?.LastModifiedDateTime?.value,
+        acumaticaLastModified: paymentData?.LastModifiedDateTime?.value,
         storedLastSync: storedPayment?.last_sync_timestamp,
-        statusMismatch: paymentData[0]?.Status?.value !== storedPayment?.status
+        statusMismatch: paymentData?.Status?.value !== storedPayment?.status
       }
     }, null, 2), {
       status: 200,
