@@ -12,6 +12,8 @@ Deno.serve(async (req: Request) => {
   }
 
   const startTime = Date.now();
+  let acumaticaUrl: string | null = null;
+  let cookies: string | null = null;
 
   try {
     const supabase = createClient(
@@ -34,72 +36,39 @@ Deno.serve(async (req: Request) => {
       throw new Error('Acumatica credentials not configured');
     }
 
-    let acumaticaUrl = credentials.acumatica_url;
+    acumaticaUrl = credentials.acumatica_url;
     if (acumaticaUrl && !acumaticaUrl.startsWith("http://") && !acumaticaUrl.startsWith("https://")) {
       acumaticaUrl = `https://${acumaticaUrl}`;
     }
 
-    const { data: existingSession } = await supabase
-      .from('acumatica_session_cache')
-      .select('session_id')
-      .eq('is_active', true)
-      .gte('expires_at', new Date().toISOString())
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    console.log('Logging in to Acumatica...');
+    const loginBody: any = {
+      name: credentials.username,
+      password: credentials.password,
+    };
+    if (credentials.company) loginBody.company = credentials.company;
+    if (credentials.branch) loginBody.branch = credentials.branch;
 
-    let cookies: string;
+    const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(loginBody),
+    });
 
-    if (existingSession) {
-      cookies = existingSession.session_id;
-      console.log('Using cached session');
-    } else {
-      console.log('Creating new session');
-      const loginBody: any = {
-        name: credentials.username,
-        password: credentials.password,
-      };
-      if (credentials.company) loginBody.company = credentials.company;
-      if (credentials.branch) loginBody.branch = credentials.branch;
-
-      const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(loginBody),
-      });
-
-      if (!loginResponse.ok) {
-        const errorText = await loginResponse.text();
-        throw new Error(`Authentication failed: ${errorText}`);
-      }
-
-      const setCookieHeader = loginResponse.headers.get('set-cookie');
-      if (!setCookieHeader) {
-        throw new Error('No authentication cookies received');
-      }
-
-      cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
-
-      const expiresAt = new Date();
-      expiresAt.setMinutes(expiresAt.getMinutes() + 15);
-
-      await supabase
-        .from('acumatica_session_cache')
-        .update({ is_active: false })
-        .eq('is_active', true);
-
-      await supabase
-        .from('acumatica_session_cache')
-        .insert({
-          session_id: cookies,
-          expires_at: expiresAt.toISOString(),
-          is_active: true,
-        });
-
-      console.log('Session cached successfully');
+    if (!loginResponse.ok) {
+      const errorText = await loginResponse.text();
+      throw new Error(`Authentication failed: ${errorText}`);
     }
+
+    const setCookieHeader = loginResponse.headers.get('set-cookie');
+    if (!setCookieHeader) {
+      throw new Error('No authentication cookies received');
+    }
+
+    cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
+    console.log('Successfully logged in to Acumatica');
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -226,5 +195,18 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  } finally {
+    // CRITICAL: Always logout to free up session, even on errors
+    if (cookies && acumaticaUrl) {
+      try {
+        await fetch(`${acumaticaUrl}/entity/auth/logout`, {
+          method: 'POST',
+          headers: { 'Cookie': cookies },
+        });
+        console.log('Successfully logged out from Acumatica');
+      } catch (logoutError) {
+        console.error('Logout error (non-critical):', logoutError);
+      }
+    }
   }
 });

@@ -15,6 +15,8 @@ Deno.serve(async (req: Request) => {
   }
 
   const startTime = Date.now();
+  let acumaticaUrl: string | null = null;
+  let cookies: string | null = null;
 
   try {
     const supabase = createClient(
@@ -44,7 +46,7 @@ Deno.serve(async (req: Request) => {
       throw new Error('Acumatica credentials not configured');
     }
 
-    let acumaticaUrl = credentials.acumatica_url;
+    acumaticaUrl = credentials.acumatica_url;
     if (acumaticaUrl && !acumaticaUrl.startsWith("http://") && !acumaticaUrl.startsWith("https://")) {
       acumaticaUrl = `https://${acumaticaUrl}`;
     }
@@ -75,7 +77,7 @@ Deno.serve(async (req: Request) => {
       throw new Error('No authentication cookies received');
     }
 
-    const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
+    cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
     console.log('Successfully logged in to Acumatica');
 
     console.log(`Querying payments between ${startDate} and ${endDate}...`);
@@ -244,16 +246,6 @@ Deno.serve(async (req: Request) => {
         new_value: JSON.stringify(results),
       });
 
-    try {
-      await fetch(`${acumaticaUrl}/entity/auth/logout`, {
-        method: 'POST',
-        headers: { 'Cookie': cookies },
-      });
-      console.log('Successfully logged out from Acumatica');
-    } catch (logoutError) {
-      console.error('Logout error (non-critical):', logoutError);
-    }
-
     const responseMessage = totalInRange > MAX_PAYMENTS_PER_RUN
       ? `Processed ${results.totalProcessed} of ${totalInRange} payments (limited to prevent timeout). Run again to process more.`
       : undefined;
@@ -276,5 +268,18 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  } finally {
+    // CRITICAL: Always logout to free up session, even on errors
+    if (cookies && acumaticaUrl) {
+      try {
+        await fetch(`${acumaticaUrl}/entity/auth/logout`, {
+          method: 'POST',
+          headers: { 'Cookie': cookies },
+        });
+        console.log('Successfully logged out from Acumatica');
+      } catch (logoutError) {
+        console.error('Logout error (non-critical):', logoutError);
+      }
+    }
   }
 });
