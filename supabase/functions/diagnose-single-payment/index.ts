@@ -47,7 +47,7 @@ Deno.serve(async (req: Request) => {
     console.log(`Fetching payment ${paymentRef} from Acumatica...`);
 
     // Login to Acumatica
-    const loginResponse = await fetch(`${credentials.endpoint_url}/entity/auth/login`, {
+    const loginResponse = await fetch(`${credentials.acumatica_url}/entity/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -55,7 +55,8 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         name: credentials.username,
         password: credentials.password,
-        company: credentials.company_name
+        company: credentials.company,
+        branch: credentials.branch
       })
     });
 
@@ -67,7 +68,7 @@ Deno.serve(async (req: Request) => {
 
     // Fetch the payment
     const paymentResponse = await fetch(
-      `${credentials.endpoint_url}/entity/Default/23.200.001/Payment?$filter=ReferenceNbr eq '${paymentRef}'&$expand=ApplicationHistory`,
+      `${credentials.acumatica_url}/entity/Default/23.200.001/Payment?$filter=ReferenceNbr eq '${paymentRef}'&$expand=ApplicationHistory`,
       {
         headers: {
           'Cookie': cookies || '',
@@ -83,7 +84,7 @@ Deno.serve(async (req: Request) => {
     const paymentData = await paymentResponse.json();
 
     // Logout
-    await fetch(`${credentials.endpoint_url}/entity/auth/logout`, {
+    await fetch(`${credentials.acumatica_url}/entity/auth/logout`, {
       method: 'POST',
       headers: { 'Cookie': cookies || '' }
     });
