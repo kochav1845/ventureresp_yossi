@@ -112,10 +112,10 @@ Deno.serve(async (req: Request) => {
 
     const { data: payments, error: queryError } = await supabase
       .from('acumatica_payments')
-      .select('reference_number, customer_name, status, payment_date')
-      .gte('payment_date', startDate)
-      .lte('payment_date', endDate)
-      .order('payment_date', { ascending: true });
+      .select('reference_number, customer_name, status, application_date')
+      .gte('application_date', startDate)
+      .lte('application_date', endDate)
+      .order('application_date', { ascending: true });
 
     if (queryError) {
       console.error('Query error:', queryError);
