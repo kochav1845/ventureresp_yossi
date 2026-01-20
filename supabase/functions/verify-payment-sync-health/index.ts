@@ -23,13 +23,20 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Running payment sync health check (sample size: ${sampleSize})`);
 
-    const { data: credentials } = await supabase
-      .from('acumatica_credentials')
+    const { data: credentials, error: credError } = await supabase
+      .from('acumatica_sync_credentials')
       .select('*')
-      .single();
+      .limit(1)
+      .maybeSingle();
 
-    if (!credentials) {
+    if (credError || !credentials) {
+      console.error('Credentials error:', credError);
       throw new Error('Acumatica credentials not configured');
+    }
+
+    let acumaticaUrl = credentials.acumatica_url;
+    if (acumaticaUrl && !acumaticaUrl.startsWith("http://") && !acumaticaUrl.startsWith("https://")) {
+      acumaticaUrl = `https://${acumaticaUrl}`;
     }
 
     const { data: existingSession } = await supabase
@@ -48,16 +55,19 @@ Deno.serve(async (req: Request) => {
       console.log('Using cached session');
     } else {
       console.log('Creating new session');
-      const loginResponse = await fetch(`${credentials.instance_url}/entity/auth/login`, {
+      const loginBody: any = {
+        name: credentials.username,
+        password: credentials.password,
+      };
+      if (credentials.company) loginBody.company = credentials.company;
+      if (credentials.branch) loginBody.branch = credentials.branch;
+
+      const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name: credentials.username,
-          password: credentials.password,
-          company: credentials.company,
-        }),
+        body: JSON.stringify(loginBody),
       });
 
       if (!loginResponse.ok) {
@@ -127,7 +137,7 @@ Deno.serve(async (req: Request) => {
     for (const payment of recentPayments) {
       try {
         const paymentResponse = await fetch(
-          `${credentials.instance_url}/entity/Default/22.200.001/Payment/${payment.reference_number}`,
+          `${acumaticaUrl}/entity/Default/22.200.001/Payment/${payment.reference_number}`,
           {
             method: 'GET',
             headers: {
