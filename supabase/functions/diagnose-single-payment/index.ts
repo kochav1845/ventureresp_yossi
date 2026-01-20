@@ -47,24 +47,32 @@ Deno.serve(async (req: Request) => {
     console.log(`Fetching payment ${paymentRef} from Acumatica...`);
 
     // Login to Acumatica
+    const loginBody: any = {
+      name: credentials.username,
+      password: credentials.password
+    };
+    if (credentials.company) loginBody.company = credentials.company;
+    if (credentials.branch) loginBody.branch = credentials.branch;
+
     const loginResponse = await fetch(`${credentials.acumatica_url}/entity/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        name: credentials.username,
-        password: credentials.password,
-        company: credentials.company,
-        branch: credentials.branch
-      })
+      body: JSON.stringify(loginBody)
     });
 
     if (!loginResponse.ok) {
-      throw new Error(`Login failed: ${loginResponse.status}`);
+      const errorText = await loginResponse.text();
+      throw new Error(`Login failed: ${loginResponse.status} - ${errorText}`);
     }
 
-    const cookies = loginResponse.headers.get('set-cookie');
+    const setCookieHeader = loginResponse.headers.get('set-cookie');
+    if (!setCookieHeader) {
+      throw new Error('No authentication cookies received');
+    }
+
+    const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
 
     // Fetch the payment
     const paymentResponse = await fetch(
