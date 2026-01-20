@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+const MAX_PAYMENTS_PER_RUN = 50;
+const REQUEST_TIMEOUT = 55000;
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -110,27 +113,16 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Querying payments between ${startDate} and ${endDate}...`);
 
-    const { data: payments, error: queryError } = await supabase
+    // First, get the count
+    const { count: totalInRange } = await supabase
       .from('acumatica_payments')
-      .select('reference_number, customer_name, status, application_date')
+      .select('*', { count: 'exact', head: true })
       .gte('application_date', startDate)
-      .lte('application_date', endDate)
-      .order('application_date', { ascending: true });
+      .lte('application_date', endDate);
 
-    if (queryError) {
-      console.error('Query error:', queryError);
-      throw new Error(`Database query failed: ${queryError.message}`);
-    }
+    console.log(`Found ${totalInRange || 0} total payments in date range`);
 
-    console.log(`Found ${payments?.length || 0} payments in date range`);
-
-    if (!payments || payments.length === 0) {
-      const { count: totalPayments } = await supabase
-        .from('acumatica_payments')
-        .select('*', { count: 'exact', head: true });
-
-      console.log(`Total payments in database: ${totalPayments}`);
-
+    if (!totalInRange || totalInRange === 0) {
       return new Response(
         JSON.stringify({
           totalProcessed: 0,
@@ -139,13 +131,29 @@ Deno.serve(async (req: Request) => {
           duration: ((Date.now() - startTime) / 1000).toFixed(1) + 's',
           statusChanges: [],
           errors: [],
-          message: `No payments found in date range ${startDate} to ${endDate}. Total payments in database: ${totalPayments || 0}`
+          message: `No payments found in date range ${startDate} to ${endDate}`
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`Found ${payments.length} payments to resync`);
+    // Limit to prevent timeouts
+    const limitedCount = Math.min(totalInRange, MAX_PAYMENTS_PER_RUN);
+
+    const { data: payments, error: queryError } = await supabase
+      .from('acumatica_payments')
+      .select('reference_number, customer_name, status, application_date')
+      .gte('application_date', startDate)
+      .lte('application_date', endDate)
+      .order('application_date', { ascending: true })
+      .limit(limitedCount);
+
+    if (queryError) {
+      console.error('Query error:', queryError);
+      throw new Error(`Database query failed: ${queryError.message}`);
+    }
+
+    console.log(`Processing ${payments?.length || 0} payments (limited from ${totalInRange})`);
 
     const results = {
       totalProcessed: payments.length,
@@ -269,10 +277,16 @@ Deno.serve(async (req: Request) => {
         new_value: JSON.stringify(results),
       });
 
+    const responseMessage = totalInRange > MAX_PAYMENTS_PER_RUN
+      ? `Processed ${results.totalProcessed} of ${totalInRange} payments (limited to prevent timeout). Run again to process more.`
+      : undefined;
+
     return new Response(
       JSON.stringify({
         ...results,
         duration,
+        message: responseMessage,
+        totalInRange,
       }),
       {
         status: 200,

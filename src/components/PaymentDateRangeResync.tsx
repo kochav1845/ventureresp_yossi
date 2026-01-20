@@ -200,13 +200,26 @@ export default function PaymentDateRangeResync() {
               Resync Complete
             </h2>
 
-            {progress.message && progress.totalProcessed === 0 && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                <p className="text-yellow-800 font-medium">{progress.message}</p>
-                <p className="text-yellow-700 text-sm mt-1">
-                  No payments found in the date range {startDate} to {endDate}.
-                  Try selecting a different date range.
+{progress.message && (
+              <div className={`${
+                progress.totalProcessed === 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-blue-50 border-blue-200'
+              } border rounded-lg p-4 mb-4`}>
+                <p className={`${
+                  progress.totalProcessed === 0 ? 'text-yellow-800' : 'text-blue-800'
+                } font-medium`}>
+                  {progress.message}
                 </p>
+                {progress.totalProcessed === 0 && (
+                  <p className="text-yellow-700 text-sm mt-1">
+                    No payments found in the date range {startDate} to {endDate}.
+                    Try selecting a different date range.
+                  </p>
+                )}
+                {progress.totalInRange && progress.totalInRange > progress.totalProcessed && (
+                  <p className="text-blue-700 text-sm mt-1">
+                    {progress.totalInRange - progress.totalProcessed} payments remaining. Click the button again to process more.
+                  </p>
+                )}
               </div>
             )}
 
