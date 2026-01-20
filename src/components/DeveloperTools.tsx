@@ -56,6 +56,14 @@ export function DeveloperTools() {
       category: 'payment'
     },
     {
+      id: 'payment-status-diagnostic',
+      name: 'Payment Status Diagnostic',
+      description: 'Compare payment status between Acumatica and database',
+      icon: AlertCircle,
+      path: '/payment-status-diagnostic',
+      category: 'payment'
+    },
+    {
       id: 'payment-attachment-test',
       name: 'Payment Attachment Test',
       description: 'Test fetching payment attachments',
