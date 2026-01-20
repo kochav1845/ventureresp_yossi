@@ -66,6 +66,75 @@ export default function PaymentDateRangeResync() {
 
       {/* Date Range Selection */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
+        {/* Quick Select Buttons */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Quick Select
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(start.getDate() - 30);
+                setStartDate(start.toISOString().split('T')[0]);
+                setEndDate(end.toISOString().split('T')[0]);
+              }}
+              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
+            >
+              Last 30 Days
+            </button>
+            <button
+              onClick={() => {
+                const end = new Date();
+                const start = new Date();
+                start.setMonth(start.getMonth() - 3);
+                setStartDate(start.toISOString().split('T')[0]);
+                setEndDate(end.toISOString().split('T')[0]);
+              }}
+              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
+            >
+              Last 3 Months
+            </button>
+            <button
+              onClick={() => {
+                const end = new Date();
+                const start = new Date();
+                start.setMonth(start.getMonth() - 6);
+                setStartDate(start.toISOString().split('T')[0]);
+                setEndDate(end.toISOString().split('T')[0]);
+              }}
+              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
+            >
+              Last 6 Months
+            </button>
+            <button
+              onClick={() => {
+                const end = new Date();
+                const start = new Date(end.getFullYear(), 0, 1);
+                setStartDate(start.toISOString().split('T')[0]);
+                setEndDate(end.toISOString().split('T')[0]);
+              }}
+              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
+            >
+              This Year
+            </button>
+            <button
+              onClick={() => {
+                const end = new Date();
+                end.setFullYear(end.getFullYear() - 1);
+                end.setMonth(11, 31);
+                const start = new Date(end.getFullYear(), 0, 1);
+                setStartDate(start.toISOString().split('T')[0]);
+                setEndDate(end.toISOString().split('T')[0]);
+              }}
+              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
+            >
+              Last Year
+            </button>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-6 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -130,6 +199,16 @@ export default function PaymentDateRangeResync() {
               <CheckCircle className="w-5 h-5 text-green-600" />
               Resync Complete
             </h2>
+
+            {progress.message && progress.totalProcessed === 0 && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                <p className="text-yellow-800 font-medium">{progress.message}</p>
+                <p className="text-yellow-700 text-sm mt-1">
+                  No payments found in the date range {startDate} to {endDate}.
+                  Try selecting a different date range.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-3 gap-4 mb-6">
               <div className="bg-blue-50 rounded-lg p-4">

@@ -108,23 +108,38 @@ Deno.serve(async (req: Request) => {
       console.log('Session cached successfully');
     }
 
-    const { data: payments } = await supabase
+    console.log(`Querying payments between ${startDate} and ${endDate}...`);
+
+    const { data: payments, error: queryError } = await supabase
       .from('acumatica_payments')
-      .select('reference_number, customer_name, status')
+      .select('reference_number, customer_name, status, payment_date')
       .gte('payment_date', startDate)
       .lte('payment_date', endDate)
       .order('payment_date', { ascending: true });
 
+    if (queryError) {
+      console.error('Query error:', queryError);
+      throw new Error(`Database query failed: ${queryError.message}`);
+    }
+
+    console.log(`Found ${payments?.length || 0} payments in date range`);
+
     if (!payments || payments.length === 0) {
+      const { count: totalPayments } = await supabase
+        .from('acumatica_payments')
+        .select('*', { count: 'exact', head: true });
+
+      console.log(`Total payments in database: ${totalPayments}`);
+
       return new Response(
         JSON.stringify({
           totalProcessed: 0,
           successCount: 0,
           errorCount: 0,
-          duration: '0s',
+          duration: ((Date.now() - startTime) / 1000).toFixed(1) + 's',
           statusChanges: [],
           errors: [],
-          message: 'No payments found in date range'
+          message: `No payments found in date range ${startDate} to ${endDate}. Total payments in database: ${totalPayments || 0}`
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
