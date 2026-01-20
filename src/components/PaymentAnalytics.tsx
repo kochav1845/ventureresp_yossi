@@ -490,6 +490,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       const { data: monthPayments, error } = await supabase
         .from('acumatica_payments')
         .select('reference_number')
+        .neq('status', 'Voided')
         .gte('application_date', startDate.toISOString().split('T')[0])
         .lte('application_date', endDate.toISOString().split('T')[0])
         .order('application_date', { ascending: true });
@@ -573,6 +574,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           .from('acumatica_payments')
           .select('application_date, payment_amount')
           .neq('type', 'Credit Memo')
+          .neq('status', 'Voided')
           .gte('application_date', startStr)
           .lte('application_date', endStr)
           .range(offset, offset + batchSize - 1);
@@ -632,6 +634,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           .from('acumatica_payments')
           .select('application_date, payment_amount')
           .neq('type', 'Credit Memo')
+          .neq('status', 'Voided')
           .gte('application_date', startStr)
           .lte('application_date', endStr)
           .range(offset, offset + batchSize - 1);
@@ -731,6 +734,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           .from('acumatica_payments')
           .select('*')
           .neq('type', 'Credit Memo')
+          .neq('status', 'Voided')
           .gte('application_date', startStr);
 
         // Use .lte() for inclusive end dates (custom range), .lt() for exclusive (month boundary)
@@ -901,8 +905,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const filterAndSortPayments = () => {
     let filtered = [...payments];
 
-    // Filter out credit memos
-    filtered = filtered.filter(p => p.type !== 'Credit Memo');
+    // Filter out credit memos and voided payments
+    filtered = filtered.filter(p => p.type !== 'Credit Memo' && p.status !== 'Voided');
 
     // Filter out excluded customers
     if (excludedCustomerIds.size > 0) {
@@ -1233,6 +1237,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         const { data: batch, error: paymentsError } = await supabase
           .from('acumatica_payments')
           .select('id, reference_number, customer_id, payment_method, type, payment_amount, application_date, status')
+          .neq('status', 'Voided')
           .gte('application_date', startStr)
           .lte('application_date', endStr)
           .not('application_date', 'is', null)
