@@ -28,10 +28,17 @@ Deno.serve(async (req: Request) => {
     );
 
     // Get Acumatica credentials
-    const { data: credentials } = await supabase
+    const { data: credentials, error: credError } = await supabase
       .from('acumatica_sync_credentials')
       .select('*')
-      .single();
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (credError) {
+      throw new Error(`Failed to get credentials: ${credError.message}`);
+    }
 
     if (!credentials) {
       throw new Error('No Acumatica credentials found');
