@@ -29,7 +29,7 @@ Deno.serve(async (req: Request) => {
 
     // Get Acumatica credentials
     const { data: credentials } = await supabase
-      .from('acumatica_credentials')
+      .from('acumatica_sync_credentials')
       .select('*')
       .single();
 
