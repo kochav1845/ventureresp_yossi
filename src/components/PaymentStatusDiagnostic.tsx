@@ -6,13 +6,16 @@ export default function PaymentStatusDiagnostic() {
   const navigate = useNavigate();
   const [paymentRef, setPaymentRef] = useState('025670');
   const [loading, setLoading] = useState(false);
+  const [resyncing, setResyncing] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resyncSuccess, setResyncSuccess] = useState<string | null>(null);
 
   const diagnosePayment = async () => {
     setLoading(true);
     setError(null);
     setResult(null);
+    setResyncSuccess(null);
 
     try {
       const response = await fetch(
@@ -38,6 +41,42 @@ export default function PaymentStatusDiagnostic() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const resyncPayment = async () => {
+    setResyncing(true);
+    setError(null);
+    setResyncSuccess(null);
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resync-single-payment`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ paymentRef })
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setResyncSuccess(`Successfully resynced payment ${paymentRef}. Status updated to: ${data.updatedStatus}`);
+
+      setTimeout(() => {
+        diagnosePayment();
+      }, 1000);
+    } catch (err: any) {
+      setError(`Resync failed: ${err.message}`);
+    } finally {
+      setResyncing(false);
     }
   };
 
@@ -103,6 +142,17 @@ export default function PaymentStatusDiagnostic() {
           <div className="flex-1">
             <p className="font-medium text-red-900">Error</p>
             <p className="text-red-700 text-sm">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Success */}
+      {resyncSuccess && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 flex items-start gap-3">
+          <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-medium text-green-900">Resync Successful</p>
+            <p className="text-green-700 text-sm">{resyncSuccess}</p>
           </div>
         </div>
       )}
@@ -178,12 +228,37 @@ export default function PaymentStatusDiagnostic() {
             </div>
 
             {result.comparison.statusMismatch && (
-              <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-sm text-yellow-900">
-                  <strong>Issue:</strong> The status in Acumatica has changed since our last sync.
-                  The incremental sync uses the LastModifiedDateTime field to detect changes.
-                  If Acumatica didn't update this field when the status changed, our sync won't pick it up automatically.
-                </p>
+              <div className="mt-4 space-y-3">
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-900">
+                    <strong>Issue:</strong> The status in Acumatica has changed since our last sync.
+                    The incremental sync uses the LastModifiedDateTime field to detect changes.
+                    If Acumatica didn't update this field when the status changed, our sync won't pick it up automatically.
+                  </p>
+                </div>
+                <div className="flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div>
+                    <p className="font-medium text-blue-900">Fix This Issue</p>
+                    <p className="text-sm text-blue-700">Manually resync this payment to update it with current Acumatica data</p>
+                  </div>
+                  <button
+                    onClick={resyncPayment}
+                    disabled={resyncing}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
+                  >
+                    {resyncing ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Resyncing...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4" />
+                        Resync This Payment
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </div>
