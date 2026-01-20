@@ -55,6 +55,8 @@ import PasswordResetTester from './components/PasswordResetTester';
 import TestPaymentAppAndAttachmentSync from './components/TestPaymentAppAndAttachmentSync';
 import AutoBackfillMonitor from './components/AutoBackfillMonitor';
 import PaymentStatusDiagnostic from './components/PaymentStatusDiagnostic';
+import PaymentDateRangeResync from './components/PaymentDateRangeResync';
+import PaymentSyncHealthCheck from './components/PaymentSyncHealthCheck';
 import { DeveloperTools } from './components/DeveloperTools';
 
 function LoadingScreen() {
@@ -156,6 +158,8 @@ function AppContent() {
         <Route path="test-payment-sync" element={<TestPaymentAppAndAttachmentSync />} />
         <Route path="auto-backfill" element={<AutoBackfillMonitor />} />
         <Route path="payment-status-diagnostic" element={<PaymentStatusDiagnostic />} />
+        <Route path="payment-date-range-resync" element={<PaymentDateRangeResync />} />
+        <Route path="payment-sync-health" element={<PaymentSyncHealthCheck />} />
         <Route path="developer-tools" element={<DeveloperTools />} />
       </Route>
 

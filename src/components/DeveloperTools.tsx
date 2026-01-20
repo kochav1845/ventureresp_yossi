@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse } from 'lucide-react';
 
 interface Tool {
   id: string;
@@ -61,6 +61,22 @@ export function DeveloperTools() {
       description: 'Compare payment status between Acumatica and database',
       icon: AlertCircle,
       path: '/payment-status-diagnostic',
+      category: 'payment'
+    },
+    {
+      id: 'payment-date-range-resync',
+      name: 'Payment Date Range Resync',
+      description: 'Bulk resync payments within a specific date range',
+      icon: Calendar,
+      path: '/payment-date-range-resync',
+      category: 'payment'
+    },
+    {
+      id: 'payment-sync-health',
+      name: 'Payment Sync Health Check',
+      description: 'Verify payment sync accuracy and detect mismatches',
+      icon: HeartPulse,
+      path: '/payment-sync-health',
       category: 'payment'
     },
     {
