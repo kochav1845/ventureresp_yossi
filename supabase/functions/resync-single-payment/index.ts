@@ -31,12 +31,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { data: credentials } = await supabase
+    const { data: credentials, error: credError } = await supabase
       .from('acumatica_credentials')
       .select('*')
       .single();
 
-    if (!credentials) {
+    if (credError || !credentials) {
+      console.error('Credentials error:', credError);
       throw new Error('Acumatica credentials not configured');
     }
 
