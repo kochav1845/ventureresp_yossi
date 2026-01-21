@@ -178,6 +178,7 @@ Deno.serve(async (req: Request) => {
           'Cookie': cookies,
           'Accept': 'application/json',
           'Content-Type': 'application/json',
+          'Set-Optimized-Export': 'false',
         },
       }
     );
@@ -212,6 +213,7 @@ Deno.serve(async (req: Request) => {
               'Cookie': cookies,
               'Accept': 'application/json',
               'Content-Type': 'application/json',
+              'Set-Optimized-Export': 'false',
             },
           }
         );
