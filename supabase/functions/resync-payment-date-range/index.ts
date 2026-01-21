@@ -7,9 +7,55 @@ const corsHeaders = {
 };
 
 const MAX_PAYMENTS_PER_RUN = 50;
-const REQUEST_TIMEOUT = 55000;
 
-async function getAcumaticaSession(supabase: any, acumaticaUrl: string, credentials: any): Promise<string> {
+async function logoutAcumaticaSession(acumaticaUrl: string, cookies: string): Promise<boolean> {
+  try {
+    console.log('Attempting to logout Acumatica session...');
+    const logoutResponse = await fetch(`${acumaticaUrl}/entity/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Cookie': cookies,
+        'Content-Type': 'application/json',
+      },
+    });
+    console.log(`Logout response status: ${logoutResponse.status}`);
+    return logoutResponse.ok;
+  } catch (error) {
+    console.warn('Logout failed:', error);
+    return false;
+  }
+}
+
+async function forceLogoutAllCachedSessions(supabase: any, acumaticaUrl: string): Promise<number> {
+  const { data: allSessions } = await supabase
+    .from('acumatica_session_cache')
+    .select('session_id')
+    .eq('is_active', true);
+
+  let loggedOut = 0;
+  if (allSessions && allSessions.length > 0) {
+    console.log(`Found ${allSessions.length} cached sessions to logout`);
+    for (const session of allSessions) {
+      const success = await logoutAcumaticaSession(acumaticaUrl, session.session_id);
+      if (success) loggedOut++;
+    }
+  }
+
+  await supabase
+    .from('acumatica_session_cache')
+    .update({ is_active: false })
+    .eq('is_active', true);
+
+  return loggedOut;
+}
+
+async function getOrCreateSession(supabase: any, acumaticaUrl: string, credentials: any, forceNew: boolean = false): Promise<string> {
+  if (forceNew) {
+    console.log('Force new session requested, logging out all existing sessions...');
+    await forceLogoutAllCachedSessions(supabase, acumaticaUrl);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
   const { data: cachedSession } = await supabase
     .from('acumatica_session_cache')
     .select('session_id')
@@ -19,12 +65,13 @@ async function getAcumaticaSession(supabase: any, acumaticaUrl: string, credenti
     .limit(1)
     .maybeSingle();
 
-  if (cachedSession) {
-    console.log('Using cached session cookies');
+  if (cachedSession && !forceNew) {
+    console.log('Reusing cached session');
     return cachedSession.session_id;
   }
 
-  console.log('No valid cached session, logging in...');
+  console.log('Creating new Acumatica session...');
+
   const loginBody: any = {
     name: credentials.username,
     password: credentials.password,
@@ -40,6 +87,11 @@ async function getAcumaticaSession(supabase: any, acumaticaUrl: string, credenti
 
   if (!loginResponse.ok) {
     const errorText = await loginResponse.text();
+
+    if (errorText.includes('concurrent API logins') || errorText.includes('API Login Limit')) {
+      throw new Error(`LOGIN_LIMIT_REACHED: ${errorText}`);
+    }
+
     throw new Error(`Authentication failed: ${errorText}`);
   }
 
@@ -51,22 +103,22 @@ async function getAcumaticaSession(supabase: any, acumaticaUrl: string, credenti
   const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
 
   const expiresAt = new Date();
-  expiresAt.setHours(expiresAt.getHours() + 2);
+  expiresAt.setMinutes(expiresAt.getMinutes() + 25);
 
   await supabase
     .from('acumatica_session_cache')
     .update({ is_active: false })
-    .eq('is_active', true);
+    .neq('session_id', cookies);
 
   await supabase
     .from('acumatica_session_cache')
-    .insert({
+    .upsert({
       session_id: cookies,
       expires_at: expiresAt.toISOString(),
       is_active: true,
-    });
+    }, { onConflict: 'session_id' });
 
-  console.log('Logged in and cached session');
+  console.log('New session created and cached');
   return cookies;
 }
 
@@ -83,7 +135,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { startDate, endDate } = await req.json();
+    const { startDate, endDate, forceNewSession } = await req.json();
 
     if (!startDate || !endDate) {
       return new Response(
@@ -101,7 +153,6 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (credError || !credentials) {
-      console.error('Credentials error:', credError);
       throw new Error('Acumatica credentials not configured');
     }
 
@@ -110,11 +161,23 @@ Deno.serve(async (req: Request) => {
       acumaticaUrl = `https://${acumaticaUrl}`;
     }
 
-    const cookies = await getAcumaticaSession(supabase, acumaticaUrl, credentials);
+    let cookies: string;
+    try {
+      cookies = await getOrCreateSession(supabase, acumaticaUrl, credentials, forceNewSession === true);
+    } catch (loginError: any) {
+      if (loginError.message?.includes('LOGIN_LIMIT_REACHED')) {
+        return new Response(
+          JSON.stringify({
+            error: 'Acumatica API login limit reached',
+            solution: 'Go to Acumatica System Monitor (SM201010) > Active Users tab and terminate stale API sessions, OR go to Apply Updates and click Restart Application',
+            details: loginError.message,
+          }),
+          { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw loginError;
+    }
 
-    console.log(`Querying payments between ${startDate} and ${endDate}...`);
-
-    // First, get the count
     const { count: totalInRange } = await supabase
       .from('acumatica_payments')
       .select('*', { count: 'exact', head: true })
@@ -138,7 +201,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Limit to prevent timeouts
     const limitedCount = Math.min(totalInRange, MAX_PAYMENTS_PER_RUN);
 
     const { data: payments, error: queryError } = await supabase
@@ -150,11 +212,10 @@ Deno.serve(async (req: Request) => {
       .limit(limitedCount);
 
     if (queryError) {
-      console.error('Query error:', queryError);
       throw new Error(`Database query failed: ${queryError.message}`);
     }
 
-    console.log(`Processing ${payments?.length || 0} payments (limited from ${totalInRange})`);
+    console.log(`Processing ${payments?.length || 0} payments`);
 
     const results = {
       totalProcessed: payments.length,
@@ -163,6 +224,8 @@ Deno.serve(async (req: Request) => {
       statusChanges: [] as any[],
       errors: [] as any[],
     };
+
+    let sessionRetried = false;
 
     for (const payment of payments) {
       try {
@@ -180,16 +243,26 @@ Deno.serve(async (req: Request) => {
 
         if (!paymentResponse.ok) {
           const errorText = await paymentResponse.text();
-          console.error(`Acumatica API error for ${payment.reference_number}: ${paymentResponse.status} - ${errorText}`);
 
-          if (paymentResponse.status === 401 || errorText.includes('API Login Limit') || errorText.includes('PX.Data.PXException')) {
-            console.log('Session invalid or login limit hit, getting fresh session...');
-            await supabase
-              .from('acumatica_session_cache')
-              .update({ is_active: false })
-              .eq('is_active', true);
+          if (!sessionRetried && (paymentResponse.status === 401 || errorText.includes('API Login Limit') || errorText.includes('PX.Data.PXException'))) {
+            console.log('Session issue detected, getting fresh session...');
+            sessionRetried = true;
 
-            cookies = await getAcumaticaSession(supabase, acumaticaUrl, credentials);
+            try {
+              cookies = await getOrCreateSession(supabase, acumaticaUrl, credentials, true);
+            } catch (retryLoginError: any) {
+              if (retryLoginError.message?.includes('LOGIN_LIMIT_REACHED')) {
+                return new Response(
+                  JSON.stringify({
+                    error: 'Acumatica API login limit reached during resync',
+                    solution: 'Go to Acumatica System Monitor (SM201010) > Active Users tab and terminate stale API sessions',
+                    partialResults: results,
+                  }),
+                  { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+              }
+              throw retryLoginError;
+            }
 
             paymentResponse = await fetch(
               `${acumaticaUrl}/entity/Default/22.200.001/Payment?$filter=ReferenceNbr eq '${payment.reference_number}'&$expand=ApplicationHistory`,
@@ -205,49 +278,44 @@ Deno.serve(async (req: Request) => {
 
             if (!paymentResponse.ok) {
               const retryError = await paymentResponse.text();
-
-              if (paymentResponse.status === 500 && retryError.includes('InvalidOperationException')) {
-                results.errorCount++;
-                results.errors.push({
-                  paymentRef: payment.reference_number,
-                  error: 'Payment not found or invalid in Acumatica',
-                  details: retryError.substring(0, 200)
-                });
-                console.warn(`Skipping payment ${payment.reference_number} - not found in Acumatica`);
-                continue;
-              }
-
-              throw new Error(`Failed after retry: ${paymentResponse.status} - ${retryError}`);
+              results.errors.push({
+                paymentRef: payment.reference_number,
+                error: `Failed after session retry: ${paymentResponse.status}`,
+                details: retryError.substring(0, 200)
+              });
+              results.errorCount++;
+              continue;
             }
           } else if (paymentResponse.status === 500 && errorText.includes('InvalidOperationException')) {
-            results.errorCount++;
             results.errors.push({
               paymentRef: payment.reference_number,
-              error: 'Payment not found or invalid in Acumatica',
-              details: errorText.substring(0, 200)
+              error: 'Payment not found in Acumatica',
             });
-            console.warn(`Skipping payment ${payment.reference_number} - not found in Acumatica`);
+            results.errorCount++;
             continue;
           } else {
-            throw new Error(`Failed to fetch: ${paymentResponse.status} - ${errorText}`);
+            results.errors.push({
+              paymentRef: payment.reference_number,
+              error: `API Error: ${paymentResponse.status}`,
+              details: errorText.substring(0, 200)
+            });
+            results.errorCount++;
+            continue;
           }
         }
 
         const responseData = await paymentResponse.json();
 
         if (!responseData || responseData.length === 0) {
-          results.errorCount++;
           results.errors.push({
             paymentRef: payment.reference_number,
-            error: 'Payment not found in Acumatica',
-            details: 'Query returned no results'
+            error: 'Payment not found in Acumatica query'
           });
-          console.warn(`Skipping payment ${payment.reference_number} - not found in Acumatica`);
+          results.errorCount++;
           continue;
         }
 
         const acumaticaPayment = responseData[0];
-
         const oldStatus = payment.status;
         const newStatus = acumaticaPayment.Status?.value;
 
@@ -343,7 +411,7 @@ Deno.serve(async (req: Request) => {
       });
 
     const responseMessage = totalInRange > MAX_PAYMENTS_PER_RUN
-      ? `Processed ${results.totalProcessed} of ${totalInRange} payments (limited to prevent timeout). Run again to process more.`
+      ? `Processed ${results.totalProcessed} of ${totalInRange} payments. Run again to process more.`
       : undefined;
 
     return new Response(
@@ -360,18 +428,6 @@ Deno.serve(async (req: Request) => {
     );
   } catch (error: any) {
     console.error('Date range resync error:', error);
-
-    if (error.message?.includes('Unauthorized') || error.message?.includes('401')) {
-      console.log('Session expired, invalidating cache');
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-      );
-      await supabase
-        .from('acumatica_session_cache')
-        .update({ is_active: false })
-        .eq('is_active', true);
-    }
 
     return new Response(
       JSON.stringify({ error: error.message }),
