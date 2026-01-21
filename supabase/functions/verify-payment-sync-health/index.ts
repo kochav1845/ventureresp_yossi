@@ -6,14 +6,73 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+async function getAcumaticaSession(supabase: any, acumaticaUrl: string, credentials: any): Promise<string> {
+  const { data: cachedSession } = await supabase
+    .from('acumatica_session_cache')
+    .select('session_id')
+    .eq('is_active', true)
+    .gte('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (cachedSession) {
+    console.log('Using cached session cookies');
+    return cachedSession.session_id;
+  }
+
+  console.log('No valid cached session, logging in...');
+  const loginBody: any = {
+    name: credentials.username,
+    password: credentials.password,
+  };
+  if (credentials.company) loginBody.company = credentials.company;
+  if (credentials.branch) loginBody.branch = credentials.branch;
+
+  const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(loginBody),
+  });
+
+  if (!loginResponse.ok) {
+    const errorText = await loginResponse.text();
+    throw new Error(`Authentication failed: ${errorText}`);
+  }
+
+  const setCookieHeader = loginResponse.headers.get('set-cookie');
+  if (!setCookieHeader) {
+    throw new Error('No authentication cookies received');
+  }
+
+  const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
+
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + 2);
+
+  await supabase
+    .from('acumatica_session_cache')
+    .update({ is_active: false })
+    .eq('is_active', true);
+
+  await supabase
+    .from('acumatica_session_cache')
+    .insert({
+      session_id: cookies,
+      expires_at: expiresAt.toISOString(),
+      is_active: true,
+    });
+
+  console.log('Logged in and cached session');
+  return cookies;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   const startTime = Date.now();
-  let acumaticaUrl: string | null = null;
-  let cookies: string | null = null;
 
   try {
     const supabase = createClient(
@@ -36,39 +95,12 @@ Deno.serve(async (req: Request) => {
       throw new Error('Acumatica credentials not configured');
     }
 
-    acumaticaUrl = credentials.acumatica_url;
+    let acumaticaUrl = credentials.acumatica_url;
     if (acumaticaUrl && !acumaticaUrl.startsWith("http://") && !acumaticaUrl.startsWith("https://")) {
       acumaticaUrl = `https://${acumaticaUrl}`;
     }
 
-    console.log('Logging in to Acumatica...');
-    const loginBody: any = {
-      name: credentials.username,
-      password: credentials.password,
-    };
-    if (credentials.company) loginBody.company = credentials.company;
-    if (credentials.branch) loginBody.branch = credentials.branch;
-
-    const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(loginBody),
-    });
-
-    if (!loginResponse.ok) {
-      const errorText = await loginResponse.text();
-      throw new Error(`Authentication failed: ${errorText}`);
-    }
-
-    const setCookieHeader = loginResponse.headers.get('set-cookie');
-    if (!setCookieHeader) {
-      throw new Error('No authentication cookies received');
-    }
-
-    cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
-    console.log('Successfully logged in to Acumatica');
+    let cookies = await getAcumaticaSession(supabase, acumaticaUrl, credentials);
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -191,22 +223,18 @@ Deno.serve(async (req: Request) => {
     );
   } catch (error: any) {
     console.error('Health check error:', error);
+
+    if (error.message?.includes('Unauthorized') || error.message?.includes('401')) {
+      console.log('Session expired, invalidating cache');
+      await supabase
+        .from('acumatica_session_cache')
+        .update({ is_active: false })
+        .eq('is_active', true);
+    }
+
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-  } finally {
-    // CRITICAL: Always logout to free up session, even on errors
-    if (cookies && acumaticaUrl) {
-      try {
-        await fetch(`${acumaticaUrl}/entity/auth/logout`, {
-          method: 'POST',
-          headers: { 'Cookie': cookies },
-        });
-        console.log('Successfully logged out from Acumatica');
-      } catch (logoutError) {
-        console.error('Logout error (non-critical):', logoutError);
-      }
-    }
   }
 });
