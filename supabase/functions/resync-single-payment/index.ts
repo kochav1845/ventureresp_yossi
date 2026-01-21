@@ -24,21 +24,21 @@ async function logoutAcumaticaSession(acumaticaUrl: string, cookies: string): Pr
 async function forceLogoutAllCachedSessions(supabase: any, acumaticaUrl: string): Promise<number> {
   const { data: allSessions } = await supabase
     .from('acumatica_session_cache')
-    .select('session_id')
-    .eq('is_active', true);
+    .select('id, session_cookie')
+    .eq('is_valid', true);
 
   let loggedOut = 0;
   if (allSessions && allSessions.length > 0) {
     for (const session of allSessions) {
-      const success = await logoutAcumaticaSession(acumaticaUrl, session.session_id);
+      const success = await logoutAcumaticaSession(acumaticaUrl, session.session_cookie);
       if (success) loggedOut++;
     }
   }
 
   await supabase
     .from('acumatica_session_cache')
-    .update({ is_active: false })
-    .eq('is_active', true);
+    .update({ is_valid: false })
+    .eq('is_valid', true);
 
   return loggedOut;
 }
@@ -52,16 +52,20 @@ async function getOrCreateSession(supabase: any, acumaticaUrl: string, credentia
 
   const { data: cachedSession } = await supabase
     .from('acumatica_session_cache')
-    .select('session_id')
-    .eq('is_active', true)
-    .gte('expires_at', new Date().toISOString())
-    .order('created_at', { ascending: false })
+    .select('id, session_cookie')
+    .eq('is_valid', true)
+    .gt('expires_at', new Date().toISOString())
+    .order('last_used_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (cachedSession && !forceNew) {
-    console.log('Reusing cached session');
-    return cachedSession.session_id;
+    console.log('Reusing cached session:', cachedSession.id);
+    await supabase
+      .from('acumatica_session_cache')
+      .update({ last_used_at: new Date().toISOString() })
+      .eq('id', cachedSession.id);
+    return cachedSession.session_cookie;
   }
 
   console.log('Creating new Acumatica session...');
@@ -101,18 +105,20 @@ async function getOrCreateSession(supabase: any, acumaticaUrl: string, credentia
 
   await supabase
     .from('acumatica_session_cache')
-    .update({ is_active: false })
-    .neq('session_id', cookies);
+    .update({ is_valid: false })
+    .eq('is_valid', true);
 
-  await supabase
+  const { data: newSession } = await supabase
     .from('acumatica_session_cache')
-    .upsert({
-      session_id: cookies,
+    .insert({
+      session_cookie: cookies,
       expires_at: expiresAt.toISOString(),
-      is_active: true,
-    }, { onConflict: 'session_id' });
+      is_valid: true
+    })
+    .select('id')
+    .single();
 
-  console.log('New session created and cached');
+  console.log('New session created and cached:', newSession?.id);
   return cookies;
 }
 
@@ -168,26 +174,35 @@ Deno.serve(async (req: Request) => {
       throw loginError;
     }
 
-    console.log(`Fetching payment ${paymentRef} from Acumatica...`);
+    const paddedRef = paymentRef.padStart(6, '0');
+    console.log(`Fetching payment ${paddedRef} from Acumatica...`);
 
-    let paymentResponse = await fetch(
-      `${acumaticaUrl}/entity/Default/22.200.001/Payment?$filter=ReferenceNbr eq '${paymentRef}'&$expand=ApplicationHistory`,
-      {
-        method: 'GET',
-        headers: {
-          'Cookie': cookies,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Set-Optimized-Export': 'false',
-        },
-      }
-    );
+    const { data: existingPayment } = await supabase
+      .from('acumatica_payments')
+      .select('type')
+      .eq('reference_number', paddedRef)
+      .maybeSingle();
+
+    const paymentType = existingPayment?.type || 'Payment';
+    console.log(`Using payment type: ${paymentType}`);
+
+    const directUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(paymentType)}/${encodeURIComponent(paddedRef)}?$expand=ApplicationHistory`;
+    console.log(`Direct endpoint URL: ${directUrl}`);
+
+    let paymentResponse = await fetch(directUrl, {
+      method: 'GET',
+      headers: {
+        'Cookie': cookies,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    });
 
     if (!paymentResponse.ok) {
       const errorText = await paymentResponse.text();
       console.error(`Acumatica API error: ${paymentResponse.status} - ${errorText}`);
 
-      if (paymentResponse.status === 401 || errorText.includes('API Login Limit') || errorText.includes('PX.Data.PXException')) {
+      if (paymentResponse.status === 401 || errorText.includes('API Login Limit')) {
         console.log('Session issue, getting fresh session...');
 
         try {
@@ -205,18 +220,14 @@ Deno.serve(async (req: Request) => {
           throw retryLoginError;
         }
 
-        paymentResponse = await fetch(
-          `${acumaticaUrl}/entity/Default/22.200.001/Payment?$filter=ReferenceNbr eq '${paymentRef}'&$expand=ApplicationHistory`,
-          {
-            method: 'GET',
-            headers: {
-              'Cookie': cookies,
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Set-Optimized-Export': 'false',
-            },
-          }
-        );
+        paymentResponse = await fetch(directUrl, {
+          method: 'GET',
+          headers: {
+            'Cookie': cookies,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        });
 
         if (!paymentResponse.ok) {
           const retryError = await paymentResponse.text();
@@ -227,45 +238,42 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const responseData = await paymentResponse.json();
+    const acumaticaPayment = await paymentResponse.json();
 
-    if (!responseData || responseData.length === 0) {
+    if (!acumaticaPayment || !acumaticaPayment.ReferenceNbr) {
       return new Response(
         JSON.stringify({
           error: 'Payment not found in Acumatica',
-          paymentRef: paymentRef
+          paymentRef: paddedRef
         }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const acumaticaPayment = responseData[0];
-
     const updateData = {
       customer_id: acumaticaPayment.CustomerID?.value || null,
-      customer_name: acumaticaPayment.Customer?.value || null,
-      payment_type: acumaticaPayment.Type?.value || null,
+      customer_name: acumaticaPayment.CustomerName?.value || acumaticaPayment.Customer?.value || null,
+      type: acumaticaPayment.Type?.value || null,
       payment_method: acumaticaPayment.PaymentMethod?.value || null,
       cash_account: acumaticaPayment.CashAccount?.value || null,
       card_account_nbr: acumaticaPayment.CardAccountNbr?.value || null,
       status: acumaticaPayment.Status?.value || null,
       application_date: acumaticaPayment.ApplicationDate?.value || null,
-      payment_date: acumaticaPayment.PaymentDate?.value || null,
       payment_amount: acumaticaPayment.PaymentAmount?.value || null,
-      unapplied_balance: acumaticaPayment.UnappliedBalance?.value || null,
+      available_balance: acumaticaPayment.UnappliedBalance?.value || null,
       description: acumaticaPayment.Description?.value || null,
       currency_id: acumaticaPayment.CurrencyID?.value || null,
       hold: acumaticaPayment.Hold?.value || null,
       payment_ref: acumaticaPayment.PaymentRef?.value || null,
-      last_modified_date_time: acumaticaPayment.LastModifiedDateTime?.value || null,
+      last_modified_datetime: acumaticaPayment.LastModifiedDateTime?.value || null,
       application_history: acumaticaPayment.ApplicationHistory || [],
-      last_synced_at: new Date().toISOString(),
+      last_sync_timestamp: new Date().toISOString(),
     };
 
     const { error: updateError } = await supabase
       .from('acumatica_payments')
       .update(updateData)
-      .eq('reference_number', paymentRef);
+      .eq('reference_number', paddedRef);
 
     if (updateError) {
       throw new Error(`Failed to update payment: ${updateError.message}`);
@@ -275,10 +283,10 @@ Deno.serve(async (req: Request) => {
       await supabase
         .from('payment_invoice_applications')
         .delete()
-        .eq('payment_reference_number', paymentRef);
+        .eq('payment_reference_number', paddedRef);
 
       const applications = acumaticaPayment.ApplicationHistory.map((app: any) => ({
-        payment_reference_number: paymentRef,
+        payment_reference_number: paddedRef,
         doc_type: app.DocType?.value || null,
         reference_number: app.ReferenceNbr?.value || null,
         invoice_date: app.Date?.value || null,
@@ -296,7 +304,7 @@ Deno.serve(async (req: Request) => {
       .from('sync_change_logs')
       .insert({
         entity_type: 'payment',
-        entity_id: paymentRef,
+        entity_id: paddedRef,
         sync_type: 'manual_resync',
         action_type: 'updated',
         old_value: null,
@@ -306,7 +314,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Payment ${paymentRef} resynced successfully`,
+        message: `Payment ${paddedRef} resynced successfully`,
         updatedStatus: updateData.status,
         applicationsCount: acumaticaPayment.ApplicationHistory?.length || 0,
       }),
