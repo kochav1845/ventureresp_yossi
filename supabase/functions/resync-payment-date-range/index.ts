@@ -205,8 +205,29 @@ Deno.serve(async (req: Request) => {
 
             if (!paymentResponse.ok) {
               const retryError = await paymentResponse.text();
+
+              if (paymentResponse.status === 500 && retryError.includes('InvalidOperationException')) {
+                results.errorCount++;
+                results.errors.push({
+                  paymentRef: payment.reference_number,
+                  error: 'Payment not found or invalid in Acumatica',
+                  details: retryError.substring(0, 200)
+                });
+                console.warn(`Skipping payment ${payment.reference_number} - not found in Acumatica`);
+                continue;
+              }
+
               throw new Error(`Failed after retry: ${paymentResponse.status} - ${retryError}`);
             }
+          } else if (paymentResponse.status === 500 && errorText.includes('InvalidOperationException')) {
+            results.errorCount++;
+            results.errors.push({
+              paymentRef: payment.reference_number,
+              error: 'Payment not found or invalid in Acumatica',
+              details: errorText.substring(0, 200)
+            });
+            console.warn(`Skipping payment ${payment.reference_number} - not found in Acumatica`);
+            continue;
           } else {
             throw new Error(`Failed to fetch: ${paymentResponse.status} - ${errorText}`);
           }
