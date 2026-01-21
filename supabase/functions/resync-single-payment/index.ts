@@ -11,6 +11,69 @@ interface AcumaticaSession {
   created_at: string;
 }
 
+async function getAcumaticaSession(supabase: any, acumaticaUrl: string, credentials: any): Promise<string> {
+  const { data: existingSession } = await supabase
+    .from('acumatica_session_cache')
+    .select('session_id')
+    .eq('is_active', true)
+    .gte('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingSession) {
+    console.log('Using cached session');
+    return existingSession.session_id;
+  }
+
+  console.log('Creating new session');
+  const loginBody: any = {
+    name: credentials.username,
+    password: credentials.password,
+  };
+  if (credentials.company) loginBody.company = credentials.company;
+  if (credentials.branch) loginBody.branch = credentials.branch;
+
+  const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(loginBody),
+  });
+
+  if (!loginResponse.ok) {
+    const errorText = await loginResponse.text();
+    throw new Error(`Authentication failed: ${errorText}`);
+  }
+
+  const setCookieHeader = loginResponse.headers.get('set-cookie');
+  if (!setCookieHeader) {
+    throw new Error('No authentication cookies received');
+  }
+
+  const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
+
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+
+  await supabase
+    .from('acumatica_session_cache')
+    .update({ is_active: false })
+    .eq('is_active', true);
+
+  await supabase
+    .from('acumatica_session_cache')
+    .insert({
+      session_id: cookies,
+      expires_at: expiresAt.toISOString(),
+      is_active: true,
+    });
+
+  console.log('Session cached successfully');
+  return cookies;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -47,71 +110,11 @@ Deno.serve(async (req: Request) => {
       acumaticaUrl = `https://${acumaticaUrl}`;
     }
 
-    const { data: existingSession } = await supabase
-      .from('acumatica_session_cache')
-      .select('session_id')
-      .eq('is_active', true)
-      .gte('expires_at', new Date().toISOString())
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    let cookies: string;
-
-    if (existingSession) {
-      cookies = existingSession.session_id;
-      console.log('Using cached session');
-    } else {
-      console.log('Creating new session');
-      const loginBody: any = {
-        name: credentials.username,
-        password: credentials.password,
-      };
-      if (credentials.company) loginBody.company = credentials.company;
-      if (credentials.branch) loginBody.branch = credentials.branch;
-
-      const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(loginBody),
-      });
-
-      if (!loginResponse.ok) {
-        const errorText = await loginResponse.text();
-        throw new Error(`Authentication failed: ${errorText}`);
-      }
-
-      const setCookieHeader = loginResponse.headers.get('set-cookie');
-      if (!setCookieHeader) {
-        throw new Error('No authentication cookies received');
-      }
-
-      cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
-
-      const expiresAt = new Date();
-      expiresAt.setMinutes(expiresAt.getMinutes() + 15);
-
-      await supabase
-        .from('acumatica_session_cache')
-        .update({ is_active: false })
-        .eq('is_active', true);
-
-      await supabase
-        .from('acumatica_session_cache')
-        .insert({
-          session_id: cookies,
-          expires_at: expiresAt.toISOString(),
-          is_active: true,
-        });
-
-      console.log('Session cached successfully');
-    }
+    let cookies = await getAcumaticaSession(supabase, acumaticaUrl, credentials);
 
     console.log(`Fetching payment ${paymentRef} from Acumatica...`);
 
-    const paymentResponse = await fetch(
+    let paymentResponse = await fetch(
       `${acumaticaUrl}/entity/Default/22.200.001/Payment/${paymentRef}?$expand=ApplicationHistory`,
       {
         method: 'GET',
@@ -124,7 +127,37 @@ Deno.serve(async (req: Request) => {
     );
 
     if (!paymentResponse.ok) {
-      throw new Error(`Failed to fetch payment: ${paymentResponse.status}`);
+      const errorText = await paymentResponse.text();
+      console.error(`Acumatica API error for ${paymentRef}: ${paymentResponse.status} - ${errorText}`);
+
+      if (paymentResponse.status === 401 || errorText.includes('API Login Limit') || errorText.includes('PX.Data.PXException')) {
+        console.log('Session invalid or login limit hit, getting fresh session...');
+        await supabase
+          .from('acumatica_session_cache')
+          .update({ is_active: false })
+          .eq('is_active', true);
+
+        cookies = await getAcumaticaSession(supabase, acumaticaUrl, credentials);
+
+        paymentResponse = await fetch(
+          `${acumaticaUrl}/entity/Default/22.200.001/Payment/${paymentRef}?$expand=ApplicationHistory`,
+          {
+            method: 'GET',
+            headers: {
+              'Cookie': cookies,
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        if (!paymentResponse.ok) {
+          const retryError = await paymentResponse.text();
+          throw new Error(`Failed after retry: ${paymentResponse.status} - ${retryError}`);
+        }
+      } else {
+        throw new Error(`Failed to fetch payment: ${paymentResponse.status} - ${errorText}`);
+      }
     }
 
     const acumaticaPayment = await paymentResponse.json();
