@@ -135,7 +135,7 @@ Deno.serve(async (req: Request) => {
 
     for (const payment of recentPayments) {
       try {
-        const paymentResponse = await fetch(
+        let paymentResponse = await fetch(
           `${acumaticaUrl}/entity/Default/22.200.001/Payment/${payment.reference_number}`,
           {
             method: 'GET',
@@ -155,7 +155,38 @@ Deno.serve(async (req: Request) => {
             });
             continue;
           }
-          throw new Error(`Failed to fetch: ${paymentResponse.status}`);
+
+          const errorText = await paymentResponse.text();
+          console.error(`Acumatica API error for ${payment.reference_number}: ${paymentResponse.status} - ${errorText}`);
+
+          if (paymentResponse.status === 401 || errorText.includes('API Login Limit') || errorText.includes('PX.Data.PXException')) {
+            console.log('Session invalid or login limit hit, getting fresh session...');
+            await supabase
+              .from('acumatica_session_cache')
+              .update({ is_active: false })
+              .eq('is_active', true);
+
+            cookies = await getAcumaticaSession(supabase, acumaticaUrl, credentials);
+
+            paymentResponse = await fetch(
+              `${acumaticaUrl}/entity/Default/22.200.001/Payment/${payment.reference_number}`,
+              {
+                method: 'GET',
+                headers: {
+                  'Cookie': cookies,
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+
+            if (!paymentResponse.ok) {
+              const retryError = await paymentResponse.text();
+              throw new Error(`Failed after retry: ${paymentResponse.status} - ${retryError}`);
+            }
+          } else {
+            throw new Error(`Failed to fetch: ${paymentResponse.status} - ${errorText}`);
+          }
         }
 
         const acumaticaPayment = await paymentResponse.json();
