@@ -115,7 +115,7 @@ Deno.serve(async (req: Request) => {
     console.log(`Fetching payment ${paymentRef} from Acumatica...`);
 
     let paymentResponse = await fetch(
-      `${acumaticaUrl}/entity/Default/22.200.001/Payment/${paymentRef}?$expand=ApplicationHistory`,
+      `${acumaticaUrl}/entity/Default/22.200.001/Payment?$filter=ReferenceNbr eq '${paymentRef}'&$expand=ApplicationHistory`,
       {
         method: 'GET',
         headers: {
@@ -140,7 +140,7 @@ Deno.serve(async (req: Request) => {
         cookies = await getAcumaticaSession(supabase, acumaticaUrl, credentials);
 
         paymentResponse = await fetch(
-          `${acumaticaUrl}/entity/Default/22.200.001/Payment/${paymentRef}?$expand=ApplicationHistory`,
+          `${acumaticaUrl}/entity/Default/22.200.001/Payment?$filter=ReferenceNbr eq '${paymentRef}'&$expand=ApplicationHistory`,
           {
             method: 'GET',
             headers: {
@@ -160,7 +160,19 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const acumaticaPayment = await paymentResponse.json();
+    const responseData = await paymentResponse.json();
+
+    if (!responseData || responseData.length === 0) {
+      return new Response(
+        JSON.stringify({
+          error: 'Payment not found in Acumatica',
+          paymentRef: paymentRef
+        }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const acumaticaPayment = responseData[0];
 
     const updateData = {
       customer_id: acumaticaPayment.CustomerID?.value || null,

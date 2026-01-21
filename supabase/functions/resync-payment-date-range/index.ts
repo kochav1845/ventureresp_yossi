@@ -167,7 +167,7 @@ Deno.serve(async (req: Request) => {
     for (const payment of payments) {
       try {
         let paymentResponse = await fetch(
-          `${acumaticaUrl}/entity/Default/22.200.001/Payment/${payment.reference_number}?$expand=ApplicationHistory`,
+          `${acumaticaUrl}/entity/Default/22.200.001/Payment?$filter=ReferenceNbr eq '${payment.reference_number}'&$expand=ApplicationHistory`,
           {
             method: 'GET',
             headers: {
@@ -192,7 +192,7 @@ Deno.serve(async (req: Request) => {
             cookies = await getAcumaticaSession(supabase, acumaticaUrl, credentials);
 
             paymentResponse = await fetch(
-              `${acumaticaUrl}/entity/Default/22.200.001/Payment/${payment.reference_number}?$expand=ApplicationHistory`,
+              `${acumaticaUrl}/entity/Default/22.200.001/Payment?$filter=ReferenceNbr eq '${payment.reference_number}'&$expand=ApplicationHistory`,
               {
                 method: 'GET',
                 headers: {
@@ -233,7 +233,20 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        const acumaticaPayment = await paymentResponse.json();
+        const responseData = await paymentResponse.json();
+
+        if (!responseData || responseData.length === 0) {
+          results.errorCount++;
+          results.errors.push({
+            paymentRef: payment.reference_number,
+            error: 'Payment not found in Acumatica',
+            details: 'Query returned no results'
+          });
+          console.warn(`Skipping payment ${payment.reference_number} - not found in Acumatica`);
+          continue;
+        }
+
+        const acumaticaPayment = responseData[0];
 
         const oldStatus = payment.status;
         const newStatus = acumaticaPayment.Status?.value;
