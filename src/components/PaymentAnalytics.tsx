@@ -158,6 +158,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [applicationRows, setApplicationRows] = useState<any[]>([]);
   const [filteredApplicationRows, setFilteredApplicationRows] = useState<any[]>([]);
 
+  // Application view sorting
+  const [applicationSortField, setApplicationSortField] = useState<string>('payment_date');
+  const [applicationSortDirection, setApplicationSortDirection] = useState<'asc' | 'desc'>('desc');
+
   // Customer exclusions
   const [excludedCustomerIds, setExcludedCustomerIds] = useState<Set<string>>(new Set());
   const [excludedCustomersWithReasons, setExcludedCustomersWithReasons] = useState<Map<string, { notes: string; excluded_at: string }>>(new Map());
@@ -304,7 +308,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     }
   }, [filteredPayments, viewMode]);
 
-  // Filter application rows based on search term
+  // Filter and sort application rows based on search term and sort settings
   useEffect(() => {
     if (viewMode === 'application') {
       let filtered = [...applicationRows];
@@ -321,9 +325,30 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         );
       }
 
+      // Sort the filtered results
+      filtered.sort((a, b) => {
+        const field = applicationSortField;
+        let aVal = a[field];
+        let bVal = b[field];
+
+        // Handle null/undefined values
+        if (aVal == null) aVal = '';
+        if (bVal == null) bVal = '';
+
+        // Convert to strings for comparison
+        const aStr = String(aVal).toLowerCase();
+        const bStr = String(bVal).toLowerCase();
+
+        if (applicationSortDirection === 'asc') {
+          return aStr.localeCompare(bStr);
+        } else {
+          return bStr.localeCompare(aStr);
+        }
+      });
+
       setFilteredApplicationRows(filtered);
     }
-  }, [applicationRows, searchTerm, viewMode]);
+  }, [applicationRows, searchTerm, viewMode, applicationSortField, applicationSortDirection]);
 
   useEffect(() => {
     filterAnalyticsData();
@@ -1109,6 +1134,15 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     }
   };
 
+  const handleApplicationSort = (field: string) => {
+    if (applicationSortField === field) {
+      setApplicationSortDirection(applicationSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setApplicationSortField(field);
+      setApplicationSortDirection('asc');
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -1680,6 +1714,18 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       <div className="flex items-center gap-1">
         {label}
         <ArrowUpDown className={`w-3 h-3 ${sortField === field ? 'text-blue-600' : 'text-gray-400'}`} />
+      </div>
+    </th>
+  );
+
+  const ApplicationSortableHeader = ({ field, label }: { field: string; label: string }) => (
+    <th
+      onClick={() => handleApplicationSort(field)}
+      className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors border-r border-gray-200 sticky top-0 z-10"
+    >
+      <div className="flex items-center gap-1">
+        {label}
+        <ArrowUpDown className={`w-3 h-3 ${applicationSortField === field ? 'text-blue-600' : 'text-gray-400'}`} />
       </div>
     </th>
   );
@@ -3212,18 +3258,18 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                 <table className="divide-y divide-gray-200" style={{ minWidth: '1600px', width: 'max-content' }}>
                   <thead>
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Ref</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Customer</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Method</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Amount</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Invoice Ref</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Doc Type</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Invoice Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Due Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Amount Applied</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Invoice Balance</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Status</th>
+                      <ApplicationSortableHeader field="payment_date" label="Payment Date" />
+                      <ApplicationSortableHeader field="payment_reference" label="Payment Ref" />
+                      <ApplicationSortableHeader field="customer_name" label="Customer" />
+                      <ApplicationSortableHeader field="payment_method" label="Payment Method" />
+                      <ApplicationSortableHeader field="payment_amount" label="Payment Amount" />
+                      <ApplicationSortableHeader field="invoice_reference_number" label="Invoice Ref" />
+                      <ApplicationSortableHeader field="doc_type" label="Doc Type" />
+                      <ApplicationSortableHeader field="invoice_date" label="Invoice Date" />
+                      <ApplicationSortableHeader field="invoice_due_date" label="Due Date" />
+                      <ApplicationSortableHeader field="amount_paid" label="Amount Applied" />
+                      <ApplicationSortableHeader field="invoice_balance" label="Invoice Balance" />
+                      <ApplicationSortableHeader field="invoice_status" label="Status" />
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -3242,18 +3288,18 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                 <table className="divide-y divide-gray-200" style={{ minWidth: '1600px', width: 'max-content' }}>
                   <thead>
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Ref</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Customer</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Method</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Payment Amount</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Invoice Ref</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Doc Type</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Invoice Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Due Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Amount Applied</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Invoice Balance</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">Status</th>
+                      <ApplicationSortableHeader field="payment_date" label="Payment Date" />
+                      <ApplicationSortableHeader field="payment_reference" label="Payment Ref" />
+                      <ApplicationSortableHeader field="customer_name" label="Customer" />
+                      <ApplicationSortableHeader field="payment_method" label="Payment Method" />
+                      <ApplicationSortableHeader field="payment_amount" label="Payment Amount" />
+                      <ApplicationSortableHeader field="invoice_reference_number" label="Invoice Ref" />
+                      <ApplicationSortableHeader field="doc_type" label="Doc Type" />
+                      <ApplicationSortableHeader field="invoice_date" label="Invoice Date" />
+                      <ApplicationSortableHeader field="invoice_due_date" label="Due Date" />
+                      <ApplicationSortableHeader field="amount_paid" label="Amount Applied" />
+                      <ApplicationSortableHeader field="invoice_balance" label="Invoice Balance" />
+                      <ApplicationSortableHeader field="invoice_status" label="Status" />
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
