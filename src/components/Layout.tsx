@@ -21,7 +21,10 @@ import {
   Ticket,
   ChevronDown,
   ChevronUp,
-  Code
+  Code,
+  Menu,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import RemindersSidebar from './RemindersSidebar';
@@ -42,8 +45,49 @@ export default function Layout() {
   const [emailSystemOpen, setEmailSystemOpen] = useState(false);
   const [adminDashboardOpen, setAdminDashboardOpen] = useState(false);
   const [showUserSidebar, setShowUserSidebar] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const currentView = location.pathname.substring(1) || 'dashboard';
+
+  useEffect(() => {
+    loadSidebarPreference();
+  }, [profile?.id]);
+
+  const loadSidebarPreference = async () => {
+    if (!profile?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('ui_preferences')
+        .eq('id', profile.id)
+        .single();
+
+      if (!error && data?.ui_preferences) {
+        setSidebarCollapsed(data.ui_preferences.sidebarCollapsed || false);
+      }
+    } catch (error) {
+      console.error('Error loading sidebar preference:', error);
+    }
+  };
+
+  const toggleSidebar = async () => {
+    const newState = !sidebarCollapsed;
+    setSidebarCollapsed(newState);
+
+    if (!profile?.id) return;
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({
+          ui_preferences: { sidebarCollapsed: newState }
+        })
+        .eq('id', profile.id);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error saving sidebar preference:', error);
+    }
+  };
 
   useEffect(() => {
     checkOverdueReminders();
@@ -154,45 +198,65 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-white">
       {/* Sidebar */}
-      <aside className={`fixed left-0 h-screen w-64 bg-white border-r border-gray-200 shadow-sm flex flex-col ${isImpersonating ? 'top-16' : 'top-0'}`}>
+      <aside className={`fixed left-0 h-screen bg-white border-r border-gray-200 shadow-sm flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'} ${isImpersonating ? 'top-16' : 'top-0'}`}>
         {/* Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto">
           {/* Logo Header */}
-          <div className="p-6 border-b border-blue-100">
-            <div className="flex items-center justify-center mb-2">
-              <img
-                src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
-                alt="Venture Respiratory"
-                className="h-12 w-auto"
-              />
-            </div>
-            <p className="text-center text-xs text-blue-600 font-medium">Admin Portal</p>
+          <div className="p-4 border-b border-blue-100 flex items-center justify-between">
+            {!sidebarCollapsed && (
+              <div className="flex-1">
+                <div className="flex items-center justify-center mb-2">
+                  <img
+                    src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
+                    alt="Venture Respiratory"
+                    className="h-12 w-auto"
+                  />
+                </div>
+                <p className="text-center text-xs text-blue-600 font-medium">Admin Portal</p>
+              </div>
+            )}
+            <button
+              onClick={toggleSidebar}
+              className={`p-2 rounded-lg hover:bg-blue-50 text-blue-600 transition-all ${sidebarCollapsed ? 'mx-auto' : ''}`}
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {sidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+            </button>
           </div>
 
           {/* Navigation Menu */}
-          <nav className="p-4 space-y-6">
+          <nav className="p-2 space-y-4">
             {menuSections.map((section) => (
               <div key={section.title}>
-                <h3 className="text-xs font-semibold text-blue-900 uppercase tracking-wider mb-2 px-3">
-                  {section.title}
-                </h3>
+                {!sidebarCollapsed && (
+                  <h3 className="text-xs font-semibold text-blue-900 uppercase tracking-wider mb-2 px-3">
+                    {section.title}
+                  </h3>
+                )}
                 <ul className="space-y-1">
                   {section.items.map((item) => {
                     const Icon = item.icon;
                     const isActive = currentView === item.id;
                     return (
-                      <li key={item.id}>
+                      <li key={item.id} className="relative group">
                         <button
                           onClick={() => navigate(`/${item.id}`)}
                           className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                             isActive
                               ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md'
                               : 'text-blue-700 hover:bg-blue-50 hover:text-blue-900'
-                          }`}
+                          } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                          title={sidebarCollapsed ? item.name : ''}
                         >
                           <Icon size={18} />
-                          <span>{item.name}</span>
+                          {!sidebarCollapsed && <span>{item.name}</span>}
                         </button>
+                        {sidebarCollapsed && (
+                          <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none">
+                            {item.name}
+                            <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-900"></div>
+                          </div>
+                        )}
                       </li>
                     );
                   })}
@@ -203,27 +267,45 @@ export default function Layout() {
             {/* Admin Dashboard - Collapsible Section */}
             {adminDashboardItems.length > 0 && (
               <div>
-                <button
-                  onClick={() => {
-                    setAdminDashboardOpen(!adminDashboardOpen);
-                    if (!adminDashboardOpen) {
-                      navigate('/payment-analytics');
-                    }
-                  }}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all mb-2 ${
-                    adminDashboardItems.some(item => currentView === item.id)
-                      ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md'
-                      : 'text-blue-700 hover:text-blue-900 hover:bg-blue-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <BarChart3 size={16} />
-                    <span className="text-xs font-semibold uppercase tracking-wider">Admin Dashboard</span>
-                  </div>
-                  {adminDashboardOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
+                <div className="relative group">
+                  <button
+                    onClick={() => {
+                      if (sidebarCollapsed) {
+                        navigate('/payment-analytics');
+                      } else {
+                        setAdminDashboardOpen(!adminDashboardOpen);
+                        if (!adminDashboardOpen) {
+                          navigate('/payment-analytics');
+                        }
+                      }
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all mb-2 ${
+                      adminDashboardItems.some(item => currentView === item.id)
+                        ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md'
+                        : 'text-blue-700 hover:text-blue-900 hover:bg-blue-50'
+                    } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  >
+                    {sidebarCollapsed ? (
+                      <BarChart3 size={18} />
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <BarChart3 size={16} />
+                          <span className="text-xs font-semibold uppercase tracking-wider">Admin Dashboard</span>
+                        </div>
+                        {adminDashboardOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </>
+                    )}
+                  </button>
+                  {sidebarCollapsed && (
+                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none">
+                      Admin Dashboard
+                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-900"></div>
+                    </div>
+                  )}
+                </div>
 
-                {adminDashboardOpen && (
+                {adminDashboardOpen && !sidebarCollapsed && (
                   <ul className="space-y-1 ml-2">
                     {adminDashboardItems.map((item, index) => {
                       const Icon = item.icon;
@@ -252,18 +334,38 @@ export default function Layout() {
             {/* Email System - Collapsible Section */}
             {emailSystemItems.length > 0 && (
               <div>
-                <button
-                  onClick={() => setEmailSystemOpen(!emailSystemOpen)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-blue-700 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-all mb-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <Mail size={16} />
-                    <span className="text-xs font-semibold uppercase tracking-wider">Email System</span>
-                  </div>
-                  {emailSystemOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
+                <div className="relative group">
+                  <button
+                    onClick={() => {
+                      if (sidebarCollapsed) {
+                        navigate('/inbox');
+                      } else {
+                        setEmailSystemOpen(!emailSystemOpen);
+                      }
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-blue-700 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-all mb-2 ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  >
+                    {sidebarCollapsed ? (
+                      <Mail size={18} />
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Mail size={16} />
+                          <span className="text-xs font-semibold uppercase tracking-wider">Email System</span>
+                        </div>
+                        {emailSystemOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </>
+                    )}
+                  </button>
+                  {sidebarCollapsed && (
+                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none">
+                      Email System
+                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-900"></div>
+                    </div>
+                  )}
+                </div>
 
-                {emailSystemOpen && (
+                {emailSystemOpen && !sidebarCollapsed && (
                   <ul className="space-y-1 ml-2">
                     {emailSystemItems.map((item) => {
                       const Icon = item.icon;
@@ -292,18 +394,38 @@ export default function Layout() {
             {/* Developer Settings - Collapsible Section */}
             {developerItems.length > 0 && (
               <div>
-                <button
-                  onClick={() => setDeveloperSettingsOpen(!developerSettingsOpen)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-all mb-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <Code size={16} />
-                    <span className="text-xs font-semibold uppercase tracking-wider">Developer Settings</span>
-                  </div>
-                  {developerSettingsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
+                <div className="relative group">
+                  <button
+                    onClick={() => {
+                      if (sidebarCollapsed) {
+                        navigate('/developer-tools');
+                      } else {
+                        setDeveloperSettingsOpen(!developerSettingsOpen);
+                      }
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-all mb-2 ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  >
+                    {sidebarCollapsed ? (
+                      <Code size={18} />
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Code size={16} />
+                          <span className="text-xs font-semibold uppercase tracking-wider">Developer Settings</span>
+                        </div>
+                        {developerSettingsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </>
+                    )}
+                  </button>
+                  {sidebarCollapsed && (
+                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none">
+                      Developer Settings
+                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-900"></div>
+                    </div>
+                  )}
+                </div>
 
-                {developerSettingsOpen && (
+                {developerSettingsOpen && !sidebarCollapsed && (
                   <ul className="space-y-1 ml-2">
                     {developerItems.map((item) => {
                       const Icon = item.icon;
@@ -333,27 +455,46 @@ export default function Layout() {
 
         {/* User Info & Logout - Fixed at Bottom */}
         <div className="flex-shrink-0 p-4 border-t border-blue-100 bg-white">
-          <div className="mb-3 px-3">
-            <p className="text-xs text-blue-600 font-medium truncate">{profile?.email}</p>
-            <p className="text-xs text-blue-400 capitalize">{profile?.role}</p>
-          </div>
-          {isAdmin && (
-            <button
-              onClick={() => setShowUserSidebar(t => !t)}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 mb-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
-            >
-              <Users size={16} />
-              <span>Manage Users</span>
-            </button>
+          {!sidebarCollapsed && (
+            <div className="mb-3 px-3">
+              <p className="text-xs text-blue-600 font-medium truncate">{profile?.email}</p>
+              <p className="text-xs text-blue-400 capitalize">{profile?.role}</p>
+            </div>
           )}
-              {console.warn(showUserSidebar)}
-          <button
-            onClick={() => signOut()}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-sm font-medium"
-          >
-            <LogOut size={16} />
-            Sign Out
-          </button>
+          {isAdmin && (
+            <div className="relative group">
+              <button
+                onClick={() => setShowUserSidebar(t => !t)}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2 mb-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium ${sidebarCollapsed ? 'px-2' : ''}`}
+                title={sidebarCollapsed ? 'Manage Users' : ''}
+              >
+                <Users size={16} />
+                {!sidebarCollapsed && <span>Manage Users</span>}
+              </button>
+              {sidebarCollapsed && (
+                <div className="absolute left-full ml-2 bottom-0 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none">
+                  Manage Users
+                  <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-900"></div>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="relative group">
+            <button
+              onClick={() => signOut()}
+              className={`w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-sm font-medium ${sidebarCollapsed ? 'px-2' : ''}`}
+              title={sidebarCollapsed ? 'Sign Out' : ''}
+            >
+              <LogOut size={16} />
+              {!sidebarCollapsed && <span>Sign Out</span>}
+            </button>
+            {sidebarCollapsed && (
+              <div className="absolute left-full ml-2 bottom-0 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none">
+                Sign Out
+                <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-900"></div>
+              </div>
+            )}
+          </div>
         </div>
       </aside>
 
@@ -361,7 +502,7 @@ export default function Layout() {
       <ImpersonationBanner />
 
       {/* Main Content */}
-      <main className={`ml-64 min-h-screen transition-all duration-300 ${showReminders ? 'mr-96' : 'mr-0'} ${isImpersonating ? 'pt-16' : ''}`}>
+      <main className={`min-h-screen transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} ${showReminders ? 'mr-96' : 'mr-0'} ${isImpersonating ? 'pt-16' : ''}`}>
         {/* Header with Reminder Toggle */}
         <div className={`sticky z-10 bg-white border-b border-slate-200 px-8 py-4 flex justify-end ${isImpersonating ? 'top-16' : 'top-0'}`}>
           <button

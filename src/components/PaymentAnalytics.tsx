@@ -1246,7 +1246,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         'Document Type': app.doc_type,
         'Invoice Date': app.invoice_date ? formatDateString(app.invoice_date) : 'N/A',
         'Invoice Due Date': app.invoice_due_date ? formatDateString(app.invoice_due_date) : 'N/A',
-        'Amount Applied': app.amount_paid,
+        'Amount Applied': app.doc_type === 'Credit Memo' ? -Math.abs(app.amount_paid) : app.amount_paid,
         'Invoice Balance': app.invoice_balance != null ? app.invoice_balance : 'N/A',
         'Invoice Status': app.invoice_status || 'N/A'
       }));
@@ -1266,7 +1266,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       'Payment Reference': app.payment_ref,
       'Invoice Reference': app.invoice_ref,
       'Customer': app.customer,
-      'Amount': app.amount_paid,
+      'Amount': app.doc_type === 'Credit Memo' ? -Math.abs(app.amount_paid) : app.amount_paid,
       'Payment Method': app.payment_method,
       'Payment Type': app.payment_type || 'N/A',
       'Is Overdue': app.is_overdue ? 'Yes' : 'No'
