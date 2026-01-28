@@ -645,7 +645,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         balance_owed: customer.calculated_balance || 0,
         open_invoices: customer.open_invoice_count || 0,
         max_days_overdue: customer.max_days_overdue || 0,
-        red_after_days: customer.days_past_due_threshold || 30,
+        red_after_days: customer.red_threshold_days || 30,
         status: customer.customer_status || 'Unknown',
         city: customer.city || '',
         country: customer.country || '',
@@ -713,7 +713,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       setDisplayedCustomers(prev =>
         prev.map(customer =>
           customer.customer_id === customerId
-            ? { ...customer, days_past_due_threshold: newThreshold }
+            ? { ...customer, red_threshold_days: newThreshold }
             : customer
         )
       );
@@ -1422,11 +1422,11 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                       Payment Performance
                     </th>
                     <th
-                      onClick={() => handleColumnSort('days_past_due_threshold')}
+                      onClick={() => handleColumnSort('red_threshold_days')}
                       className="px-6 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-700 transition-colors"
                     >
                       <div className="flex items-center justify-center">
-                        Red After (Days) {getSortIcon('days_past_due_threshold')}
+                        Red After (Days) {getSortIcon('red_threshold_days')}
                       </div>
                     </th>
                     <th
@@ -1658,10 +1658,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                         ) : (
                           <div className="flex items-center gap-2 justify-center group">
                             <span className="text-sm font-medium text-gray-900">
-                              {customer.days_past_due_threshold || 30}
+                              {customer.red_threshold_days || 30}
                             </span>
                             <button
-                              onClick={() => startEditingThreshold(customer.customer_id, customer.days_past_due_threshold || 30)}
+                              onClick={() => startEditingThreshold(customer.customer_id, customer.red_threshold_days || 30)}
                               className="p-1 opacity-0 group-hover:opacity-100 text-blue-400 hover:text-blue-300 transition-all"
                               title="Edit threshold"
                             >
