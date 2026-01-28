@@ -979,9 +979,9 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
           </div>
         ) : (
           <div className="bg-white border border-gray-300 rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="max-h-[calc(100vh-400px)] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#64748b #e2e8f0' }}>
               <table className="w-full">
-                <thead>
+                <thead className="sticky top-0 z-10">
                   <tr className="bg-gray-50 border-b border-gray-300">
                     <th className="text-left py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300">Reference</th>
                     <th className="text-left py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300">Customer</th>

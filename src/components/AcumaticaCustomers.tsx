@@ -1377,7 +1377,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             >
               <div style={{ width: '1600px', height: '20px' }}></div>
             </div>
-            <div ref={tableScrollRef} className="overflow-x-auto w-full">
+            <div ref={tableScrollRef} className="overflow-x-auto overflow-y-auto w-full max-h-[calc(100vh-400px)]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#64748b #e2e8f0' }}>
               <table className="w-full divide-y divide-gray-200" style={{ minWidth: '1600px' }}>
                 <thead className="bg-white">
                   <tr>
