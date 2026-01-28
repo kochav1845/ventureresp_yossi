@@ -63,11 +63,24 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   });
   const [invoiceStats, setInvoiceStats] = useState<any>(null);
   const [filteredStats, setFilteredStats] = useState<any>(null);
+  const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
 
   useEffect(() => {
     loadCustomerData();
     loadInvoiceStats();
   }, [customerId]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.color-picker-container')) {
+        setChangingColorForInvoice(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (page > 0) {
@@ -382,6 +395,44 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       ...prev,
       colorStatus: ''
     }));
+  };
+
+  const handleColorChange = async (invoiceId: string, newColor: string | null) => {
+    if (!profile?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from('acumatica_invoices')
+        .update({ color_status: newColor })
+        .eq('id', invoiceId);
+
+      if (error) throw error;
+
+      await logActivity(
+        'update',
+        'invoice_color_status',
+        {
+          invoice_id: invoiceId,
+          new_color: newColor,
+          customer_id: customerId
+        }
+      );
+
+      setDisplayedInvoices(prev =>
+        prev.map(inv =>
+          inv.id === invoiceId ? { ...inv, color_status: newColor } : inv
+        )
+      );
+
+      setChangingColorForInvoice(null);
+
+      await loadCustomerData();
+      await loadInvoiceStats();
+      await loadFilteredStats();
+
+    } catch (error) {
+      console.error('Error updating invoice color:', error);
+    }
   };
 
   const handleAdvancedFiltersChange = (newFilters: typeof advancedFilters) => {
@@ -786,20 +837,64 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                               {invoice.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {invoice.color_status ? (
-                              <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase ${
-                                invoice.color_status === 'red' ? 'bg-red-500 text-white border-2 border-red-700' :
-                                invoice.color_status === 'yellow' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
-                                invoice.color_status === 'orange' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
-                                invoice.color_status === 'green' ? 'bg-green-500 text-white border-2 border-green-700' :
-                                'bg-gray-200 text-gray-700'
-                              }`}>
-                                {invoice.color_status}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-gray-400">-</span>
-                            )}
+                          <td className="px-6 py-4 whitespace-nowrap relative">
+                            <div className="relative inline-block color-picker-container">
+                              <button
+                                onClick={() => setChangingColorForInvoice(changingColorForInvoice === invoice.id ? null : invoice.id)}
+                                className="focus:outline-none"
+                              >
+                                {invoice.color_status ? (
+                                  <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase cursor-pointer hover:opacity-80 transition-opacity ${
+                                    invoice.color_status === 'red' ? 'bg-red-500 text-white border-2 border-red-700' :
+                                    invoice.color_status === 'yellow' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
+                                    invoice.color_status === 'orange' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
+                                    invoice.color_status === 'green' ? 'bg-green-500 text-white border-2 border-green-700' :
+                                    'bg-gray-200 text-gray-700'
+                                  }`}>
+                                    {invoice.color_status}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">Set Color</span>
+                                )}
+                              </button>
+
+                              {changingColorForInvoice === invoice.id && (
+                                <div className="absolute z-50 mt-2 left-0 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[120px]">
+                                  <button
+                                    onClick={() => handleColorChange(invoice.id, 'red')}
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 rounded flex items-center gap-2"
+                                  >
+                                    <span className="w-4 h-4 rounded-full bg-red-500 border-2 border-red-700"></span>
+                                    RED
+                                  </button>
+                                  <button
+                                    onClick={() => handleColorChange(invoice.id, 'yellow')}
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-yellow-50 rounded flex items-center gap-2"
+                                  >
+                                    <span className="w-4 h-4 rounded-full bg-yellow-400 border-2 border-yellow-600"></span>
+                                    YELLOW
+                                  </button>
+                                  <button
+                                    onClick={() => handleColorChange(invoice.id, 'green')}
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 rounded flex items-center gap-2"
+                                  >
+                                    <span className="w-4 h-4 rounded-full bg-green-500 border-2 border-green-700"></span>
+                                    GREEN
+                                  </button>
+                                  {invoice.color_status && (
+                                    <>
+                                      <div className="border-t border-gray-200 my-1"></div>
+                                      <button
+                                        onClick={() => handleColorChange(invoice.id, null)}
+                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded text-gray-600"
+                                      >
+                                        Clear Color
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
                             {invoice.days_overdue > 0 ? (
