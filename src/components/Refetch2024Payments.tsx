@@ -29,7 +29,7 @@ export default function Refetch2024Payments() {
 
     const { data: payments, error } = await supabase
       .from('acumatica_payments')
-      .select('payment_reference_number, application_date')
+      .select('reference_number, application_date')
       .gte('application_date', '2024-01-01')
       .lte('application_date', '2024-12-31')
       .order('application_date', { ascending: true });
@@ -60,7 +60,7 @@ export default function Refetch2024Payments() {
     );
 
     const paymentsWithoutApps = payments.filter(
-      p => !paymentsWithAppsSet.has(p.payment_reference_number)
+      p => !paymentsWithAppsSet.has(p.reference_number)
     );
 
     addLog(`Found ${payments.length} total 2024 payments`);
@@ -110,12 +110,12 @@ export default function Refetch2024Payments() {
       const payment = payments[i];
 
       try {
-        await fetchApplicationsForPayment(payment.payment_reference_number);
+        await fetchApplicationsForPayment(payment.reference_number);
         succeeded++;
-        addLog(`✓ ${payment.payment_reference_number} (${i + 1}/${payments.length})`);
+        addLog(`✓ ${payment.reference_number} (${i + 1}/${payments.length})`);
       } catch (error) {
         failed++;
-        addLog(`✗ ${payment.payment_reference_number}: ${error instanceof Error ? error.message : 'Failed'}`);
+        addLog(`✗ ${payment.reference_number}: ${error instanceof Error ? error.message : 'Failed'}`);
       }
 
       setBatches(prev => {
