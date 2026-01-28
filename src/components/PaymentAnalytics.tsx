@@ -87,6 +87,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [monthlyPaymentCount, setMonthlyPaymentCount] = useState(0);
   const [monthlyCustomerCount, setMonthlyCustomerCount] = useState(0);
 
+  // Refresh analytics state
+  const [refreshingAnalytics, setRefreshingAnalytics] = useState(false);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
+
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all');
@@ -205,6 +209,63 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       setExcludedCustomersWithReasons(excludedMap);
     } catch (error) {
       console.error('Error loading excluded customers:', error);
+    }
+  };
+
+  const refreshAnalytics = async () => {
+    setRefreshingAnalytics(true);
+    try {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/calculate-payment-analytics`;
+
+      let requestBody: any = {};
+
+      if (calendarView === 'daily') {
+        requestBody = {
+          periodType: 'daily',
+          year: selectedMonth.getFullYear(),
+          month: selectedMonth.getMonth() + 1,
+        };
+      } else if (calendarView === 'monthly') {
+        requestBody = {
+          periodType: 'monthly',
+          year: selectedYear,
+        };
+      } else {
+        requestBody = {
+          periodType: 'yearly',
+        };
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setLastRefreshTime(new Date());
+        // Reload the view with fresh data
+        if (calendarView === 'monthly') {
+          await loadMonthlyAggregates(selectedYear);
+        } else if (calendarView === 'yearly') {
+          await loadYearlyAggregates();
+        } else {
+          await loadMonthlyData();
+        }
+      } else {
+        console.error('Analytics refresh failed:', result);
+        alert('Failed to refresh analytics: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error: any) {
+      console.error('Error refreshing analytics:', error);
+      alert('Error refreshing analytics: ' + error.message);
+    } finally {
+      setRefreshingAnalytics(false);
     }
   };
 
@@ -552,8 +613,41 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const loadMonthlyAggregates = async (year: number) => {
     setLoading(true);
-    setLoadingBatchInfo('Loading monthly data...');
+    setLoadingBatchInfo('Loading monthly data from cache...');
     try {
+      // First, try to load from cache
+      const { data: cachedData, error: cacheError } = await supabase
+        .from('cached_payment_analytics')
+        .select('*')
+        .eq('period_type', 'monthly')
+        .eq('year', year)
+        .order('month', { ascending: true });
+
+      if (!cacheError && cachedData && cachedData.length > 0) {
+        console.log(`Loaded ${cachedData.length} months from cache`);
+        const aggregates = Array.from({ length: 12 }, (_, month) => ({ month, total: 0, count: 0 }));
+
+        cachedData.forEach(cache => {
+          if (cache.month !== null && cache.month >= 1 && cache.month <= 12) {
+            aggregates[cache.month - 1] = {
+              month: cache.month - 1,
+              total: parseFloat(cache.total_amount) || 0,
+              count: cache.payment_count || 0
+            };
+          }
+        });
+
+        setMonthlyAggregates(aggregates);
+        setLastRefreshTime(new Date(cachedData[0].calculated_at));
+        setLoading(false);
+        setLoadingBatchInfo('');
+        return;
+      }
+
+      // If no cache, calculate live (fallback)
+      console.log('No cached data found, calculating live...');
+      setLoadingBatchInfo('Calculating monthly data...');
+
       const startDate = new Date(year, 0, 1);
       const endDate = new Date(year, 11, 31);
       const startStr = startDate.toISOString().split('T')[0];
@@ -568,7 +662,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
       while (hasMore) {
         batchCount++;
-        setLoadingBatchInfo(`Loading monthly data batch ${batchCount}...`);
+        setLoadingBatchInfo(`Calculating batch ${batchCount}...`);
 
         const { data, error } = await supabase
           .from('acumatica_payments')
@@ -611,9 +705,38 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const loadYearlyAggregates = async () => {
     setLoading(true);
-    setLoadingBatchInfo('Loading yearly data...');
+    setLoadingBatchInfo('Loading yearly data from cache...');
     try {
       const currentYear = new Date().getFullYear();
+
+      // First, try to load from cache
+      const { data: cachedData, error: cacheError } = await supabase
+        .from('cached_payment_analytics')
+        .select('*')
+        .eq('period_type', 'yearly')
+        .gte('year', currentYear - 5)
+        .lte('year', currentYear)
+        .order('year', { ascending: false });
+
+      if (!cacheError && cachedData && cachedData.length > 0) {
+        console.log(`Loaded ${cachedData.length} years from cache`);
+        const aggregates = cachedData.map(cache => ({
+          year: cache.year,
+          total: parseFloat(cache.total_amount) || 0,
+          count: cache.payment_count || 0
+        }));
+
+        setYearlyAggregates(aggregates);
+        setLastRefreshTime(new Date(cachedData[0].calculated_at));
+        setLoading(false);
+        setLoadingBatchInfo('');
+        return;
+      }
+
+      // If no cache, calculate live (fallback)
+      console.log('No cached yearly data found, calculating live...');
+      setLoadingBatchInfo('Calculating yearly data...');
+
       const startDate = new Date(currentYear - 5, 0, 1);
       const endDate = new Date(currentYear, 11, 31);
       const startStr = startDate.toISOString().split('T')[0];
@@ -628,7 +751,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
       while (hasMore) {
         batchCount++;
-        setLoadingBatchInfo(`Loading yearly data batch ${batchCount}...`);
+        setLoadingBatchInfo(`Calculating batch ${batchCount}...`);
 
         const { data, error } = await supabase
           .from('acumatica_payments')
@@ -2588,19 +2711,34 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <div className="text-center">
-              <h2 className="text-2xl font-bold text-gray-700 flex items-center gap-2 justify-center">
-                <Calendar className="w-6 h-6 text-blue-400" />
-                {calendarView === 'daily' ? monthName : calendarView === 'monthly' ? selectedYear : `${selectedYear - 5} - ${selectedYear}`}
-              </h2>
-              {selectedDate && calendarView === 'daily' && (
-                <button
-                  onClick={() => setSelectedDate(null)}
-                  className="text-xs text-blue-400 hover:text-blue-300 mt-1"
-                >
-                  Clear date filter
-                </button>
-              )}
+            <div className="flex items-center gap-3">
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-gray-700 flex items-center gap-2 justify-center">
+                  <Calendar className="w-6 h-6 text-blue-400" />
+                  {calendarView === 'daily' ? monthName : calendarView === 'monthly' ? selectedYear : `${selectedYear - 5} - ${selectedYear}`}
+                </h2>
+                {selectedDate && calendarView === 'daily' && (
+                  <button
+                    onClick={() => setSelectedDate(null)}
+                    className="text-xs text-blue-400 hover:text-blue-300 mt-1"
+                  >
+                    Clear date filter
+                  </button>
+                )}
+                {lastRefreshTime && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Last updated: {lastRefreshTime.toLocaleTimeString()}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={refreshAnalytics}
+                disabled={refreshingAnalytics}
+                className={`p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors ${refreshingAnalytics ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title="Refresh analytics data"
+              >
+                <RefreshCw className={`w-5 h-5 ${refreshingAnalytics ? 'animate-spin' : ''}`} />
+              </button>
             </div>
             <button
               onClick={nextPeriod}
