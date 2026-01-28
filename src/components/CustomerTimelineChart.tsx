@@ -102,13 +102,13 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-3">
-          <p className="text-xs font-semibold text-gray-300 mb-2">{formatDate(label)}</p>
+        <div className="bg-white border-2 border-gray-300 rounded-lg shadow-xl p-3">
+          <p className="text-xs font-semibold text-gray-700 mb-2">{formatDate(label)}</p>
           {payload.map((entry: any, index: number) => (
             <div key={index} className="flex items-center gap-2 mb-1">
               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }}></div>
-              <span className="text-xs text-gray-400">{entry.name}:</span>
-              <span className="text-xs font-bold text-white">
+              <span className="text-xs text-gray-600">{entry.name}:</span>
+              <span className="text-xs font-bold text-gray-900">
                 {formatCurrency(entry.value)}
               </span>
             </div>
@@ -241,86 +241,87 @@ export default function CustomerTimelineChart({ customerId, customerName }: Cust
       </div>
 
       {/* Chart */}
-      <div className="bg-gradient-to-br from-gray-900 via-gray-950 to-black rounded-lg p-6 border border-gray-800 relative">
+      <div className="bg-white rounded-lg p-6 border border-gray-300 relative">
         <ResponsiveContainer width="100%" height={500}>
           <LineChart
             data={data}
-            margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+            margin={{ top: 20, right: 30, left: 60, bottom: 60 }}
           >
             <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="#1f2937"
-              strokeOpacity={0.3}
-              vertical={true}
+              strokeDasharray="0"
+              stroke="#e5e7eb"
+              strokeOpacity={0.5}
+              vertical={false}
               horizontal={true}
             />
             <XAxis
               dataKey="date"
               tickFormatter={formatDate}
-              stroke="#4b5563"
-              style={{ fontSize: '11px' }}
+              stroke="#9ca3af"
+              style={{ fontSize: '12px', fontWeight: '400' }}
               tick={{ fill: '#6b7280' }}
-              axisLine={{ stroke: '#1f2937' }}
-              tickLine={{ stroke: '#1f2937' }}
-              hide={true}
+              axisLine={{ stroke: '#d1d5db' }}
+              tickLine={{ stroke: '#d1d5db' }}
+              interval="preserveStartEnd"
+              minTickGap={50}
             />
             <YAxis
               tickFormatter={(value) => formatCurrency(value)}
-              stroke="#4b5563"
-              style={{ fontSize: '11px' }}
+              stroke="#9ca3af"
+              style={{ fontSize: '12px', fontWeight: '400' }}
               tick={{ fill: '#6b7280' }}
-              axisLine={{ stroke: '#1f2937' }}
-              tickLine={{ stroke: '#1f2937' }}
-              hide={true}
+              axisLine={{ stroke: '#d1d5db' }}
+              tickLine={{ stroke: '#d1d5db' }}
+              width={80}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend
               wrapperStyle={{ paddingTop: '20px' }}
               iconType="line"
-              formatter={(value) => <span className="text-gray-400 text-sm">{value}</span>}
+              formatter={(value) => <span className="text-gray-600 text-sm">{value}</span>}
             />
             {showBalance && (
               <Line
                 type="monotone"
                 dataKey="balance"
-                stroke="#ef4444"
-                strokeWidth={2.5}
+                stroke="#dc2626"
+                strokeWidth={2}
                 dot={false}
                 name="Balance Owed"
-                activeDot={{ r: 6, fill: '#ef4444', strokeWidth: 0 }}
+                activeDot={{ r: 5, fill: '#dc2626', stroke: '#fff', strokeWidth: 2 }}
               />
             )}
             {showInvoices && (
               <Line
                 type="monotone"
                 dataKey="invoices"
-                stroke="#60a5fa"
-                strokeWidth={2.5}
+                stroke="#3b82f6"
+                strokeWidth={2}
                 dot={false}
                 name="Invoices"
-                activeDot={{ r: 6, fill: '#60a5fa', strokeWidth: 0 }}
+                activeDot={{ r: 5, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
               />
             )}
             {showPayments && (
               <Line
                 type="monotone"
                 dataKey="payments"
-                stroke="#10b981"
-                strokeWidth={2.5}
+                stroke="#059669"
+                strokeWidth={2}
                 dot={false}
                 name="Payments"
-                activeDot={{ r: 6, fill: '#10b981', strokeWidth: 0 }}
+                activeDot={{ r: 5, fill: '#059669', stroke: '#fff', strokeWidth: 2 }}
               />
             )}
             {showOverdue && (
               <Line
                 type="monotone"
                 dataKey="overdue_90_days"
-                stroke="#f97316"
-                strokeWidth={2.5}
+                stroke="#ea580c"
+                strokeWidth={2}
                 dot={false}
                 name="Overdue 90+ Days"
-                activeDot={{ r: 6, fill: '#f97316', strokeWidth: 0 }}
+                activeDot={{ r: 5, fill: '#ea580c', stroke: '#fff', strokeWidth: 2 }}
               />
             )}
           </LineChart>
