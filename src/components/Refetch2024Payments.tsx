@@ -29,7 +29,7 @@ export default function Refetch2024Payments() {
 
     const { data: payments, error } = await supabase
       .from('acumatica_payments')
-      .select('reference_number, application_date')
+      .select('reference_number, application_date, type')
       .gte('application_date', '2024-01-01')
       .lte('application_date', '2024-12-31')
       .order('application_date', { ascending: true });
@@ -70,12 +70,12 @@ export default function Refetch2024Payments() {
     return paymentsWithoutApps;
   };
 
-  const fetchApplicationsForPayment = async (paymentRefNumber: string) => {
+  const fetchApplicationsForPayment = async (paymentRefNumber: string, paymentType: string = 'Payment') => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
 
     const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-payment-applications?paymentRef=${encodeURIComponent(paymentRefNumber)}`,
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-payment-applications?paymentRef=${encodeURIComponent(paymentRefNumber)}&type=${encodeURIComponent(paymentType)}`,
       {
         method: 'GET',
         headers: {
@@ -104,17 +104,23 @@ export default function Refetch2024Payments() {
 
     let succeeded = 0;
     let failed = 0;
+    let notFound = 0;
 
     for (let i = 0; i < payments.length; i++) {
       const payment = payments[i];
 
       try {
-        await fetchApplicationsForPayment(payment.reference_number);
+        await fetchApplicationsForPayment(payment.reference_number, payment.type || 'Payment');
         succeeded++;
         addLog(`✓ ${payment.reference_number} (${i + 1}/${payments.length})`);
       } catch (error) {
-        failed++;
-        addLog(`✗ ${payment.reference_number}: ${error instanceof Error ? error.message : 'Failed'}`);
+        if (error instanceof Error && error.message === 'NOT_FOUND_IN_ACUMATICA') {
+          notFound++;
+          addLog(`⚠ ${payment.reference_number}: Not found in Acumatica (may be deleted) (${i + 1}/${payments.length})`);
+        } else {
+          failed++;
+          addLog(`✗ ${payment.reference_number}: ${error instanceof Error ? error.message : 'Failed'} (${i + 1}/${payments.length})`);
+        }
       }
 
       setBatches(prev => {
@@ -138,7 +144,7 @@ export default function Refetch2024Payments() {
       return updated;
     });
 
-    addLog(`Batch ${batchNumber} completed: ${succeeded} succeeded, ${failed} failed`);
+    addLog(`Batch ${batchNumber} completed: ${succeeded} succeeded, ${failed} failed, ${notFound} not found in Acumatica`);
   };
 
   const startRefetch = async () => {
