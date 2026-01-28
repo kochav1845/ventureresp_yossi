@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail } from 'lucide-react';
+import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2 } from 'lucide-react';
 
 interface Tool {
   id: string;
@@ -189,6 +189,14 @@ export function DeveloperTools() {
       description: 'Generate and send new temporary password to existing users',
       icon: Mail,
       path: '/resend-temp-password',
+      category: 'system'
+    },
+    {
+      id: 'force-delete-user',
+      name: 'Force Delete User',
+      description: 'Delete stuck user accounts completely from the system',
+      icon: Trash2,
+      path: '/force-delete-user',
       category: 'system'
     },
   ];
