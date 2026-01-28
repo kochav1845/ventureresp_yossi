@@ -251,39 +251,73 @@ SECURITY NOTE: Please do not share this temporary password with anyone. If you d
 This is an automated email from Venture Respiratory Admin Portal.
     `;
 
-    // In production, you would integrate with an email service like SendGrid, Resend, or AWS SES
-    // For now, this is a placeholder that logs the email content
-    console.log("Email to send:", {
-      to,
-      subject: "Welcome to Venture Respiratory - Temporary Password",
-      html: emailHtml,
-      text: emailText,
+    const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
+    if (!SENDGRID_API_KEY) {
+      console.error('SendGrid API key not configured');
+      return new Response(
+        JSON.stringify({ error: 'Email service not configured. Please contact administrator.' }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
+
+    const emailData = {
+      personalizations: [
+        {
+          to: [{ email: to, name: name }],
+          subject: 'Welcome to Venture Respiratory - Temporary Password',
+        },
+      ],
+      from: {
+        email: 'noreply@starwork.dev',
+        name: 'Venture Respiratory Admin',
+      },
+      content: [
+        {
+          type: 'text/html',
+          value: emailHtml,
+        },
+      ],
+    };
+
+    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SENDGRID_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(emailData),
     });
 
-    // TODO: Integrate with actual email service
-    // Example with Resend:
-    // const resendApiKey = Deno.env.get('RESEND_API_KEY');
-    // const response = await fetch('https://api.resend.com/emails', {
-    //   method: 'POST',
-    //   headers: {
-    //     'Authorization': `Bearer ${resendApiKey}`,
-    //     'Content-Type': 'application/json',
-    //   },
-    //   body: JSON.stringify({
-    //     from: 'noreply@venturerespiratory.com',
-    //     to: [to],
-    //     subject: 'Welcome to Venture Respiratory - Temporary Password',
-    //     html: emailHtml,
-    //     text: emailText,
-    //   }),
-    // });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('SendGrid error:', errorText);
+      return new Response(
+        JSON.stringify({
+          error: 'Failed to send email',
+          details: errorText,
+        }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
+
+    console.log('Temporary password email sent successfully to:', to);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: "Email queued for sending",
-        // Note: In development, the email content is logged to console
-        // In production, this would actually send via email service
+        message: "Email sent successfully",
       }),
       {
         status: 200,
