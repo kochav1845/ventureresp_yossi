@@ -59,6 +59,7 @@ import PaymentDateRangeResync from './components/PaymentDateRangeResync';
 import PaymentSyncHealthCheck from './components/PaymentSyncHealthCheck';
 import { DeveloperTools } from './components/DeveloperTools';
 import Refetch2024Payments from './components/Refetch2024Payments';
+import AdminCreateUser from './components/AdminCreateUser';
 
 function LoadingScreen() {
   return (
@@ -154,6 +155,7 @@ function AppContent() {
         <Route path="collector-control-panel" element={<CollectorControlPanel />} />
         <Route path="collector-monitoring" element={<AdminCollectorMonitoring />} />
         <Route path="user-approval" element={<UserApprovalPanel />} />
+        <Route path="create-user" element={<AdminCreateUser />} />
         <Route path="payment-app-diagnostic" element={<PaymentApplicationDiagnostic />} />
         <Route path="password-reset-tester" element={<PasswordResetTester />} />
         <Route path="test-payment-sync" element={<TestPaymentAppAndAttachmentSync />} />
