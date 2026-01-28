@@ -239,8 +239,10 @@ export default function Layout() {
                     const isActive = currentView === item.id;
                     return (
                       <li key={item.id} className="relative group">
-                        <button
-                          onClick={() => navigate(`/${item.id}`)}
+                        <a
+                          href={`/${item.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
                           className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                             isActive
                               ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md'
@@ -250,7 +252,7 @@ export default function Layout() {
                         >
                           <Icon size={18} />
                           {!sidebarCollapsed && <span>{item.name}</span>}
-                        </button>
+                        </a>
                         {sidebarCollapsed && (
                           <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none">
                             {item.name}
@@ -269,14 +271,11 @@ export default function Layout() {
               <div>
                 <div className="relative group">
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
                       if (sidebarCollapsed) {
-                        navigate('/payment-analytics');
+                        window.open('/payment-analytics', '_blank', 'noopener,noreferrer');
                       } else {
                         setAdminDashboardOpen(!adminDashboardOpen);
-                        if (!adminDashboardOpen) {
-                          navigate('/payment-analytics');
-                        }
                       }
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all mb-2 ${
@@ -312,8 +311,10 @@ export default function Layout() {
                       const isActive = currentView === item.id;
                       return (
                         <li key={`${item.id}-${index}`}>
-                          <button
-                            onClick={() => navigate(`/${item.id}`)}
+                          <a
+                            href={`/${item.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                               isActive
                                 ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-md'
@@ -322,7 +323,7 @@ export default function Layout() {
                           >
                             <Icon size={18} />
                             <span>{item.name}</span>
-                          </button>
+                          </a>
                         </li>
                       );
                     })}
@@ -338,7 +339,7 @@ export default function Layout() {
                   <button
                     onClick={() => {
                       if (sidebarCollapsed) {
-                        navigate('/inbox');
+                        window.open('/inbox', '_blank', 'noopener,noreferrer');
                       } else {
                         setEmailSystemOpen(!emailSystemOpen);
                       }
@@ -372,8 +373,10 @@ export default function Layout() {
                       const isActive = currentView === item.id;
                       return (
                         <li key={item.id}>
-                          <button
-                            onClick={() => navigate(`/${item.id}`)}
+                          <a
+                            href={`/${item.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                               isActive
                                 ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md'
@@ -382,7 +385,7 @@ export default function Layout() {
                           >
                             <Icon size={18} />
                             <span>{item.name}</span>
-                          </button>
+                          </a>
                         </li>
                       );
                     })}
@@ -398,7 +401,7 @@ export default function Layout() {
                   <button
                     onClick={() => {
                       if (sidebarCollapsed) {
-                        navigate('/developer-tools');
+                        window.open('/developer-tools', '_blank', 'noopener,noreferrer');
                       } else {
                         setDeveloperSettingsOpen(!developerSettingsOpen);
                       }
@@ -432,8 +435,10 @@ export default function Layout() {
                       const isActive = currentView === item.id;
                       return (
                         <li key={item.id}>
-                          <button
-                            onClick={() => navigate(`/${item.id}`)}
+                          <a
+                            href={`/${item.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                               isActive
                                 ? 'bg-gray-500 text-white shadow-md'
@@ -442,7 +447,7 @@ export default function Layout() {
                           >
                             <Icon size={18} />
                             <span>{item.name}</span>
-                          </button>
+                          </a>
                         </li>
                       );
                     })}
