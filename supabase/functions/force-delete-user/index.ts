@@ -12,18 +12,30 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    console.log('Force delete user request received');
+
     const { email } = await req.json();
+    console.log('Email to delete:', email);
 
     if (!email) {
+      console.error('No email provided');
       return new Response(
         JSON.stringify({ error: 'Email is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    console.log('Environment check:', {
+      hasUrl: !!supabaseUrl,
+      hasKey: !!serviceRoleKey
+    });
+
     const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      supabaseUrl ?? '',
+      serviceRoleKey ?? '',
       {
         auth: {
           autoRefreshToken: false,
@@ -32,7 +44,7 @@ Deno.serve(async (req: Request) => {
       }
     );
 
-    // Try to find the user by email using admin API
+    console.log('Listing all users to find target...');
     const { data: users, error: listError } = await supabaseAdmin.auth.admin.listUsers();
 
     if (listError) {
