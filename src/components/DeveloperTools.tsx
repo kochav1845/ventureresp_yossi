@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download } from 'lucide-react';
+import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail } from 'lucide-react';
 
 interface Tool {
   id: string;
@@ -181,6 +181,14 @@ export function DeveloperTools() {
       description: 'Test password reset functionality',
       icon: Code,
       path: '/password-reset-tester',
+      category: 'system'
+    },
+    {
+      id: 'resend-temp-password',
+      name: 'Resend Temporary Password',
+      description: 'Generate and send new temporary password to existing users',
+      icon: Mail,
+      path: '/resend-temp-password',
       category: 'system'
     },
   ];
