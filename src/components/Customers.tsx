@@ -1435,9 +1435,15 @@ export default function Customers({ onBack }: CustomersProps) {
             </div>
 
             {/* Table */}
-            <div className="overflow-x-auto">
+            <div
+              className="max-h-[calc(100vh-400px)] overflow-x-auto overflow-y-auto"
+              style={{
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#64748b #e2e8f0'
+              }}
+            >
               <table className="w-full">
-                <thead className="bg-gray-50 border-b-2 border-gray-200 sticky top-0">
+                <thead className="bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10">
                   <tr>
                     <th
                       className="text-left py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
