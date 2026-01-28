@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse } from 'lucide-react';
+import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download } from 'lucide-react';
 
 interface Tool {
   id: string;
@@ -77,6 +77,14 @@ export function DeveloperTools() {
       description: 'Verify payment sync accuracy and detect mismatches',
       icon: HeartPulse,
       path: '/payment-sync-health',
+      category: 'payment'
+    },
+    {
+      id: 'refetch-2024-payments',
+      name: 'Refetch 2024 Payments',
+      description: 'Batch refetch payment applications for all 2024 payments (100 at a time)',
+      icon: Download,
+      path: '/refetch-2024-payments',
       category: 'payment'
     },
     {

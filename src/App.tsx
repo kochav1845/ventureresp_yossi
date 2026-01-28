@@ -58,6 +58,7 @@ import PaymentStatusDiagnostic from './components/PaymentStatusDiagnostic';
 import PaymentDateRangeResync from './components/PaymentDateRangeResync';
 import PaymentSyncHealthCheck from './components/PaymentSyncHealthCheck';
 import { DeveloperTools } from './components/DeveloperTools';
+import Refetch2024Payments from './components/Refetch2024Payments';
 
 function LoadingScreen() {
   return (
@@ -161,6 +162,7 @@ function AppContent() {
         <Route path="payment-date-range-resync" element={<PaymentDateRangeResync />} />
         <Route path="payment-sync-health" element={<PaymentSyncHealthCheck />} />
         <Route path="developer-tools" element={<DeveloperTools />} />
+        <Route path="refetch-2024-payments" element={<Refetch2024Payments />} />
       </Route>
 
       <Route path="*" element={<Navigate to={defaultRoute} replace />} />
