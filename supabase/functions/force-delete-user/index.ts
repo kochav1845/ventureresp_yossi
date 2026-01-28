@@ -46,6 +46,7 @@ Deno.serve(async (req: Request) => {
 
     console.log('Listing all users to find target...');
     const { data: users, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+    console.log('listUsers response:', { hasData: !!users, error: listError });
 
     if (listError) {
       console.error('Error listing users:', listError);
@@ -55,14 +56,27 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    if (!users || !users.users) {
+      console.error('No users data returned');
+      return new Response(
+        JSON.stringify({ error: 'No users data returned from auth system' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`Found ${users.users.length} total users, searching for ${email}`);
     const user = users.users.find(u => u.email === email);
+    console.log('User found:', !!user);
 
     if (!user) {
+      console.log('User not found in auth system');
       return new Response(
         JSON.stringify({ message: 'User not found in auth system', email }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log('Found user with ID:', user.id);
 
     // Delete from user_profiles first
     const { error: profileDeleteError } = await supabaseAdmin
