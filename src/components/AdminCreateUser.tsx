@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, UserPlus, Mail, User, Shield, Loader, CheckCircle, XCircle } from 'lucide-react';
 
 interface AdminCreateUserProps {
@@ -9,6 +10,7 @@ interface AdminCreateUserProps {
 
 export default function AdminCreateUser({ onBack }: AdminCreateUserProps) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const handleBack = onBack || (() => navigate(-1));
 
   const [email, setEmail] = useState('');
@@ -97,7 +99,9 @@ export default function AdminCreateUser({ onBack }: AdminCreateUserProps) {
             email: email.trim(),
             full_name: fullName.trim(),
             role: role,
-            approved: true,
+            account_status: 'approved',
+            approved_by: user?.id,
+            approved_at: new Date().toISOString(),
           });
 
         if (insertError) throw insertError;
@@ -107,7 +111,9 @@ export default function AdminCreateUser({ onBack }: AdminCreateUserProps) {
           .update({
             full_name: fullName.trim(),
             role: role,
-            approved: true,
+            account_status: 'approved',
+            approved_by: user?.id,
+            approved_at: new Date().toISOString(),
           })
           .eq('id', authData.user.id);
 
