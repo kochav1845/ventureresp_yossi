@@ -9,6 +9,7 @@ import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl } from '../lib/acumatica
 import InvoiceFilterPanel from './InvoiceFilterPanel';
 import CustomerTimelineChart from './CustomerTimelineChart';
 import AssignInvoiceModal from './AssignInvoiceModal';
+import ReassignCollectorModal from './ReassignCollectorModal';
 
 interface CustomerDetailViewProps {
   customerId: string;
@@ -48,6 +49,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [hasMore, setHasMore] = useState(true);
   const [showAssignInvoiceModal, setShowAssignInvoiceModal] = useState(false);
   const [invoiceToAssign, setInvoiceToAssign] = useState<{ refNum: string; customerName: string; amount: number } | null>(null);
+  const [showReassignCollectorModal, setShowReassignCollectorModal] = useState(false);
+  const [invoiceToReassign, setInvoiceToReassign] = useState<{ id: string; refNum: string; currentCollectorId?: string } | null>(null);
   const observer = useRef<IntersectionObserver | null>(null);
   const ITEMS_PER_PAGE = 50;
 
@@ -933,6 +936,21 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                                 <UserPlus className="w-4 h-4 mr-1" />
                                 Assign
                               </button>
+                              <button
+                                onClick={() => {
+                                  setInvoiceToReassign({
+                                    id: invoice.id,
+                                    refNum: invoice.reference_number,
+                                    currentCollectorId: undefined
+                                  });
+                                  setShowReassignCollectorModal(true);
+                                }}
+                                className="inline-flex items-center px-3 py-1 text-sm text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded transition-colors"
+                                title="Assign Collector"
+                              >
+                                <User className="w-4 h-4 mr-1" />
+                                Collector
+                              </button>
                               <a
                                 href={getAcumaticaInvoiceUrl(invoice.reference_number)}
                                 target="_blank"
@@ -1264,6 +1282,23 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           }}
           onAssignmentComplete={() => {
             loadCustomerData();
+          }}
+        />
+      )}
+
+      {/* Reassign Collector Modal */}
+      {showReassignCollectorModal && invoiceToReassign && (
+        <ReassignCollectorModal
+          isOpen={showReassignCollectorModal}
+          invoiceId={invoiceToReassign.id}
+          invoiceRef={invoiceToReassign.refNum}
+          currentCollectorId={invoiceToReassign.currentCollectorId}
+          onClose={() => {
+            setShowReassignCollectorModal(false);
+            setInvoiceToReassign(null);
+          }}
+          onReassigned={() => {
+            loadInvoices();
           }}
         />
       )}

@@ -14,6 +14,7 @@ interface User {
   email: string;
   role: string;
   assigned_color: string | null;
+  can_be_assigned_as_collector: boolean;
 }
 
 interface Permission {
@@ -82,7 +83,7 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, email, role, assigned_color')
+        .select('id, email, role, assigned_color, can_be_assigned_as_collector')
         .order('email');
 
       if (error) throw error;
@@ -161,6 +162,33 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
     } catch (error) {
       console.error('Error updating color:', error);
       alert('Failed to update color');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleCollectorAssignment = async (userId: string, canBeCollector: boolean) => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ can_be_assigned_as_collector: canBeCollector })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      setUsers(prev =>
+        prev.map(user =>
+          user.id === userId ? { ...user, can_be_assigned_as_collector: canBeCollector } : user
+        )
+      );
+
+      if (selectedUser?.id === userId) {
+        setSelectedUser(prev => prev ? { ...prev, can_be_assigned_as_collector: canBeCollector } : null);
+      }
+    } catch (error) {
+      console.error('Error updating collector assignment:', error);
+      alert('Failed to update collector assignment');
     } finally {
       setSaving(false);
     }
@@ -441,6 +469,36 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
                       className="w-full h-10 rounded-lg cursor-pointer disabled:opacity-50 border-2 border-gray-300"
                     />
                   </div>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <label className="flex items-center justify-between cursor-pointer group">
+                    <div className="flex items-center gap-3">
+                      <UserCog className="w-5 h-5 text-blue-600" />
+                      <div>
+                        <span className="text-sm font-medium text-gray-900 block">
+                          Can Be Assigned as Collector
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          Allow this user to be assigned to invoices and customers
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleCollectorAssignment(selectedUser.id, !selectedUser.can_be_assigned_as_collector)}
+                      disabled={saving}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
+                        selectedUser.can_be_assigned_as_collector ? 'bg-blue-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          selectedUser.can_be_assigned_as_collector ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </label>
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-gray-200">
