@@ -310,6 +310,14 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     );
   };
 
+  const handleSelectAllInvoices = () => {
+    if (selectedInvoices.length === customerInvoices.length) {
+      setSelectedInvoices([]);
+    } else {
+      setSelectedInvoices(customerInvoices.map(inv => inv.reference_number));
+    }
+  };
+
   const filteredCustomers = customers.filter(c =>
     c.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.customer_id.toLowerCase().includes(searchTerm.toLowerCase())
@@ -634,9 +642,20 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Select Invoices ({selectedInvoices.length} selected)
-                      </label>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-gray-700">
+                          Select Invoices ({selectedInvoices.length} selected)
+                        </label>
+                        {customerInvoices.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleSelectAllInvoices}
+                            className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                          >
+                            {selectedInvoices.length === customerInvoices.length ? 'Deselect All' : 'Select All'}
+                          </button>
+                        )}
+                      </div>
                       <div className="max-h-96 overflow-y-auto border border-gray-300 rounded-lg">
                         {customerInvoices.map(invoice => (
                           <div
