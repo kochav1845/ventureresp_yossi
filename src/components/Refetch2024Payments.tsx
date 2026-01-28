@@ -75,14 +75,13 @@ export default function Refetch2024Payments() {
     if (!session) throw new Error('Not authenticated');
 
     const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-payment-applications`,
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-payment-applications?paymentRef=${encodeURIComponent(paymentRefNumber)}`,
       {
-        method: 'POST',
+        method: 'GET',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ paymentRefNumber }),
       }
     );
 
