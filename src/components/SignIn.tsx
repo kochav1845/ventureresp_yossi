@@ -74,7 +74,6 @@ export default function SignIn() {
           .insert({
             full_name: fullName,
             email: email,
-            password_hash: password, // Store password for later account creation
             status: 'pending'
           });
 

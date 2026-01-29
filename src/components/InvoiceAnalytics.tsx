@@ -70,7 +70,6 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
   const loadData = async () => {
     setLoading(true);
     const startTime = performance.now();
-    console.log('🚀 Starting data load via edge function...');
 
     try {
       // Calculate date range for last month
@@ -79,7 +78,6 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
       const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
       const startDate = lastMonth.toISOString().split('T')[0];
       const endDate = lastMonthEnd.toISOString().split('T')[0];
-      console.log(`📅 Loading data for: ${startDate} to ${endDate}`);
 
       // Call edge function for all analytics calculation
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -100,10 +98,19 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
       }
 
       const result = await response.json();
-      console.log(`⏱️ Edge function response: ${(performance.now() - startTime).toFixed(2)}ms`);
 
       // Map payment data to expected format
-      const enriched = result.payments.map((p: any) => ({
+      interface PaymentApiResponse {
+        payment_reference_number: string;
+        customer_id: string;
+        application_date: string;
+        amount_paid: number;
+        customer_name: string;
+        payment_id: string;
+        type: string;
+      }
+
+      const enriched = result.payments.map((p: PaymentApiResponse) => ({
         payment_reference_number: p.payment_reference_number,
         invoice_reference_number: '',
         customer_id: p.customer_id,
@@ -123,8 +130,6 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
       setCreditMemosOnly(result.summary.creditMemosTotal);
       setUnpaidInvoicesCount(result.summary.unpaidInvoicesCount);
       setUnpaidInvoicesAmount(result.summary.unpaidInvoicesTotal);
-
-      console.log(`✅ Total load time: ${(performance.now() - startTime).toFixed(2)}ms`);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -333,8 +338,6 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
     let laterCount = 0;
     let laterAmount = 0;
 
-    console.log('Payment Timing Analysis - Total filtered payments:', filtered.length);
-
     let paymentsWithApps = 0;
     let totalApps = 0;
 
@@ -369,10 +372,6 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
         });
       }
     });
-
-    console.log('Payments with applications:', paymentsWithApps);
-    console.log('Total applications:', totalApps);
-    console.log('On time:', onTimeCount, 'Next month:', nextMonthCount, 'Later:', laterCount);
 
     return {
       onTime: { count: onTimeCount, amount: onTimeAmount },

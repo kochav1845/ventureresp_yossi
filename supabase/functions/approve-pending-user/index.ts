@@ -52,10 +52,25 @@ Deno.serve(async (req: Request) => {
 
     console.log('Found pending user:', pendingUser.email);
 
+    // Generate a secure temporary password
+    const generatePassword = () => {
+      const length = 16;
+      const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+      let password = '';
+      const randomValues = new Uint8Array(length);
+      crypto.getRandomValues(randomValues);
+      for (let i = 0; i < length; i++) {
+        password += charset[randomValues[i] % charset.length];
+      }
+      return password;
+    };
+
+    const temporaryPassword = generatePassword();
+
     // Create the auth user with metadata flag for approval
     const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: pendingUser.email,
-      password: pendingUser.password_hash,
+      password: temporaryPassword,
       email_confirm: true,
       user_metadata: {
         full_name: pendingUser.full_name,

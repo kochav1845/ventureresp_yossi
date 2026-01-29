@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { ArrowLeft, Plus, Edit2, Trash2, Calendar, RefreshCw } from 'lucide-react';
+import { useToast } from '../contexts/ToastContext';
 
 type ScheduleDay = {
   day: number;
@@ -23,6 +24,7 @@ type EmailFormulasProps = {
 
 export default function EmailFormulas({ onBack }: EmailFormulasProps) {
   const navigate = useNavigate();
+  const toast = useToast();
   const [formulas, setFormulas] = useState<EmailFormula[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -102,19 +104,19 @@ export default function EmailFormulas({ onBack }: EmailFormulasProps) {
       await loadFormulas();
     } catch (error) {
       console.error('Error deleting formula:', error);
-      alert('Error deleting formula. It may be in use by customer assignments.');
+      toast.error('Error deleting formula. It may be in use by customer assignments.');
     }
   };
 
   const handleAddTimeToSchedule = () => {
     if (!newTimeInput) {
-      alert('Please select a time');
+      toast.warning('Please select a time');
       return;
     }
 
     const timeWithSeconds = newTimeInput + ':00';
     if (newScheduleTimes.includes(timeWithSeconds)) {
-      alert('This time is already added');
+      toast.warning('This time is already added');
       return;
     }
 
@@ -128,18 +130,18 @@ export default function EmailFormulas({ onBack }: EmailFormulasProps) {
 
   const handleAddScheduleDay = () => {
     if (newScheduleDay < 1 || newScheduleDay > 31) {
-      alert('Day must be between 1 and 31');
+      toast.warning('Day must be between 1 and 31');
       return;
     }
 
     if (newScheduleTimes.length === 0) {
-      alert('Please add at least one time for this day');
+      toast.warning('Please add at least one time for this day');
       return;
     }
 
     const exists = formData.schedule.some(s => s.day === newScheduleDay);
     if (exists) {
-      alert('This day is already in the schedule');
+      toast.warning('This day is already in the schedule');
       return;
     }
 
@@ -163,12 +165,12 @@ export default function EmailFormulas({ onBack }: EmailFormulasProps) {
     e.preventDefault();
 
     if (!formData.name.trim()) {
-      alert('Please enter a formula name');
+      toast.warning('Please enter a formula name');
       return;
     }
 
     if (formData.schedule.length === 0) {
-      alert('Please add at least one schedule day');
+      toast.warning('Please add at least one schedule day');
       return;
     }
 
@@ -200,7 +202,7 @@ export default function EmailFormulas({ onBack }: EmailFormulasProps) {
       await loadFormulas();
     } catch (error) {
       console.error('Error saving formula:', error);
-      alert('Error saving formula');
+      toast.warning('Error saving formula');
     }
   };
 

@@ -25,15 +25,56 @@ interface CustomerNote {
   created_at: string;
 }
 
+interface CustomerData {
+  id: string;
+  acumatica_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  status: string | null;
+  current_balance: number | null;
+  overdue_balance: number | null;
+  credit_limit: number | null;
+}
+
+interface InvoiceData {
+  id: string;
+  acumatica_id: string;
+  reference_number: string;
+  type: string;
+  status: string;
+  date: string;
+  due_date: string | null;
+  amount: number;
+  balance: number;
+  color_status: string | null;
+  description: string | null;
+}
+
+interface PaymentData {
+  id: string;
+  acumatica_id: string;
+  reference_number: string;
+  payment_date: string;
+  payment_method: string | null;
+  amount: number;
+  unapplied_balance: number | null;
+  status: string;
+}
+
 export default function CustomerDetailView({ customerId, onBack }: CustomerDetailViewProps) {
   const { profile } = useAuth();
   const { hasPermission } = useUserPermissions();
   const navigate = useNavigate();
   const handleBack = onBack || (() => navigate(-1));
   const hasAccess = hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW, 'view');
-  const [customer, setCustomer] = useState<any>(null);
-  const [displayedInvoices, setDisplayedInvoices] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
+  const [customer, setCustomer] = useState<CustomerData | null>(null);
+  const [displayedInvoices, setDisplayedInvoices] = useState<InvoiceData[]>([]);
+  const [payments, setPayments] = useState<PaymentData[]>([]);
   const [customerNotes, setCustomerNotes] = useState<CustomerNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);

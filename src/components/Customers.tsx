@@ -8,6 +8,18 @@ import CustomerFiles from './CustomerFiles';
 import { exportToExcel as exportExcel, formatDate, formatCurrency } from '../lib/excelExport';
 import * as XLSX from 'xlsx';
 
+interface CustomerAnalyticsData {
+  customer_id: string;
+  calculated_balance: number;
+  open_invoice_count: number;
+  max_days_overdue: number;
+  red_count: number;
+  yellow_count: number;
+  green_count: number;
+  exclude_from_payment_analytics: boolean;
+  exclude_from_customer_analytics: boolean;
+}
+
 type Customer = {
   id: string;
   name: string;
@@ -184,7 +196,7 @@ export default function Customers({ onBack }: CustomersProps) {
 
       // Create a map of analytics data by customer_id
       const analyticsMap = new Map();
-      (analyticsData || []).forEach((item: any) => {
+      (analyticsData || []).forEach((item: CustomerAnalyticsData) => {
         analyticsMap.set(item.customer_id, {
           balance: item.calculated_balance || 0,
           invoice_count: item.open_invoice_count || 0,
@@ -278,7 +290,7 @@ export default function Customers({ onBack }: CustomersProps) {
         if (analyticsError) throw analyticsError;
 
         // Map analytics data to customer format
-        const filtered = (analyticsData || []).map((item: any) => ({
+        const filtered = (analyticsData || []).map((item: CustomerAnalyticsData) => ({
           id: item.customer_id,
           customer_id: item.customer_id,
           name: item.customer_name,

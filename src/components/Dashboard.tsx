@@ -37,6 +37,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
     filesUploaded: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [emailChartData, setEmailChartData] = useState<EmailChartData>({ week: 0, month: 0, year: 0 });
   const [selectedTimeFrame, setSelectedTimeFrame] = useState<TimeFrame>('week');
 
@@ -74,6 +75,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
       });
     } catch (error) {
       console.error('Error loading stats:', error);
+      setError('Failed to load dashboard statistics. Please try refreshing the page.');
     } finally {
       setLoading(false);
     }
@@ -114,6 +116,32 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-blue-600">Loading dashboard...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-red-900 font-semibold mb-1">Error Loading Dashboard</h3>
+              <p className="text-red-700 text-sm">{error}</p>
+              <button
+                onClick={() => {
+                  setError(null);
+                  loadStats();
+                  loadEmailChartData();
+                }}
+                className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

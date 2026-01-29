@@ -40,29 +40,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           const impersonationData = localStorage.getItem('impersonation');
           if (impersonationData) {
-            const { impersonatedUserId, originalUserId } = JSON.parse(impersonationData);
-            if (session.user.id === originalUserId) {
-              // Fetch original profile directly
-              const { data: originalProfileData } = await supabase
-                .from('user_profiles')
-                .select('*')
-                .eq('id', originalUserId)
-                .maybeSingle();
+            try {
+              const { impersonatedUserId, originalUserId } = JSON.parse(impersonationData);
+              if (session.user.id === originalUserId) {
+                // Fetch original profile directly
+                const { data: originalProfileData } = await supabase
+                  .from('user_profiles')
+                  .select('*')
+                  .eq('id', originalUserId)
+                  .maybeSingle();
 
-              setOriginalProfile(originalProfileData);
+                setOriginalProfile(originalProfileData);
 
-              // Fetch impersonated profile directly
-              const { data: impersonatedProfileData } = await supabase
-                .from('user_profiles')
-                .select('*')
-                .eq('id', impersonatedUserId)
-                .maybeSingle();
+                // Fetch impersonated profile directly
+                const { data: impersonatedProfileData } = await supabase
+                  .from('user_profiles')
+                  .select('*')
+                  .eq('id', impersonatedUserId)
+                  .maybeSingle();
 
-              setProfile(impersonatedProfileData);
-              setIsImpersonating(true);
-              setLoading(false);
-              return;
-            } else {
+                setProfile(impersonatedProfileData);
+                setIsImpersonating(true);
+                setLoading(false);
+                return;
+              } else {
+                localStorage.removeItem('impersonation');
+              }
+            } catch (parseError) {
+              console.error('Failed to parse impersonation data:', parseError);
               localStorage.removeItem('impersonation');
             }
           }
@@ -80,17 +85,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       (async () => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          // Check if we're in impersonation mode - if so, don't reload profile
-          const impersonationData = localStorage.getItem('impersonation');
-          if (!impersonationData) {
-            // Not impersonating, load the actual user's profile
-            await loadProfile(session.user.id);
+        try {
+          setUser(session?.user ?? null);
+          if (session?.user) {
+            // Check if we're in impersonation mode - if so, don't reload profile
+            const impersonationData = localStorage.getItem('impersonation');
+            if (!impersonationData) {
+              // Not impersonating, load the actual user's profile
+              await loadProfile(session.user.id);
+            }
+            // If impersonating, the profile is already set correctly, don't overwrite it
+          } else {
+            setProfile(null);
           }
-          // If impersonating, the profile is already set correctly, don't overwrite it
-        } else {
-          setProfile(null);
+        } catch (error) {
+          console.error('Error in auth state change handler:', error);
+          setLoading(false);
         }
       })();
     });

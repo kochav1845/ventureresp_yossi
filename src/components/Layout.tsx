@@ -240,10 +240,8 @@ export default function Layout() {
                     const isActive = currentView === item.id;
                     return (
                       <li key={item.id} className="relative group">
-                        <a
-                          href={`/${item.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          onClick={() => navigate(`/${item.id}`)}
                           className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                             isActive
                               ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md'
@@ -253,7 +251,7 @@ export default function Layout() {
                         >
                           <Icon size={18} />
                           {!sidebarCollapsed && <span>{item.name}</span>}
-                        </a>
+                        </button>
                         {sidebarCollapsed && (
                           <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none">
                             {item.name}
@@ -274,7 +272,7 @@ export default function Layout() {
                   <button
                     onClick={(e) => {
                       if (sidebarCollapsed) {
-                        window.open('/payment-analytics', '_blank', 'noopener,noreferrer');
+                        navigate('/payment-analytics');
                       } else {
                         setAdminDashboardOpen(!adminDashboardOpen);
                       }
@@ -312,10 +310,8 @@ export default function Layout() {
                       const isActive = currentView === item.id;
                       return (
                         <li key={`${item.id}-${index}`}>
-                          <a
-                            href={`/${item.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            onClick={() => navigate(`/${item.id}`)}
                             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                               isActive
                                 ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-md'
@@ -324,7 +320,7 @@ export default function Layout() {
                           >
                             <Icon size={18} />
                             <span>{item.name}</span>
-                          </a>
+                          </button>
                         </li>
                       );
                     })}
@@ -340,7 +336,7 @@ export default function Layout() {
                   <button
                     onClick={() => {
                       if (sidebarCollapsed) {
-                        window.open('/inbox', '_blank', 'noopener,noreferrer');
+                        navigate('/inbox');
                       } else {
                         setEmailSystemOpen(!emailSystemOpen);
                       }
@@ -374,10 +370,8 @@ export default function Layout() {
                       const isActive = currentView === item.id;
                       return (
                         <li key={item.id}>
-                          <a
-                            href={`/${item.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            onClick={() => navigate(`/${item.id}`)}
                             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                               isActive
                                 ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md'
@@ -386,7 +380,7 @@ export default function Layout() {
                           >
                             <Icon size={18} />
                             <span>{item.name}</span>
-                          </a>
+                          </button>
                         </li>
                       );
                     })}
@@ -402,7 +396,7 @@ export default function Layout() {
                   <button
                     onClick={() => {
                       if (sidebarCollapsed) {
-                        window.open('/developer-tools', '_blank', 'noopener,noreferrer');
+                        navigate('/developer-tools');
                       } else {
                         setDeveloperSettingsOpen(!developerSettingsOpen);
                       }
@@ -436,10 +430,8 @@ export default function Layout() {
                       const isActive = currentView === item.id;
                       return (
                         <li key={item.id}>
-                          <a
-                            href={`/${item.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            onClick={() => navigate(`/${item.id}`)}
                             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                               isActive
                                 ? 'bg-gray-500 text-white shadow-md'
@@ -448,7 +440,7 @@ export default function Layout() {
                           >
                             <Icon size={18} />
                             <span>{item.name}</span>
-                          </a>
+                          </button>
                         </li>
                       );
                     })}
