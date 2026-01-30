@@ -320,9 +320,13 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
             .from('invoice_reminders')
             .insert({
               invoice_id: invoice.id,
+              invoice_reference_number: refNumber,
               user_id: profile.id,
               reminder_date: reminderDate,
-              message: batchNote
+              title: `Follow up on invoice ${refNumber}`,
+              description: batchNote,
+              reminder_message: batchNote,
+              status: 'pending'
             });
 
           if (reminderError) throw reminderError;

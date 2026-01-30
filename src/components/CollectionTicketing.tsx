@@ -958,16 +958,19 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
 
       if (memoError) throw memoError;
 
-      for (const invoiceRef of selectedInvoicesInTicket) {
+      // Create reminders for each invoice
+      for (const invoice of invoices) {
         await supabase
           .from('invoice_reminders')
           .insert({
-            invoice_reference_number: invoiceRef,
+            invoice_id: invoice.id,
+            invoice_reference_number: invoice.reference_number,
             ticket_id: selectedTicket?.id,
             user_id: profile.id,
             reminder_date: reminderDateTime.toISOString(),
-            title: `Follow up on invoice ${invoiceRef}`,
+            title: `Follow up on invoice ${invoice.reference_number}`,
             description: pendingBatchNote,
+            reminder_message: pendingBatchNote,
             status: 'pending'
           });
       }
