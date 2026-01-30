@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, TrendingUp, Calendar, CheckCircle, AlertCircle, Ticket } from 'lucide-react';
+import { ArrowLeft, Users, TrendingUp, Calendar, CheckCircle, AlertCircle, Ticket, Eye } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import CollectorDetailedProgress from './CollectorDetailedProgress';
 
 interface CollectorPerformanceAnalyticsProps {
   onBack?: () => void;
@@ -28,6 +29,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
   const [collectorStats, setCollectorStats] = useState<CollectorStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState('30');
+  const [selectedCollector, setSelectedCollector] = useState<{ id: string; name: string } | null>(null);
 
   const handleBack = () => {
     if (onBack) {
@@ -142,6 +144,17 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
     }
   };
 
+  // If a collector is selected, show their detailed progress
+  if (selectedCollector) {
+    return (
+      <CollectorDetailedProgress
+        collectorId={selectedCollector.id}
+        collectorName={selectedCollector.name}
+        onBack={() => setSelectedCollector(null)}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50">
       <div className="max-w-7xl mx-auto p-6">
@@ -182,7 +195,11 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
         ) : (
           <div className="space-y-6">
             {collectorStats.map((collector) => (
-              <div key={collector.user_id} className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+              <div
+                key={collector.user_id}
+                className="bg-white rounded-xl shadow-sm p-6 border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => setSelectedCollector({ id: collector.user_id, name: collector.full_name })}
+              >
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
@@ -194,9 +211,21 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
                       <p className="text-sm text-gray-600">{collector.total_changes} total status changes</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 px-4 py-2 bg-green-50 rounded-lg">
-                    <Calendar className="w-5 h-5 text-green-600" />
-                    <span className="text-green-700 font-semibold">{collector.working_days} working days</span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 px-4 py-2 bg-green-50 rounded-lg">
+                      <Calendar className="w-5 h-5 text-green-600" />
+                      <span className="text-green-700 font-semibold">{collector.working_days} working days</span>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedCollector({ id: collector.user_id, name: collector.full_name });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      View Details
+                    </button>
                   </div>
                 </div>
 

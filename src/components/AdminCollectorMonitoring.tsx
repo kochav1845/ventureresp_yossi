@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import CollectorDetailedProgress from './CollectorDetailedProgress';
 import {
   ArrowLeft, Search, Users, Activity, FileText, Mail,
-  TrendingUp, Eye, Calendar, Filter, ChevronDown, ChevronUp
+  TrendingUp, Eye, Calendar, Filter, ChevronDown, ChevronUp, BarChart3
 } from 'lucide-react';
 
 interface Collector {
@@ -43,6 +44,7 @@ export default function AdminCollectorMonitoring({ onBack }: { onBack: () => voi
   const handleBack = onBack || (() => navigate(-1));
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [selectedCollector, setSelectedCollector] = useState<string | null>(null);
+  const [selectedCollectorForProgress, setSelectedCollectorForProgress] = useState<{ id: string; name: string; email: string } | null>(null);
   const [collectorActivity, setCollectorActivity] = useState<CollectorActivity[]>([]);
   const [recentChanges, setRecentChanges] = useState<ChangeLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,6 +154,17 @@ export default function AdminCollectorMonitoring({ onBack }: { onBack: () => voi
   };
 
   const stats = getTotalStats();
+
+  // If viewing detailed progress for a collector
+  if (selectedCollectorForProgress) {
+    return (
+      <CollectorDetailedProgress
+        collectorId={selectedCollectorForProgress.id}
+        collectorName={selectedCollectorForProgress.name || selectedCollectorForProgress.email}
+        onBack={() => setSelectedCollectorForProgress(null)}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -289,6 +302,20 @@ export default function AdminCollectorMonitoring({ onBack }: { onBack: () => voi
                       <p className="text-2xl font-bold text-gray-900">{collector.emails_sent}/{collector.emails_scheduled}</p>
                       <p className="text-xs text-gray-600">Emails</p>
                     </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedCollectorForProgress({
+                          id: collector.collector_id,
+                          name: '',
+                          email: collector.collector_email
+                        });
+                      }}
+                      className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 flex items-center gap-2 transition-all"
+                    >
+                      <BarChart3 className="w-4 h-4" />
+                      View Progress
+                    </button>
                     <button
                       onClick={() => {
                         if (expandedCollector === collector.collector_id) {
