@@ -873,10 +873,21 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
 
     setLoading(true);
     try {
-      const memoInserts = selectedInvoicesInTicket.map(invoiceRef => ({
-        invoice_reference_number: invoiceRef,
+      // Get invoice IDs for the selected invoices
+      const { data: invoices } = await supabase
+        .from('acumatica_invoices')
+        .select('id, reference_number')
+        .in('reference_number', selectedInvoicesInTicket);
+
+      if (!invoices || invoices.length === 0) {
+        throw new Error('Could not find invoices');
+      }
+
+      const memoInserts = invoices.map(invoice => ({
+        invoice_id: invoice.id,
+        invoice_reference: invoice.reference_number,
         memo_text: pendingBatchNote,
-        created_by: profile.id
+        created_by_user_id: profile.id
       }));
 
       const { error } = await supabase
@@ -924,10 +935,21 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     try {
       const reminderDateTime = new Date(`${reminderDate}T${reminderTime}`);
 
-      const memoInserts = selectedInvoicesInTicket.map(invoiceRef => ({
-        invoice_reference_number: invoiceRef,
+      // Get invoice IDs for the selected invoices
+      const { data: invoices } = await supabase
+        .from('acumatica_invoices')
+        .select('id, reference_number')
+        .in('reference_number', selectedInvoicesInTicket);
+
+      if (!invoices || invoices.length === 0) {
+        throw new Error('Could not find invoices');
+      }
+
+      const memoInserts = invoices.map(invoice => ({
+        invoice_id: invoice.id,
+        invoice_reference: invoice.reference_number,
         memo_text: pendingBatchNote,
-        created_by: profile.id
+        created_by_user_id: profile.id
       }));
 
       const { error: memoError } = await supabase

@@ -307,7 +307,8 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
           .from('invoice_memos')
           .insert({
             invoice_id: invoice.id,
-            user_id: profile.id,
+            invoice_reference: refNumber,
+            created_by_user_id: profile.id,
             memo_text: batchNote
           });
 
