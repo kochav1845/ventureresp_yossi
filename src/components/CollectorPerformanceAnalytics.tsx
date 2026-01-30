@@ -76,48 +76,66 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
         ).size;
 
         // Get invoices from direct assignments
-        const { data: directInvoices } = await supabase
+        const { data: directAssignments, error: directAssignError } = await supabase
           .from('invoice_assignments')
           .select('invoice_reference_number')
           .eq('assigned_collector_id', collector.id);
 
-        const directRefNumbers = directInvoices?.map(d => d.invoice_reference_number) || [];
+        if (directAssignError) {
+          console.error('Error fetching direct assignments:', directAssignError);
+        }
+
+        const directRefNumbers = directAssignments?.map(d => d.invoice_reference_number) || [];
 
         // Get customers assigned to this collector
-        const { data: customerAssignments } = await supabase
+        const { data: customerAssignments, error: customerAssignError } = await supabase
           .from('collector_customer_assignments')
           .select('customer_id')
           .eq('assigned_collector_id', collector.id);
 
+        if (customerAssignError) {
+          console.error('Error fetching customer assignments:', customerAssignError);
+        }
+
         const customerIds = customerAssignments?.map(a => a.customer_id) || [];
 
+        // Collect all color statuses
+        let allColors: (string | null)[] = [];
+
         // Get invoices directly assigned
-        let directInvoiceColors: any[] = [];
         if (directRefNumbers.length > 0) {
-          const { data } = await supabase
+          const { data: directInvoices, error: directInvError } = await supabase
             .from('acumatica_invoices')
             .select('color_status')
             .in('reference_number', directRefNumbers)
             .eq('status', 'Open');
-          directInvoiceColors = data || [];
+
+          if (directInvError) {
+            console.error('Error fetching direct invoice colors:', directInvError);
+          } else {
+            allColors.push(...(directInvoices?.map(inv => inv.color_status) || []));
+          }
         }
 
         // Get invoices from customer assignments
-        let customerInvoiceColors: any[] = [];
         if (customerIds.length > 0) {
-          const { data } = await supabase
+          const { data: customerInvoices, error: customerInvError } = await supabase
             .from('acumatica_invoices')
             .select('color_status')
             .in('customer', customerIds)
             .eq('status', 'Open');
-          customerInvoiceColors = data || [];
+
+          if (customerInvError) {
+            console.error('Error fetching customer invoice colors:', customerInvError);
+          } else {
+            allColors.push(...(customerInvoices?.map(inv => inv.color_status) || []));
+          }
         }
 
-        // Combine and count current status of assigned invoices
-        const allInvoices = [...directInvoiceColors, ...customerInvoiceColors];
-        const greenChanges = allInvoices.filter(a => a.color_status === 'green').length;
-        const orangeChanges = allInvoices.filter(a => a.color_status === 'orange').length;
-        const redChanges = allInvoices.filter(a => a.color_status === 'red').length;
+        // Count current status of assigned invoices
+        const greenChanges = allColors.filter(c => c === 'green').length;
+        const orangeChanges = allColors.filter(c => c === 'orange').length;
+        const redChanges = allColors.filter(c => c === 'red').length;
 
         // Historical change tracking
         const untouchedToRed = colorChanges?.filter(a =>
@@ -134,7 +152,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
           .eq('assigned_collector_id', collector.id);
 
         // Total invoices is the count we already calculated above
-        const totalInvoices = allInvoices.length;
+        const totalInvoices = allColors.length;
 
         // Use email as name if full_name is not set
         const displayName = collector.full_name || collector.email?.split('@')[0] || 'Unknown';
