@@ -126,7 +126,30 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     loadCustomers();
     loadCollectors();
     loadTickets();
-  }, []);
+
+    // Subscribe to ticket_invoices changes to detect when invoices are removed
+    const subscription = supabase
+      .channel('ticket_invoices_changes')
+      .on('postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'ticket_invoices'
+        },
+        (payload) => {
+          // Reload tickets and refresh details if viewing affected ticket
+          loadTickets();
+          if (selectedTicket && payload.old.ticket_id === selectedTicket.id) {
+            loadTicketDetails(selectedTicket);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [selectedTicket]);
 
   useEffect(() => {
     if (selectedCustomer) {

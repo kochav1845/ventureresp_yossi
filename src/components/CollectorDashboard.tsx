@@ -50,6 +50,37 @@ export default function CollectorDashboard() {
   useEffect(() => {
     if (user && profile) {
       loadAssignments();
+
+      // Subscribe to invoice changes to automatically refresh when invoices are paid/removed
+      const subscription = supabase
+        .channel('collector_invoice_changes')
+        .on('postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'ticket_invoices'
+          },
+          () => {
+            // Reload assignments when invoices are added/removed from tickets
+            loadAssignments();
+          }
+        )
+        .on('postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'acumatica_invoices'
+          },
+          () => {
+            // Reload when invoice status or balance changes
+            loadAssignments();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        subscription.unsubscribe();
+      };
     }
   }, [user, profile]);
 
