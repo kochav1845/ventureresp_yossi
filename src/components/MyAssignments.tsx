@@ -308,7 +308,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
           .insert({
             invoice_id: invoice.id,
             invoice_reference: refNumber,
-            created_by_user_id: profile.id,
+            created_by_user_id: user!.id,
             memo_text: batchNote
           });
 
@@ -321,7 +321,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
             .insert({
               invoice_id: invoice.id,
               invoice_reference_number: refNumber,
-              user_id: profile.id,
+              user_id: user!.id,
               reminder_date: reminderDate,
               title: `Follow up on invoice ${refNumber}`,
               description: batchNote,
