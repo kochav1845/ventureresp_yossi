@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, Lock, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, UserPlus } from 'lucide-react';
+import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, Lock, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, UserPlus, Ticket, ChevronRight } from 'lucide-react';
 import { supabase, logActivity } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
@@ -66,6 +66,19 @@ interface PaymentData {
   status: string;
 }
 
+interface TicketData {
+  id: string;
+  ticket_number: string;
+  status: string;
+  priority: string;
+  notes: string | null;
+  created_at: string;
+  assigned_collector_id: string | null;
+  collector_name: string | null;
+  collector_email: string | null;
+  invoice_count: number;
+}
+
 export default function CustomerDetailView({ customerId, onBack }: CustomerDetailViewProps) {
   const { profile } = useAuth();
   const { hasPermission } = useUserPermissions();
@@ -76,10 +89,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [displayedInvoices, setDisplayedInvoices] = useState<InvoiceData[]>([]);
   const [payments, setPayments] = useState<PaymentData[]>([]);
   const [customerNotes, setCustomerNotes] = useState<CustomerNote[]>([]);
+  const [tickets, setTickets] = useState<TicketData[]>([]);
   const [loadingCustomer, setLoadingCustomer] = useState(true);
   const [loadingChart, setLoadingChart] = useState(true);
   const [loadingInvoices, setLoadingInvoices] = useState(true);
   const [loadingPayments, setLoadingPayments] = useState(false);
+  const [loadingTickets, setLoadingTickets] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [activeTab, setActiveTab] = useState<'open-invoices' | 'paid-invoices' | 'payments'>('open-invoices');
   const [newNote, setNewNote] = useState('');
@@ -119,6 +134,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     // Then load other sections independently
     loadInvoiceStats();
     loadChartData();
+    loadTickets();
   }, [customerId]);
 
   useEffect(() => {
@@ -231,6 +247,54 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     } catch (error) {
       console.error('Error loading chart data:', error);
       setLoadingChart(false);
+    }
+  };
+
+  // Load tickets for this customer
+  const loadTickets = async () => {
+    setLoadingTickets(true);
+    try {
+      const { data, error } = await supabase
+        .from('collection_tickets')
+        .select(`
+          id,
+          ticket_number,
+          status,
+          priority,
+          notes,
+          created_at,
+          assigned_collector_id,
+          user_profiles!collection_tickets_assigned_collector_id_fkey (
+            full_name,
+            email
+          ),
+          ticket_invoices (
+            invoice_reference_number
+          )
+        `)
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const ticketsWithCollector = (data || []).map(ticket => ({
+        id: ticket.id,
+        ticket_number: ticket.ticket_number,
+        status: ticket.status,
+        priority: ticket.priority,
+        notes: ticket.notes,
+        created_at: ticket.created_at,
+        assigned_collector_id: ticket.assigned_collector_id,
+        collector_name: ticket.user_profiles?.full_name || null,
+        collector_email: ticket.user_profiles?.email || null,
+        invoice_count: ticket.ticket_invoices?.length || 0
+      }));
+
+      setTickets(ticketsWithCollector);
+    } catch (error) {
+      console.error('Error loading tickets:', error);
+    } finally {
+      setLoadingTickets(false);
     }
   };
 
@@ -511,6 +575,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     setAdvancedFilters(newFilters);
   };
 
+  const handleTicketClick = (ticketId: string) => {
+    navigate(`/collection-ticketing?ticketId=${ticketId}`);
+  };
+
   const handleQuickFilter = (type: string) => {
     if (!invoiceStats) return;
 
@@ -749,6 +817,98 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           </div>
         </div>
       </div>
+
+      {/* Collection Tickets Section */}
+      {loadingTickets ? (
+        <div className="bg-white rounded-lg shadow-md p-8 mb-6">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="ml-3 text-gray-600">Loading tickets...</p>
+          </div>
+        </div>
+      ) : tickets.length > 0 && (
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center">
+              <Ticket className="w-6 h-6 text-blue-600 mr-2" />
+              <h2 className="text-2xl font-bold text-gray-900">Collection Tickets</h2>
+              <span className="ml-3 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                {tickets.length} ticket{tickets.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {tickets.map((ticket) => (
+              <div
+                key={ticket.id}
+                onClick={() => handleTicketClick(ticket.id)}
+                className="border border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-blue-400 transition-all cursor-pointer bg-gradient-to-br from-white to-gray-50"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center">
+                    <Ticket className="w-5 h-5 text-blue-600 mr-2" />
+                    <span className="font-bold text-gray-900">{ticket.ticket_number}</span>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                </div>
+
+                <div className="space-y-2 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      ticket.status === 'open' ? 'bg-blue-100 text-blue-800' :
+                      ticket.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
+                      ticket.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {ticket.status.replace('_', ' ')}
+                    </span>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      ticket.priority === 'urgent' ? 'bg-red-100 text-red-800' :
+                      ticket.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                      ticket.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {ticket.priority}
+                    </span>
+                  </div>
+
+                  {ticket.assigned_collector_id && (
+                    <div className="flex items-center text-sm text-gray-600 bg-gray-50 rounded px-2 py-1">
+                      <User className="w-4 h-4 mr-1 text-blue-600" />
+                      <span className="font-medium">{ticket.collector_name || ticket.collector_email}</span>
+                    </div>
+                  )}
+
+                  {!ticket.assigned_collector_id && (
+                    <div className="flex items-center text-sm text-gray-400 bg-gray-50 rounded px-2 py-1">
+                      <User className="w-4 h-4 mr-1" />
+                      <span className="italic">Unassigned</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <div className="flex items-center">
+                      <FileText className="w-3 h-3 mr-1" />
+                      <span>{ticket.invoice_count} invoice{ticket.invoice_count !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="flex items-center">
+                      <Clock className="w-3 h-3 mr-1" />
+                      <span>{formatDateUtil(ticket.created_at)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {ticket.notes && (
+                  <div className="pt-2 border-t border-gray-200">
+                    <p className="text-xs text-gray-600 line-clamp-2">{ticket.notes}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Customer Timeline Chart */}
       {loadingChart ? (

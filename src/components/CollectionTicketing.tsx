@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, MessageSquare, ChevronDown, ChevronUp, FileText, ChevronRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -101,6 +101,7 @@ interface MergeEvent {
 export default function CollectionTicketing({ onBack }: { onBack: () => void }) {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const handleBack = onBack || (() => navigate(-1));
   const [activeTab, setActiveTab] = useState<'create' | 'list'>('list');
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -173,6 +174,20 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
       subscription.unsubscribe();
     };
   }, [selectedTicket]);
+
+  // Handle opening a ticket from URL query parameter
+  useEffect(() => {
+    const ticketId = searchParams.get('ticketId');
+    if (ticketId && tickets.length > 0) {
+      const ticket = tickets.find(t => t.id === ticketId);
+      if (ticket) {
+        loadTicketDetails(ticket);
+        setActiveTab('list');
+        // Clear the query parameter after opening
+        setSearchParams({});
+      }
+    }
+  }, [tickets, searchParams]);
 
   useEffect(() => {
     if (selectedCustomer) {
