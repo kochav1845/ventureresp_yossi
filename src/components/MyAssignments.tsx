@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Ticket, FileText, Calendar, DollarSign, MessageSquare, ArrowLeft, ExternalLink } from 'lucide-react';
+import { Ticket, FileText, Calendar, DollarSign, MessageSquare, ArrowLeft, ExternalLink, Clock } from 'lucide-react';
 import InvoiceMemoModal from './InvoiceMemoModal';
-import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
+import { getAcumaticaInvoiceUrl, getAcumaticaCustomerUrl } from '../lib/acumaticaLinks';
+import { formatDistanceToNow } from 'date-fns';
 
 interface Assignment {
   assignment_id: string;
@@ -32,6 +34,16 @@ interface TicketGroup {
   customer_id: string;
   customer_name: string;
   invoices: Assignment[];
+  last_status_change?: {
+    status: string;
+    changed_at: string;
+    changed_by_name: string;
+  };
+  last_activity?: {
+    description: string;
+    created_at: string;
+    created_by_name: string;
+  };
 }
 
 interface CustomerAssignment {
@@ -49,6 +61,7 @@ interface MyAssignmentsProps {
 
 export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   const { user, profile } = useAuth();
+  const navigate = useNavigate();
   const [tickets, setTickets] = useState<TicketGroup[]>([]);
   const [individualAssignments, setIndividualAssignments] = useState<Assignment[]>([]);
   const [customerAssignments, setCustomerAssignments] = useState<CustomerAssignment[]>([]);
@@ -106,7 +119,45 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
           }
         });
 
-        setTickets(Array.from(ticketGroups.values()));
+        // Fetch last status change and last activity for each ticket
+        const ticketGroupsArray = Array.from(ticketGroups.values());
+        await Promise.all(ticketGroupsArray.map(async (ticket) => {
+          // Fetch last status change
+          const { data: lastStatus } = await supabase
+            .from('ticket_status_history')
+            .select('new_status, changed_at, changed_by, user_profiles!ticket_status_history_changed_by_fkey(full_name)')
+            .eq('ticket_id', ticket.ticket_id)
+            .order('changed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (lastStatus) {
+            ticket.last_status_change = {
+              status: lastStatus.new_status,
+              changed_at: lastStatus.changed_at,
+              changed_by_name: (lastStatus as any).user_profiles?.full_name || 'Unknown'
+            };
+          }
+
+          // Fetch last activity
+          const { data: lastActivity } = await supabase
+            .from('ticket_activity_log')
+            .select('description, created_at, created_by, user_profiles!ticket_activity_log_created_by_fkey(full_name)')
+            .eq('ticket_id', ticket.ticket_id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (lastActivity) {
+            ticket.last_activity = {
+              description: lastActivity.description,
+              created_at: lastActivity.created_at,
+              created_by_name: (lastActivity as any).user_profiles?.full_name || 'Unknown'
+            };
+          }
+        }));
+
+        setTickets(ticketGroupsArray);
         setIndividualAssignments(individualList);
       }
 
@@ -345,12 +396,60 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                           Priority: {ticket.ticket_priority.toUpperCase()}
                         </span>
                       </div>
-                      <h3 className="text-xl font-bold text-gray-900">
-                        {ticket.customer_name}
-                      </h3>
-                      <p className="text-sm text-gray-600 mt-1">
+
+                      <div className="flex items-center gap-2 mb-3">
+                        <button
+                          onClick={() => navigate(`/customers?customer=${ticket.customer_id}`)}
+                          className="text-xl font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {ticket.customer_name}
+                        </button>
+                        <a
+                          href={getAcumaticaCustomerUrl(ticket.customer_id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
+                          title="View in Acumatica"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          View in Acumatica
+                        </a>
+                      </div>
+                      <p className="text-sm text-gray-600">
                         Customer ID: {ticket.customer_id}
                       </p>
+
+                      {/* Last Status Change and Activity */}
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <div className="grid grid-cols-2 gap-4 text-xs">
+                          {ticket.last_status_change && (
+                            <div className="flex items-start gap-2">
+                              <Clock className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="font-semibold text-gray-700">Last Status Change</p>
+                                <p className="text-gray-600">{ticket.last_status_change.status}</p>
+                                <p className="text-gray-500">
+                                  {formatDistanceToNow(new Date(ticket.last_status_change.changed_at), { addSuffix: true })}
+                                </p>
+                                <p className="text-gray-500">by {ticket.last_status_change.changed_by_name}</p>
+                              </div>
+                            </div>
+                          )}
+                          {ticket.last_activity && (
+                            <div className="flex items-start gap-2">
+                              <Clock className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="font-semibold text-gray-700">Last Activity</p>
+                                <p className="text-gray-600">{ticket.last_activity.description}</p>
+                                <p className="text-gray-500">
+                                  {formatDistanceToNow(new Date(ticket.last_activity.created_at), { addSuffix: true })}
+                                </p>
+                                <p className="text-gray-500">by {ticket.last_activity.created_by_name}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                     <div className="p-4 bg-gray-50">

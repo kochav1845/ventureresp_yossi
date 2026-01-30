@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, MessageSquare, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
+import { formatDistanceToNow } from 'date-fns';
 
 interface Customer {
   customer_id: string;
@@ -47,6 +48,16 @@ interface Ticket {
   collector_email?: string;
   collector_name?: string;
   assigner_email?: string;
+  last_status_change?: {
+    status: string;
+    changed_at: string;
+    changed_by_name: string;
+  };
+  last_activity?: {
+    description: string;
+    created_at: string;
+    created_by_name: string;
+  };
 }
 
 interface StatusHistory {
@@ -249,12 +260,50 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
             assignerEmail = assignerData?.email;
           }
 
+          // Fetch last status change
+          const { data: lastStatus } = await supabase
+            .from('ticket_status_history')
+            .select('new_status, changed_at, changed_by, user_profiles!ticket_status_history_changed_by_fkey(full_name)')
+            .eq('ticket_id', ticket.id)
+            .order('changed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          let last_status_change = undefined;
+          if (lastStatus) {
+            last_status_change = {
+              status: lastStatus.new_status,
+              changed_at: lastStatus.changed_at,
+              changed_by_name: (lastStatus as any).user_profiles?.full_name || 'Unknown'
+            };
+          }
+
+          // Fetch last activity
+          const { data: lastActivity } = await supabase
+            .from('ticket_activity_log')
+            .select('description, created_at, created_by, user_profiles!ticket_activity_log_created_by_fkey(full_name)')
+            .eq('ticket_id', ticket.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          let last_activity = undefined;
+          if (lastActivity) {
+            last_activity = {
+              description: lastActivity.description,
+              created_at: lastActivity.created_at,
+              created_by_name: (lastActivity as any).user_profiles?.full_name || 'Unknown'
+            };
+          }
+
           return {
             ...ticket,
             invoice_count: count || 0,
             collector_email: collectorData?.email || 'Unassigned',
             collector_name: collectorData?.full_name || collectorData?.email || 'Unassigned',
-            assigner_email: assignerEmail
+            assigner_email: assignerEmail,
+            last_status_change,
+            last_activity
           };
         })
       );
@@ -481,7 +530,8 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
 
       alert('Note added successfully!');
       setNewNote('');
-      loadTicketDetails(selectedTicket);
+      await loadTicketDetails(selectedTicket);
+      await loadTickets();
     } catch (error: any) {
       console.error('Error adding note:', error);
       alert('Failed to add note: ' + error.message);
@@ -515,8 +565,9 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
       setChangingColorForInvoice(null);
 
       if (selectedTicket) {
-        loadTicketDetails(selectedTicket);
+        await loadTicketDetails(selectedTicket);
       }
+      await loadTickets();
     } catch (error: any) {
       console.error('Error changing color:', error);
       alert('Failed to change color: ' + error.message);
@@ -632,7 +683,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                   >
                     {selectedTicket.customer_name}
                   </button>
-                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                  <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
                     <span>Customer ID: {selectedTicket.customer_id}</span>
                     <a
                       href={getAcumaticaCustomerUrl(selectedTicket.customer_id)}
@@ -644,6 +695,40 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                       View in Acumatica
                     </a>
                   </div>
+
+                  {/* Last Status Change and Activity */}
+                  {(selectedTicket.last_status_change || selectedTicket.last_activity) && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        {selectedTicket.last_status_change && (
+                          <div className="flex items-start gap-2">
+                            <Clock className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-semibold text-gray-700">Last Status Change</p>
+                              <p className="text-gray-600">{selectedTicket.last_status_change.status}</p>
+                              <p className="text-gray-500 text-xs">
+                                {formatDistanceToNow(new Date(selectedTicket.last_status_change.changed_at), { addSuffix: true })}
+                              </p>
+                              <p className="text-gray-500 text-xs">by {selectedTicket.last_status_change.changed_by_name}</p>
+                            </div>
+                          </div>
+                        )}
+                        {selectedTicket.last_activity && (
+                          <div className="flex items-start gap-2">
+                            <Clock className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-semibold text-gray-700">Last Activity</p>
+                              <p className="text-gray-600">{selectedTicket.last_activity.description}</p>
+                              <p className="text-gray-500 text-xs">
+                                {formatDistanceToNow(new Date(selectedTicket.last_activity.created_at), { addSuffix: true })}
+                              </p>
+                              <p className="text-gray-500 text-xs">by {selectedTicket.last_activity.created_by_name}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => {
@@ -971,12 +1056,63 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                                 {ticket.priority}
                               </span>
                             </div>
-                            <h3 className="font-semibold text-lg text-gray-900 mb-1">
-                              {ticket.customer_name}
-                            </h3>
+                            <div className="flex items-center gap-2 mb-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/customers?customer=${ticket.customer_id}`);
+                                }}
+                                className="font-semibold text-lg text-blue-600 hover:text-blue-800 hover:underline"
+                              >
+                                {ticket.customer_name}
+                              </button>
+                              <a
+                                href={getAcumaticaCustomerUrl(ticket.customer_id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
+                                title="View in Acumatica"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                                Acumatica
+                              </a>
+                            </div>
                             <p className="text-sm text-gray-500 mb-2">
                               Customer ID: {ticket.customer_id}
                             </p>
+
+                            {/* Last Status Change and Activity */}
+                            {(ticket.last_status_change || ticket.last_activity) && (
+                              <div className="mb-2 p-2 bg-gray-50 rounded border border-gray-200">
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  {ticket.last_status_change && (
+                                    <div className="flex items-start gap-1">
+                                      <Clock className="w-3 h-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                                      <div>
+                                        <p className="font-semibold text-gray-700">Status: {ticket.last_status_change.status}</p>
+                                        <p className="text-gray-500">
+                                          {formatDistanceToNow(new Date(ticket.last_status_change.changed_at), { addSuffix: true })}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {ticket.last_activity && (
+                                    <div className="flex items-start gap-1">
+                                      <Clock className="w-3 h-3 text-green-500 flex-shrink-0 mt-0.5" />
+                                      <div>
+                                        <p className="font-semibold text-gray-700">Activity</p>
+                                        <p className="text-gray-600 truncate">{ticket.last_activity.description}</p>
+                                        <p className="text-gray-500">
+                                          {formatDistanceToNow(new Date(ticket.last_activity.created_at), { addSuffix: true })}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
                             <div className="flex items-center gap-4 text-sm text-gray-600">
                               <div className="flex items-center gap-1">
                                 <User className="w-4 h-4" />
