@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import CustomerDetailView from './CustomerDetailView';
 import { batchedInQuery } from '../lib/batchedQuery';
 import { ArrowLeft, Plus, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, Lock, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff } from 'lucide-react';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
@@ -83,8 +84,20 @@ type CustomersProps = {
 export default function Customers({ onBack }: CustomersProps) {
   const { hasPermission, loading: permissionsLoading } = useUserPermissions();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const customerIdParam = searchParams.get('customer');
   const handleBack = onBack || (() => navigate(-1));
   const hasAccess = hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW, 'view');
+
+  // If a specific customer is requested, show CustomerDetailView
+  if (customerIdParam) {
+    return (
+      <CustomerDetailView
+        customerId={customerIdParam}
+        onBack={() => navigate('/customers')}
+      />
+    );
+  }
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
