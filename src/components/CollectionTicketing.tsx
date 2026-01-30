@@ -815,16 +815,19 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                     disabled={loading || newStatus === selectedTicket.status}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                   >
-                    Update
+                    Update Status
                   </button>
                 </div>
-                <input
-                  type="text"
-                  placeholder="Add a note about this status change (optional)"
-                  value={statusNote}
-                  onChange={(e) => setStatusNote(e.target.value)}
-                  className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                />
+                <div className="mt-2">
+                  <input
+                    type="text"
+                    placeholder="Add a note about this status change (optional - you can leave this blank)"
+                    value={statusNote}
+                    onChange={(e) => setStatusNote(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 italic"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Note: You can update the status without adding a note</p>
+                </div>
               </div>
 
               <div>
