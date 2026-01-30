@@ -42,6 +42,7 @@ export type UserProfile = {
   role: 'customer' | 'admin' | 'manager' | 'collector' | 'viewer' | 'developer' | 'secretary';
   full_name?: string;
   assigned_color?: string;
+  can_be_assigned_as_collector?: boolean;
   created_at: string;
   updated_at: string;
 };

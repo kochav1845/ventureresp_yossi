@@ -39,6 +39,7 @@ export default function Layout() {
   const location = useLocation();
   const { hasPermission, isAdmin } = useUserPermissions();
   const isCollector = profile?.role === 'collector';
+  const canBeAssignedAsCollector = profile?.can_be_assigned_as_collector || profile?.role === 'collector' || profile?.role === 'admin' || profile?.role === 'manager';
   const [showReminders, setShowReminders] = useState(false);
   const [hasOverdueReminders, setHasOverdueReminders] = useState(false);
   const [developerSettingsOpen, setDeveloperSettingsOpen] = useState(false);
@@ -124,7 +125,7 @@ export default function Layout() {
       items: [
         ...(hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW) ? [{ id: 'acumatica-customers', name: 'Customers', icon: Users, permission: PERMISSION_KEYS.CUSTOMERS_VIEW }] : []),
         ...(hasPermission(PERMISSION_KEYS.CUSTOMERS_DASHBOARD) ? [{ id: 'customer-analytics', name: 'Customer Dashboard', icon: BarChart3, permission: PERMISSION_KEYS.CUSTOMERS_DASHBOARD }] : []),
-        ...(isCollector ? [{ id: 'my-assignments', name: 'My Assignments', icon: Ticket }] : []),
+        ...(canBeAssignedAsCollector ? [{ id: 'my-assignments', name: 'My Assignments', icon: Ticket }] : []),
       ]
     },
     {
