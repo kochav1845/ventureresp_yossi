@@ -281,7 +281,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
 
       const { error: assignmentsError } = await supabase
         .from('invoice_assignments')
-        .upsert(assignments);
+        .upsert(assignments, { onConflict: 'invoice_reference_number' });
 
       if (assignmentsError) throw assignmentsError;
 

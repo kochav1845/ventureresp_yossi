@@ -75,29 +75,16 @@ export default function AssignInvoiceModal({
 
     setLoading(true);
     try {
-      if (existingAssignment) {
-        const { error } = await supabase
-          .from('invoice_assignments')
-          .update({
-            assigned_collector_id: selectedCollectorId,
-            assigned_by: profile.id,
-            notes: notes || existingAssignment.notes
-          })
-          .eq('id', existingAssignment.id);
+      const { error } = await supabase
+        .from('invoice_assignments')
+        .upsert({
+          invoice_reference_number: invoiceReferenceNumber,
+          assigned_collector_id: selectedCollectorId,
+          assigned_by: profile.id,
+          notes: notes || null
+        }, { onConflict: 'invoice_reference_number' });
 
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('invoice_assignments')
-          .insert({
-            invoice_reference_number: invoiceReferenceNumber,
-            assigned_collector_id: selectedCollectorId,
-            assigned_by: profile.id,
-            notes: notes || null
-          });
-
-        if (error) throw error;
-      }
+      if (error) throw error;
 
       onAssignmentComplete();
       onClose();
