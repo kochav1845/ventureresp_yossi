@@ -49,8 +49,8 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
 
       const { data: collectors, error: collectorsError } = await supabase
         .from('user_profiles')
-        .select('id, full_name')
-        .eq('role', 'collector');
+        .select('id, full_name, role')
+        .in('role', ['collector', 'admin', 'manager']);
 
       if (collectorsError) throw collectorsError;
 

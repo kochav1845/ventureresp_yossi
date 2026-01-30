@@ -14,6 +14,7 @@ interface Collector {
   id: string;
   full_name: string;
   email: string;
+  role: string;
 }
 
 export default function AssignCustomerModal({
@@ -38,8 +39,8 @@ export default function AssignCustomerModal({
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, full_name, email')
-        .eq('role', 'collector')
+        .select('id, full_name, email, role')
+        .in('role', ['collector', 'admin', 'manager'])
         .order('full_name');
 
       if (error) throw error;
@@ -134,7 +135,7 @@ export default function AssignCustomerModal({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Select Collector
+              Assign To
             </label>
             <select
               value={selectedCollectorId}
@@ -145,7 +146,7 @@ export default function AssignCustomerModal({
               <option value="">Choose a collector...</option>
               {availableCollectors.map((collector) => (
                 <option key={collector.id} value={collector.id}>
-                  {collector.full_name} ({collector.email})
+                  {collector.full_name} ({collector.email}) - {collector.role.charAt(0).toUpperCase() + collector.role.slice(1)}
                 </option>
               ))}
             </select>

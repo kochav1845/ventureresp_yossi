@@ -130,14 +130,14 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
       const { data, error } = await supabase
         .from('user_profiles')
         .select('id, email, role')
-        .eq('role', 'collector')
+        .in('role', ['collector', 'admin', 'manager'])
         .order('email');
 
       if (error) {
         console.error('Error loading collectors:', error);
         setError('Failed to load collectors');
       } else {
-        console.log('Loaded collectors:', data?.length);
+        console.log('Loaded collectors (including admins/managers):', data?.length);
         setCollectors(data || []);
       }
     } catch (err) {
@@ -694,7 +694,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Assign Collector
+                    Assign To
                   </label>
                   <select
                     value={selectedCollector}
@@ -704,7 +704,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                     <option value="">Choose a collector...</option>
                     {collectors.map(collector => (
                       <option key={collector.id} value={collector.id}>
-                        {collector.email}
+                        {collector.email} - {collector.role.charAt(0).toUpperCase() + collector.role.slice(1)}
                       </option>
                     ))}
                   </select>

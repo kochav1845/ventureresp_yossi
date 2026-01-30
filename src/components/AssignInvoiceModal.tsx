@@ -15,6 +15,7 @@ interface Collector {
   id: string;
   full_name: string;
   email: string;
+  role: string;
 }
 
 export default function AssignInvoiceModal({
@@ -40,8 +41,8 @@ export default function AssignInvoiceModal({
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, full_name, email')
-        .eq('role', 'collector')
+        .select('id, full_name, email, role')
+        .in('role', ['collector', 'admin', 'manager'])
         .order('full_name');
 
       if (error) throw error;
@@ -171,7 +172,7 @@ export default function AssignInvoiceModal({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {existingAssignment ? 'Reassign to Collector' : 'Assign to Collector'}
+              {existingAssignment ? 'Reassign To' : 'Assign To'}
             </label>
             <select
               value={selectedCollectorId}
@@ -182,7 +183,7 @@ export default function AssignInvoiceModal({
               <option value="">Choose a collector...</option>
               {collectors.map((collector) => (
                 <option key={collector.id} value={collector.id}>
-                  {collector.full_name} ({collector.email})
+                  {collector.full_name} ({collector.email}) - {collector.role.charAt(0).toUpperCase() + collector.role.slice(1)}
                 </option>
               ))}
             </select>
