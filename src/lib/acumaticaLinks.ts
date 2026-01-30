@@ -27,7 +27,7 @@ export function getAcumaticaCustomerUrl(customerId: string): string {
   const params = new URLSearchParams({
     CompanyID: 'Venture Resp',
     ScreenId: 'AR303000',
-    CustomerID: customerId
+    AcctCD: customerId
   });
 
   return `${baseUrl}?${params.toString()}`;
