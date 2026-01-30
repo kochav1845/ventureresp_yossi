@@ -76,7 +76,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [displayedInvoices, setDisplayedInvoices] = useState<InvoiceData[]>([]);
   const [payments, setPayments] = useState<PaymentData[]>([]);
   const [customerNotes, setCustomerNotes] = useState<CustomerNote[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingCustomer, setLoadingCustomer] = useState(true);
+  const [loadingChart, setLoadingChart] = useState(true);
+  const [loadingInvoices, setLoadingInvoices] = useState(true);
+  const [loadingPayments, setLoadingPayments] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [activeTab, setActiveTab] = useState<'open-invoices' | 'paid-invoices' | 'payments'>('open-invoices');
   const [newNote, setNewNote] = useState('');
@@ -110,8 +113,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
 
   useEffect(() => {
-    loadCustomerData();
+    // Load customer info first (fastest)
+    loadCustomerBasicInfo();
+
+    // Then load other sections independently
     loadInvoiceStats();
+    loadChartData();
   }, [customerId]);
 
   useEffect(() => {
@@ -140,8 +147,9 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     loadFilteredStats();
   }, [activeTab, JSON.stringify(advancedFilters)]);
 
-  const loadCustomerData = async () => {
-    setLoading(true);
+  // Load customer basic info first (fastest - shows immediately)
+  const loadCustomerBasicInfo = async () => {
+    setLoadingCustomer(true);
     try {
       // Load customer with calculated balance
       const { data: customerWithBalance, error: balanceError } = await supabase
@@ -197,10 +205,40 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         setInvoiceColorCounts(counts);
       }
 
-      // Load first batch of invoices
-      await loadInvoices(0, false);
+      // Load customer notes
+      const { data: notesData, error: notesError } = await supabase
+        .from('customer_notes')
+        .select('*')
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false });
 
-      // Load payments (keeping the same chunked approach as they're typically fewer)
+      if (notesError) throw notesError;
+      setCustomerNotes(notesData || []);
+    } catch (error) {
+      console.error('Error loading customer data:', error);
+    } finally {
+      setLoadingCustomer(false);
+    }
+  };
+
+  // Load chart data separately
+  const loadChartData = async () => {
+    setLoadingChart(true);
+    try {
+      // Chart will load its own data via CustomerTimelineChart component
+      // Just mark as loaded after a brief moment
+      setTimeout(() => setLoadingChart(false), 100);
+    } catch (error) {
+      console.error('Error loading chart data:', error);
+      setLoadingChart(false);
+    }
+  };
+
+  // Load payments on-demand when tab is clicked
+  const loadPaymentsData = async () => {
+    if (payments.length > 0) return; // Already loaded
+    setLoadingPayments(true);
+    try {
       let allPaymentsData: any[] = [];
       let hasMorePayments = true;
       let offset = 0;
@@ -226,20 +264,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       }
 
       setPayments(allPaymentsData);
-
-      // Load customer notes
-      const { data: notesData, error: notesError } = await supabase
-        .from('customer_notes')
-        .select('*')
-        .eq('customer_id', customerId)
-        .order('created_at', { ascending: false });
-
-      if (notesError) throw notesError;
-      setCustomerNotes(notesData || []);
     } catch (error) {
-      console.error('Error loading customer data:', error);
+      console.error('Error loading payments:', error);
     } finally {
-      setLoading(false);
+      setLoadingPayments(false);
     }
   };
 
@@ -283,7 +311,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   };
 
   const loadInvoices = async (offset = 0, append = false) => {
-    if (!append) setLoading(true);
+    if (!append) setLoadingInvoices(true);
     try {
       const filterType = activeTab === 'open-invoices' ? 'open' : activeTab === 'paid-invoices' ? 'paid' : 'all';
 
@@ -315,7 +343,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     } catch (error) {
       console.error('Error loading invoices:', error);
     } finally {
-      setLoading(false);
+      setLoadingInvoices(false);
       setLoadingMore(false);
     }
   };
@@ -327,7 +355,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   };
 
   const lastInvoiceRef = useCallback((node: HTMLDivElement) => {
-    if (loading || loadingMore) return;
+    if (loadingInvoices || loadingMore) return;
     if (observer.current) observer.current.disconnect();
 
     observer.current = new IntersectionObserver(entries => {
@@ -337,7 +365,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     });
 
     if (node) observer.current.observe(node);
-  }, [loading, loadingMore, hasMore]);
+  }, [loadingInvoices, loadingMore, hasMore]);
 
   const handleSaveNote = async () => {
     if (!newNote.trim() || !profile) return;
@@ -399,7 +427,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     }
   };
 
-  if (loading) {
+  if (loadingCustomer) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
@@ -723,10 +751,19 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       </div>
 
       {/* Customer Timeline Chart */}
-      <CustomerTimelineChart
-        customerId={customerId}
-        customerName={customer.customer_name}
-      />
+      {loadingChart ? (
+        <div className="bg-white rounded-lg shadow-md p-8">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="ml-3 text-gray-600">Loading timeline chart...</p>
+          </div>
+        </div>
+      ) : (
+        <CustomerTimelineChart
+          customerId={customerId}
+          customerName={customer.customer_name}
+        />
+      )}
 
       <div className="bg-white rounded-lg shadow-md mt-6">
         <div className="border-b border-gray-200">
@@ -761,7 +798,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               </div>
             </button>
             <button
-              onClick={() => setActiveTab('payments')}
+              onClick={() => {
+                setActiveTab('payments');
+                loadPaymentsData();
+              }}
               className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'payments'
                   ? 'border-blue-600 text-blue-600'
@@ -804,7 +844,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                   </button>
                 </div>
               )}
-              {displayedInvoices.length === 0 && !loading ? (
+              {loadingInvoices ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Loading invoices...</p>
+                </div>
+              ) : displayedInvoices.length === 0 ? (
                 <div className="text-center py-12">
                   <TrendingUp className="w-12 h-12 text-green-500 mx-auto mb-4" />
                   <p className="text-gray-500 font-medium">No open invoices</p>
@@ -1027,7 +1072,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
           {activeTab === 'paid-invoices' && (
             <div className="max-h-[calc(100vh-450px)] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#64748b #e2e8f0' }}>
-              {displayedInvoices.length === 0 && !loading ? (
+              {loadingInvoices ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Loading invoices...</p>
+                </div>
+              ) : displayedInvoices.length === 0 ? (
                 <div className="text-center py-12">
                   <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                   <p className="text-gray-500 font-medium">No paid invoices</p>
@@ -1124,7 +1174,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
           {activeTab === 'payments' && (
             <div className="max-h-[calc(100vh-450px)] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#64748b #e2e8f0' }}>
-              {payments.length === 0 ? (
+              {loadingPayments ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Loading payments...</p>
+                </div>
+              ) : payments.length === 0 ? (
                 <div className="text-center py-12">
                   <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                   <p className="text-gray-500 font-medium">No payments found</p>
