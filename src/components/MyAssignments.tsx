@@ -85,10 +85,12 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
 
   const loadAssignments = async () => {
     if (!user || !profile) {
+      console.log('MyAssignments: User or profile not loaded yet');
       return;
     }
 
     const collectorId = profile.id;
+    console.log('MyAssignments: Loading assignments for collector:', collectorId, profile.email);
 
     setLoading(true);
     try {
@@ -97,6 +99,8 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
         .from('collector_assignment_details')
         .select('*')
         .eq('assigned_collector_id', collectorId);
+
+      console.log('MyAssignments: Raw assignments data:', assignments?.length || 0, 'assignments');
 
       if (error) {
         console.error('Error loading assignments:', error);
@@ -126,17 +130,23 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
           }
         });
 
+        console.log('MyAssignments: Grouped into', ticketGroups.size, 'tickets and', individualList.length, 'individual assignments');
+
         // Fetch last status change and last activity for each ticket
         const ticketGroupsArray = Array.from(ticketGroups.values());
         await Promise.all(ticketGroupsArray.map(async (ticket) => {
           // Fetch last status change
-          const { data: lastStatus } = await supabase
+          const { data: lastStatus, error: statusError } = await supabase
             .from('ticket_status_history')
             .select('new_status, changed_at, changed_by, user_profiles!ticket_status_history_changed_by_fkey(full_name)')
             .eq('ticket_id', ticket.ticket_id)
             .order('changed_at', { ascending: false })
             .limit(1)
             .maybeSingle();
+
+          if (statusError) {
+            console.error('Error loading status history for ticket', ticket.ticket_number, statusError);
+          }
 
           if (lastStatus) {
             ticket.last_status_change = {
@@ -147,13 +157,17 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
           }
 
           // Fetch last activity
-          const { data: lastActivity } = await supabase
+          const { data: lastActivity, error: activityError } = await supabase
             .from('ticket_activity_log')
             .select('description, created_at, created_by, user_profiles!ticket_activity_log_created_by_fkey(full_name)')
             .eq('ticket_id', ticket.ticket_id)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
+
+          if (activityError) {
+            console.error('Error loading activity log for ticket', ticket.ticket_number, activityError);
+          }
 
           if (lastActivity) {
             ticket.last_activity = {
@@ -163,6 +177,12 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
             };
           }
         }));
+
+        console.log('MyAssignments: Final ticket data:', ticketGroupsArray.map(t => ({
+          number: t.ticket_number,
+          status: t.ticket_status,
+          invoices: t.invoices.length
+        })));
 
         setTickets(ticketGroupsArray);
         setIndividualAssignments(individualList);
