@@ -61,38 +61,38 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
       const stats: CollectorStats[] = [];
 
       for (const collector of collectors || []) {
-        const { data: activities, error: actError } = await supabase
-          .from('user_activity_logs')
+        // Get color status changes from invoice_change_log
+        const { data: colorChanges, error: actError } = await supabase
+          .from('invoice_change_log')
           .select('*')
-          .eq('user_id', collector.id)
-          .gte('created_at', startStr)
-          .eq('action_type', 'update')
-          .eq('entity_type', 'invoice_color_status');
+          .eq('changed_by', collector.id)
+          .eq('field_name', 'color_status')
+          .gte('created_at', startStr);
 
         if (actError) throw actError;
 
         const uniqueDays = new Set(
-          activities?.map(a => a.created_at.split('T')[0]) || []
+          colorChanges?.map(a => a.created_at.split('T')[0]) || []
         ).size;
 
-        const greenChanges = activities?.filter(a =>
-          a.details?.new_color === 'green'
+        const greenChanges = colorChanges?.filter(a =>
+          a.new_value === 'green'
         ).length || 0;
 
-        const orangeChanges = activities?.filter(a =>
-          a.details?.new_color === 'orange'
+        const orangeChanges = colorChanges?.filter(a =>
+          a.new_value === 'orange'
         ).length || 0;
 
-        const redChanges = activities?.filter(a =>
-          a.details?.new_color === 'red'
+        const redChanges = colorChanges?.filter(a =>
+          a.new_value === 'red'
         ).length || 0;
 
-        const untouchedToRed = activities?.filter(a =>
-          a.details?.old_color === null && a.details?.new_color === 'red'
+        const untouchedToRed = colorChanges?.filter(a =>
+          (a.old_value === null || a.old_value === 'null') && a.new_value === 'red'
         ).length || 0;
 
-        const orangeToGreen = activities?.filter(a =>
-          a.details?.old_color === 'orange' && a.details?.new_color === 'green'
+        const orangeToGreen = colorChanges?.filter(a =>
+          a.old_value === 'orange' && a.new_value === 'green'
         ).length || 0;
 
         const { count: ticketsCount } = await supabase
@@ -136,7 +136,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
           full_name: displayName,
           email: collector.email || '',
           role: collector.role || '',
-          total_changes: activities?.length || 0,
+          total_changes: colorChanges?.length || 0,
           green_changes: greenChanges,
           orange_changes: orangeChanges,
           red_changes: redChanges,
