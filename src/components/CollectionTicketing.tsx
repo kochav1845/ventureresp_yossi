@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, MessageSquare, ChevronDown, ChevronUp, FileText } from 'lucide-react';
+import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, MessageSquare, ChevronDown, ChevronUp, FileText, ChevronRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { formatDistanceToNow } from 'date-fns';
@@ -135,6 +135,15 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   const [existingTicket, setExistingTicket] = useState<Ticket | null>(null);
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [expandedMergeEvents, setExpandedMergeEvents] = useState<Set<string>>(new Set());
+
+  const [selectedInvoicesInTicket, setSelectedInvoicesInTicket] = useState<string[]>([]);
+  const [showBatchOperations, setShowBatchOperations] = useState(false);
+  const [batchColorStatus, setBatchColorStatus] = useState<string>('');
+  const [batchNote, setBatchNote] = useState<string>('');
+  const [showReminderPrompt, setShowReminderPrompt] = useState(false);
+  const [reminderDate, setReminderDate] = useState<string>('');
+  const [reminderTime, setReminderTime] = useState<string>('09:00');
+  const [pendingBatchNote, setPendingBatchNote] = useState<string>('');
 
   useEffect(() => {
     loadCustomers();
@@ -789,6 +798,193 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     );
   };
 
+  const toggleInvoiceInTicketSelection = (invoiceRef: string) => {
+    setSelectedInvoicesInTicket(prev =>
+      prev.includes(invoiceRef)
+        ? prev.filter(ref => ref !== invoiceRef)
+        : [...prev, invoiceRef]
+    );
+  };
+
+  const selectAllInvoicesInTicket = () => {
+    if (!ticketDetails) return;
+    const allRefs = ticketDetails.invoices.map(ti => ti.invoice_reference_number);
+    setSelectedInvoicesInTicket(allRefs);
+  };
+
+  const deselectAllInvoicesInTicket = () => {
+    setSelectedInvoicesInTicket([]);
+  };
+
+  const handleBatchColorChange = async () => {
+    if (selectedInvoicesInTicket.length === 0 || !batchColorStatus || !profile?.id) {
+      alert('Please select invoices and a color status');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('acumatica_invoices')
+        .update({ color_status: batchColorStatus === 'none' ? null : batchColorStatus })
+        .in('reference_number', selectedInvoicesInTicket);
+
+      if (error) throw error;
+
+      await supabase
+        .from('ticket_activity_log')
+        .insert({
+          ticket_id: selectedTicket?.id,
+          activity_type: 'note',
+          description: `Batch color changed for ${selectedInvoicesInTicket.length} invoice(s) to ${batchColorStatus}`,
+          created_by: profile.id,
+          metadata: { invoice_refs: selectedInvoicesInTicket, new_color: batchColorStatus }
+        });
+
+      alert(`Successfully updated color for ${selectedInvoicesInTicket.length} invoice(s)`);
+      setSelectedInvoicesInTicket([]);
+      setBatchColorStatus('');
+      setShowBatchOperations(false);
+
+      if (selectedTicket) {
+        await loadTicketDetails(selectedTicket);
+      }
+      await loadTickets();
+    } catch (error: any) {
+      console.error('Error changing batch color:', error);
+      alert('Failed to change color: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBatchNotePrompt = () => {
+    if (selectedInvoicesInTicket.length === 0 || !batchNote.trim()) {
+      alert('Please select invoices and enter a note');
+      return;
+    }
+
+    setPendingBatchNote(batchNote);
+    setShowReminderPrompt(true);
+  };
+
+  const handleBatchNoteWithoutReminder = async () => {
+    if (selectedInvoicesInTicket.length === 0 || !pendingBatchNote.trim() || !profile?.id) return;
+
+    setLoading(true);
+    try {
+      const memoInserts = selectedInvoicesInTicket.map(invoiceRef => ({
+        invoice_reference_number: invoiceRef,
+        memo_text: pendingBatchNote,
+        created_by: profile.id
+      }));
+
+      const { error } = await supabase
+        .from('invoice_memos')
+        .insert(memoInserts);
+
+      if (error) throw error;
+
+      await supabase
+        .from('ticket_activity_log')
+        .insert({
+          ticket_id: selectedTicket?.id,
+          activity_type: 'note',
+          description: `Batch note added to ${selectedInvoicesInTicket.length} invoice(s): "${pendingBatchNote}"`,
+          created_by: profile.id,
+          metadata: { invoice_refs: selectedInvoicesInTicket, note: pendingBatchNote }
+        });
+
+      alert(`Successfully added note to ${selectedInvoicesInTicket.length} invoice(s)`);
+      setSelectedInvoicesInTicket([]);
+      setBatchNote('');
+      setPendingBatchNote('');
+      setShowBatchOperations(false);
+      setShowReminderPrompt(false);
+
+      if (selectedTicket) {
+        await loadTicketDetails(selectedTicket);
+      }
+      await loadTickets();
+    } catch (error: any) {
+      console.error('Error adding batch note:', error);
+      alert('Failed to add note: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBatchNoteWithReminder = async () => {
+    if (!reminderDate || !reminderTime || !profile?.id) {
+      alert('Please select a reminder date and time');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const reminderDateTime = new Date(`${reminderDate}T${reminderTime}`);
+
+      const memoInserts = selectedInvoicesInTicket.map(invoiceRef => ({
+        invoice_reference_number: invoiceRef,
+        memo_text: pendingBatchNote,
+        created_by: profile.id
+      }));
+
+      const { error: memoError } = await supabase
+        .from('invoice_memos')
+        .insert(memoInserts);
+
+      if (memoError) throw memoError;
+
+      for (const invoiceRef of selectedInvoicesInTicket) {
+        await supabase
+          .from('invoice_reminders')
+          .insert({
+            invoice_reference_number: invoiceRef,
+            ticket_id: selectedTicket?.id,
+            user_id: profile.id,
+            reminder_date: reminderDateTime.toISOString(),
+            title: `Follow up on invoice ${invoiceRef}`,
+            description: pendingBatchNote,
+            status: 'pending'
+          });
+      }
+
+      await supabase
+        .from('ticket_activity_log')
+        .insert({
+          ticket_id: selectedTicket?.id,
+          activity_type: 'note',
+          description: `Batch note added to ${selectedInvoicesInTicket.length} invoice(s) with reminder for ${reminderDateTime.toLocaleString()}: "${pendingBatchNote}"`,
+          created_by: profile.id,
+          metadata: {
+            invoice_refs: selectedInvoicesInTicket,
+            note: pendingBatchNote,
+            reminder_date: reminderDateTime.toISOString()
+          }
+        });
+
+      alert(`Successfully added note and ${selectedInvoicesInTicket.length} reminder(s) for ${reminderDateTime.toLocaleString()}`);
+      setSelectedInvoicesInTicket([]);
+      setBatchNote('');
+      setPendingBatchNote('');
+      setReminderDate('');
+      setReminderTime('09:00');
+      setShowBatchOperations(false);
+      setShowReminderPrompt(false);
+
+      if (selectedTicket) {
+        await loadTicketDetails(selectedTicket);
+      }
+      await loadTickets();
+    } catch (error: any) {
+      console.error('Error adding batch note with reminder:', error);
+      alert('Failed to add note with reminder: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSelectAllInvoices = () => {
     if (selectedInvoices.length === customerInvoices.length) {
       setSelectedInvoices([]);
@@ -957,6 +1153,89 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reminder Prompt Modal */}
+      {showReminderPrompt && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900">Create Reminder?</h2>
+                <button
+                  onClick={() => {
+                    setShowReminderPrompt(false);
+                    setPendingBatchNote('');
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-blue-900">
+                  Would you like to set a reminder for these {selectedInvoicesInTicket.length} invoice(s)?
+                </p>
+                <p className="text-xs text-blue-700 mt-1">
+                  You'll receive an email notification with links to the invoices and ticket.
+                </p>
+              </div>
+
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-700"><strong>Note:</strong> {pendingBatchNote}</p>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Reminder Date</label>
+                  <input
+                    type="date"
+                    value={reminderDate}
+                    onChange={(e) => setReminderDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Reminder Time</label>
+                  <input
+                    type="time"
+                    value={reminderTime}
+                    onChange={(e) => setReminderTime(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleBatchNoteWithReminder}
+                  disabled={!reminderDate || !reminderTime || loading}
+                  className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold"
+                >
+                  {loading ? 'Creating...' : 'Add Note with Reminder'}
+                </button>
+                <button
+                  onClick={handleBatchNoteWithoutReminder}
+                  disabled={loading}
+                  className="w-full px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 font-semibold"
+                >
+                  {loading ? 'Adding...' : 'Add Note Only (No Reminder)'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowReminderPrompt(false);
+                    setPendingBatchNote('');
+                  }}
+                  className="w-full px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1160,37 +1439,135 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Invoices ({ticketDetails.invoices.length})
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    Invoices ({ticketDetails.invoices.length})
+                    {selectedInvoicesInTicket.length > 0 && (
+                      <span className="text-sm font-normal text-blue-600">
+                        ({selectedInvoicesInTicket.length} selected)
+                      </span>
+                    )}
+                  </h3>
+                  <div className="flex gap-2">
+                    {selectedInvoicesInTicket.length > 0 && (
+                      <button
+                        onClick={() => setShowBatchOperations(!showBatchOperations)}
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                      >
+                        Batch Actions
+                      </button>
+                    )}
+                    {selectedInvoicesInTicket.length === ticketDetails.invoices.length ? (
+                      <button
+                        onClick={deselectAllInvoicesInTicket}
+                        className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm"
+                      >
+                        Deselect All
+                      </button>
+                    ) : (
+                      <button
+                        onClick={selectAllInvoicesInTicket}
+                        className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm"
+                      >
+                        Select All
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {showBatchOperations && selectedInvoicesInTicket.length > 0 && (
+                  <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h4 className="font-semibold text-blue-900 mb-3">Batch Operations ({selectedInvoicesInTicket.length} invoices)</h4>
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Change Color Status</label>
+                        <div className="flex gap-2">
+                          <select
+                            value={batchColorStatus}
+                            onChange={(e) => setBatchColorStatus(e.target.value)}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          >
+                            <option value="">Select color...</option>
+                            <option value="red">Red - Will Not Pay</option>
+                            <option value="orange">Orange - Will Pay Later</option>
+                            <option value="yellow">Yellow - Working On It</option>
+                            <option value="green">Green - Resolved</option>
+                            <option value="none">Clear Color</option>
+                          </select>
+                          <button
+                            onClick={handleBatchColorChange}
+                            disabled={!batchColorStatus || loading}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Add Note to Selected Invoices</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={batchNote}
+                            onChange={(e) => setBatchNote(e.target.value)}
+                            placeholder="e.g., Customer will pay next week..."
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          />
+                          <button
+                            onClick={handleBatchNotePrompt}
+                            disabled={!batchNote.trim() || loading}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
+                          >
+                            Add Note
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {ticketDetails.invoices.map((ti) => (
-                    <div key={ti.invoice_reference_number} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div key={ti.invoice_reference_number} className={`p-4 rounded-lg border ${
+                      selectedInvoicesInTicket.includes(ti.invoice_reference_number)
+                        ? 'bg-blue-50 border-blue-300'
+                        : 'bg-gray-50 border-gray-200'
+                    }`}>
                       <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-medium text-gray-900">Invoice #{ti.invoice_reference_number}</p>
-                            <a
-                              href={getAcumaticaInvoiceUrl(ti.invoice_reference_number)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-800"
-                              title="View in Acumatica"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
+                        <div className="flex items-center gap-3 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedInvoicesInTicket.includes(ti.invoice_reference_number)}
+                            onChange={() => toggleInvoiceInTicketSelection(ti.invoice_reference_number)}
+                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-medium text-gray-900">Invoice #{ti.invoice_reference_number}</p>
+                              <a
+                                href={getAcumaticaInvoiceUrl(ti.invoice_reference_number)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800"
+                                title="View in Acumatica"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            </div>
+                            {ti.invoice && (
+                              <>
+                                <p className="text-sm text-gray-600">
+                                  Balance: ${ti.invoice.balance.toFixed(2)} of ${ti.invoice.amount.toFixed(2)}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Due: {new Date(ti.invoice.due_date).toLocaleDateString()}
+                                </p>
+                              </>
+                            )}
                           </div>
-                          {ti.invoice && (
-                            <>
-                              <p className="text-sm text-gray-600">
-                                Balance: ${ti.invoice.balance.toFixed(2)} of ${ti.invoice.amount.toFixed(2)}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                Due: {new Date(ti.invoice.due_date).toLocaleDateString()}
-                              </p>
-                            </>
-                          )}
                         </div>
                         {ti.invoice && (
                           <div className="relative color-picker-container">

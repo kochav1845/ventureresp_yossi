@@ -42,7 +42,11 @@ Deno.serve(async (req: Request) => {
         id,
         user_id,
         invoice_id,
+        invoice_reference_number,
+        ticket_id,
         reminder_message,
+        title,
+        description,
         reminder_date,
         priority,
         reminder_type,
@@ -52,6 +56,10 @@ Deno.serve(async (req: Request) => {
         completed_at,
         acumatica_invoices (
           reference_number,
+          customer_name
+        ),
+        collection_tickets (
+          ticket_number,
           customer_name
         )
       `)
@@ -97,12 +105,16 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        const invoiceRef = (reminder as any).acumatica_invoices?.reference_number;
-        const customerName = (reminder as any).acumatica_invoices?.customer_name;
+        const invoiceRef = reminder.invoice_reference_number || (reminder as any).acumatica_invoices?.reference_number;
+        const customerName = (reminder as any).acumatica_invoices?.customer_name || (reminder as any).collection_tickets?.customer_name;
+        const ticketNumber = (reminder as any).collection_tickets?.ticket_number;
+        const ticketId = reminder.ticket_id;
 
-        const reminderUrl = `https://venture.bolt.host/reminders?id=${reminder.id}`;
+        const reminderUrl = `${supabaseUrl.replace('.supabase.co', '.bolt.host')}/reminders?id=${reminder.id}`;
+        const invoiceUrl = invoiceRef ? `${supabaseUrl.replace('.supabase.co', '.bolt.host')}/customers?invoice=${invoiceRef}` : null;
+        const ticketUrl = ticketId ? `${supabaseUrl.replace('.supabase.co', '.bolt.host')}/ticketing?ticket=${ticketId}` : null;
 
-        const emailSubject = `Reminder: ${reminder.reminder_message}`;
+        const emailSubject = `Reminder: ${reminder.title || reminder.reminder_message}`;
         const emailBody = `
 <!DOCTYPE html>
 <html>
@@ -124,19 +136,25 @@ Deno.serve(async (req: Request) => {
         <p style="margin: 8px 0;"><strong>Priority:</strong> <span style="background: ${getPriorityBadgeColor(reminder.priority)}; padding: 4px 12px; border-radius: 12px; font-size: 12px; text-transform: uppercase;">${reminder.priority}</span></p>
         <p style="margin: 8px 0;"><strong>Type:</strong> ${formatReminderType(reminder.reminder_type)}</p>
         <p style="margin: 8px 0;"><strong>Due:</strong> ${new Date(reminder.reminder_date).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}</p>
+        ${ticketNumber ? `<p style="margin: 8px 0;"><strong>Ticket:</strong> #${ticketNumber}</p>` : ''}
         ${invoiceRef ? `<p style="margin: 8px 0;"><strong>Invoice:</strong> ${invoiceRef}</p>` : ''}
         ${customerName ? `<p style="margin: 8px 0;"><strong>Customer:</strong> ${customerName}</p>` : ''}
       </div>
-      
-      ${reminder.notes ? `
+
+      ${reminder.description || reminder.notes ? `
       <div style="background: #f7fafc; padding: 15px; border-radius: 6px; margin: 20px 0;">
         <p style="margin: 0; color: #4a5568;"><strong>Notes:</strong></p>
-        <p style="margin: 8px 0 0 0; color: #4a5568;">${reminder.notes}</p>
+        <p style="margin: 8px 0 0 0; color: #4a5568;">${reminder.description || reminder.notes}</p>
       </div>
       ` : ''}
-      
+
       <div style="margin-top: 30px; text-align: center;">
-        <a href="${reminderUrl}" style="display: inline-block; background: #3182ce; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">View & Mark Complete</a>
+        <a href="${reminderUrl}" style="display: inline-block; background: #3182ce; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; margin-bottom: 10px;">View & Mark Complete</a>
+
+        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+          ${invoiceUrl ? `<a href="${invoiceUrl}" style="display: inline-block; background: #48bb78; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-size: 14px;">View Invoice</a>` : ''}
+          ${ticketUrl ? `<a href="${ticketUrl}" style="display: inline-block; background: #ed8936; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-size: 14px;">View Ticket</a>` : ''}
+        </div>
       </div>
     </div>
     
