@@ -686,6 +686,10 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
             <div className="border-b border-gray-200 p-6">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2 text-sm text-gray-500">
+                    <Clock className="w-4 h-4" />
+                    <span>Created {new Date(selectedTicket.created_at).toLocaleDateString()} at {new Date(selectedTicket.created_at).toLocaleTimeString()}</span>
+                  </div>
                   <div className="flex items-center gap-3 mb-3">
                     <span className="font-mono font-bold text-xl text-gray-900">
                       {selectedTicket.ticket_number}
@@ -1065,6 +1069,10 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+                              <Clock className="w-3 h-3" />
+                              <span>Created {new Date(ticket.created_at).toLocaleDateString()} at {new Date(ticket.created_at).toLocaleTimeString()}</span>
+                            </div>
                             <div className="flex items-center gap-3 mb-2">
                               <span className="font-mono font-semibold text-gray-900">
                                 {ticket.ticket_number}

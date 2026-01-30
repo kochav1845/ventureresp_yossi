@@ -14,6 +14,7 @@ interface Assignment {
   ticket_status: string | null;
   ticket_priority: string | null;
   ticket_type: string | null;
+  ticket_created_at: string | null;
   customer: string;
   customer_name: string;
   date: string;
@@ -32,6 +33,7 @@ interface TicketGroup {
   ticket_status: string;
   ticket_priority: string;
   ticket_type: string;
+  ticket_created_at: string;
   customer_id: string;
   customer_name: string;
   invoices: Assignment[];
@@ -132,6 +134,7 @@ export default function CollectorDashboard() {
                 ticket_status: assignment.ticket_status || '',
                 ticket_priority: assignment.ticket_priority || '',
                 ticket_type: assignment.ticket_type || 'overdue payment',
+                ticket_created_at: assignment.ticket_created_at || '',
                 customer_id: assignment.customer,
                 customer_name: assignment.customer_name,
                 invoices: []
@@ -371,6 +374,10 @@ export default function CollectorDashboard() {
                       className="border-2 border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
                     >
                       <div className={`p-4 border-b-2 ${getPriorityColor(ticket.ticket_priority)}`}>
+                        <div className="flex items-center gap-2 mb-2 text-xs text-gray-600">
+                          <Calendar className="w-3 h-3" />
+                          <span>Created {new Date(ticket.ticket_created_at).toLocaleDateString()} at {new Date(ticket.ticket_created_at).toLocaleTimeString()}</span>
+                        </div>
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-3">
                             <Ticket className="w-5 h-5" />
