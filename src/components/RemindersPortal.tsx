@@ -490,8 +490,6 @@ interface ReminderModalProps {
 
 function ReminderModal({ reminder, onClose, onSave }: ReminderModalProps) {
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const handleBack = onBack || (() => navigate(-1));
   const [message, setMessage] = useState(reminder?.reminder_message || '');
   const [date, setDate] = useState(reminder?.reminder_date?.split('T')[0] || '');
   const [time, setTime] = useState(
