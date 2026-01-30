@@ -753,7 +753,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           <div>
             <p className="text-xs text-gray-500 font-medium">Auto-Red Threshold</p>
             <p className="text-sm text-gray-900 font-medium">
-              {customer.days_past_due_threshold || 30} days
+              {(customer as any).days_from_invoice_threshold || 30} days from invoice
             </p>
           </div>
           <div>

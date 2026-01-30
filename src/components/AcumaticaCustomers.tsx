@@ -703,7 +703,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     try {
       const { error } = await supabase
         .from('acumatica_customers')
-        .update({ days_past_due_threshold: newThreshold })
+        .update({ days_from_invoice_threshold: newThreshold })
         .eq('customer_id', customerId);
 
       if (error) throw error;
