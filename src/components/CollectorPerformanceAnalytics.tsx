@@ -10,6 +10,8 @@ interface CollectorPerformanceAnalyticsProps {
 interface CollectorStats {
   user_id: string;
   full_name: string;
+  email: string;
+  role: string;
   total_changes: number;
   green_changes: number;
   orange_changes: number;
@@ -49,7 +51,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
 
       const { data: collectors, error: collectorsError } = await supabase
         .from('user_profiles')
-        .select('id, full_name, role')
+        .select('id, full_name, email, role')
         .in('role', ['collector', 'admin', 'manager']);
 
       if (collectorsError) throw collectorsError;
@@ -117,6 +119,8 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
         stats.push({
           user_id: collector.id,
           full_name: collector.full_name || 'Unknown',
+          email: collector.email || '',
+          role: collector.role || '',
           total_changes: activities?.length || 0,
           green_changes: greenChanges,
           orange_changes: orangeChanges,
@@ -186,6 +190,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-gray-900">{collector.full_name}</h2>
+                      <p className="text-sm text-blue-600 font-medium">{collector.email}</p>
                       <p className="text-sm text-gray-600">{collector.total_changes} total status changes</p>
                     </div>
                   </div>
