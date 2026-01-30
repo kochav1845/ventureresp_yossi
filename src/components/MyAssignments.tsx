@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Ticket, FileText, Calendar, DollarSign, MessageSquare, ArrowLeft, ExternalLink, Clock } from 'lucide-react';
+import { Ticket, FileText, Calendar, DollarSign, MessageSquare, ArrowLeft, ExternalLink, Clock, CheckSquare, Square, Edit3 } from 'lucide-react';
 import InvoiceMemoModal from './InvoiceMemoModal';
 import { getAcumaticaInvoiceUrl, getAcumaticaCustomerUrl } from '../lib/acumaticaLinks';
 import { formatDistanceToNow } from 'date-fns';
@@ -69,6 +69,13 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   const [selectedView, setSelectedView] = useState<'tickets' | 'individual' | 'customers'>('tickets');
   const [memoModalInvoice, setMemoModalInvoice] = useState<any>(null);
   const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
+  const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
+  const [showBatchColorMenu, setShowBatchColorMenu] = useState(false);
+  const [showBatchNoteModal, setShowBatchNoteModal] = useState(false);
+  const [batchNote, setBatchNote] = useState('');
+  const [createReminder, setCreateReminder] = useState(false);
+  const [reminderDate, setReminderDate] = useState('');
+  const [processingBatch, setProcessingBatch] = useState(false);
 
   useEffect(() => {
     if (user && profile) {
@@ -193,6 +200,15 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
       if (!clickedInside) {
         setChangingColorForInvoice(null);
       }
+
+      // Close batch color menu if clicking outside
+      const batchColorMenu = document.querySelector('.batch-color-menu');
+      if (batchColorMenu && !batchColorMenu.contains(event.target as Node)) {
+        const trigger = document.querySelector('.batch-color-trigger');
+        if (trigger && !trigger.contains(event.target as Node)) {
+          setShowBatchColorMenu(false);
+        }
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -215,6 +231,118 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
     } catch (error: any) {
       console.error('Error changing color:', error);
       alert('Failed to change color: ' + error.message);
+    }
+  };
+
+  const toggleInvoiceSelection = (invoiceRefNumber: string) => {
+    const newSelection = new Set(selectedInvoices);
+    if (newSelection.has(invoiceRefNumber)) {
+      newSelection.delete(invoiceRefNumber);
+    } else {
+      newSelection.add(invoiceRefNumber);
+    }
+    setSelectedInvoices(newSelection);
+  };
+
+  const toggleSelectAll = () => {
+    const allInvoices: string[] = [];
+
+    if (selectedView === 'tickets') {
+      tickets.forEach(ticket => {
+        ticket.invoices.forEach(inv => allInvoices.push(inv.invoice_reference_number));
+      });
+    } else if (selectedView === 'individual') {
+      individualAssignments.forEach(inv => allInvoices.push(inv.invoice_reference_number));
+    }
+
+    if (selectedInvoices.size === allInvoices.length) {
+      setSelectedInvoices(new Set());
+    } else {
+      setSelectedInvoices(new Set(allInvoices));
+    }
+  };
+
+  const handleBatchColorChange = async (newColor: string | null) => {
+    if (!profile?.id || selectedInvoices.size === 0) return;
+
+    setProcessingBatch(true);
+    try {
+      const { error } = await supabase
+        .from('acumatica_invoices')
+        .update({ color_status: newColor })
+        .in('reference_number', Array.from(selectedInvoices));
+
+      if (error) throw error;
+
+      setShowBatchColorMenu(false);
+      setSelectedInvoices(new Set());
+      await loadAssignments();
+      alert(`Successfully updated ${selectedInvoices.size} invoice(s)`);
+    } catch (error: any) {
+      console.error('Error changing colors:', error);
+      alert('Failed to change colors: ' + error.message);
+    } finally {
+      setProcessingBatch(false);
+    }
+  };
+
+  const handleBatchAddNote = async () => {
+    if (!profile?.id || selectedInvoices.size === 0 || !batchNote.trim()) return;
+
+    setProcessingBatch(true);
+    try {
+      // Add note to each selected invoice
+      const notePromises = Array.from(selectedInvoices).map(async (refNumber) => {
+        // Get invoice ID
+        const { data: invoice } = await supabase
+          .from('acumatica_invoices')
+          .select('id')
+          .eq('reference_number', refNumber)
+          .single();
+
+        if (!invoice) return;
+
+        // Insert memo
+        const { error: memoError } = await supabase
+          .from('invoice_memos')
+          .insert({
+            invoice_id: invoice.id,
+            user_id: profile.id,
+            memo_text: batchNote
+          });
+
+        if (memoError) throw memoError;
+
+        // Create reminder if requested
+        if (createReminder && reminderDate) {
+          const { error: reminderError } = await supabase
+            .from('invoice_reminders')
+            .insert({
+              invoice_id: invoice.id,
+              user_id: profile.id,
+              reminder_date: reminderDate,
+              message: batchNote
+            });
+
+          if (reminderError) throw reminderError;
+        }
+      });
+
+      await Promise.all(notePromises);
+
+      setShowBatchNoteModal(false);
+      setBatchNote('');
+      setCreateReminder(false);
+      setReminderDate('');
+      setSelectedInvoices(new Set());
+      await loadAssignments();
+
+      alert(`Successfully added note to ${selectedInvoices.size} invoice(s)${createReminder ? ' with reminders' : ''}`);
+    } catch (error: any) {
+      console.error('Error adding notes:', error);
+      alert('Failed to add notes: ' + error.message);
+    } finally {
+      setProcessingBatch(false);
     }
   };
 
@@ -368,6 +496,86 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
         </div>
 
         <div className="p-6">
+          {/* Batch Action Toolbar */}
+          {selectedInvoices.size > 0 && (selectedView === 'tickets' || selectedView === 'individual') && (
+            <div className="mb-6 bg-blue-50 border-2 border-blue-300 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <span className="font-semibold text-blue-900">
+                    {selectedInvoices.size} invoice(s) selected
+                  </span>
+                  <button
+                    onClick={() => setSelectedInvoices(new Set())}
+                    className="text-sm text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Clear Selection
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {/* Batch Color Status */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowBatchColorMenu(!showBatchColorMenu)}
+                      disabled={processingBatch}
+                      className="batch-color-trigger px-4 py-2 bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 font-medium flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      Change Status
+                    </button>
+
+                    {showBatchColorMenu && (
+                      <div className="batch-color-menu absolute right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[180px] z-50">
+                        <button
+                          onClick={() => handleBatchColorChange('red')}
+                          disabled={processingBatch}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 rounded flex items-center gap-2 disabled:opacity-50"
+                        >
+                          <span className="w-4 h-4 rounded-full bg-red-500 border-2 border-red-700"></span>
+                          Will Not Pay
+                        </button>
+                        <button
+                          onClick={() => handleBatchColorChange('yellow')}
+                          disabled={processingBatch}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-yellow-50 rounded flex items-center gap-2 disabled:opacity-50"
+                        >
+                          <span className="w-4 h-4 rounded-full bg-yellow-400 border-2 border-yellow-600"></span>
+                          Will Take Care
+                        </button>
+                        <button
+                          onClick={() => handleBatchColorChange('green')}
+                          disabled={processingBatch}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 rounded flex items-center gap-2 disabled:opacity-50"
+                        >
+                          <span className="w-4 h-4 rounded-full bg-green-500 border-2 border-green-700"></span>
+                          Will Pay
+                        </button>
+                        <div className="border-t border-gray-200 my-1"></div>
+                        <button
+                          onClick={() => handleBatchColorChange(null)}
+                          disabled={processingBatch}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded text-gray-600 disabled:opacity-50"
+                        >
+                          Clear Status
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Batch Add Note */}
+                  <button
+                    onClick={() => setShowBatchNoteModal(true)}
+                    disabled={processingBatch}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    Add Note
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {selectedView === 'tickets' ? (
             <div className="space-y-6">
               {tickets.length === 0 ? (
@@ -376,7 +584,24 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                   <p className="text-gray-500">No tickets assigned to you</p>
                 </div>
               ) : (
-                tickets.map(ticket => (
+                <>
+                  {/* Select All Button */}
+                  <div className="flex items-center justify-between mb-4">
+                    <button
+                      onClick={toggleSelectAll}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                    >
+                      {selectedInvoices.size > 0 && selectedInvoices.size === tickets.reduce((acc, t) => acc + t.invoices.length, 0) ? (
+                        <CheckSquare className="w-5 h-5" />
+                      ) : (
+                        <Square className="w-5 h-5" />
+                      )}
+                      {selectedInvoices.size > 0 && selectedInvoices.size === tickets.reduce((acc, t) => acc + t.invoices.length, 0)
+                        ? 'Deselect All'
+                        : 'Select All Visible'}
+                    </button>
+                  </div>
+                  {tickets.map(ticket => (
                   <div
                     key={ticket.ticket_id}
                     className="border-2 border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
@@ -472,6 +697,18 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                             className="bg-white p-4 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"
                           >
                             <div className="flex items-start justify-between">
+                              {/* Selection Checkbox */}
+                              <button
+                                onClick={() => toggleInvoiceSelection(invoice.invoice_reference_number)}
+                                className="mr-3 mt-1 text-blue-600 hover:text-blue-800"
+                              >
+                                {selectedInvoices.has(invoice.invoice_reference_number) ? (
+                                  <CheckSquare className="w-5 h-5" />
+                                ) : (
+                                  <Square className="w-5 h-5" />
+                                )}
+                              </button>
+
                               <div className="flex-1">
                                 <div className="flex items-center gap-3 mb-2">
                                   <span className="font-mono font-semibold text-gray-900">
@@ -575,7 +812,8 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                       </div>
                     </div>
                   </div>
-                ))
+                  ))}
+                </>
               )}
             </div>
           ) : selectedView === 'individual' ? (
@@ -586,12 +824,42 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                   <p className="text-gray-500">No individual invoices assigned to you</p>
                 </div>
               ) : (
-                individualAssignments.map(invoice => (
+                <>
+                  {/* Select All Button */}
+                  <div className="flex items-center justify-between mb-4">
+                    <button
+                      onClick={toggleSelectAll}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                    >
+                      {selectedInvoices.size > 0 && selectedInvoices.size === individualAssignments.length ? (
+                        <CheckSquare className="w-5 h-5" />
+                      ) : (
+                        <Square className="w-5 h-5" />
+                      )}
+                      {selectedInvoices.size > 0 && selectedInvoices.size === individualAssignments.length
+                        ? 'Deselect All'
+                        : 'Select All Visible'}
+                    </button>
+                  </div>
+
+                  {individualAssignments.map(invoice => (
                   <div
                     key={invoice.invoice_reference_number}
                     className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                   >
                     <div className="flex items-start justify-between">
+                      {/* Selection Checkbox */}
+                      <button
+                        onClick={() => toggleInvoiceSelection(invoice.invoice_reference_number)}
+                        className="mr-3 mt-1 text-blue-600 hover:text-blue-800"
+                      >
+                        {selectedInvoices.has(invoice.invoice_reference_number) ? (
+                          <CheckSquare className="w-5 h-5" />
+                        ) : (
+                          <Square className="w-5 h-5" />
+                        )}
+                      </button>
+
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2 flex-wrap">
                           <span className="font-mono font-semibold text-lg text-gray-900">
@@ -712,7 +980,8 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                       </button>
                     </div>
                   </div>
-                ))
+                  ))}
+                </>
               )}
             </div>
           ) : (
@@ -775,6 +1044,84 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
           )}
         </div>
       </div>
+
+      {/* Batch Note Modal */}
+      {showBatchNoteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Add Note to {selectedInvoices.size} Invoice(s)
+              </h2>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Note Text
+                </label>
+                <textarea
+                  value={batchNote}
+                  onChange={(e) => setBatchNote(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={4}
+                  placeholder="Enter note to add to all selected invoices..."
+                />
+              </div>
+
+              <div className="border-t border-gray-200 pt-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={createReminder}
+                    onChange={(e) => setCreateReminder(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Also create a reminder for each invoice
+                  </span>
+                </label>
+
+                {createReminder && (
+                  <div className="mt-3 ml-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Reminder Date
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={reminderDate}
+                      onChange={(e) => setReminderDate(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowBatchNoteModal(false);
+                  setBatchNote('');
+                  setCreateReminder(false);
+                  setReminderDate('');
+                }}
+                disabled={processingBatch}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBatchAddNote}
+                disabled={processingBatch || !batchNote.trim() || (createReminder && !reminderDate)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {processingBatch ? 'Adding...' : `Add Note to ${selectedInvoices.size} Invoice(s)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {memoModalInvoice && (
         <InvoiceMemoModal
