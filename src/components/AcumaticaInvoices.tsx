@@ -199,14 +199,17 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   const handleColorStatusChange = async (invoiceId: string, newStatus: string | null, event: React.MouseEvent) => {
     event.stopPropagation();
 
+    if (!user?.id) return;
+
     try {
       const invoice = displayedInvoices.find(inv => inv.id === invoiceId);
       const oldStatus = invoice?.color_status;
 
-      const { error } = await supabase
-        .from('acumatica_invoices')
-        .update({ color_status: newStatus })
-        .eq('id', invoiceId);
+      const { error } = await supabase.rpc('update_invoice_color_status', {
+        p_invoice_id: invoiceId,
+        p_color_status: newStatus,
+        p_user_id: user.id
+      });
 
       if (error) throw error;
 

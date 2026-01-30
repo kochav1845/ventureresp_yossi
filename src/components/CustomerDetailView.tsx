@@ -541,10 +541,11 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       const currentInvoice = displayedInvoices.find(inv => inv.id === invoiceId);
       const oldColor = currentInvoice?.color_status || null;
 
-      const { error } = await supabase
-        .from('acumatica_invoices')
-        .update({ color_status: newColor })
-        .eq('id', invoiceId);
+      const { error } = await supabase.rpc('update_invoice_color_status', {
+        p_invoice_id: invoiceId,
+        p_color_status: newColor,
+        p_user_id: profile.id
+      });
 
       if (error) throw error;
 

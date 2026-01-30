@@ -239,10 +239,11 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
     if (!profile?.id) return;
 
     try {
-      const { error } = await supabase
-        .from('acumatica_invoices')
-        .update({ color_status: newColor })
-        .eq('reference_number', invoiceRefNumber);
+      const { error } = await supabase.rpc('update_invoice_color_status_by_ref', {
+        p_reference_number: invoiceRefNumber,
+        p_color_status: newColor,
+        p_user_id: profile.id
+      });
 
       if (error) throw error;
 
@@ -287,10 +288,11 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
 
     setProcessingBatch(true);
     try {
-      const { error } = await supabase
-        .from('acumatica_invoices')
-        .update({ color_status: newColor })
-        .in('reference_number', Array.from(selectedInvoices));
+      const { error } = await supabase.rpc('batch_update_invoice_color_status_by_refs', {
+        p_reference_numbers: Array.from(selectedInvoices),
+        p_color_status: newColor,
+        p_user_id: profile.id
+      });
 
       if (error) throw error;
 

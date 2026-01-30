@@ -61,7 +61,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
       const stats: CollectorStats[] = [];
 
       for (const collector of collectors || []) {
-        // Get color status changes from invoice_change_log
+        // Get color status changes from invoice_change_log for activity tracking
         const { data: colorChanges, error: actError } = await supabase
           .from('invoice_change_log')
           .select('*')
@@ -75,18 +75,51 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
           colorChanges?.map(a => a.created_at.split('T')[0]) || []
         ).size;
 
-        const greenChanges = colorChanges?.filter(a =>
-          a.new_value === 'green'
-        ).length || 0;
+        // Get invoices from direct assignments
+        const { data: directInvoices } = await supabase
+          .from('invoice_assignments')
+          .select('invoice_reference_number')
+          .eq('assigned_collector_id', collector.id);
 
-        const orangeChanges = colorChanges?.filter(a =>
-          a.new_value === 'orange'
-        ).length || 0;
+        const directRefNumbers = directInvoices?.map(d => d.invoice_reference_number) || [];
 
-        const redChanges = colorChanges?.filter(a =>
-          a.new_value === 'red'
-        ).length || 0;
+        // Get customers assigned to this collector
+        const { data: customerAssignments } = await supabase
+          .from('collector_customer_assignments')
+          .select('customer_id')
+          .eq('assigned_collector_id', collector.id);
 
+        const customerIds = customerAssignments?.map(a => a.customer_id) || [];
+
+        // Get invoices directly assigned
+        let directInvoiceColors: any[] = [];
+        if (directRefNumbers.length > 0) {
+          const { data } = await supabase
+            .from('acumatica_invoices')
+            .select('color_status')
+            .in('reference_number', directRefNumbers)
+            .eq('status', 'Open');
+          directInvoiceColors = data || [];
+        }
+
+        // Get invoices from customer assignments
+        let customerInvoiceColors: any[] = [];
+        if (customerIds.length > 0) {
+          const { data } = await supabase
+            .from('acumatica_invoices')
+            .select('color_status')
+            .in('customer', customerIds)
+            .eq('status', 'Open');
+          customerInvoiceColors = data || [];
+        }
+
+        // Combine and count current status of assigned invoices
+        const allInvoices = [...directInvoiceColors, ...customerInvoiceColors];
+        const greenChanges = allInvoices.filter(a => a.color_status === 'green').length;
+        const orangeChanges = allInvoices.filter(a => a.color_status === 'orange').length;
+        const redChanges = allInvoices.filter(a => a.color_status === 'red').length;
+
+        // Historical change tracking
         const untouchedToRed = colorChanges?.filter(a =>
           (a.old_value === null || a.old_value === 'null') && a.new_value === 'red'
         ).length || 0;
@@ -100,33 +133,8 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
           .select('*', { count: 'exact', head: true })
           .eq('assigned_collector_id', collector.id);
 
-        // Count invoices directly assigned to this collector
-        const { count: directInvoiceCount } = await supabase
-          .from('invoice_assignments')
-          .select('*', { count: 'exact', head: true })
-          .eq('assigned_collector_id', collector.id);
-
-        // Also count invoices from customer assignments
-        const { data: assignments } = await supabase
-          .from('collector_customer_assignments')
-          .select('customer_id')
-          .eq('assigned_collector_id', collector.id);
-
-        const customerIds = assignments?.map(a => a.customer_id) || [];
-
-        let customerInvoiceCount = 0;
-        if (customerIds.length > 0) {
-          const { count } = await supabase
-            .from('acumatica_invoices')
-            .select('*', { count: 'exact', head: true })
-            .in('customer', customerIds)
-            .eq('status', 'Open');
-
-          customerInvoiceCount = count || 0;
-        }
-
-        // Total invoices is sum of both direct and customer-based assignments
-        const totalInvoices = (directInvoiceCount || 0) + customerInvoiceCount;
+        // Total invoices is the count we already calculated above
+        const totalInvoices = allInvoices.length;
 
         // Use email as name if full_name is not set
         const displayName = collector.full_name || collector.email?.split('@')[0] || 'Unknown';
@@ -221,7 +229,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
                     <div>
                       <h2 className="text-xl font-bold text-gray-900">{collector.full_name}</h2>
                       <p className="text-sm text-blue-600 font-medium">{collector.email}</p>
-                      <p className="text-sm text-gray-600">{collector.total_changes} total status changes</p>
+                      <p className="text-sm text-gray-600">{collector.total_changes} manual status changes</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -246,40 +254,45 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
                   <div className="bg-green-50 p-4 rounded-lg">
                     <div className="flex items-center gap-2 mb-2">
                       <CheckCircle className="w-5 h-5 text-green-600" />
-                      <span className="text-sm font-medium text-green-900">Green Status</span>
+                      <span className="text-sm font-medium text-green-900">Green Invoices</span>
                     </div>
                     <p className="text-2xl font-bold text-green-700">{collector.green_changes}</p>
+                    <p className="text-xs text-green-600 mt-1">Currently assigned</p>
                   </div>
 
                   <div className="bg-orange-50 p-4 rounded-lg">
                     <div className="flex items-center gap-2 mb-2">
                       <AlertCircle className="w-5 h-5 text-orange-600" />
-                      <span className="text-sm font-medium text-orange-900">Orange Status</span>
+                      <span className="text-sm font-medium text-orange-900">Orange Invoices</span>
                     </div>
                     <p className="text-2xl font-bold text-orange-700">{collector.orange_changes}</p>
+                    <p className="text-xs text-orange-600 mt-1">Currently assigned</p>
                   </div>
 
                   <div className="bg-red-50 p-4 rounded-lg">
                     <div className="flex items-center gap-2 mb-2">
                       <AlertCircle className="w-5 h-5 text-red-600" />
-                      <span className="text-sm font-medium text-red-900">Red Status</span>
+                      <span className="text-sm font-medium text-red-900">Red Invoices</span>
                     </div>
                     <p className="text-2xl font-bold text-red-700">{collector.red_changes}</p>
+                    <p className="text-xs text-red-600 mt-1">Currently assigned</p>
                   </div>
 
                   <div className="bg-blue-50 p-4 rounded-lg">
                     <div className="flex items-center gap-2 mb-2">
                       <TrendingUp className="w-5 h-5 text-blue-600" />
-                      <span className="text-sm font-medium text-blue-900">Orange → Green</span>
+                      <span className="text-sm font-medium text-blue-900">Resolved</span>
                     </div>
                     <p className="text-2xl font-bold text-blue-700">{collector.orange_to_green}</p>
+                    <p className="text-xs text-blue-600 mt-1">Orange → Green</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-200">
                   <div>
-                    <p className="text-sm text-gray-600">Untouched → Red</p>
+                    <p className="text-sm text-gray-600">Marked Red</p>
                     <p className="text-xl font-bold text-gray-900">{collector.untouched_to_red}</p>
+                    <p className="text-xs text-gray-500">Manual changes</p>
                   </div>
                   <div>
                     <div className="flex items-center gap-2">

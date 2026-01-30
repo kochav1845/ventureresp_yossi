@@ -770,10 +770,11 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
 
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('acumatica_invoices')
-        .update({ color_status: newColor })
-        .eq('reference_number', invoiceRefNumber);
+      const { error } = await supabase.rpc('update_invoice_color_status_by_ref', {
+        p_reference_number: invoiceRefNumber,
+        p_color_status: newColor,
+        p_user_id: profile.id
+      });
 
       if (error) throw error;
 
@@ -839,10 +840,11 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
 
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('acumatica_invoices')
-        .update({ color_status: batchColorStatus === 'none' ? null : batchColorStatus })
-        .in('reference_number', selectedInvoicesInTicket);
+      const { error } = await supabase.rpc('batch_update_invoice_color_status_by_refs', {
+        p_reference_numbers: selectedInvoicesInTicket,
+        p_color_status: batchColorStatus === 'none' ? null : batchColorStatus,
+        p_user_id: profile.id
+      });
 
       if (error) throw error;
 
