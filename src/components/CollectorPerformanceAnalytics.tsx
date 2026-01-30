@@ -97,9 +97,9 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
           .eq('assigned_collector_id', collector.id);
 
         const { data: assignments } = await supabase
-          .from('customer_assignments')
+          .from('collector_customer_assignments')
           .select('customer_id')
-          .eq('user_id', collector.id);
+          .eq('assigned_collector_id', collector.id);
 
         const customerIds = assignments?.map(a => a.customer_id) || [];
 
