@@ -629,7 +629,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                   {tickets.map(ticket => (
                   <div
                     key={ticket.ticket_id}
-                    className="border-2 border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                    className="border-2 border-gray-200 rounded-lg hover:shadow-md transition-shadow"
                   >
                     <div className={`p-4 border-b-2 ${getPriorityColor(ticket.ticket_priority)}`}>
                       <div className="flex items-center justify-between mb-2">
