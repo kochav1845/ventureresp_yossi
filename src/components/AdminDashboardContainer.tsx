@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Users, Activity, TrendingUp, FileText, DollarSign, UserCheck, BarChart3, Mail, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Users, Activity, TrendingUp, FileText, DollarSign, UserCheck, BarChart3, Mail, RefreshCw, Ticket } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import PaymentAnalytics from './PaymentAnalytics';
@@ -11,6 +11,7 @@ import CustomerAnalyticsPage from './CustomerAnalyticsPage';
 import UserActivityAnalytics from './UserActivityAnalytics';
 import EmailAnalytics from './EmailAnalytics';
 import SyncStatusDashboard from './SyncStatusDashboard';
+import MyAssignments from './MyAssignments';
 
 type AdminView =
   | 'payment-analytics'
@@ -21,7 +22,8 @@ type AdminView =
   | 'customer-analytics'
   | 'user-activity'
   | 'email-analytics'
-  | 'sync-status';
+  | 'sync-status'
+  | 'my-assignments';
 
 type AdminDashboardContainerProps = {
   onBack?: () => void;
@@ -35,6 +37,12 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
   const handleBack = onBack || (() => navigate(-1));
 
   const menuItems = [
+    {
+      id: 'my-assignments' as AdminView,
+      label: 'My Assignments',
+      icon: <Ticket size={20} />,
+      permissionKey: null, // Always accessible to admins/managers
+    },
     {
       id: 'user-approval' as AdminView,
       label: 'User Approval',
@@ -98,6 +106,12 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
 
   const renderView = () => {
     switch (currentView) {
+      case 'my-assignments':
+        return (
+          <div className="p-8">
+            <MyAssignments onBack={() => setCurrentView('my-assignments')} />
+          </div>
+        );
       case 'payment-analytics':
         return <PaymentAnalytics onBack={() => setCurrentView('payment-analytics')} />;
       case 'user-approval':
@@ -139,7 +153,9 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
 
         <nav className="space-y-1 flex-1">
           {menuItems.map(item => {
-            const hasAccess = userRole === 'admin' || userRole === 'manager' || hasPermission(item.permissionKey, 'view');
+            const hasAccess = item.permissionKey === null
+              ? (userRole === 'admin' || userRole === 'manager')
+              : (userRole === 'admin' || userRole === 'manager' || hasPermission(item.permissionKey, 'view'));
 
             if (!hasAccess) return null;
 
