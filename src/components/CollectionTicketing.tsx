@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, MessageSquare, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { getAcumaticaCustomerUrl } from '../lib/acumaticaLinks';
+import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 
 interface Customer {
   customer_id: string;
@@ -109,6 +109,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   const [statusNote, setStatusNote] = useState<string>('');
   const [newNote, setNewNote] = useState<string>('');
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
 
   useEffect(() => {
     loadCustomers();
@@ -126,6 +127,26 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowCustomerDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const colorPickers = document.querySelectorAll('.color-picker-container');
+      let clickedInside = false;
+
+      colorPickers.forEach((picker) => {
+        if (picker.contains(event.target as Node)) {
+          clickedInside = true;
+        }
+      });
+
+      if (!clickedInside) {
+        setChangingColorForInvoice(null);
       }
     };
 
@@ -469,6 +490,41 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     }
   };
 
+  const handleColorChange = async (invoiceRefNumber: string, newColor: string | null) => {
+    if (!profile?.id) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('acumatica_invoices')
+        .update({ color_status: newColor })
+        .eq('reference_number', invoiceRefNumber);
+
+      if (error) throw error;
+
+      await supabase
+        .from('ticket_activity_log')
+        .insert({
+          ticket_id: selectedTicket?.id,
+          activity_type: 'note',
+          description: `Invoice ${invoiceRefNumber} color changed to ${newColor || 'none'}`,
+          created_by: profile.id,
+          metadata: { invoice_ref: invoiceRefNumber, new_color: newColor }
+        });
+
+      setChangingColorForInvoice(null);
+
+      if (selectedTicket) {
+        loadTicketDetails(selectedTicket);
+      }
+    } catch (error: any) {
+      console.error('Error changing color:', error);
+      alert('Failed to change color: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const navigateToCustomer = (customerId: string) => {
     navigate(`/customers?customer=${customerId}`);
   };
@@ -689,21 +745,91 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                   <FileText className="w-5 h-5" />
                   Invoices ({ticketDetails.invoices.length})
                 </h3>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-3 max-h-96 overflow-y-auto">
                   {ticketDetails.invoices.map((ti) => (
-                    <div key={ti.invoice_reference_number} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-gray-900">Invoice #{ti.invoice_reference_number}</p>
+                    <div key={ti.invoice_reference_number} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="font-medium text-gray-900">Invoice #{ti.invoice_reference_number}</p>
+                            <a
+                              href={getAcumaticaInvoiceUrl(ti.invoice_reference_number)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800"
+                              title="View in Acumatica"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
+                          </div>
                           {ti.invoice && (
-                            <p className="text-sm text-gray-600">
-                              Balance: ${ti.invoice.balance.toFixed(2)} of ${ti.invoice.amount.toFixed(2)}
-                            </p>
+                            <>
+                              <p className="text-sm text-gray-600">
+                                Balance: ${ti.invoice.balance.toFixed(2)} of ${ti.invoice.amount.toFixed(2)}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Due: {new Date(ti.invoice.due_date).toLocaleDateString()}
+                              </p>
+                            </>
                           )}
                         </div>
                         {ti.invoice && (
-                          <div className="text-sm text-gray-500">
-                            Due: {new Date(ti.invoice.due_date).toLocaleDateString()}
+                          <div className="relative color-picker-container">
+                            <button
+                              onClick={() => setChangingColorForInvoice(changingColorForInvoice === ti.invoice_reference_number ? null : ti.invoice_reference_number)}
+                              className="focus:outline-none"
+                            >
+                              {ti.invoice.color_status ? (
+                                <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase cursor-pointer hover:opacity-80 transition-opacity ${
+                                  ti.invoice.color_status === 'red' ? 'bg-red-500 text-white border-2 border-red-700' :
+                                  ti.invoice.color_status === 'yellow' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
+                                  ti.invoice.color_status === 'orange' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
+                                  ti.invoice.color_status === 'green' ? 'bg-green-500 text-white border-2 border-green-700' :
+                                  'bg-gray-200 text-gray-700'
+                                }`}>
+                                  {ti.invoice.color_status}
+                                </span>
+                              ) : (
+                                <span className="px-3 py-1 text-xs text-gray-400 cursor-pointer hover:text-gray-600 border border-gray-300 rounded-full">Set Status</span>
+                              )}
+                            </button>
+
+                            {changingColorForInvoice === ti.invoice_reference_number && (
+                              <div className="absolute z-50 right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[140px]">
+                                <button
+                                  onClick={() => handleColorChange(ti.invoice_reference_number, 'red')}
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 rounded flex items-center gap-2"
+                                >
+                                  <span className="w-4 h-4 rounded-full bg-red-500 border-2 border-red-700"></span>
+                                  Will Not Pay
+                                </button>
+                                <button
+                                  onClick={() => handleColorChange(ti.invoice_reference_number, 'yellow')}
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-yellow-50 rounded flex items-center gap-2"
+                                >
+                                  <span className="w-4 h-4 rounded-full bg-yellow-400 border-2 border-yellow-600"></span>
+                                  Will Take Care
+                                </button>
+                                <button
+                                  onClick={() => handleColorChange(ti.invoice_reference_number, 'green')}
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 rounded flex items-center gap-2"
+                                >
+                                  <span className="w-4 h-4 rounded-full bg-green-500 border-2 border-green-700"></span>
+                                  Will Pay
+                                </button>
+                                {ti.invoice.color_status && (
+                                  <>
+                                    <div className="border-t border-gray-200 my-1"></div>
+                                    <button
+                                      onClick={() => handleColorChange(ti.invoice_reference_number, null)}
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded text-gray-600"
+                                    >
+                                      Clear Status
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
