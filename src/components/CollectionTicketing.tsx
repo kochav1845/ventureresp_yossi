@@ -88,6 +88,16 @@ interface TicketInvoice {
   invoice?: Invoice;
 }
 
+interface MergeEvent {
+  merge_id: string;
+  merged_at: string;
+  merged_by_name: string;
+  merged_by_email: string;
+  invoice_count: number;
+  invoice_reference_numbers: string[];
+  notes: string;
+}
+
 export default function CollectionTicketing({ onBack }: { onBack: () => void }) {
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -115,12 +125,16 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     statusHistory: StatusHistory[];
     activityLog: ActivityLog[];
     invoices: TicketInvoice[];
+    mergeHistory: MergeEvent[];
   } | null>(null);
   const [newStatus, setNewStatus] = useState<string>('');
   const [statusNote, setStatusNote] = useState<string>('');
   const [newNote, setNewNote] = useState<string>('');
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
+  const [existingTicket, setExistingTicket] = useState<Ticket | null>(null);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [expandedMergeEvents, setExpandedMergeEvents] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadCustomers();
@@ -368,7 +382,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     setNewStatus(ticket.status);
 
     try {
-      const [statusHistoryRes, activityLogRes, invoicesRes] = await Promise.all([
+      const [statusHistoryRes, activityLogRes, invoicesRes, mergeHistoryRes] = await Promise.all([
         supabase
           .from('ticket_status_history')
           .select('*, user_profiles!ticket_status_history_changed_by_fkey(email, full_name)')
@@ -384,7 +398,9 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
         supabase
           .from('ticket_invoices')
           .select('invoice_reference_number, added_at')
-          .eq('ticket_id', ticket.id)
+          .eq('ticket_id', ticket.id),
+
+        supabase.rpc('get_ticket_merge_history', { p_ticket_id: ticket.id })
       ]);
 
       const statusHistory = (statusHistoryRes.data || []).map((sh: any) => ({
@@ -417,7 +433,8 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
       setTicketDetails({
         statusHistory,
         activityLog,
-        invoices
+        invoices,
+        mergeHistory: mergeHistoryRes.data || []
       });
     } catch (error) {
       console.error('Error loading ticket details:', error);
@@ -436,6 +453,27 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     try {
       if (!profile) throw new Error('Not authenticated');
 
+      // Check if there's an existing open ticket for this customer and collector
+      const { data: existingTickets, error: checkError } = await supabase
+        .from('collection_tickets')
+        .select('*')
+        .eq('customer_id', selectedCustomer)
+        .eq('assigned_collector_id', selectedCollector)
+        .in('status', ['open', 'in_progress'])
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (checkError) throw checkError;
+
+      if (existingTickets && existingTickets.length > 0) {
+        // Found an existing ticket, show merge modal
+        setExistingTicket(existingTickets[0]);
+        setShowMergeModal(true);
+        setLoading(false);
+        return;
+      }
+
+      // No existing ticket, proceed with creation
       const customer = customers.find(c => c.customer_id === selectedCustomer);
 
       const { data: ticket, error: ticketError } = await supabase
@@ -494,6 +532,146 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
       loadTickets();
     } catch (error: any) {
       console.error('Error creating ticket:', error);
+      alert('Failed to create ticket: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMergeWithExisting = async () => {
+    if (!existingTicket || !profile) return;
+
+    setLoading(true);
+    try {
+      // Add new invoices to the existing ticket
+      const ticketInvoices = selectedInvoices.map(invoiceRef => ({
+        ticket_id: existingTicket.id,
+        invoice_reference_number: invoiceRef,
+        added_by: profile.id
+      }));
+
+      const { error: invoicesError } = await supabase
+        .from('ticket_invoices')
+        .insert(ticketInvoices);
+
+      if (invoicesError) throw invoicesError;
+
+      // Update invoice assignments
+      const assignments = selectedInvoices.map(invoiceRef => ({
+        invoice_reference_number: invoiceRef,
+        assigned_collector_id: selectedCollector,
+        ticket_id: existingTicket.id,
+        assigned_by: profile.id
+      }));
+
+      const { error: assignmentsError } = await supabase
+        .from('invoice_assignments')
+        .upsert(assignments, { onConflict: 'invoice_reference_number' });
+
+      if (assignmentsError) throw assignmentsError;
+
+      // Record the merge event
+      const { error: mergeError } = await supabase
+        .from('ticket_merge_events')
+        .insert({
+          target_ticket_id: existingTicket.id,
+          merged_by: profile.id,
+          invoice_count: selectedInvoices.length,
+          invoice_reference_numbers: selectedInvoices,
+          notes: `Merged ${selectedInvoices.length} invoice(s) from ticket creation`
+        });
+
+      if (mergeError) throw mergeError;
+
+      alert(`Successfully merged ${selectedInvoices.length} invoice(s) into existing ticket ${existingTicket.ticket_number}!`);
+
+      // Reset form
+      setSelectedCustomer('');
+      setCustomerInvoices([]);
+      setSelectedInvoices([]);
+      setSelectedCollector('');
+      setPriority('medium');
+      setTicketType('overdue payment');
+      setNotes('');
+      setShowMergeModal(false);
+      setExistingTicket(null);
+      setActiveTab('list');
+      loadTickets();
+    } catch (error: any) {
+      console.error('Error merging with existing ticket:', error);
+      alert('Failed to merge tickets: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateNewTicket = async () => {
+    if (!profile) return;
+
+    setLoading(true);
+    try {
+      const customer = customers.find(c => c.customer_id === selectedCustomer);
+
+      const { data: ticket, error: ticketError } = await supabase
+        .from('collection_tickets')
+        .insert({
+          customer_id: selectedCustomer,
+          customer_name: customer?.customer_name || '',
+          assigned_collector_id: selectedCollector,
+          status: 'open',
+          priority,
+          ticket_type: ticketType,
+          notes,
+          created_by: profile.id,
+          assigned_at: new Date().toISOString(),
+          assigned_by: profile.id
+        })
+        .select()
+        .single();
+
+      if (ticketError) throw ticketError;
+
+      const ticketInvoices = selectedInvoices.map(invoiceRef => ({
+        ticket_id: ticket.id,
+        invoice_reference_number: invoiceRef,
+        added_by: profile.id
+      }));
+
+      const { error: invoicesError } = await supabase
+        .from('ticket_invoices')
+        .insert(ticketInvoices);
+
+      if (invoicesError) throw invoicesError;
+
+      const assignments = selectedInvoices.map(invoiceRef => ({
+        invoice_reference_number: invoiceRef,
+        assigned_collector_id: selectedCollector,
+        ticket_id: ticket.id,
+        assigned_by: profile.id
+      }));
+
+      const { error: assignmentsError } = await supabase
+        .from('invoice_assignments')
+        .upsert(assignments, { onConflict: 'invoice_reference_number' });
+
+      if (assignmentsError) throw assignmentsError;
+
+      alert('New ticket created successfully!');
+
+      // Reset form
+      setSelectedCustomer('');
+      setCustomerInvoices([]);
+      setSelectedInvoices([]);
+      setSelectedCollector('');
+      setPriority('medium');
+      setTicketType('overdue payment');
+      setNotes('');
+      setShowMergeModal(false);
+      setExistingTicket(null);
+      setActiveTab('list');
+      loadTickets();
+    } catch (error: any) {
+      console.error('Error creating new ticket:', error);
       alert('Failed to create ticket: ' + error.message);
     } finally {
       setLoading(false);
@@ -658,6 +836,132 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+      {/* Merge Confirmation Modal */}
+      {showMergeModal && existingTicket && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900">Existing Ticket Found</h2>
+                <button
+                  onClick={() => {
+                    setShowMergeModal(false);
+                    setExistingTicket(null);
+                    setLoading(false);
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-yellow-900 mb-1">
+                      An open ticket already exists for this customer and collector
+                    </p>
+                    <p className="text-sm text-yellow-700">
+                      Would you like to merge these {selectedInvoices.length} invoice(s) into the existing ticket, or create a separate new ticket?
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <h3 className="font-semibold text-gray-900 mb-3">Existing Ticket Details</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-semibold text-blue-600">
+                      {existingTicket.ticket_number}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      existingTicket.status === 'open' ? 'bg-green-100 text-green-800' :
+                      existingTicket.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {existingTicket.status.replace('_', ' ').toUpperCase()}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      existingTicket.priority === 'high' ? 'bg-red-100 text-red-800' :
+                      existingTicket.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {existingTicket.priority.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="text-gray-700">
+                    <strong>Customer:</strong> {existingTicket.customer_name}
+                  </div>
+                  <div className="text-gray-700">
+                    <strong>Collector:</strong> {existingTicket.collector_name || existingTicket.collector_email}
+                  </div>
+                  <div className="text-gray-700">
+                    <strong>Created:</strong> {new Date(existingTicket.created_at).toLocaleString()}
+                  </div>
+                  <div className="text-gray-700">
+                    <strong>Current Invoices:</strong> {existingTicket.invoice_count || 0}
+                  </div>
+                  {existingTicket.notes && (
+                    <div className="text-gray-700">
+                      <strong>Notes:</strong> {existingTicket.notes}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-blue-50 rounded-lg p-4 mb-6">
+                <h3 className="font-semibold text-gray-900 mb-3">Invoices to Add ({selectedInvoices.length})</h3>
+                <div className="space-y-1 text-sm text-gray-700 max-h-40 overflow-y-auto">
+                  {selectedInvoices.map(inv => {
+                    const invoice = customerInvoices.find(ci => ci.reference_number === inv);
+                    return (
+                      <div key={inv} className="flex items-center justify-between py-1 border-b border-blue-100 last:border-0">
+                        <span className="font-mono">{inv}</span>
+                        {invoice && (
+                          <span className="text-gray-600">
+                            ${invoice.balance?.toLocaleString() || '0.00'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleMergeWithExisting}
+                  disabled={loading}
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                >
+                  {loading ? 'Merging...' : 'Merge into Existing Ticket'}
+                </button>
+                <button
+                  onClick={handleCreateNewTicket}
+                  disabled={loading}
+                  className="flex-1 px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                >
+                  {loading ? 'Creating...' : 'Create New Ticket'}
+                </button>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowMergeModal(false);
+                  setExistingTicket(null);
+                  setLoading(false);
+                }}
+                className="w-full mt-3 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
@@ -952,6 +1256,81 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                   ))}
                 </div>
               </div>
+
+              {ticketDetails.mergeHistory && ticketDetails.mergeHistory.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 text-blue-600" />
+                    Merge History ({ticketDetails.mergeHistory.length})
+                  </h3>
+                  <div className="space-y-3 max-h-64 overflow-y-auto">
+                    {ticketDetails.mergeHistory.map((merge) => {
+                      const isExpanded = expandedMergeEvents.has(merge.merge_id);
+
+                      return (
+                        <div key={merge.merge_id} className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1">
+                              <p className="font-semibold text-blue-900 mb-1">
+                                Merged {merge.invoice_count} invoice{merge.invoice_count !== 1 ? 's' : ''}
+                              </p>
+                              <p className="text-sm text-blue-700">
+                                By {merge.merged_by_name || merge.merged_by_email || 'Unknown'} on {new Date(merge.merged_at).toLocaleString()}
+                              </p>
+                              {merge.notes && (
+                                <p className="text-sm text-blue-600 mt-1 italic">{merge.notes}</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              const newSet = new Set(expandedMergeEvents);
+                              if (isExpanded) {
+                                newSet.delete(merge.merge_id);
+                              } else {
+                                newSet.add(merge.merge_id);
+                              }
+                              setExpandedMergeEvents(newSet);
+                            }}
+                            className="flex items-center gap-2 text-sm text-blue-700 hover:text-blue-900 font-medium mt-2"
+                          >
+                            {isExpanded ? (
+                              <>
+                                <ChevronUp className="w-4 h-4" />
+                                Hide Invoices
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="w-4 h-4" />
+                                View {merge.invoice_count} Invoice{merge.invoice_count !== 1 ? 's' : ''}
+                              </>
+                            )}
+                          </button>
+
+                          {isExpanded && (
+                            <div className="mt-3 pl-4 border-l-2 border-blue-300 space-y-1">
+                              {merge.invoice_reference_numbers.map((invRef) => (
+                                <div key={invRef} className="flex items-center gap-2 text-sm">
+                                  <span className="font-mono text-blue-800">{invRef}</span>
+                                  <a
+                                    href={getAcumaticaInvoiceUrl(invRef)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800"
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                  </a>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
