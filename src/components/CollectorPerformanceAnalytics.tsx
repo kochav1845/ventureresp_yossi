@@ -62,7 +62,8 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
           .select('*')
           .eq('user_id', collector.id)
           .gte('created_at', startStr)
-          .eq('action', 'invoice_color_change');
+          .eq('action_type', 'update')
+          .eq('entity_type', 'invoice_color_status');
 
         if (actError) throw actError;
 
@@ -93,7 +94,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
         const { count: ticketsCount } = await supabase
           .from('collection_tickets')
           .select('*', { count: 'exact', head: true })
-          .eq('assigned_to', collector.id);
+          .eq('assigned_collector_id', collector.id);
 
         const { data: assignments } = await supabase
           .from('customer_assignments')
@@ -107,7 +108,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
           const { count } = await supabase
             .from('acumatica_invoices')
             .select('*', { count: 'exact', head: true })
-            .in('customer_id', customerIds)
+            .in('customer', customerIds)
             .eq('status', 'Open');
 
           invoiceCount = count || 0;

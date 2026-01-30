@@ -537,6 +537,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     if (!profile?.id) return;
 
     try {
+      // Get the current color before changing
+      const currentInvoice = displayedInvoices.find(inv => inv.id === invoiceId);
+      const oldColor = currentInvoice?.color_status || null;
+
       const { error } = await supabase
         .from('acumatica_invoices')
         .update({ color_status: newColor })
@@ -547,8 +551,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       await logActivity(
         'update',
         'invoice_color_status',
+        invoiceId,
         {
           invoice_id: invoiceId,
+          old_color: oldColor,
           new_color: newColor,
           customer_id: customerId
         }
