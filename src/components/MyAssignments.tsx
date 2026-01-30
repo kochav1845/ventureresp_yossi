@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Ticket, FileText, Calendar, DollarSign, MessageSquare, ArrowLeft } from 'lucide-react';
+import { Ticket, FileText, Calendar, DollarSign, MessageSquare, ArrowLeft, ExternalLink } from 'lucide-react';
 import InvoiceMemoModal from './InvoiceMemoModal';
+import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 
 interface Assignment {
   assignment_id: string;
@@ -54,6 +55,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   const [loading, setLoading] = useState(true);
   const [selectedView, setSelectedView] = useState<'tickets' | 'individual' | 'customers'>('tickets');
   const [memoModalInvoice, setMemoModalInvoice] = useState<any>(null);
+  const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
 
   useEffect(() => {
     if (user && profile) {
@@ -123,6 +125,45 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
       console.error('Error loading assignments:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const colorPickers = document.querySelectorAll('.color-picker-container');
+      let clickedInside = false;
+
+      colorPickers.forEach((picker) => {
+        if (picker.contains(event.target as Node)) {
+          clickedInside = true;
+        }
+      });
+
+      if (!clickedInside) {
+        setChangingColorForInvoice(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleColorChange = async (invoiceRefNumber: string, newColor: string | null) => {
+    if (!profile?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from('acumatica_invoices')
+        .update({ color_status: newColor })
+        .eq('reference_number', invoiceRefNumber);
+
+      if (error) throw error;
+
+      setChangingColorForInvoice(null);
+      await loadAssignments();
+    } catch (error: any) {
+      console.error('Error changing color:', error);
+      alert('Failed to change color: ' + error.message);
     }
   };
 
@@ -331,12 +372,21 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                             key={invoice.invoice_reference_number}
                             className="bg-white p-4 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"
                           >
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-start justify-between">
                               <div className="flex-1">
                                 <div className="flex items-center gap-3 mb-2">
                                   <span className="font-mono font-semibold text-gray-900">
                                     #{invoice.invoice_reference_number}
                                   </span>
+                                  <a
+                                    href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800"
+                                    title="View in Acumatica"
+                                  >
+                                    <ExternalLink className="w-4 h-4" />
+                                  </a>
                                   <span className={`px-2 py-1 rounded text-xs font-medium ${
                                     invoice.invoice_status === 'Open'
                                       ? 'bg-green-100 text-green-800'
@@ -344,11 +394,63 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                                   }`}>
                                     {invoice.invoice_status}
                                   </span>
-                                  {invoice.color_status && (
-                                    <span className={`px-2 py-1 rounded text-xs font-medium border ${getColorStatusStyle(invoice.color_status)}`}>
-                                      {getColorStatusLabel(invoice.color_status)}
-                                    </span>
-                                  )}
+                                  <div className="relative color-picker-container">
+                                    <button
+                                      onClick={() => setChangingColorForInvoice(changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number)}
+                                      className="focus:outline-none"
+                                    >
+                                      {invoice.color_status ? (
+                                        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase cursor-pointer hover:opacity-80 transition-opacity ${
+                                          invoice.color_status === 'red' ? 'bg-red-500 text-white border-2 border-red-700' :
+                                          invoice.color_status === 'yellow' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
+                                          invoice.color_status === 'orange' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
+                                          invoice.color_status === 'green' ? 'bg-green-500 text-white border-2 border-green-700' :
+                                          'bg-gray-200 text-gray-700'
+                                        }`}>
+                                          {invoice.color_status}
+                                        </span>
+                                      ) : (
+                                        <span className="px-3 py-1 text-xs text-gray-400 cursor-pointer hover:text-gray-600 border border-gray-300 rounded-full">Set Status</span>
+                                      )}
+                                    </button>
+
+                                    {changingColorForInvoice === invoice.invoice_reference_number && (
+                                      <div className="absolute z-50 left-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[140px]">
+                                        <button
+                                          onClick={() => handleColorChange(invoice.invoice_reference_number, 'red')}
+                                          className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 rounded flex items-center gap-2"
+                                        >
+                                          <span className="w-4 h-4 rounded-full bg-red-500 border-2 border-red-700"></span>
+                                          Will Not Pay
+                                        </button>
+                                        <button
+                                          onClick={() => handleColorChange(invoice.invoice_reference_number, 'yellow')}
+                                          className="w-full text-left px-3 py-2 text-sm hover:bg-yellow-50 rounded flex items-center gap-2"
+                                        >
+                                          <span className="w-4 h-4 rounded-full bg-yellow-400 border-2 border-yellow-600"></span>
+                                          Will Take Care
+                                        </button>
+                                        <button
+                                          onClick={() => handleColorChange(invoice.invoice_reference_number, 'green')}
+                                          className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 rounded flex items-center gap-2"
+                                        >
+                                          <span className="w-4 h-4 rounded-full bg-green-500 border-2 border-green-700"></span>
+                                          Will Pay
+                                        </button>
+                                        {invoice.color_status && (
+                                          <>
+                                            <div className="border-t border-gray-200 my-1"></div>
+                                            <button
+                                              onClick={() => handleColorChange(invoice.invoice_reference_number, null)}
+                                              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded text-gray-600"
+                                            >
+                                              Clear Status
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 text-sm text-gray-600">
                                   <div className="flex items-center gap-1">
@@ -392,10 +494,19 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
+                        <div className="flex items-center gap-3 mb-2 flex-wrap">
                           <span className="font-mono font-semibold text-lg text-gray-900">
                             Invoice #{invoice.invoice_reference_number}
                           </span>
+                          <a
+                            href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800"
+                            title="View in Acumatica"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </a>
                           <span className={`px-2 py-1 rounded text-xs font-medium ${
                             invoice.invoice_status === 'Open'
                               ? 'bg-green-100 text-green-800'
@@ -403,11 +514,63 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                           }`}>
                             {invoice.invoice_status}
                           </span>
-                          {invoice.color_status && (
-                            <span className={`px-2 py-1 rounded text-xs font-medium border ${getColorStatusStyle(invoice.color_status)}`}>
-                              {getColorStatusLabel(invoice.color_status)}
-                            </span>
-                          )}
+                          <div className="relative color-picker-container">
+                            <button
+                              onClick={() => setChangingColorForInvoice(changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number)}
+                              className="focus:outline-none"
+                            >
+                              {invoice.color_status ? (
+                                <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase cursor-pointer hover:opacity-80 transition-opacity ${
+                                  invoice.color_status === 'red' ? 'bg-red-500 text-white border-2 border-red-700' :
+                                  invoice.color_status === 'yellow' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
+                                  invoice.color_status === 'orange' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
+                                  invoice.color_status === 'green' ? 'bg-green-500 text-white border-2 border-green-700' :
+                                  'bg-gray-200 text-gray-700'
+                                }`}>
+                                  {invoice.color_status}
+                                </span>
+                              ) : (
+                                <span className="px-3 py-1 text-xs text-gray-400 cursor-pointer hover:text-gray-600 border border-gray-300 rounded-full">Set Status</span>
+                              )}
+                            </button>
+
+                            {changingColorForInvoice === invoice.invoice_reference_number && (
+                              <div className="absolute z-50 left-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[140px]">
+                                <button
+                                  onClick={() => handleColorChange(invoice.invoice_reference_number, 'red')}
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 rounded flex items-center gap-2"
+                                >
+                                  <span className="w-4 h-4 rounded-full bg-red-500 border-2 border-red-700"></span>
+                                  Will Not Pay
+                                </button>
+                                <button
+                                  onClick={() => handleColorChange(invoice.invoice_reference_number, 'yellow')}
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-yellow-50 rounded flex items-center gap-2"
+                                >
+                                  <span className="w-4 h-4 rounded-full bg-yellow-400 border-2 border-yellow-600"></span>
+                                  Will Take Care
+                                </button>
+                                <button
+                                  onClick={() => handleColorChange(invoice.invoice_reference_number, 'green')}
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 rounded flex items-center gap-2"
+                                >
+                                  <span className="w-4 h-4 rounded-full bg-green-500 border-2 border-green-700"></span>
+                                  Will Pay
+                                </button>
+                                {invoice.color_status && (
+                                  <>
+                                    <div className="border-t border-gray-200 my-1"></div>
+                                    <button
+                                      onClick={() => handleColorChange(invoice.invoice_reference_number, null)}
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded text-gray-600"
+                                    >
+                                      Clear Status
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                         <h3 className="font-semibold text-gray-900 mb-1">
                           {invoice.customer_name}
