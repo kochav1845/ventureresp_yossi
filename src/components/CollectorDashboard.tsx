@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Ticket, FileText, Calendar, DollarSign, User, ArrowLeft, MessageSquare, Mic, LogOut, Lock, ExternalLink, TrendingUp } from 'lucide-react';
+import { Ticket, FileText, Calendar, DollarSign, User, ArrowLeft, MessageSquare, Mic, LogOut, Lock, ExternalLink } from 'lucide-react';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import InvoiceMemoModal from './InvoiceMemoModal';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
-import CollectorProgress from './CollectorProgress';
 
 interface Assignment {
   assignment_id: string;
@@ -49,7 +48,6 @@ export default function CollectorDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedView, setSelectedView] = useState<'tickets' | 'individual'>('tickets');
   const [memoModalInvoice, setMemoModalInvoice] = useState<any>(null);
-  const [showProgress, setShowProgress] = useState(false);
 
   useEffect(() => {
     if (user && profile) {
@@ -296,11 +294,6 @@ export default function CollectorDashboard() {
     );
   }
 
-  // Show progress view if requested
-  if (showProgress) {
-    return <CollectorProgress onBack={() => setShowProgress(false)} />;
-  }
-
   return (
     <div className={`min-h-screen bg-gray-50 ${isImpersonating ? 'pt-16' : ''}`}>
       {/* Header */}
@@ -317,22 +310,13 @@ export default function CollectorDashboard() {
               <p className="text-sm text-gray-600">{profile?.email}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowProgress(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors font-medium"
-            >
-              <TrendingUp size={18} />
-              My Progress
-            </button>
-            <button
-              onClick={() => signOut()}
-              className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium"
-            >
-              <LogOut size={18} />
-              Sign Out
-            </button>
-          </div>
+          <button
+            onClick={() => signOut()}
+            className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium"
+          >
+            <LogOut size={18} />
+            Sign Out
+          </button>
         </div>
       </div>
 
