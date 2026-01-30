@@ -23,12 +23,15 @@ interface Memo {
   voice_note_url: string | null;
   voice_note_duration: number | null;
   image_url: string | null;
+  document_urls: string[] | null;
+  document_names: string[] | null;
   created_at: string;
   updated_at: string;
   user_email?: string;
   user_color?: string;
   voice_signed_url?: string | null;
   image_signed_url?: string | null;
+  document_signed_urls?: string[] | null;
 }
 
 interface ActivityLog {
@@ -74,6 +77,11 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // Document upload state
+  const [selectedDocuments, setSelectedDocuments] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const documentInputRef = useRef<HTMLInputElement>(null);
 
   // Reminder state
   const [reminderDate, setReminderDate] = useState('');
@@ -129,6 +137,7 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
       (memosData || []).map(async (memo) => {
         let voiceUrl = null;
         let imageUrl = null;
+        let documentUrls: string[] = [];
 
         if (memo.has_voice_note && memo.voice_note_url) {
           const { data } = await supabase.storage
@@ -144,12 +153,24 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
           imageUrl = data?.signedUrl || null;
         }
 
+        if (memo.document_urls && Array.isArray(memo.document_urls)) {
+          const urlPromises = memo.document_urls.map(async (docPath) => {
+            const { data } = await supabase.storage
+              .from('invoice-memo-attachments')
+              .createSignedUrl(docPath, 3600);
+            return data?.signedUrl || null;
+          });
+          const urls = await Promise.all(urlPromises);
+          documentUrls = urls.filter((url): url is string => url !== null);
+        }
+
         return {
           ...memo,
           user_email: profileMap.get(memo.created_by_user_id)?.email,
           user_color: profileMap.get(memo.created_by_user_id)?.color,
           voice_signed_url: voiceUrl,
-          image_signed_url: imageUrl
+          image_signed_url: imageUrl,
+          document_signed_urls: documentUrls
         };
       })
     );
@@ -278,8 +299,98 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
     }
   };
 
+  const handleDocumentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      const validFiles = files.filter(file => {
+        if (file.size > 25 * 1024 * 1024) {
+          alert(`File ${file.name} is too large. Maximum size is 25MB.`);
+          return false;
+        }
+        return true;
+      });
+      setSelectedDocuments(prev => [...prev, ...validFiles]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      const validFiles = files.filter(file => {
+        if (file.size > 25 * 1024 * 1024) {
+          alert(`File ${file.name} is too large. Maximum size is 25MB.`);
+          return false;
+        }
+        return true;
+      });
+
+      // Separate images from other documents
+      const images = validFiles.filter(f => f.type.startsWith('image/'));
+      const documents = validFiles.filter(f => !f.type.startsWith('image/'));
+
+      if (images.length > 0 && !selectedImage) {
+        setSelectedImage(images[0]);
+        setImagePreview(URL.createObjectURL(images[0]));
+      }
+
+      if (documents.length > 0) {
+        setSelectedDocuments(prev => [...prev, ...documents]);
+      }
+    }
+  };
+
+  const removeDocument = (index: number) => {
+    setSelectedDocuments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const getFileIcon = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'pdf':
+        return '📄';
+      case 'doc':
+      case 'docx':
+        return '📝';
+      case 'xls':
+      case 'xlsx':
+        return '📊';
+      case 'eml':
+      case 'msg':
+        return '✉️';
+      case 'txt':
+        return '📃';
+      case 'zip':
+      case 'rar':
+        return '🗜️';
+      default:
+        return '📎';
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
   const handleSaveMemo = async () => {
-    if (!newMemo.trim() && !audioBlob && !selectedImage) {
+    if (!newMemo.trim() && !audioBlob && !selectedImage && selectedDocuments.length === 0) {
       alert('Please add some content to the memo');
       return;
     }
@@ -295,6 +406,8 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
     try {
       let voiceNoteUrl = null;
       let imageUrl = null;
+      let documentUrls: string[] = [];
+      let documentNames: string[] = [];
       let attachmentType = 'text';
 
       if (audioBlob) {
@@ -309,7 +422,7 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
 
         if (uploadError) throw uploadError;
         voiceNoteUrl = filePath;
-        attachmentType = selectedImage ? 'mixed' : 'voice';
+        attachmentType = selectedImage || selectedDocuments.length > 0 ? 'mixed' : 'voice';
       }
 
       if (selectedImage) {
@@ -325,7 +438,31 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
 
         if (uploadError) throw uploadError;
         imageUrl = filePath;
-        attachmentType = audioBlob ? 'mixed' : 'image';
+        attachmentType = audioBlob || selectedDocuments.length > 0 ? 'mixed' : 'image';
+      }
+
+      if (selectedDocuments.length > 0) {
+        for (const doc of selectedDocuments) {
+          const timestamp = Date.now();
+          const sanitizedName = doc.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const fileName = `doc_${timestamp}_${sanitizedName}`;
+          const filePath = `${invoice.id}/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('invoice-memo-attachments')
+            .upload(filePath, doc, {
+              contentType: doc.type || 'application/octet-stream'
+            });
+
+          if (uploadError) {
+            console.error(`Error uploading ${doc.name}:`, uploadError);
+            throw uploadError;
+          }
+
+          documentUrls.push(filePath);
+          documentNames.push(doc.name);
+        }
+        attachmentType = audioBlob || selectedImage ? 'mixed' : 'document';
       }
 
       const { data: profiles } = await supabase
@@ -346,7 +483,9 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
         has_image: !!selectedImage,
         voice_note_url: voiceNoteUrl,
         voice_note_duration: recordingDuration,
-        image_url: imageUrl
+        image_url: imageUrl,
+        document_urls: documentUrls.length > 0 ? documentUrls : null,
+        document_names: documentNames.length > 0 ? documentNames : null
       };
 
       console.log('[InvoiceMemoModal] Inserting memo with data:', memoData);
@@ -362,19 +501,26 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
 
       console.log('[InvoiceMemoModal] Memo saved successfully');
 
+      const attachmentDesc = [
+        audioBlob ? 'voice note' : '',
+        selectedImage ? 'image' : '',
+        selectedDocuments.length > 0 ? `${selectedDocuments.length} document(s)` : ''
+      ].filter(Boolean).join(', ');
+
       await supabase
         .from('invoice_activity_log')
         .insert({
           invoice_id: invoice.id,
           user_id: user?.id,
           activity_type: 'memo_added',
-          description: `Added a memo${audioBlob ? ' with voice note' : ''}${selectedImage ? ' with image' : ''}`
+          description: `Added a memo${attachmentDesc ? ' with ' + attachmentDesc : ''}`
         });
 
       setNewMemo('');
       setAudioBlob(null);
       setRecordingDuration(0);
       clearImage();
+      setSelectedDocuments([]);
       await loadMemos();
       await loadActivityLogs();
     } catch (error) {
@@ -385,13 +531,16 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
     }
   };
 
-  const handleDeleteMemo = async (memoId: string, voiceUrl: string | null, imageUrl: string | null) => {
+  const handleDeleteMemo = async (memoId: string, voiceUrl: string | null, imageUrl: string | null, documentUrls: string[] | null) => {
     if (!confirm('Delete this memo?')) return;
 
     try {
       const filesToDelete = [];
       if (voiceUrl) filesToDelete.push(voiceUrl);
       if (imageUrl) filesToDelete.push(imageUrl);
+      if (documentUrls && Array.isArray(documentUrls)) {
+        filesToDelete.push(...documentUrls);
+      }
 
       if (filesToDelete.length > 0) {
         await supabase.storage
@@ -559,6 +708,67 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
                   disabled={saving}
                 />
 
+                <div
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`mt-3 border-2 border-dashed rounded-lg p-6 transition-colors ${
+                    isDragging
+                      ? 'border-blue-500 bg-blue-500/10'
+                      : 'border-slate-700 bg-slate-800/50'
+                  }`}
+                >
+                  <div className="text-center">
+                    <FileText className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                    <p className="text-slate-300 text-sm font-medium mb-1">
+                      Drag and drop files here
+                    </p>
+                    <p className="text-slate-500 text-xs mb-3">
+                      Supports documents, images, EML files, and more (max 25MB each)
+                    </p>
+                    <input
+                      ref={documentInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleDocumentSelect}
+                    />
+                    <button
+                      onClick={() => documentInputRef.current?.click()}
+                      disabled={saving}
+                      className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Browse Files
+                    </button>
+                  </div>
+                </div>
+
+                {selectedDocuments.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-slate-400 text-sm font-medium">Attached Documents:</p>
+                    {selectedDocuments.map((doc, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between bg-slate-800 rounded-lg p-3"
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="text-2xl">{getFileIcon(doc.name)}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-slate-300 text-sm truncate">{doc.name}</p>
+                            <p className="text-slate-500 text-xs">{formatFileSize(doc.size)}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeDocument(index)}
+                          className="text-red-400 hover:text-red-300 transition-colors flex-shrink-0"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {imagePreview && (
                   <div className="mt-3 relative">
                     <img
@@ -596,7 +806,7 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
                     <>
                       <button
                         onClick={handleSaveMemo}
-                        disabled={saving || (!newMemo.trim() && !audioBlob && !selectedImage)}
+                        disabled={saving || (!newMemo.trim() && !audioBlob && !selectedImage && selectedDocuments.length === 0)}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
                       >
                         <Save className="w-4 h-4" />
@@ -668,7 +878,7 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
                     </div>
                     {memo.created_by_user_id === user?.id && (
                       <button
-                        onClick={() => handleDeleteMemo(memo.id, memo.voice_note_url, memo.image_url)}
+                        onClick={() => handleDeleteMemo(memo.id, memo.voice_note_url, memo.image_url, memo.document_urls)}
                         className="text-red-400 hover:text-red-300 transition-colors flex-shrink-0"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -703,6 +913,30 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
                         className="max-h-64 rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
                         onClick={() => window.open(memo.image_signed_url!, '_blank')}
                       />
+                    </div>
+                  )}
+
+                  {memo.document_signed_urls && memo.document_signed_urls.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-slate-400 text-xs font-medium">Attached Documents:</p>
+                      {memo.document_signed_urls.map((url, index) => {
+                        const fileName = memo.document_names?.[index] || `Document ${index + 1}`;
+                        return (
+                          <a
+                            key={index}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 bg-slate-800 rounded-lg p-3 hover:bg-slate-700 transition-colors group"
+                          >
+                            <span className="text-xl">{getFileIcon(fileName)}</span>
+                            <span className="text-slate-300 text-sm flex-1 truncate group-hover:text-white">
+                              {fileName}
+                            </span>
+                            <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:text-blue-400 transform rotate-180" />
+                          </a>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
