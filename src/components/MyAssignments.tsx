@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Ticket, FileText, Calendar, DollarSign, MessageSquare, ArrowLeft, ExternalLink, Clock, CheckSquare, Square, Edit3 } from 'lucide-react';
+import { Ticket, FileText, Calendar, DollarSign, MessageSquare, ArrowLeft, ExternalLink, Clock, CheckSquare, Square, Edit3, TrendingUp } from 'lucide-react';
 import InvoiceMemoModal from './InvoiceMemoModal';
 import { getAcumaticaInvoiceUrl, getAcumaticaCustomerUrl } from '../lib/acumaticaLinks';
 import { formatDistanceToNow } from 'date-fns';
+import CollectorProgress from './CollectorProgress';
 
 interface Assignment {
   assignment_id: string;
@@ -76,6 +77,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   const [createReminder, setCreateReminder] = useState(false);
   const [reminderDate, setReminderDate] = useState('');
   const [processingBatch, setProcessingBatch] = useState(false);
+  const [showProgress, setShowProgress] = useState(false);
 
   useEffect(() => {
     if (user && profile) {
@@ -458,6 +460,11 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
     );
   }
 
+  // Show progress view if requested
+  if (showProgress) {
+    return <CollectorProgress onBack={() => setShowProgress(false)} />;
+  }
+
   return (
     <div>
       {onBack && (
@@ -470,9 +477,18 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
         </button>
       )}
 
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">My Assignments</h1>
-        <p className="text-gray-600">Collection tickets and invoices assigned to you</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Assignments</h1>
+          <p className="text-gray-600">Collection tickets and invoices assigned to you</p>
+        </div>
+        <button
+          onClick={() => setShowProgress(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+        >
+          <TrendingUp size={18} />
+          View My Progress
+        </button>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
