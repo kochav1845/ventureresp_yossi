@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Plus, X, Ticket, User, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, MessageSquare, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { getAcumaticaCustomerUrl } from '../lib/acumaticaLinks';
 
 interface Customer {
   customer_id: string;
@@ -25,6 +26,7 @@ interface Collector {
   id: string;
   email: string;
   role: string;
+  full_name?: string;
 }
 
 interface Ticket {
@@ -36,13 +38,43 @@ interface Ticket {
   status: string;
   priority: string;
   notes: string;
+  ticket_type: string;
   created_at: string;
   updated_at: string;
   assigned_at?: string;
   assigned_by?: string;
   invoice_count?: number;
   collector_email?: string;
+  collector_name?: string;
   assigner_email?: string;
+}
+
+interface StatusHistory {
+  id: string;
+  old_status: string | null;
+  new_status: string;
+  changed_by: string;
+  changed_at: string;
+  notes: string | null;
+  changer_name?: string;
+  changer_email?: string;
+}
+
+interface ActivityLog {
+  id: string;
+  activity_type: string;
+  description: string;
+  created_by: string;
+  created_at: string;
+  metadata: any;
+  creator_name?: string;
+  creator_email?: string;
+}
+
+interface TicketInvoice {
+  invoice_reference_number: string;
+  added_at: string;
+  invoice?: Invoice;
 }
 
 export default function CollectionTicketing({ onBack }: { onBack: () => void }) {
@@ -58,6 +90,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   const [selectedInvoices, setSelectedInvoices] = useState<string[]>([]);
   const [selectedCollector, setSelectedCollector] = useState<string>('');
   const [priority, setPriority] = useState<string>('medium');
+  const [ticketType, setTicketType] = useState<string>('overdue payment');
   const [notes, setNotes] = useState<string>('');
   const [invoiceFilter, setInvoiceFilter] = useState<'all' | 'latest' | 'oldest' | 'highest'>('all');
   const [loading, setLoading] = useState(false);
@@ -65,6 +98,17 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   const [error, setError] = useState<string>('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [ticketDetails, setTicketDetails] = useState<{
+    statusHistory: StatusHistory[];
+    activityLog: ActivityLog[];
+    invoices: TicketInvoice[];
+  } | null>(null);
+  const [newStatus, setNewStatus] = useState<string>('');
+  const [statusNote, setStatusNote] = useState<string>('');
+  const [newNote, setNewNote] = useState<string>('');
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   useEffect(() => {
     loadCustomers();
@@ -118,7 +162,6 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
         }
       }
 
-      console.log('Loaded customers:', allCustomers.length);
       setCustomers(allCustomers);
     } catch (err) {
       console.error('Exception loading customers:', err);
@@ -129,7 +172,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, email, role')
+        .select('id, email, role, full_name')
         .in('role', ['collector', 'admin', 'manager'])
         .order('email');
 
@@ -137,7 +180,6 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
         console.error('Error loading collectors:', error);
         setError('Failed to load collectors');
       } else {
-        console.log('Loaded collectors (including admins/managers):', data?.length);
         setCollectors(data || []);
       }
     } catch (err) {
@@ -158,26 +200,23 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
         return;
       }
 
-      console.log('Raw tickets data:', ticketsData);
-
       if (!ticketsData || ticketsData.length === 0) {
-        console.log('No tickets found');
         setTickets([]);
         return;
       }
 
       const enrichedTickets = await Promise.all(
         ticketsData.map(async (ticket) => {
-          const { data: invoiceCount } = await supabase
+          const { count } = await supabase
             .from('ticket_invoices')
-            .select('id', { count: 'exact', head: true })
+            .select('*', { count: 'exact', head: true })
             .eq('ticket_id', ticket.id);
 
           const { data: collectorData } = await supabase
             .from('user_profiles')
-            .select('email')
+            .select('email, full_name')
             .eq('id', ticket.assigned_collector_id)
-            .single();
+            .maybeSingle();
 
           let assignerEmail = null;
           if (ticket.assigned_by) {
@@ -185,20 +224,20 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
               .from('user_profiles')
               .select('email')
               .eq('id', ticket.assigned_by)
-              .single();
+              .maybeSingle();
             assignerEmail = assignerData?.email;
           }
 
           return {
             ...ticket,
-            invoice_count: invoiceCount || 0,
+            invoice_count: count || 0,
             collector_email: collectorData?.email || 'Unassigned',
+            collector_name: collectorData?.full_name || collectorData?.email || 'Unassigned',
             assigner_email: assignerEmail
           };
         })
       );
 
-      console.log('Enriched tickets:', enrichedTickets);
       setTickets(enrichedTickets);
     } catch (err) {
       console.error('Exception loading tickets:', err);
@@ -230,6 +269,70 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     if (data) setCustomerInvoices(data);
   };
 
+  const loadTicketDetails = async (ticket: Ticket) => {
+    setDetailsLoading(true);
+    setSelectedTicket(ticket);
+    setNewStatus(ticket.status);
+
+    try {
+      const [statusHistoryRes, activityLogRes, invoicesRes] = await Promise.all([
+        supabase
+          .from('ticket_status_history')
+          .select('*, user_profiles!ticket_status_history_changed_by_fkey(email, full_name)')
+          .eq('ticket_id', ticket.id)
+          .order('changed_at', { ascending: false }),
+
+        supabase
+          .from('ticket_activity_log')
+          .select('*, user_profiles!ticket_activity_log_created_by_fkey(email, full_name)')
+          .eq('ticket_id', ticket.id)
+          .order('created_at', { ascending: false }),
+
+        supabase
+          .from('ticket_invoices')
+          .select('invoice_reference_number, added_at')
+          .eq('ticket_id', ticket.id)
+      ]);
+
+      const statusHistory = (statusHistoryRes.data || []).map((sh: any) => ({
+        ...sh,
+        changer_name: sh.user_profiles?.full_name || sh.user_profiles?.email,
+        changer_email: sh.user_profiles?.email
+      }));
+
+      const activityLog = (activityLogRes.data || []).map((al: any) => ({
+        ...al,
+        creator_name: al.user_profiles?.full_name || al.user_profiles?.email,
+        creator_email: al.user_profiles?.email
+      }));
+
+      const invoiceRefs = (invoicesRes.data || []).map((ti: any) => ti.invoice_reference_number);
+      let invoices: TicketInvoice[] = [];
+
+      if (invoiceRefs.length > 0) {
+        const { data: invoiceData } = await supabase
+          .from('acumatica_invoices')
+          .select('*')
+          .in('reference_number', invoiceRefs);
+
+        invoices = (invoicesRes.data || []).map((ti: any) => ({
+          ...ti,
+          invoice: (invoiceData || []).find((inv: any) => inv.reference_number === ti.invoice_reference_number)
+        }));
+      }
+
+      setTicketDetails({
+        statusHistory,
+        activityLog,
+        invoices
+      });
+    } catch (error) {
+      console.error('Error loading ticket details:', error);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
   const handleCreateTicket = async () => {
     if (!selectedCustomer || !selectedCollector || selectedInvoices.length === 0) {
       alert('Please select a customer, collector, and at least one invoice');
@@ -250,6 +353,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
           assigned_collector_id: selectedCollector,
           status: 'open',
           priority,
+          ticket_type: ticketType,
           notes,
           created_by: profile.id,
           assigned_at: new Date().toISOString(),
@@ -291,6 +395,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
       setSelectedInvoices([]);
       setSelectedCollector('');
       setPriority('medium');
+      setTicketType('overdue payment');
       setNotes('');
       setActiveTab('list');
       loadTickets();
@@ -300,6 +405,72 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStatusChange = async () => {
+    if (!selectedTicket || !newStatus) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('collection_tickets')
+        .update({ status: newStatus })
+        .eq('id', selectedTicket.id);
+
+      if (error) throw error;
+
+      if (statusNote) {
+        await supabase
+          .from('ticket_activity_log')
+          .insert({
+            ticket_id: selectedTicket.id,
+            activity_type: 'note',
+            description: statusNote,
+            created_by: profile?.id
+          });
+      }
+
+      alert('Status updated successfully!');
+      setStatusNote('');
+      loadTickets();
+      loadTicketDetails({ ...selectedTicket, status: newStatus });
+    } catch (error: any) {
+      console.error('Error updating status:', error);
+      alert('Failed to update status: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!selectedTicket || !newNote.trim()) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('ticket_activity_log')
+        .insert({
+          ticket_id: selectedTicket.id,
+          activity_type: 'note',
+          description: newNote,
+          created_by: profile?.id
+        });
+
+      if (error) throw error;
+
+      alert('Note added successfully!');
+      setNewNote('');
+      loadTicketDetails(selectedTicket);
+    } catch (error: any) {
+      console.error('Error adding note:', error);
+      alert('Failed to add note: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const navigateToCustomer = (customerId: string) => {
+    navigate(`/customers?customer=${customerId}`);
   };
 
   const toggleInvoiceSelection = (invoiceRef: string) => {
@@ -336,10 +507,22 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'open': return 'bg-blue-100 text-blue-800';
-      case 'in_progress': return 'bg-purple-100 text-purple-800';
-      case 'resolved': return 'bg-green-100 text-green-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'promised': return 'bg-cyan-100 text-cyan-800';
+      case 'paid': return 'bg-green-100 text-green-800';
+      case 'disputed': return 'bg-red-100 text-red-800';
       case 'closed': return 'bg-gray-100 text-gray-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getTicketTypeColor = (type: string) => {
+    switch (type) {
+      case 'overdue payment': return 'bg-red-50 text-red-700 border-red-200';
+      case 'partial payment': return 'bg-yellow-50 text-yellow-700 border-yellow-200';
+      case 'chargeback': return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'settlement': return 'bg-green-50 text-green-700 border-green-200';
+      default: return 'bg-gray-50 text-gray-700 border-gray-200';
     }
   };
 
@@ -368,405 +551,657 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
           </button>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="border-b border-gray-200">
-            <div className="flex">
-              <button
-                onClick={() => setActiveTab('list')}
-                className={`px-6 py-3 font-medium ${
-                  activeTab === 'list'
-                    ? 'border-b-2 border-blue-600 text-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                All Tickets ({tickets.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('create')}
-                className={`px-6 py-3 font-medium ${
-                  activeTab === 'create'
-                    ? 'border-b-2 border-blue-600 text-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Create Ticket
-              </button>
-            </div>
-          </div>
-
-          <div className="p-6">
-            {error && (
-              <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4">
-                <div className="flex">
-                  <AlertCircle className="h-5 w-5 text-red-400" />
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">Error Loading Data</h3>
-                    <div className="mt-2 text-sm text-red-700">
-                      <p>{error}</p>
-                    </div>
+        {selectedTicket && ticketDetails ? (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+            <div className="border-b border-gray-200 p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="font-mono font-bold text-xl text-gray-900">
+                      {selectedTicket.ticket_number}
+                    </span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getTicketTypeColor(selectedTicket.ticket_type)}`}>
+                      {selectedTicket.ticket_type}
+                    </span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedTicket.status)}`}>
+                      {selectedTicket.status}
+                    </span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getPriorityColor(selectedTicket.priority)}`}>
+                      {selectedTicket.priority}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => navigateToCustomer(selectedTicket.customer_id)}
+                    className="text-2xl font-bold text-blue-600 hover:text-blue-800 hover:underline mb-2"
+                  >
+                    {selectedTicket.customer_name}
+                  </button>
+                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                    <span>Customer ID: {selectedTicket.customer_id}</span>
+                    <a
+                      href={getAcumaticaCustomerUrl(selectedTicket.customer_id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-blue-600 hover:text-blue-800"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      View in Acumatica
+                    </a>
                   </div>
                 </div>
+                <button
+                  onClick={() => {
+                    setSelectedTicket(null);
+                    setTicketDetails(null);
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-            )}
-            {activeTab === 'list' ? (
-              <div className="space-y-4">
-                {tickets.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Ticket className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500">No tickets created yet</p>
-                  </div>
-                ) : (
-                  tickets.map(ticket => (
-                    <div
-                      key={ticket.id}
-                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span className="font-mono font-semibold text-gray-900">
-                              {ticket.ticket_number}
-                            </span>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(ticket.status)}`}>
-                              {ticket.status.replace('_', ' ')}
-                            </span>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(ticket.priority)}`}>
-                              {ticket.priority}
-                            </span>
-                          </div>
-                          <h3 className="font-semibold text-lg text-gray-900 mb-1">
-                            {ticket.customer_name}
-                          </h3>
-                          <p className="text-sm text-gray-500 mb-2">
-                            Customer ID: {ticket.customer_id}
-                          </p>
-                          <div className="flex items-center gap-4 text-sm text-gray-600">
-                            <div className="flex items-center gap-1">
-                              <User className="w-4 h-4" />
-                              <span>{ticket.collector_email}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <AlertCircle className="w-4 h-4" />
-                              <span>{ticket.invoice_count} invoices</span>
-                            </div>
-                          </div>
-                          {ticket.notes && (
-                            <p className="mt-2 text-sm text-gray-600 italic">
-                              {ticket.notes}
+
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-gray-500">Assigned to</p>
+                  <p className="font-medium">{selectedTicket.collector_name}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Created</p>
+                  <p className="font-medium">{new Date(selectedTicket.created_at).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Invoices</p>
+                  <p className="font-medium">{ticketDetails.invoices.length}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Last updated</p>
+                  <p className="font-medium">{new Date(selectedTicket.updated_at).toLocaleString()}</p>
+                </div>
+              </div>
+
+              {selectedTicket.notes && (
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-600">{selectedTicket.notes}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Change Status</h3>
+                <div className="flex gap-3">
+                  <select
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                  >
+                    <option value="open">Open</option>
+                    <option value="pending">Pending</option>
+                    <option value="promised">Promised</option>
+                    <option value="paid">Paid</option>
+                    <option value="disputed">Disputed</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                  <button
+                    onClick={handleStatusChange}
+                    disabled={loading || newStatus === selectedTicket.status}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Update
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Add a note about this status change (optional)"
+                  value={statusNote}
+                  onChange={(e) => setStatusNote(e.target.value)}
+                  className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Note</h3>
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    placeholder="Add a note to this ticket..."
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && !loading) {
+                        handleAddNote();
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={handleAddNote}
+                    disabled={loading || !newNote.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Invoices ({ticketDetails.invoices.length})
+                </h3>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {ticketDetails.invoices.map((ti) => (
+                    <div key={ti.invoice_reference_number} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-gray-900">Invoice #{ti.invoice_reference_number}</p>
+                          {ti.invoice && (
+                            <p className="text-sm text-gray-600">
+                              Balance: ${ti.invoice.balance.toFixed(2)} of ${ti.invoice.amount.toFixed(2)}
                             </p>
                           )}
                         </div>
-                        <div className="text-right text-sm text-gray-500">
-                          <p className="mb-1">Created: {new Date(ticket.created_at).toLocaleDateString()}</p>
-                          {ticket.assigned_at && (
-                            <p className="mb-1">Assigned: {new Date(ticket.assigned_at).toLocaleDateString()}</p>
-                          )}
-                          {ticket.assigner_email && (
-                            <p className="text-xs text-gray-400">by {ticket.assigner_email}</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Setup Status */}
-                {collectors.length === 0 && (
-                  <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-                    <div className="flex">
-                      <AlertCircle className="h-5 w-5 text-yellow-400" />
-                      <div className="ml-3">
-                        <h3 className="text-sm font-medium text-yellow-800">
-                          No Collectors Available
-                        </h3>
-                        <div className="mt-2 text-sm text-yellow-700">
-                          <p>
-                            To create collection tickets, you need to have users with the "collector" role.
-                            Go to the user management sidebar and assign the collector role to users who will handle collections.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {customers.length === 0 && (
-                  <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
-                    <div className="flex">
-                      <AlertCircle className="h-5 w-5 text-blue-400" />
-                      <div className="ml-3">
-                        <h3 className="text-sm font-medium text-blue-800">
-                          No Customers Found
-                        </h3>
-                        <div className="mt-2 text-sm text-blue-700">
-                          <p>
-                            Make sure customers are synced from Acumatica. Check the Sync Status page.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* System Stats */}
-                {(collectors.length > 0 || customers.length > 0) && (
-                  <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-gray-900">{customers.length}</p>
-                      <p className="text-sm text-gray-600">Total Customers</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-blue-600">{collectors.length}</p>
-                      <p className="text-sm text-gray-600">Collectors</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-gray-900">{tickets.length}</p>
-                      <p className="text-sm text-gray-600">Active Tickets</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="relative" ref={dropdownRef}>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Customer {searchTerm && `(${filteredCustomers.length} of ${customers.length} shown)`}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Search customers by name or ID..."
-                    value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value);
-                      setShowCustomerDropdown(true);
-                    }}
-                    onFocus={() => setShowCustomerDropdown(true)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2"
-                  />
-                  {selectedCustomer && (
-                    <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
-                      <span className="text-sm font-medium text-blue-900">
-                        Selected: {customers.find(c => c.customer_id === selectedCustomer)?.customer_name} ({selectedCustomer})
-                      </span>
-                      <button
-                        onClick={() => {
-                          setSelectedCustomer('');
-                          setCustomerInvoices([]);
-                          setSelectedInvoices([]);
-                          setSearchTerm('');
-                        }}
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                  {showCustomerDropdown && searchTerm && (
-                    <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                      {filteredCustomers.length === 0 ? (
-                        <div className="p-4 text-center text-gray-500">
-                          No customers found matching "{searchTerm}"
-                        </div>
-                      ) : (
-                        filteredCustomers.slice(0, 100).map(customer => (
-                          <div
-                            key={customer.customer_id}
-                            onClick={() => {
-                              setSelectedCustomer(customer.customer_id);
-                              setShowCustomerDropdown(false);
-                            }}
-                            className="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
-                          >
-                            <div className="font-medium text-gray-900">{customer.customer_name}</div>
-                            <div className="text-sm text-gray-500">{customer.customer_id}</div>
+                        {ti.invoice && (
+                          <div className="text-sm text-gray-500">
+                            Due: {new Date(ti.invoice.due_date).toLocaleDateString()}
                           </div>
-                        ))
-                      )}
-                      {filteredCustomers.length > 100 && (
-                        <div className="p-3 text-center text-sm text-gray-500 bg-gray-50">
-                          Showing first 100 of {filteredCustomers.length} results. Keep typing to narrow down...
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {selectedCustomer && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Filter Invoices
-                      </label>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setInvoiceFilter('all')}
-                          className={`px-4 py-2 rounded-lg ${
-                            invoiceFilter === 'all'
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
-                        >
-                          All
-                        </button>
-                        <button
-                          onClick={() => setInvoiceFilter('latest')}
-                          className={`px-4 py-2 rounded-lg ${
-                            invoiceFilter === 'latest'
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
-                        >
-                          Latest
-                        </button>
-                        <button
-                          onClick={() => setInvoiceFilter('oldest')}
-                          className={`px-4 py-2 rounded-lg ${
-                            invoiceFilter === 'oldest'
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
-                        >
-                          Oldest Owed
-                        </button>
-                        <button
-                          onClick={() => setInvoiceFilter('highest')}
-                          className={`px-4 py-2 rounded-lg ${
-                            invoiceFilter === 'highest'
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
-                        >
-                          Highest Balance
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm font-medium text-gray-700">
-                          Select Invoices ({selectedInvoices.length} selected)
-                        </label>
-                        {customerInvoices.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={handleSelectAllInvoices}
-                            className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                          >
-                            {selectedInvoices.length === customerInvoices.length ? 'Deselect All' : 'Select All'}
-                          </button>
                         )}
                       </div>
-                      <div className="max-h-96 overflow-y-auto border border-gray-300 rounded-lg">
-                        {customerInvoices.map(invoice => (
-                          <div
-                            key={invoice.reference_number}
-                            onClick={() => toggleInvoiceSelection(invoice.reference_number)}
-                            className={`p-3 border-b border-gray-200 cursor-pointer hover:bg-gray-50 ${
-                              selectedInvoices.includes(invoice.reference_number)
-                                ? 'bg-blue-50 border-l-4 border-l-blue-600'
-                                : ''
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="font-medium text-gray-900">
-                                  Invoice #{invoice.reference_number}
-                                </p>
-                                <p className="text-sm text-gray-500">
-                                  Due: {new Date(invoice.due_date).toLocaleDateString()}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-semibold text-gray-900">
-                                  ${invoice.balance.toFixed(2)}
-                                </p>
-                                <p className="text-sm text-gray-500">
-                                  of ${invoice.amount.toFixed(2)}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
                     </div>
-                  </>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Assign To
-                  </label>
-                  <select
-                    value={selectedCollector}
-                    onChange={(e) => setSelectedCollector(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  >
-                    <option value="">Choose a collector...</option>
-                    {collectors.map(collector => (
-                      <option key={collector.id} value={collector.id}>
-                        {collector.email} - {collector.role.charAt(0).toUpperCase() + collector.role.slice(1)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Priority
-                  </label>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Notes
-                  </label>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    placeholder="Add any notes about this collection ticket..."
-                  />
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleCreateTicket}
-                    disabled={loading || !selectedCustomer || !selectedCollector || selectedInvoices.length === 0}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {loading ? 'Creating...' : 'Create Ticket'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveTab('list');
-                      setSelectedCustomer('');
-                      setCustomerInvoices([]);
-                      setSelectedInvoices([]);
-                      setSelectedCollector('');
-                      setPriority('medium');
-                      setNotes('');
-                    }}
-                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
+                  ))}
                 </div>
               </div>
-            )}
+
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  Status History
+                </h3>
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {ticketDetails.statusHistory.length === 0 ? (
+                    <p className="text-sm text-gray-500">No status changes yet</p>
+                  ) : (
+                    ticketDetails.statusHistory.map((sh) => (
+                      <div key={sh.id} className="flex gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            {sh.old_status && (
+                              <>
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(sh.old_status)}`}>
+                                  {sh.old_status}
+                                </span>
+                                <ChevronRight className="w-4 h-4 text-gray-400" />
+                              </>
+                            )}
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(sh.new_status)}`}>
+                              {sh.new_status}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            Changed by {sh.changer_name || 'Unknown'} on {new Date(sh.changed_at).toLocaleString()}
+                          </p>
+                          {sh.notes && (
+                            <p className="text-sm text-gray-500 mt-1 italic">{sh.notes}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5" />
+                  Activity Log
+                </h3>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {ticketDetails.activityLog.length === 0 ? (
+                    <p className="text-sm text-gray-500">No activity yet</p>
+                  ) : (
+                    ticketDetails.activityLog.map((al) => (
+                      <div key={al.id} className="flex gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">{al.description}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {al.creator_name || 'Unknown'} • {new Date(al.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="border-b border-gray-200">
+              <div className="flex">
+                <button
+                  onClick={() => setActiveTab('list')}
+                  className={`px-6 py-3 font-medium ${
+                    activeTab === 'list'
+                      ? 'border-b-2 border-blue-600 text-blue-600'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  All Tickets ({tickets.length})
+                </button>
+                <button
+                  onClick={() => setActiveTab('create')}
+                  className={`px-6 py-3 font-medium ${
+                    activeTab === 'create'
+                      ? 'border-b-2 border-blue-600 text-blue-600'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Create Ticket
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {error && (
+                <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4">
+                  <div className="flex">
+                    <AlertCircle className="h-5 w-5 text-red-400" />
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-red-800">Error Loading Data</h3>
+                      <div className="mt-2 text-sm text-red-700">
+                        <p>{error}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {activeTab === 'list' ? (
+                <div className="space-y-4">
+                  {tickets.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Ticket className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-500">No tickets created yet</p>
+                    </div>
+                  ) : (
+                    tickets.map(ticket => (
+                      <div
+                        key={ticket.id}
+                        onClick={() => loadTicketDetails(ticket)}
+                        className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer hover:border-blue-300"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="font-mono font-semibold text-gray-900">
+                                {ticket.ticket_number}
+                              </span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getTicketTypeColor(ticket.ticket_type)}`}>
+                                {ticket.ticket_type}
+                              </span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(ticket.status)}`}>
+                                {ticket.status}
+                              </span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(ticket.priority)}`}>
+                                {ticket.priority}
+                              </span>
+                            </div>
+                            <h3 className="font-semibold text-lg text-gray-900 mb-1">
+                              {ticket.customer_name}
+                            </h3>
+                            <p className="text-sm text-gray-500 mb-2">
+                              Customer ID: {ticket.customer_id}
+                            </p>
+                            <div className="flex items-center gap-4 text-sm text-gray-600">
+                              <div className="flex items-center gap-1">
+                                <User className="w-4 h-4" />
+                                <span>{ticket.collector_name}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <FileText className="w-4 h-4" />
+                                <span>{ticket.invoice_count} invoices</span>
+                              </div>
+                            </div>
+                            {ticket.notes && (
+                              <p className="mt-2 text-sm text-gray-600 italic line-clamp-2">
+                                {ticket.notes}
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-right text-sm text-gray-500">
+                            <p className="mb-1">Created: {new Date(ticket.created_at).toLocaleDateString()}</p>
+                            {ticket.assigned_at && (
+                              <p className="mb-1">Assigned: {new Date(ticket.assigned_at).toLocaleDateString()}</p>
+                            )}
+                            {ticket.assigner_email && (
+                              <p className="text-xs text-gray-400">by {ticket.assigner_email}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {collectors.length === 0 && (
+                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                      <div className="flex">
+                        <AlertCircle className="h-5 w-5 text-yellow-400" />
+                        <div className="ml-3">
+                          <h3 className="text-sm font-medium text-yellow-800">
+                            No Collectors Available
+                          </h3>
+                          <div className="mt-2 text-sm text-yellow-700">
+                            <p>
+                              To create collection tickets, you need to have users with the "collector" role.
+                              Go to the user management sidebar and assign the collector role to users who will handle collections.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {customers.length === 0 && (
+                    <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
+                      <div className="flex">
+                        <AlertCircle className="h-5 w-5 text-blue-400" />
+                        <div className="ml-3">
+                          <h3 className="text-sm font-medium text-blue-800">
+                            No Customers Found
+                          </h3>
+                          <div className="mt-2 text-sm text-blue-700">
+                            <p>
+                              Make sure customers are synced from Acumatica. Check the Sync Status page.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {(collectors.length > 0 || customers.length > 0) && (
+                    <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-gray-900">{customers.length}</p>
+                        <p className="text-sm text-gray-600">Total Customers</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-blue-600">{collectors.length}</p>
+                        <p className="text-sm text-gray-600">Collectors</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-gray-900">{tickets.length}</p>
+                        <p className="text-sm text-gray-600">Active Tickets</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Ticket Type
+                    </label>
+                    <select
+                      value={ticketType}
+                      onChange={(e) => setTicketType(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    >
+                      <option value="overdue payment">Overdue Payment</option>
+                      <option value="partial payment">Partial Payment</option>
+                      <option value="chargeback">Chargeback</option>
+                      <option value="settlement">Settlement</option>
+                    </select>
+                  </div>
+
+                  <div className="relative" ref={dropdownRef}>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Customer {searchTerm && `(${filteredCustomers.length} of ${customers.length} shown)`}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Search customers by name or ID..."
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        setShowCustomerDropdown(true);
+                      }}
+                      onFocus={() => setShowCustomerDropdown(true)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2"
+                    />
+                    {selectedCustomer && (
+                      <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+                        <span className="text-sm font-medium text-blue-900">
+                          Selected: {customers.find(c => c.customer_id === selectedCustomer)?.customer_name} ({selectedCustomer})
+                        </span>
+                        <button
+                          onClick={() => {
+                            setSelectedCustomer('');
+                            setCustomerInvoices([]);
+                            setSelectedInvoices([]);
+                            setSearchTerm('');
+                          }}
+                          className="text-blue-600 hover:text-blue-800"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                    {showCustomerDropdown && searchTerm && (
+                      <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                        {filteredCustomers.length === 0 ? (
+                          <div className="p-4 text-center text-gray-500">
+                            No customers found matching "{searchTerm}"
+                          </div>
+                        ) : (
+                          filteredCustomers.slice(0, 100).map(customer => (
+                            <div
+                              key={customer.customer_id}
+                              onClick={() => {
+                                setSelectedCustomer(customer.customer_id);
+                                setShowCustomerDropdown(false);
+                              }}
+                              className="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="font-medium text-gray-900">{customer.customer_name}</div>
+                              <div className="text-sm text-gray-500">{customer.customer_id}</div>
+                            </div>
+                          ))
+                        )}
+                        {filteredCustomers.length > 100 && (
+                          <div className="p-3 text-center text-sm text-gray-500 bg-gray-50">
+                            Showing first 100 of {filteredCustomers.length} results. Keep typing to narrow down...
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedCustomer && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Filter Invoices
+                        </label>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setInvoiceFilter('all')}
+                            className={`px-4 py-2 rounded-lg ${
+                              invoiceFilter === 'all'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            All
+                          </button>
+                          <button
+                            onClick={() => setInvoiceFilter('latest')}
+                            className={`px-4 py-2 rounded-lg ${
+                              invoiceFilter === 'latest'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            Latest
+                          </button>
+                          <button
+                            onClick={() => setInvoiceFilter('oldest')}
+                            className={`px-4 py-2 rounded-lg ${
+                              invoiceFilter === 'oldest'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            Oldest Owed
+                          </button>
+                          <button
+                            onClick={() => setInvoiceFilter('highest')}
+                            className={`px-4 py-2 rounded-lg ${
+                              invoiceFilter === 'highest'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            Highest Balance
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-sm font-medium text-gray-700">
+                            Select Invoices ({selectedInvoices.length} selected)
+                          </label>
+                          {customerInvoices.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleSelectAllInvoices}
+                              className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                            >
+                              {selectedInvoices.length === customerInvoices.length ? 'Deselect All' : 'Select All'}
+                            </button>
+                          )}
+                        </div>
+                        <div className="max-h-96 overflow-y-auto border border-gray-300 rounded-lg">
+                          {customerInvoices.map(invoice => (
+                            <div
+                              key={invoice.reference_number}
+                              onClick={() => toggleInvoiceSelection(invoice.reference_number)}
+                              className={`p-3 border-b border-gray-200 cursor-pointer hover:bg-gray-50 ${
+                                selectedInvoices.includes(invoice.reference_number)
+                                  ? 'bg-blue-50 border-l-4 border-l-blue-600'
+                                  : ''
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium text-gray-900">
+                                    Invoice #{invoice.reference_number}
+                                  </p>
+                                  <p className="text-sm text-gray-500">
+                                    Due: {new Date(invoice.due_date).toLocaleDateString()}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-semibold text-gray-900">
+                                    ${invoice.balance.toFixed(2)}
+                                  </p>
+                                  <p className="text-sm text-gray-500">
+                                    of ${invoice.amount.toFixed(2)}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Assign To
+                    </label>
+                    <select
+                      value={selectedCollector}
+                      onChange={(e) => setSelectedCollector(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    >
+                      <option value="">Choose a collector...</option>
+                      {collectors.map(collector => (
+                        <option key={collector.id} value={collector.id}>
+                          {collector.full_name || collector.email} - {collector.role.charAt(0).toUpperCase() + collector.role.slice(1)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Priority
+                    </label>
+                    <select
+                      value={priority}
+                      onChange={(e) => setPriority(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="urgent">Urgent</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Notes
+                    </label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      placeholder="Add any notes about this collection ticket..."
+                    />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleCreateTicket}
+                      disabled={loading || !selectedCustomer || !selectedCollector || selectedInvoices.length === 0}
+                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loading ? 'Creating...' : 'Create Ticket'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab('list');
+                        setSelectedCustomer('');
+                        setCustomerInvoices([]);
+                        setSelectedInvoices([]);
+                        setSelectedCollector('');
+                        setPriority('medium');
+                        setTicketType('overdue payment');
+                        setNotes('');
+                      }}
+                      className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function ChevronRight({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
   );
 }

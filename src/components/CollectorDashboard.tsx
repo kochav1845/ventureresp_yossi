@@ -13,6 +13,7 @@ interface Assignment {
   ticket_number: string | null;
   ticket_status: string | null;
   ticket_priority: string | null;
+  ticket_type: string | null;
   customer: string;
   customer_name: string;
   date: string;
@@ -30,6 +31,7 @@ interface TicketGroup {
   ticket_number: string;
   ticket_status: string;
   ticket_priority: string;
+  ticket_type: string;
   customer_id: string;
   customer_name: string;
   invoices: Assignment[];
@@ -98,6 +100,7 @@ export default function CollectorDashboard() {
                 ticket_number: assignment.ticket_number || '',
                 ticket_status: assignment.ticket_status || '',
                 ticket_priority: assignment.ticket_priority || '',
+                ticket_type: assignment.ticket_type || 'overdue payment',
                 customer_id: assignment.customer,
                 customer_name: assignment.customer_name,
                 invoices: []
@@ -137,10 +140,22 @@ export default function CollectorDashboard() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'open': return 'bg-blue-100 text-blue-800';
-      case 'in_progress': return 'bg-purple-100 text-purple-800';
-      case 'resolved': return 'bg-green-100 text-green-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'promised': return 'bg-cyan-100 text-cyan-800';
+      case 'paid': return 'bg-green-100 text-green-800';
+      case 'disputed': return 'bg-red-100 text-red-800';
       case 'closed': return 'bg-gray-100 text-gray-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getTicketTypeColor = (type: string) => {
+    switch (type) {
+      case 'overdue payment': return 'bg-red-50 text-red-700 border-red-200';
+      case 'partial payment': return 'bg-yellow-50 text-yellow-700 border-yellow-200';
+      case 'chargeback': return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'settlement': return 'bg-green-50 text-green-700 border-green-200';
+      default: return 'bg-gray-50 text-gray-700 border-gray-200';
     }
   };
 
@@ -330,6 +345,9 @@ export default function CollectorDashboard() {
                             <Ticket className="w-5 h-5" />
                             <span className="font-mono font-bold text-lg">
                               {ticket.ticket_number}
+                            </span>
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getTicketTypeColor(ticket.ticket_type)}`}>
+                              {ticket.ticket_type}
                             </span>
                             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(ticket.ticket_status)}`}>
                               {ticket.ticket_status.replace('_', ' ').toUpperCase()}
