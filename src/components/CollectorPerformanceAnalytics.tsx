@@ -100,6 +100,13 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
           .select('*', { count: 'exact', head: true })
           .eq('assigned_collector_id', collector.id);
 
+        // Count invoices directly assigned to this collector
+        const { count: directInvoiceCount } = await supabase
+          .from('invoice_assignments')
+          .select('*', { count: 'exact', head: true })
+          .eq('assigned_collector_id', collector.id);
+
+        // Also count invoices from customer assignments
         const { data: assignments } = await supabase
           .from('collector_customer_assignments')
           .select('customer_id')
@@ -107,7 +114,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
 
         const customerIds = assignments?.map(a => a.customer_id) || [];
 
-        let invoiceCount = 0;
+        let customerInvoiceCount = 0;
         if (customerIds.length > 0) {
           const { count } = await supabase
             .from('acumatica_invoices')
@@ -115,12 +122,18 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
             .in('customer', customerIds)
             .eq('status', 'Open');
 
-          invoiceCount = count || 0;
+          customerInvoiceCount = count || 0;
         }
+
+        // Total invoices is sum of both direct and customer-based assignments
+        const totalInvoices = (directInvoiceCount || 0) + customerInvoiceCount;
+
+        // Use email as name if full_name is not set
+        const displayName = collector.full_name || collector.email?.split('@')[0] || 'Unknown';
 
         stats.push({
           user_id: collector.id,
-          full_name: collector.full_name || 'Unknown',
+          full_name: displayName,
           email: collector.email || '',
           role: collector.role || '',
           total_changes: activities?.length || 0,
@@ -131,7 +144,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
           orange_to_green: orangeToGreen,
           working_days: uniqueDays,
           tickets_assigned: ticketsCount || 0,
-          invoices_assigned: invoiceCount
+          invoices_assigned: totalInvoices
         });
       }
 
