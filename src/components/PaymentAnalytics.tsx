@@ -3293,8 +3293,14 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                           <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-200/50 max-w-xs truncate" title={payment.description || '-'}>
                             {payment.description || '-'}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-700 max-w-md truncate">
-                            <span className="truncate">{payment.invoice_applications}</span>
+                          <td className="px-4 py-3 text-sm text-gray-600 max-w-md">
+                            {applications.length > 0 ? (
+                              <span className="text-blue-600 font-medium">
+                                {applications.length} invoice{applications.length !== 1 ? 's' : ''} applied
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 italic">No applications</span>
+                            )}
                           </td>
                         </tr>
                         {applications.length > 0 && applications.map((app, appIndex) => (
