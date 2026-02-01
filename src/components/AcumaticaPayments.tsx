@@ -22,7 +22,6 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
   const [displayedPayments, setDisplayedPayments] = useState<any[]>([]);
   const [paymentApplications, setPaymentApplications] = useState<Map<string, any[]>>(new Map());
   const [paymentAttachments, setPaymentAttachments] = useState<Map<string, any[]>>(new Map());
-  const [expandedApplications, setExpandedApplications] = useState<Set<string>>(new Set());
   const [invoiceExistence, setInvoiceExistence] = useState<Map<string, boolean>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -381,18 +380,6 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
 
       setFetchingPaymentId(null);
     }
-  };
-
-  const toggleApplicationsExpanded = (paymentId: string) => {
-    setExpandedApplications(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(paymentId)) {
-        newSet.delete(paymentId);
-      } else {
-        newSet.add(paymentId);
-      }
-      return newSet;
-    });
   };
 
   const fetchPaymentDetails = async (paymentId: string) => {
@@ -1001,7 +988,6 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
                   {filteredPayments.map((payment, index) => {
                     const applications = paymentApplications.get(payment.id) || [];
                     const attachments = paymentAttachments.get(payment.id) || [];
-                    const isExpanded = expandedApplications.has(payment.id);
 
                     return (
                       <React.Fragment key={payment.id}>
@@ -1046,16 +1032,12 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
                           <td className="py-3 px-4 text-blue-600 text-sm text-right font-medium border-r border-gray-300">
                             {formatCurrency(payment.available_balance)}
                           </td>
-                          <td className="py-3 px-4 text-sm text-center border-r border-gray-300" onClick={(e) => e.stopPropagation()}>
+                          <td className="py-3 px-4 text-sm text-center border-r border-gray-300">
                             {applications.length > 0 ? (
-                              <button
-                                onClick={() => toggleApplicationsExpanded(payment.id)}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-medium transition-colors"
-                                title="Click to view applications"
-                              >
+                              <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium">
                                 <FileText className="w-3.5 h-3.5" />
                                 {applications.length} app{applications.length !== 1 ? 's' : ''}
-                              </button>
+                              </span>
                             ) : (
                               <span className="text-gray-400 text-xs">None</span>
                             )}
@@ -1124,7 +1106,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
                             )}
                           </td>
                         </tr>
-                        {isExpanded && applications.length > 0 && (
+                        {applications.length > 0 && (
                           <tr key={`${payment.id}-apps`} className="bg-blue-50">
                             <td colSpan={12} className="py-4 px-6">
                               <div className="space-y-2">
