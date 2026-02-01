@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, Menu, X, ExternalLink, ArrowDown, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, Menu, X, ExternalLink, ArrowDown, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { batchedInQuery } from '../lib/batchedQuery';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
@@ -167,8 +167,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [excludedCustomersWithReasons, setExcludedCustomersWithReasons] = useState<Map<string, { notes: string; excluded_at: string }>>(new Map());
   const [exclusionBannerDismissed, setExclusionBannerDismissed] = useState(false);
 
-  // Expandable payment rows
-  const [expandedPayments, setExpandedPayments] = useState<Set<string>>(new Set());
+  // Payment applications cache
   const [paymentApplicationsCache, setPaymentApplicationsCache] = useState<Map<string, InvoiceApplication[]>>(new Map());
 
   // Intersection observer for infinite scroll
@@ -1661,63 +1660,68 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     setExpandedCustomers(newExpanded);
   };
 
-  const togglePaymentExpansion = async (payment: PaymentRow) => {
-    const newExpanded = new Set(expandedPayments);
+  const loadPaymentApplications = async (paymentIds: string[]) => {
+    // Filter out payments that are already cached
+    const uncachedIds = paymentIds.filter(id => !paymentApplicationsCache.has(id));
 
-    if (newExpanded.has(payment.id)) {
-      newExpanded.delete(payment.id);
-      setExpandedPayments(newExpanded);
-    } else {
-      newExpanded.add(payment.id);
-      setExpandedPayments(newExpanded);
+    if (uncachedIds.length === 0) return;
 
-      // Load invoice applications if not already cached
-      if (!paymentApplicationsCache.has(payment.id)) {
-        try {
-          const { data: applications, error } = await supabase
-            .from('payment_invoice_applications')
-            .select('*')
-            .eq('payment_id', payment.id)
-            .order('invoice_date', { ascending: false });
+    try {
+      const { data: applications, error } = await supabase
+        .from('payment_invoice_applications')
+        .select('*')
+        .in('payment_id', uncachedIds)
+        .order('invoice_date', { ascending: false });
 
-          if (error) throw error;
+      if (error) throw error;
 
-          if (applications && applications.length > 0) {
-            const invoiceRefs = applications
-              .map(app => app.invoice_reference_number)
-              .filter(Boolean);
+      if (applications && applications.length > 0) {
+        const invoiceRefs = [...new Set(applications
+          .map(app => app.invoice_reference_number)
+          .filter(Boolean))];
 
-            const { data: invoices } = await supabase
-              .from('acumatica_invoices')
-              .select('id, reference_number, date, balance, amount, status, due_date, customer')
-              .in('reference_number', invoiceRefs);
+        const { data: invoices } = await supabase
+          .from('acumatica_invoices')
+          .select('id, reference_number, date, balance, amount, status, due_date, customer')
+          .in('reference_number', invoiceRefs);
 
-            const invoiceMap = new Map(
-              invoices?.map(inv => [inv.reference_number, inv]) || []
-            );
+        const invoiceMap = new Map(
+          invoices?.map(inv => [inv.reference_number, inv]) || []
+        );
 
-            const enrichedApplications: InvoiceApplication[] = applications.map(app => {
-              const invoice = invoiceMap.get(app.invoice_reference_number);
-              return {
-                ...app,
-                invoice_balance: invoice?.balance || 0,
-                invoice_amount: invoice?.amount || 0,
-                invoice_status: invoice?.status || '',
-                invoice_due_date: invoice?.due_date || null,
-                invoice_id: invoice?.id || null
-              };
-            });
+        const newCache = new Map(paymentApplicationsCache);
 
-            const newCache = new Map(paymentApplicationsCache);
-            newCache.set(payment.id, enrichedApplications);
-            setPaymentApplicationsCache(newCache);
-          }
-        } catch (error) {
-          console.error('Error loading invoice applications:', error);
-        }
+        // Group applications by payment_id
+        uncachedIds.forEach(paymentId => {
+          const paymentApps = applications.filter(app => app.payment_id === paymentId);
+          const enrichedApplications: InvoiceApplication[] = paymentApps.map(app => {
+            const invoice = invoiceMap.get(app.invoice_reference_number);
+            return {
+              ...app,
+              invoice_balance: invoice?.balance || 0,
+              invoice_amount: invoice?.amount || 0,
+              invoice_status: invoice?.status || '',
+              invoice_due_date: invoice?.due_date || null,
+              invoice_id: invoice?.id || null
+            };
+          });
+          newCache.set(paymentId, enrichedApplications);
+        });
+
+        setPaymentApplicationsCache(newCache);
       }
+    } catch (error) {
+      console.error('Error loading invoice applications:', error);
     }
   };
+
+  // Auto-load applications for visible payments
+  useEffect(() => {
+    if (filteredPayments.length > 0) {
+      const paymentIds = filteredPayments.map(p => p.id);
+      loadPaymentApplications(paymentIds);
+    }
+  }, [filteredPayments.map(p => p.id).join(',')]);
 
   const loadInvoiceApplications = async (payment: PaymentRow) => {
     setSelectedPayment(payment);
@@ -3239,7 +3243,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                 </thead>
                 <tbody className="bg-white">
                   {filteredPayments.map((payment, index) => {
-                    const isExpanded = expandedPayments.has(payment.id);
                     const applications = paymentApplicationsCache.get(payment.id) || [];
 
                     return (
@@ -3250,17 +3253,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                           className="hover:bg-gray-50 transition-colors border-b border-gray-200"
                         >
                           <td className="px-4 py-3 border-r border-gray-200/50">
-                            <button
-                              onClick={() => togglePaymentExpansion(payment)}
-                              className="p-1 hover:bg-gray-200 rounded transition-colors"
-                              title={isExpanded ? "Collapse invoices" : "Expand invoices"}
-                            >
-                              {isExpanded ? (
-                                <ChevronUp className="w-4 h-4 text-gray-600" />
-                              ) : (
-                                <ChevronDown className="w-4 h-4 text-gray-600" />
-                              )}
-                            </button>
+                            <span className="inline-flex items-center justify-center w-6 h-6 text-xs font-semibold text-gray-600">
+                              {applications.length || '-'}
+                            </span>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
                             {formatDateString(payment.date)}
@@ -3304,7 +3299,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                             <span className="truncate">{payment.invoice_applications}</span>
                           </td>
                         </tr>
-                        {isExpanded && applications.map((app, appIndex) => (
+                        {applications.map((app, appIndex) => (
                           <tr
                             key={`${payment.id}-invoice-${appIndex}`}
                             className="bg-blue-50/40 border-b border-blue-100 hover:bg-blue-100/40 transition-colors"
