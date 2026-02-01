@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, Menu, X, ExternalLink, ArrowDown, EyeOff } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, Menu, X, ExternalLink, ArrowDown, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { batchedInQuery } from '../lib/batchedQuery';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
@@ -166,6 +166,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [excludedCustomerIds, setExcludedCustomerIds] = useState<Set<string>>(new Set());
   const [excludedCustomersWithReasons, setExcludedCustomersWithReasons] = useState<Map<string, { notes: string; excluded_at: string }>>(new Map());
   const [exclusionBannerDismissed, setExclusionBannerDismissed] = useState(false);
+
+  // Expandable payment rows
+  const [expandedPayments, setExpandedPayments] = useState<Set<string>>(new Set());
+  const [paymentApplicationsCache, setPaymentApplicationsCache] = useState<Map<string, InvoiceApplication[]>>(new Map());
 
   // Intersection observer for infinite scroll
   const observer = useRef<IntersectionObserver | null>(null);
@@ -1655,6 +1659,64 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       newExpanded.add(customerName);
     }
     setExpandedCustomers(newExpanded);
+  };
+
+  const togglePaymentExpansion = async (payment: PaymentRow) => {
+    const newExpanded = new Set(expandedPayments);
+
+    if (newExpanded.has(payment.id)) {
+      newExpanded.delete(payment.id);
+      setExpandedPayments(newExpanded);
+    } else {
+      newExpanded.add(payment.id);
+      setExpandedPayments(newExpanded);
+
+      // Load invoice applications if not already cached
+      if (!paymentApplicationsCache.has(payment.id)) {
+        try {
+          const { data: applications, error } = await supabase
+            .from('payment_invoice_applications')
+            .select('*')
+            .eq('payment_id', payment.id)
+            .order('invoice_date', { ascending: false });
+
+          if (error) throw error;
+
+          if (applications && applications.length > 0) {
+            const invoiceRefs = applications
+              .map(app => app.invoice_reference_number)
+              .filter(Boolean);
+
+            const { data: invoices } = await supabase
+              .from('acumatica_invoices')
+              .select('id, reference_number, date, balance, amount, status, due_date, customer')
+              .in('reference_number', invoiceRefs);
+
+            const invoiceMap = new Map(
+              invoices?.map(inv => [inv.reference_number, inv]) || []
+            );
+
+            const enrichedApplications: InvoiceApplication[] = applications.map(app => {
+              const invoice = invoiceMap.get(app.invoice_reference_number);
+              return {
+                ...app,
+                invoice_balance: invoice?.balance || 0,
+                invoice_amount: invoice?.amount || 0,
+                invoice_status: invoice?.status || '',
+                invoice_due_date: invoice?.due_date || null,
+                invoice_id: invoice?.id || null
+              };
+            });
+
+            const newCache = new Map(paymentApplicationsCache);
+            newCache.set(payment.id, enrichedApplications);
+            setPaymentApplicationsCache(newCache);
+          }
+        } catch (error) {
+          console.error('Error loading invoice applications:', error);
+        }
+      }
+    }
   };
 
   const loadInvoiceApplications = async (payment: PaymentRow) => {
@@ -3159,6 +3221,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
               <table className="divide-y divide-gray-200" style={{ minWidth: '1400px', width: 'max-content' }}>
                 <thead>
                   <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">
+                      <div className="w-8"></div>
+                    </th>
                     <SortableHeader field="date" label="Date" />
                     <SortableHeader field="reference_number" label="Reference" />
                     <SortableHeader field="customer_name" label="Customer" />
@@ -3172,68 +3237,148 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                     <SortableHeader field="invoice_applications" label="Applications" />
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredPayments.map((payment, index) => (
-                    <tr
-                      key={payment.id}
-                      ref={index === filteredPayments.length - 1 ? lastPaymentRef : null}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
-                        {formatDateString(payment.date)}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 border-r border-gray-200/50">
-                        {payment.reference_number}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-200/50 max-w-xs truncate" title={payment.customer_name}>
-                        {payment.customer_name}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
-                        {payment.payment_method}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
-                        {payment.type}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-600 border-r border-gray-200/50">
-                        {formatCurrency(payment.payment_amount)}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-blue-600 border-r border-gray-200/50">
-                        {formatCurrency(payment.total_applied)}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
-                        {formatCurrency(payment.available_balance)}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap border-r border-gray-200/50">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded ${
-                          payment.status === 'Open'
-                            ? 'bg-green-500/20 text-green-600'
-                            : payment.status === 'Closed'
-                            ? 'bg-blue-500/20 text-blue-600'
-                            : 'bg-gray-500/20 text-gray-600'
-                        }`}>
-                          {payment.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-200/50 max-w-xs truncate" title={payment.description || '-'}>
-                        {payment.description || '-'}
-                      </td>
-                      <td
-                        className="px-4 py-3 text-sm text-gray-700 max-w-md truncate cursor-pointer hover:text-blue-600 hover:bg-gray-50 transition-colors"
-                        title="Click to view invoice details"
-                        onClick={() => loadInvoiceApplications(payment)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="truncate">{payment.invoice_applications}</span>
-                          {payment.invoice_applications !== 'None' && (
-                            <ExternalLink className="w-4 h-4 flex-shrink-0" />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className="bg-white">
+                  {filteredPayments.map((payment, index) => {
+                    const isExpanded = expandedPayments.has(payment.id);
+                    const applications = paymentApplicationsCache.get(payment.id) || [];
+
+                    return (
+                      <>
+                        <tr
+                          key={payment.id}
+                          ref={index === filteredPayments.length - 1 ? lastPaymentRef : null}
+                          className="hover:bg-gray-50 transition-colors border-b border-gray-200"
+                        >
+                          <td className="px-4 py-3 border-r border-gray-200/50">
+                            <button
+                              onClick={() => togglePaymentExpansion(payment)}
+                              className="p-1 hover:bg-gray-200 rounded transition-colors"
+                              title={isExpanded ? "Collapse invoices" : "Expand invoices"}
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="w-4 h-4 text-gray-600" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-gray-600" />
+                              )}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
+                            {formatDateString(payment.date)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-700 border-r border-gray-200/50">
+                            {payment.reference_number}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-200/50 max-w-xs truncate" title={payment.customer_name}>
+                            {payment.customer_name}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
+                            {payment.payment_method}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
+                            {payment.type}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-600 border-r border-gray-200/50">
+                            {formatCurrency(payment.payment_amount)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-blue-600 border-r border-gray-200/50">
+                            {formatCurrency(payment.total_applied)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
+                            {formatCurrency(payment.available_balance)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap border-r border-gray-200/50">
+                            <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                              payment.status === 'Open'
+                                ? 'bg-green-500/20 text-green-600'
+                                : payment.status === 'Closed'
+                                ? 'bg-blue-500/20 text-blue-600'
+                                : 'bg-gray-500/20 text-gray-600'
+                            }`}>
+                              {payment.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-200/50 max-w-xs truncate" title={payment.description || '-'}>
+                            {payment.description || '-'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 max-w-md truncate">
+                            <span className="truncate">{payment.invoice_applications}</span>
+                          </td>
+                        </tr>
+                        {isExpanded && applications.map((app, appIndex) => (
+                          <tr
+                            key={`${payment.id}-invoice-${appIndex}`}
+                            className="bg-blue-50/40 border-b border-blue-100 hover:bg-blue-100/40 transition-colors"
+                          >
+                            <td className="px-4 py-2 border-r border-blue-100/50"></td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600 border-r border-blue-100/50 pl-8">
+                              {app.invoice_date ? formatDateString(app.invoice_date) : '-'}
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-blue-700 font-medium border-r border-blue-100/50">
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={`/dashboard?invoice=${app.invoice_reference_number}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="hover:underline flex items-center gap-1"
+                                  title="View in system"
+                                >
+                                  {app.invoice_reference_number}
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                                <a
+                                  href={getAcumaticaInvoiceUrl(app.invoice_reference_number)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-500 hover:text-blue-700"
+                                  title="View in Acumatica"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2 text-sm text-gray-600 border-r border-blue-100/50" colSpan={2}>
+                              <span className="text-xs text-gray-500 italic">Invoice Details</span>
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600 border-r border-blue-100/50">
+                              {app.doc_type || 'Invoice'}
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-blue-600 border-r border-blue-100/50">
+                              {formatCurrency(app.amount_paid)}
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600 border-r border-blue-100/50">
+                              {app.invoice_amount ? formatCurrency(app.invoice_amount) : '-'}
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600 border-r border-blue-100/50">
+                              {app.invoice_balance !== undefined ? formatCurrency(app.invoice_balance) : '-'}
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap border-r border-blue-100/50">
+                              {app.invoice_status && (
+                                <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                                  app.invoice_status === 'Open'
+                                    ? 'bg-orange-500/20 text-orange-600'
+                                    : app.invoice_status === 'Closed'
+                                    ? 'bg-green-500/20 text-green-600'
+                                    : 'bg-gray-500/20 text-gray-600'
+                                }`}>
+                                  {app.invoice_status}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-sm text-gray-600 border-r border-blue-100/50">
+                              {app.invoice_due_date ? formatDateString(app.invoice_due_date) : '-'}
+                            </td>
+                            <td className="px-4 py-2 text-sm text-gray-500 italic">
+                              Applied to invoice
+                            </td>
+                          </tr>
+                        ))}
+                      </>
+                    );
+                  })}
                 </tbody>
                 <tfoot className="bg-gray-50 border-t-2 border-gray-300">
                   <tr>
+                    <td className="px-4 py-3 border-r border-gray-200"></td>
                     <td colSpan={5} className="px-4 py-3 text-sm font-semibold text-gray-700 border-r border-gray-200">
                       TOTAL ({filteredPayments.length} payments)
                     </td>
