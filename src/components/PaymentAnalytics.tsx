@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, Menu, X, ExternalLink, ArrowDown, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -1668,7 +1668,12 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       const paymentIds = filteredPayments.map(p => p.id);
       const uncachedIds = paymentIds.filter(id => !paymentApplicationsCache.has(id));
 
-      if (uncachedIds.length === 0) return;
+      if (uncachedIds.length === 0) {
+        console.log('All payments already cached');
+        return;
+      }
+
+      console.log(`Loading applications for ${uncachedIds.length} payments`);
 
       try {
         const { data: applications, error } = await supabase
@@ -1680,6 +1685,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           console.error('Error loading applications:', error);
           return;
         }
+
+        console.log(`Loaded ${applications?.length || 0} total applications`);
 
         const newCache = new Map(paymentApplicationsCache);
 
@@ -1696,10 +1703,12 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
           Object.entries(grouped).forEach(([paymentId, apps]) => {
             newCache.set(paymentId, apps);
+            console.log(`Payment ${paymentId}: ${apps.length} applications`);
           });
         }
 
         setPaymentApplicationsCache(newCache);
+        console.log('Cache updated, total entries:', newCache.size);
       } catch (error) {
         console.error('Error loading payment applications:', error);
       }
@@ -3230,16 +3239,20 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                   {filteredPayments.map((payment, index) => {
                     const applications = paymentApplicationsCache.get(payment.id) || [];
 
+                    // Debug logging
+                    if (index === 0) {
+                      console.log('First payment:', payment.id, 'Applications:', applications.length);
+                    }
+
                     return (
-                      <>
+                      <Fragment key={payment.id}>
                         <tr
-                          key={payment.id}
                           ref={index === filteredPayments.length - 1 ? lastPaymentRef : null}
                           className="hover:bg-gray-50 transition-colors border-b border-gray-200"
                         >
                           <td className="px-4 py-3 border-r border-gray-200/50">
-                            <span className="inline-flex items-center justify-center w-6 h-6 text-xs font-semibold text-gray-600">
-                              {applications.length || '-'}
+                            <span className="inline-flex items-center justify-center w-6 h-6 text-xs font-semibold text-gray-600 bg-blue-100 rounded">
+                              {applications.length || '0'}
                             </span>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-r border-gray-200/50">
@@ -3284,7 +3297,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                             <span className="truncate">{payment.invoice_applications}</span>
                           </td>
                         </tr>
-                        {applications.map((app, appIndex) => (
+                        {applications.length > 0 && applications.map((app, appIndex) => (
                           <tr
                             key={`${payment.id}-invoice-${appIndex}`}
                             className="bg-blue-50/40 border-b border-blue-100 hover:bg-blue-100/40 transition-colors"
@@ -3352,7 +3365,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                             </td>
                           </tr>
                         ))}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>
