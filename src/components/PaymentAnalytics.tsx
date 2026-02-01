@@ -1669,46 +1669,51 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       const uncachedIds = paymentIds.filter(id => !paymentApplicationsCache.has(id));
 
       if (uncachedIds.length === 0) {
-        console.log('All payments already cached');
         return;
       }
 
       console.log(`Loading applications for ${uncachedIds.length} payments`);
 
       try {
-        const { data: applications, error } = await supabase
-          .from('payment_invoice_applications')
-          .select('*')
-          .in('payment_id', uncachedIds);
-
-        if (error) {
-          console.error('Error loading applications:', error);
-          return;
-        }
-
-        console.log(`Loaded ${applications?.length || 0} total applications`);
-
         const newCache = new Map(paymentApplicationsCache);
 
         // Initialize all uncached IDs with empty arrays
         uncachedIds.forEach(id => newCache.set(id, []));
 
-        // Populate with actual data
-        if (applications && applications.length > 0) {
-          const grouped = applications.reduce((acc, app) => {
-            if (!acc[app.payment_id]) acc[app.payment_id] = [];
-            acc[app.payment_id].push(app as InvoiceApplication);
-            return acc;
-          }, {} as Record<string, InvoiceApplication[]>);
+        // Batch fetch to avoid URL length limits (max 100 IDs per query)
+        const batchSize = 100;
+        let totalApplications = 0;
 
-          Object.entries(grouped).forEach(([paymentId, apps]) => {
-            newCache.set(paymentId, apps);
-            console.log(`Payment ${paymentId}: ${apps.length} applications`);
-          });
+        for (let i = 0; i < uncachedIds.length; i += batchSize) {
+          const batch = uncachedIds.slice(i, i + batchSize);
+
+          const { data: applications, error } = await supabase
+            .from('payment_invoice_applications')
+            .select('*')
+            .in('payment_id', batch);
+
+          if (error) {
+            console.error('Error loading applications batch:', error);
+            continue;
+          }
+
+          if (applications && applications.length > 0) {
+            totalApplications += applications.length;
+
+            const grouped = applications.reduce((acc, app) => {
+              if (!acc[app.payment_id]) acc[app.payment_id] = [];
+              acc[app.payment_id].push(app as InvoiceApplication);
+              return acc;
+            }, {} as Record<string, InvoiceApplication[]>);
+
+            Object.entries(grouped).forEach(([paymentId, apps]) => {
+              newCache.set(paymentId, apps);
+            });
+          }
         }
 
+        console.log(`Loaded ${totalApplications} total applications in ${Math.ceil(uncachedIds.length / batchSize)} batches`);
         setPaymentApplicationsCache(newCache);
-        console.log('Cache updated, total entries:', newCache.size);
       } catch (error) {
         console.error('Error loading payment applications:', error);
       }
@@ -3238,11 +3243,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                 <tbody className="bg-white">
                   {filteredPayments.map((payment, index) => {
                     const applications = paymentApplicationsCache.get(payment.id) || [];
-
-                    // Debug logging
-                    if (index === 0) {
-                      console.log('First payment:', payment.id, 'Applications:', applications.length);
-                    }
 
                     return (
                       <Fragment key={payment.id}>
