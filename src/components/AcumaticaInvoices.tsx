@@ -240,11 +240,9 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   };
 
   useEffect(() => {
-    // If invoice parameter in URL, use that and clear the param
+    // If invoice parameter in URL, use that
     if (invoiceFromUrl) {
       setSearchTerm(invoiceFromUrl);
-      // Remove the invoice param from URL after setting it
-      setSearchParams({});
     } else {
       const savedSearchTerm = localStorage.getItem('invoiceSearchTerm');
       if (savedSearchTerm) {
