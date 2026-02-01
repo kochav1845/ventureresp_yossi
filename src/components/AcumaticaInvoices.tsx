@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, FileText, User, ChevronLeft, ChevronRight, MessageSquare, Lock, ArrowUpDown, ArrowUp, ArrowDown, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -17,14 +17,18 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   const { profile, user } = useAuth();
   const { hasPermission, loading: permissionsLoading } = useUserPermissions();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const handleBack = onBack || (() => navigate(-1));
   const canPerformFetch = profile?.role === 'admin' || (profile as any)?.can_perform_fetch;
+
+  // Get invoice from URL if present
+  const invoiceFromUrl = searchParams.get('invoice');
 
   const hasAccess = hasPermission(PERMISSION_KEYS.INVOICES, 'view');
   const [displayedInvoices, setDisplayedInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(invoiceFromUrl || '');
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [loadingInvoiceDetails, setLoadingInvoiceDetails] = useState(false);
   const [showFetchPage, setShowFetchPage] = useState(false);
@@ -236,10 +240,17 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   };
 
   useEffect(() => {
-    const savedSearchTerm = localStorage.getItem('invoiceSearchTerm');
-    if (savedSearchTerm) {
-      setSearchTerm(savedSearchTerm);
-      localStorage.removeItem('invoiceSearchTerm');
+    // If invoice parameter in URL, use that and clear the param
+    if (invoiceFromUrl) {
+      setSearchTerm(invoiceFromUrl);
+      // Remove the invoice param from URL after setting it
+      setSearchParams({});
+    } else {
+      const savedSearchTerm = localStorage.getItem('invoiceSearchTerm');
+      if (savedSearchTerm) {
+        setSearchTerm(savedSearchTerm);
+        localStorage.removeItem('invoiceSearchTerm');
+      }
     }
     loadInitialData();
   }, []);

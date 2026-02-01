@@ -3316,7 +3316,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-blue-700 font-medium border-r border-blue-100/50">
                               <div className="flex items-center gap-2">
                                 <a
-                                  href={`/dashboard?invoice=${app.invoice_reference_number}`}
+                                  href={`/acumatica-invoices?invoice=${app.invoice_reference_number}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="hover:underline flex items-center gap-1"
