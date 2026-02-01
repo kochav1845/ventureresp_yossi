@@ -40,6 +40,7 @@ interface InvoiceApplication {
   invoice_amount?: number;
   invoice_status?: string;
   invoice_due_date?: string | null;
+  customer_id?: string;
 }
 
 type SortField = keyof PaymentRow;
@@ -3335,8 +3336,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                                 </a>
                               </div>
                             </td>
-                            <td className="px-4 py-2 text-sm text-gray-600 border-r border-blue-100/50" colSpan={2}>
-                              <span className="text-xs text-gray-500 italic">Invoice Details</span>
+                            <td className="px-4 py-2 text-sm text-gray-600 border-r border-blue-100/50">
+                              <span className="text-xs text-gray-500 italic pl-4">↳ {app.customer_id || 'Invoice'}</span>
+                            </td>
+                            <td className="px-4 py-2 text-sm text-gray-500 border-r border-blue-100/50">
+                              -
                             </td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600 border-r border-blue-100/50">
                               {app.doc_type || 'Invoice'}
