@@ -1660,67 +1660,52 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     setExpandedCustomers(newExpanded);
   };
 
-  const loadPaymentApplications = async (paymentIds: string[]) => {
-    // Filter out payments that are already cached
-    const uncachedIds = paymentIds.filter(id => !paymentApplicationsCache.has(id));
+  // Auto-load applications for visible payments
+  useEffect(() => {
+    if (filteredPayments.length === 0) return;
 
-    if (uncachedIds.length === 0) return;
+    const loadApplications = async () => {
+      const paymentIds = filteredPayments.map(p => p.id);
+      const uncachedIds = paymentIds.filter(id => !paymentApplicationsCache.has(id));
 
-    try {
-      const { data: applications, error } = await supabase
-        .from('payment_invoice_applications')
-        .select('*')
-        .in('payment_id', uncachedIds)
-        .order('invoice_date', { ascending: false });
+      if (uncachedIds.length === 0) return;
 
-      if (error) throw error;
+      try {
+        const { data: applications, error } = await supabase
+          .from('payment_invoice_applications')
+          .select('*')
+          .in('payment_id', uncachedIds);
 
-      if (applications && applications.length > 0) {
-        const invoiceRefs = [...new Set(applications
-          .map(app => app.invoice_reference_number)
-          .filter(Boolean))];
-
-        const { data: invoices } = await supabase
-          .from('acumatica_invoices')
-          .select('id, reference_number, date, balance, amount, status, due_date, customer')
-          .in('reference_number', invoiceRefs);
-
-        const invoiceMap = new Map(
-          invoices?.map(inv => [inv.reference_number, inv]) || []
-        );
+        if (error) {
+          console.error('Error loading applications:', error);
+          return;
+        }
 
         const newCache = new Map(paymentApplicationsCache);
 
-        // Group applications by payment_id
-        uncachedIds.forEach(paymentId => {
-          const paymentApps = applications.filter(app => app.payment_id === paymentId);
-          const enrichedApplications: InvoiceApplication[] = paymentApps.map(app => {
-            const invoice = invoiceMap.get(app.invoice_reference_number);
-            return {
-              ...app,
-              invoice_balance: invoice?.balance || 0,
-              invoice_amount: invoice?.amount || 0,
-              invoice_status: invoice?.status || '',
-              invoice_due_date: invoice?.due_date || null,
-              invoice_id: invoice?.id || null
-            };
+        // Initialize all uncached IDs with empty arrays
+        uncachedIds.forEach(id => newCache.set(id, []));
+
+        // Populate with actual data
+        if (applications && applications.length > 0) {
+          const grouped = applications.reduce((acc, app) => {
+            if (!acc[app.payment_id]) acc[app.payment_id] = [];
+            acc[app.payment_id].push(app as InvoiceApplication);
+            return acc;
+          }, {} as Record<string, InvoiceApplication[]>);
+
+          Object.entries(grouped).forEach(([paymentId, apps]) => {
+            newCache.set(paymentId, apps);
           });
-          newCache.set(paymentId, enrichedApplications);
-        });
+        }
 
         setPaymentApplicationsCache(newCache);
+      } catch (error) {
+        console.error('Error loading payment applications:', error);
       }
-    } catch (error) {
-      console.error('Error loading invoice applications:', error);
-    }
-  };
+    };
 
-  // Auto-load applications for visible payments
-  useEffect(() => {
-    if (filteredPayments.length > 0) {
-      const paymentIds = filteredPayments.map(p => p.id);
-      loadPaymentApplications(paymentIds);
-    }
+    loadApplications();
   }, [filteredPayments.map(p => p.id).join(',')]);
 
   const loadInvoiceApplications = async (payment: PaymentRow) => {
