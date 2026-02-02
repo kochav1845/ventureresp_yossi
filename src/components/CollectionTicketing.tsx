@@ -408,7 +408,15 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     setNewStatus(ticket.status);
 
     try {
-      const [statusHistoryRes, activityLogRes, invoicesRes, mergeHistoryRes] = await Promise.all([
+      // Load merge history separately since it might not exist in all environments
+      let mergeHistoryRes = { data: [], error: null };
+      try {
+        mergeHistoryRes = await supabase.rpc('get_ticket_merge_history', { p_ticket_id: ticket.id });
+      } catch (mergeError) {
+        console.warn('Merge history function not available:', mergeError);
+      }
+
+      const [statusHistoryRes, activityLogRes, invoicesRes] = await Promise.all([
         supabase
           .from('ticket_status_history')
           .select('*, user_profiles!ticket_status_history_changed_by_fkey(email, full_name)')
@@ -424,9 +432,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
         supabase
           .from('ticket_invoices')
           .select('invoice_reference_number, added_at')
-          .eq('ticket_id', ticket.id),
-
-        supabase.rpc('get_ticket_merge_history', { p_ticket_id: ticket.id })
+          .eq('ticket_id', ticket.id)
       ]);
 
       const statusHistory = (statusHistoryRes.data || []).map((sh: any) => ({
@@ -2288,8 +2294,8 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
           ticketNumber={selectedTicket.ticket_number}
           onClose={() => setShowTicketNoteModal(false)}
           onSaved={() => {
-            // Reload ticket details to show updated activity
-            loadTicketDetails(selectedTicket.id).catch(console.error);
+            // Reload ticket details to show updated activity - pass the full ticket object
+            loadTicketDetails(selectedTicket).catch(console.error);
           }}
         />
       )}
