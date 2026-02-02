@@ -409,8 +409,17 @@ export default function CollectorDashboard() {
                         {/* Ticket Notes Button */}
                         <div className="mb-4">
                           <button
-                            onClick={() => setTicketNoteModal({ ticketId: ticket.ticket_id, ticketNumber: ticket.ticket_number })}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm font-medium"
+                            onClick={() => {
+                              console.log('Opening ticket notes for:', { ticketId: ticket.ticket_id, ticketNumber: ticket.ticket_number });
+                              if (ticket.ticket_id) {
+                                setTicketNoteModal({ ticketId: ticket.ticket_id, ticketNumber: ticket.ticket_number });
+                              } else {
+                                console.error('Ticket ID is missing!', ticket);
+                                alert('Error: Ticket ID is missing. Please refresh the page.');
+                              }
+                            }}
+                            disabled={!ticket.ticket_id}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <MessageSquare className="w-5 h-5" />
                             Open Ticket Notes
@@ -594,7 +603,7 @@ export default function CollectorDashboard() {
         />
       )}
 
-      {ticketNoteModal && (
+      {ticketNoteModal && ticketNoteModal.ticketId && ticketNoteModal.ticketId !== 'undefined' && (
         <TicketNoteModal
           ticketId={ticketNoteModal.ticketId}
           ticketNumber={ticketNoteModal.ticketNumber}

@@ -44,6 +44,12 @@ export default function TicketNoteModal({ ticketId, ticketNumber, onClose, onSav
   const documentInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    console.log('[TicketNoteModal] Initialized with:', { ticketId, ticketNumber, ticketIdType: typeof ticketId });
+    if (!ticketId || ticketId === 'undefined') {
+      console.error('[TicketNoteModal] Invalid ticket ID received!');
+      alert('Error: Invalid ticket ID. Please close and try again.');
+      return;
+    }
     loadPreviousNotes();
   }, [ticketId]);
 
@@ -139,8 +145,16 @@ export default function TicketNoteModal({ ticketId, ticketNumber, onClose, onSav
       return;
     }
 
+    // Validate ticket ID
+    if (!ticketId || ticketId === 'undefined') {
+      console.error('[TicketNoteModal] Cannot save - invalid ticket ID:', ticketId);
+      alert('Error: Invalid ticket ID. Please close this window and try again.');
+      return;
+    }
+
     setSaving(true);
     try {
+      console.log('[TicketNoteModal] Saving note for ticket:', ticketId);
       let attachmentType: 'voice' | 'image' | 'document' | null = null;
       let documentUrls: string[] | null = null;
 
@@ -194,7 +208,10 @@ export default function TicketNoteModal({ ticketId, ticketNumber, onClose, onSav
           created_by_user_id: user?.id
         });
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error('[TicketNoteModal] Insert error:', insertError);
+        throw insertError;
+      }
 
       // Reload notes
       await loadPreviousNotes();
