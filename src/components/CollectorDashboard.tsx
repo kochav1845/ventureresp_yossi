@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Ticket, FileText, Calendar, DollarSign, User, ArrowLeft, MessageSquare, Mic, LogOut, Lock, ExternalLink } from 'lucide-react';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import InvoiceMemoModal from './InvoiceMemoModal';
+import TicketNoteModal from './TicketNoteModal';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 
 interface Assignment {
@@ -48,6 +49,7 @@ export default function CollectorDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedView, setSelectedView] = useState<'tickets' | 'individual'>('tickets');
   const [memoModalInvoice, setMemoModalInvoice] = useState<any>(null);
+  const [ticketNoteModal, setTicketNoteModal] = useState<{ ticketId: string; ticketNumber: string } | null>(null);
 
   useEffect(() => {
     if (user && profile) {
@@ -404,6 +406,17 @@ export default function CollectorDashboard() {
                       </div>
 
                       <div className="p-4 bg-gray-50">
+                        {/* Ticket Notes Button */}
+                        <div className="mb-4">
+                          <button
+                            onClick={() => setTicketNoteModal({ ticketId: ticket.ticket_id, ticketNumber: ticket.ticket_number })}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm font-medium"
+                          >
+                            <MessageSquare className="w-5 h-5" />
+                            Open Ticket Notes
+                          </button>
+                        </div>
+
                         <div className="flex items-center justify-between mb-4">
                           <h4 className="font-semibold text-gray-700">
                             Invoices ({ticket.invoices.length})
@@ -576,6 +589,18 @@ export default function CollectorDashboard() {
           invoice={memoModalInvoice}
           onClose={() => {
             setMemoModalInvoice(null);
+            loadAssignments();
+          }}
+        />
+      )}
+
+      {ticketNoteModal && (
+        <TicketNoteModal
+          ticketId={ticketNoteModal.ticketId}
+          ticketNumber={ticketNoteModal.ticketNumber}
+          onClose={() => setTicketNoteModal(null)}
+          onSaved={() => {
+            // Reload assignments to show updated activity
             loadAssignments();
           }}
         />
