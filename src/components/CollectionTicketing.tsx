@@ -2281,14 +2281,15 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
       </div>
 
       {/* Ticket Note Modal */}
-      {showTicketNoteModal && selectedTicket && (
+      {showTicketNoteModal && selectedTicket?.id && (
         <TicketNoteModal
+          key={selectedTicket.id}
           ticketId={selectedTicket.id}
           ticketNumber={selectedTicket.ticket_number}
           onClose={() => setShowTicketNoteModal(false)}
           onSaved={() => {
             // Reload ticket details to show updated activity
-            loadTicketDetails(selectedTicket.id);
+            loadTicketDetails(selectedTicket.id).catch(console.error);
           }}
         />
       )}

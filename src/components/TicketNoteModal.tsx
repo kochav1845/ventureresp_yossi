@@ -45,10 +45,9 @@ export default function TicketNoteModal({ ticketId, ticketNumber, onClose, onSav
 
   useEffect(() => {
     console.log('[TicketNoteModal] Initialized with:', { ticketId, ticketNumber, ticketIdType: typeof ticketId });
-    if (!ticketId || ticketId === 'undefined') {
+    if (!ticketId || typeof ticketId !== 'string' || ticketId === 'undefined' || ticketId.length === 0) {
       console.error('[TicketNoteModal] Invalid ticket ID received!');
-      alert('Error: Invalid ticket ID. Please close and try again.');
-      return;
+      return; // Don't show alert, just silently return since this might be a transient state during re-render
     }
     loadPreviousNotes();
   }, [ticketId]);
@@ -262,6 +261,11 @@ export default function TicketNoteModal({ ticketId, ticketNumber, onClose, onSav
     }
   };
 
+  // Guard: Don't render if ticketId is invalid
+  if (!ticketId || typeof ticketId !== 'string' || ticketId === 'undefined' || ticketId.length === 0) {
+    return null;
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -269,7 +273,7 @@ export default function TicketNoteModal({ ticketId, ticketNumber, onClose, onSav
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold">Ticket Notes</h2>
-            <p className="text-blue-100 text-sm">{ticketNumber}</p>
+            <p className="text-blue-100 text-sm">{ticketNumber || 'Unknown Ticket'}</p>
           </div>
           <button
             onClick={onClose}

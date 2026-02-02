@@ -603,14 +603,15 @@ export default function CollectorDashboard() {
         />
       )}
 
-      {ticketNoteModal && ticketNoteModal.ticketId && ticketNoteModal.ticketId !== 'undefined' && (
+      {ticketNoteModal?.ticketId && typeof ticketNoteModal.ticketId === 'string' && ticketNoteModal.ticketId.length > 0 && (
         <TicketNoteModal
+          key={ticketNoteModal.ticketId}
           ticketId={ticketNoteModal.ticketId}
-          ticketNumber={ticketNoteModal.ticketNumber}
+          ticketNumber={ticketNoteModal.ticketNumber || 'Unknown'}
           onClose={() => setTicketNoteModal(null)}
           onSaved={() => {
-            // Reload assignments to show updated activity
-            loadAssignments();
+            // Keep modal open, just reload assignments in background
+            loadAssignments().catch(console.error);
           }}
         />
       )}
