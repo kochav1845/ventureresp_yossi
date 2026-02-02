@@ -5,6 +5,7 @@ import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, Mes
 import { useAuth } from '../contexts/AuthContext';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { formatDistanceToNow } from 'date-fns';
+import TicketNoteModal from './TicketNoteModal';
 
 interface Customer {
   customer_id: string;
@@ -141,6 +142,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   const [showBatchOperations, setShowBatchOperations] = useState(false);
   const [batchColorStatus, setBatchColorStatus] = useState<string>('');
   const [batchNote, setBatchNote] = useState<string>('');
+  const [showTicketNoteModal, setShowTicketNoteModal] = useState(false);
   const [showReminderPrompt, setShowReminderPrompt] = useState(false);
   const [reminderDate, setReminderDate] = useState<string>('');
   const [reminderTime, setReminderTime] = useState<string>('09:00');
@@ -1456,28 +1458,17 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Note</h3>
-                <div className="flex gap-3">
-                  <input
-                    type="text"
-                    placeholder="Add a note to this ticket..."
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter' && !loading) {
-                        handleAddNote();
-                      }
-                    }}
-                  />
-                  <button
-                    onClick={handleAddNote}
-                    disabled={loading || !newNote.trim()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    Add
-                  </button>
-                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Ticket Notes</h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  Add notes with text, voice recordings, images, or documents
+                </p>
+                <button
+                  onClick={() => setShowTicketNoteModal(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm font-medium"
+                >
+                  <MessageSquare className="w-5 h-5" />
+                  Open Ticket Notes
+                </button>
               </div>
 
               <div>
@@ -2288,6 +2279,19 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
           </div>
         )}
       </div>
+
+      {/* Ticket Note Modal */}
+      {showTicketNoteModal && selectedTicket && (
+        <TicketNoteModal
+          ticketId={selectedTicket.id}
+          ticketNumber={selectedTicket.ticket_number}
+          onClose={() => setShowTicketNoteModal(false)}
+          onSaved={() => {
+            // Reload ticket details to show updated activity
+            loadTicketDetails(selectedTicket.id);
+          }}
+        />
+      )}
     </div>
   );
 }
