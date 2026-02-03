@@ -47,10 +47,10 @@ export default function TicketPromiseDateModal({
 
       if (ticketError) throw ticketError;
 
-      onSuccess();
       onClose();
 
       if (createReminder) {
+        // Navigate immediately - don't call onSuccess to avoid page reload
         navigate('/reminders', {
           state: {
             createReminder: true,
@@ -60,6 +60,9 @@ export default function TicketPromiseDateModal({
             promiseDate: promiseDate
           }
         });
+      } else {
+        // Only trigger success callback if we're staying on the page
+        onSuccess();
       }
     } catch (err) {
       console.error('Error saving promise date:', err);
