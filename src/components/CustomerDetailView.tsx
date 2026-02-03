@@ -126,6 +126,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [invoiceStats, setInvoiceStats] = useState<any>(null);
   const [filteredStats, setFilteredStats] = useState<any>(null);
   const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
+  const [avgDaysToCollect, setAvgDaysToCollect] = useState<number | null>(null);
 
   useEffect(() => {
     // Load customer info first (fastest)
@@ -219,6 +220,14 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           return acc;
         }, { red: 0, yellow: 0, green: 0, total: 0 });
         setInvoiceColorCounts(counts);
+      }
+
+      // Load average days to collect
+      const { data: avgDays, error: avgDaysError } = await supabase
+        .rpc('get_customer_avg_days_to_collect', { customer_id_param: customerId });
+
+      if (!avgDaysError && avgDays !== null) {
+        setAvgDaysToCollect(avgDays);
       }
 
       // Load customer notes
@@ -764,7 +773,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-6">
             <div className="flex items-center justify-between mb-2">
               <DollarSign className="w-8 h-8 text-red-600" />
@@ -805,6 +814,21 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               </>
             ) : (
               <p className="text-sm text-yellow-900">No open invoices</p>
+            )}
+          </div>
+
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-2">
+              <Clock className="w-8 h-8 text-purple-600" />
+            </div>
+            <p className="text-sm text-purple-600 font-medium mb-1">Avg Days to Collect</p>
+            {avgDaysToCollect !== null ? (
+              <>
+                <p className="text-2xl font-bold text-purple-900">{avgDaysToCollect} days</p>
+                <p className="text-xs text-purple-700 mt-1">From invoice to payment</p>
+              </>
+            ) : (
+              <p className="text-sm text-purple-900">No payment history</p>
             )}
           </div>
         </div>

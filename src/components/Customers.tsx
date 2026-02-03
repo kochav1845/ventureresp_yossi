@@ -832,6 +832,7 @@ export default function Customers({ onBack }: CustomersProps) {
       'Open Invoices': customer.invoice_count || 0,
       'Outstanding Balance': customer.balance || 0,
       'Max Days Overdue': customer.max_days_overdue || 0,
+      'Avg Days to Collect': customer.avg_days_to_collect || 'N/A',
       'Oldest Invoice Date': customer.oldest_invoice_date || 'N/A',
       'Newest Invoice Date': customer.newest_invoice_date || 'N/A',
       'Created': new Date(customer.created_at).toLocaleDateString()
@@ -1374,6 +1375,7 @@ export default function Customers({ onBack }: CustomersProps) {
                   <option value="balance">Balance</option>
                   <option value="invoice_count">Invoice Count</option>
                   <option value="max_days_overdue">Days Overdue</option>
+                  <option value="avg_days_to_collect">Avg Days to Collect</option>
                   <option value="name">Customer Name</option>
                   <option value="email">Email</option>
                   <option value="created_at">Created Date</option>
@@ -1552,6 +1554,15 @@ export default function Customers({ onBack }: CustomersProps) {
                         {getSortIcon('max_days_overdue')}
                       </div>
                     </th>
+                    <th
+                      className="text-right py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => handleSort('avg_days_to_collect')}
+                    >
+                      <div className="flex items-center justify-end gap-2">
+                        <span>Avg Days to Collect</span>
+                        {getSortIcon('avg_days_to_collect')}
+                      </div>
+                    </th>
                     <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm">Active</th>
                     <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm">Responded</th>
                     <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm" title="Exclude from Payment Analytics">
@@ -1627,6 +1638,13 @@ export default function Customers({ onBack }: CustomersProps) {
                           'text-gray-600'
                         }`}>
                           {customer.max_days_overdue || 0}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <span className="text-gray-600 font-medium">
+                          {customer.avg_days_to_collect !== null && customer.avg_days_to_collect !== undefined
+                            ? `${customer.avg_days_to_collect} days`
+                            : 'N/A'}
                         </span>
                       </td>
                       <td className="py-3 px-4">
