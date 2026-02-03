@@ -41,11 +41,26 @@ export default function TicketPromiseDateModal({
         .from('collection_tickets')
         .update({
           promise_date: promiseDate,
-          promise_by_user_id: user.id
+          promise_by_user_id: user.id,
+          status: 'promised'
         })
         .eq('id', ticketId);
 
       if (ticketError) throw ticketError;
+
+      // Log the promise date activity
+      await supabase
+        .from('ticket_activity_log')
+        .insert({
+          ticket_id: ticketId,
+          activity_type: 'note',
+          description: `Promise date set to ${new Date(promiseDate).toLocaleDateString()} - Customer promised to pay off ticket`,
+          created_by: user.id,
+          metadata: {
+            promise_date: promiseDate,
+            customer_name: customerName
+          }
+        });
 
       onClose();
 
