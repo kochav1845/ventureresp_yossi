@@ -1615,10 +1615,13 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                             {ti.invoice && (
                               <>
                                 <p className="text-sm text-gray-600">
-                                  Balance: ${ti.invoice.balance.toFixed(2)} of ${ti.invoice.amount.toFixed(2)}
+                                  Open Balance: <span className="font-semibold">${ti.invoice.balance.toFixed(2)}</span> of ${ti.invoice.amount.toFixed(2)}
                                 </p>
                                 <p className="text-xs text-gray-500 mt-1">
-                                  Due: {new Date(ti.invoice.due_date).toLocaleDateString()}
+                                  Invoice Date: {new Date(ti.invoice.date).toLocaleDateString()}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  Due Date: {new Date(ti.invoice.due_date).toLocaleDateString()}
                                 </p>
                               </>
                             )}
@@ -2204,8 +2207,8 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                                   <p className="font-medium text-gray-900">
                                     Invoice #{invoice.reference_number}
                                   </p>
-                                  <p className="text-sm text-gray-500">
-                                    Due: {new Date(invoice.due_date).toLocaleDateString()}
+                                  <p className="text-xs text-gray-500">
+                                    Invoice: {new Date(invoice.date).toLocaleDateString()} | Due: {new Date(invoice.due_date).toLocaleDateString()}
                                   </p>
                                 </div>
                                 <div className="text-right">
