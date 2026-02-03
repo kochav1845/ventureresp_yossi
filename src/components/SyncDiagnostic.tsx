@@ -115,22 +115,27 @@ export default function SyncDiagnostic({ onBack }: Props) {
 
   const fixStuckSyncs = async () => {
     setFixing(true);
-    setMessage('');
+    setMessage('Resetting all stuck syncs... This may take a moment.');
+
     try {
-      // Reset stuck sync logs
+      const { count: stuckCount } = await supabase
+        .from('sync_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'running');
+
+      setMessage(`Found ${stuckCount} stuck syncs. Resetting them now...`);
+
       const { error: logError } = await supabase
         .from('sync_logs')
         .update({
           status: 'failed',
           sync_completed_at: new Date().toISOString(),
-          errors: ['Sync was stuck and automatically reset']
+          errors: ['Sync was stuck and automatically reset by diagnostic tool']
         })
-        .eq('status', 'running')
-        .lt('sync_started_at', new Date(Date.now() - 30 * 60 * 1000).toISOString());
+        .eq('status', 'running');
 
       if (logError) throw logError;
 
-      // Reset sync status
       const { error: statusError } = await supabase
         .from('sync_status')
         .update({
@@ -141,8 +146,8 @@ export default function SyncDiagnostic({ onBack }: Props) {
 
       if (statusError) throw statusError;
 
-      setMessage('Successfully reset stuck syncs. You can now trigger a manual sync.');
-      await runDiagnostic();
+      setMessage(`✓ Successfully reset ${stuckCount} stuck syncs! The sync system is now clear.`);
+      setTimeout(() => runDiagnostic(), 2000);
     } catch (err: any) {
       setMessage(`Error fixing syncs: ${err.message}`);
     } finally {
