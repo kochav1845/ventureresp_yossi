@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { formatDistanceToNow } from 'date-fns';
 import TicketNoteModal from './TicketNoteModal';
+import TicketPromiseDateModal from './MyAssignments/TicketPromiseDateModal';
 
 interface Customer {
   customer_id: string;
@@ -148,6 +149,8 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   const [reminderTime, setReminderTime] = useState<string>('09:00');
   const [pendingBatchNote, setPendingBatchNote] = useState<string>('');
   const [statusOptions, setStatusOptions] = useState<Array<{ status_name: string; display_name: string }>>([]);
+  const [showPromiseDateModal, setShowPromiseDateModal] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
 
   useEffect(() => {
     loadCustomers();
@@ -749,6 +752,13 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   const handleStatusChange = async () => {
     if (!selectedTicket || !newStatus) return;
 
+    // If status is "promised", show the promise date modal
+    if (newStatus === 'promised') {
+      setPendingStatus(newStatus);
+      setShowPromiseDateModal(true);
+      return;
+    }
+
     setLoading(true);
     try {
       const { error } = await supabase
@@ -778,6 +788,17 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
       alert('Failed to update status: ' + error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePromiseDateSuccess = async () => {
+    // The promise date modal already updates the ticket with the promise date and status
+    // We just need to reload the data and clean up state
+    setPendingStatus(null);
+    setShowPromiseDateModal(false);
+    await loadTickets();
+    if (selectedTicket) {
+      await loadTicketDetails({ ...selectedTicket, status: 'promised' });
     }
   };
 
@@ -2335,6 +2356,20 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
             // Reload ticket details to show updated activity - pass the full ticket object
             loadTicketDetails(selectedTicket).catch(console.error);
           }}
+        />
+      )}
+
+      {/* Promise Date Modal */}
+      {showPromiseDateModal && selectedTicket?.id && (
+        <TicketPromiseDateModal
+          ticketId={selectedTicket.id}
+          ticketNumber={selectedTicket.ticket_number}
+          customerName={selectedTicket.customer_name}
+          onClose={() => {
+            setShowPromiseDateModal(false);
+            setPendingStatus(null);
+          }}
+          onSuccess={handlePromiseDateSuccess}
         />
       )}
     </div>
