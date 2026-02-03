@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ticket, FileText, ArrowLeft, DollarSign, CheckSquare, Square } from 'lucide-react';
 import InvoiceMemoModal from '../InvoiceMemoModal';
-import { Assignment, TicketGroup, CustomerAssignment } from './types';
+import { Assignment, TicketGroup, CustomerAssignment, TicketStatusOption } from './types';
 import TicketCard from './TicketCard';
 import IndividualInvoiceCard from './IndividualInvoiceCard';
 import CustomerAssignmentCard from './CustomerAssignmentCard';
@@ -35,12 +35,29 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   const [processingBatch, setProcessingBatch] = useState(false);
   const [changingTicketStatus, setChangingTicketStatus] = useState<string | null>(null);
   const [promiseDateModalInvoice, setPromiseDateModalInvoice] = useState<string | null>(null);
+  const [statusOptions, setStatusOptions] = useState<TicketStatusOption[]>([]);
 
   useEffect(() => {
     if (user && profile) {
+      loadStatusOptions();
       loadAssignments();
     }
   }, [user, profile]);
+
+  const loadStatusOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ticket_status_options')
+        .select('id, status_name, display_name, color_class, sort_order')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+      setStatusOptions(data || []);
+    } catch (error) {
+      console.error('Error loading status options:', error);
+    }
+  };
 
   const loadAssignments = async () => {
     if (!user || !profile) return;
@@ -561,6 +578,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                       selectedInvoices={selectedInvoices}
                       changingColorForInvoice={changingColorForInvoice}
                       changingTicketStatus={changingTicketStatus}
+                      statusOptions={statusOptions}
                       onToggleInvoiceSelection={toggleInvoiceSelection}
                       onColorChange={handleColorChange}
                       onToggleColorPicker={setChangingColorForInvoice}

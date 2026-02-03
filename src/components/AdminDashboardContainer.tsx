@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Users, Activity, TrendingUp, FileText, DollarSign, UserCheck, BarChart3, Mail, RefreshCw, Ticket } from 'lucide-react';
+import { ArrowLeft, Users, Activity, TrendingUp, FileText, DollarSign, UserCheck, BarChart3, Mail, RefreshCw, Ticket, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import PaymentAnalytics from './PaymentAnalytics';
@@ -12,6 +12,7 @@ import UserActivityAnalytics from './UserActivityAnalytics';
 import EmailAnalytics from './EmailAnalytics';
 import SyncStatusDashboard from './SyncStatusDashboard';
 import MyAssignments from './MyAssignments';
+import TicketStatusManagement from './TicketStatusManagement';
 
 type AdminView =
   | 'payment-analytics'
@@ -23,7 +24,8 @@ type AdminView =
   | 'user-activity'
   | 'email-analytics'
   | 'sync-status'
-  | 'my-assignments';
+  | 'my-assignments'
+  | 'ticket-status-management';
 
 type AdminDashboardContainerProps = {
   onBack?: () => void;
@@ -97,6 +99,12 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
       icon: <RefreshCw size={20} />,
       permissionKey: PERMISSION_KEYS.SYNC_STATUS,
     },
+    {
+      id: 'ticket-status-management' as AdminView,
+      label: 'Ticket Status Settings',
+      icon: <Settings size={20} />,
+      permissionKey: null, // Only admins and managers
+    },
   ];
 
   const getViewTitle = () => {
@@ -130,6 +138,8 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
         return <EmailAnalytics onBack={() => setCurrentView('email-analytics')} />;
       case 'sync-status':
         return <SyncStatusDashboard onBack={() => setCurrentView('sync-status')} />;
+      case 'ticket-status-management':
+        return <TicketStatusManagement onBack={() => setCurrentView('ticket-status-management')} />;
       default:
         return <PaymentAnalytics onBack={() => setCurrentView('payment-analytics')} />;
     }

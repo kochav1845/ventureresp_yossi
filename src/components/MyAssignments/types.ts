@@ -48,3 +48,11 @@ export interface CustomerAssignment {
   notes: string;
   assigned_at: string;
 }
+
+export interface TicketStatusOption {
+  id: string;
+  status_name: string;
+  display_name: string;
+  color_class: string;
+  sort_order: number;
+}

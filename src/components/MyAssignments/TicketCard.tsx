@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar } from 'lucide-react';
 import { formatDistanceToNow, isPast, parseISO } from 'date-fns';
-import { TicketGroup, Assignment } from './types';
+import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
 import { getAcumaticaCustomerUrl } from '../../lib/acumaticaLinks';
 import InvoiceItem from './InvoiceItem';
@@ -13,6 +13,7 @@ interface TicketCardProps {
   selectedInvoices: Set<string>;
   changingColorForInvoice: string | null;
   changingTicketStatus: string | null;
+  statusOptions: TicketStatusOption[];
   onToggleInvoiceSelection: (refNumber: string) => void;
   onColorChange: (refNumber: string, color: string | null) => void;
   onToggleColorPicker: (refNumber: string | null) => void;
@@ -26,6 +27,7 @@ export default function TicketCard({
   selectedInvoices,
   changingColorForInvoice,
   changingTicketStatus,
+  statusOptions,
   onToggleInvoiceSelection,
   onColorChange,
   onToggleColorPicker,
@@ -59,6 +61,10 @@ export default function TicketCard({
     ticket.promise_date &&
     isPast(parseISO(ticket.promise_date));
 
+  const currentStatus = statusOptions.find(s => s.status_name === ticket.ticket_status);
+  const statusColorClass = currentStatus?.color_class || 'bg-gray-100 text-gray-800';
+  const statusDisplayName = currentStatus?.display_name || ticket.ticket_status.replace('_', ' ').toUpperCase();
+
   return (
     <>
       {showPromiseDateModal && (
@@ -81,8 +87,8 @@ export default function TicketCard({
             <span className="font-mono font-bold text-lg">
               {ticket.ticket_number}
             </span>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(ticket.ticket_status)}`}>
-              {ticket.ticket_status.replace('_', ' ').toUpperCase()}
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColorClass}`}>
+              {statusDisplayName}
             </span>
           </div>
           <span className="text-sm font-semibold">
@@ -160,12 +166,11 @@ export default function TicketCard({
               onChange={(e) => setLocalTicketStatus(e.target.value)}
               className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="open">Open</option>
-              <option value="pending">Pending</option>
-              <option value="promised">Promised</option>
-              <option value="paid">Paid</option>
-              <option value="disputed">Disputed</option>
-              <option value="closed">Closed</option>
+              {statusOptions.map(status => (
+                <option key={status.id} value={status.status_name}>
+                  {status.display_name}
+                </option>
+              ))}
             </select>
             <button
               onClick={handleStatusUpdate}
