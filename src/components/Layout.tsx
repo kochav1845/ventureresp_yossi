@@ -185,6 +185,7 @@ export default function Layout() {
     { id: 'user-activity', name: 'User Activity', icon: Activity },
     { id: 'email-analytics', name: 'Email Analytics', icon: Mail },
     { id: 'sync-status', name: 'Synchronization Status', icon: RefreshCw },
+    { id: 'ticket-status-settings', name: 'Ticket Status Settings', icon: Settings },
   ] : [];
 
   const developerItems = [
