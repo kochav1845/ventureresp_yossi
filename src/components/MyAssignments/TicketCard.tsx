@@ -8,12 +8,19 @@ import { getAcumaticaCustomerUrl } from '../../lib/acumaticaLinks';
 import InvoiceItem from './InvoiceItem';
 import TicketPromiseDateModal from './TicketPromiseDateModal';
 
+interface ColorStatusOption {
+  status_name: string;
+  display_name: string;
+  color_class: string;
+}
+
 interface TicketCardProps {
   ticket: TicketGroup;
   selectedInvoices: Set<string>;
   changingColorForInvoice: string | null;
   changingTicketStatus: string | null;
   statusOptions: TicketStatusOption[];
+  colorOptions?: ColorStatusOption[];
   onToggleInvoiceSelection: (refNumber: string) => void;
   onColorChange: (refNumber: string, color: string | null) => void;
   onToggleColorPicker: (refNumber: string | null) => void;
@@ -28,6 +35,7 @@ export default function TicketCard({
   changingColorForInvoice,
   changingTicketStatus,
   statusOptions,
+  colorOptions = [],
   onToggleInvoiceSelection,
   onColorChange,
   onToggleColorPicker,
@@ -237,6 +245,7 @@ export default function TicketCard({
               invoice={invoice}
               isSelected={selectedInvoices.has(invoice.invoice_reference_number)}
               showColorPicker={changingColorForInvoice === invoice.invoice_reference_number}
+              colorOptions={colorOptions}
               onToggleSelection={() => onToggleInvoiceSelection(invoice.invoice_reference_number)}
               onColorChange={(color) => onColorChange(invoice.invoice_reference_number, color)}
               onToggleColorPicker={() => onToggleColorPicker(

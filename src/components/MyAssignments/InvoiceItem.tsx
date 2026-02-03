@@ -4,10 +4,17 @@ import { isPromiseBroken } from './utils';
 import { getAcumaticaInvoiceUrl } from '../../lib/acumaticaLinks';
 import ColorStatusPicker from './ColorStatusPicker';
 
+interface ColorStatusOption {
+  status_name: string;
+  display_name: string;
+  color_class: string;
+}
+
 interface InvoiceItemProps {
   invoice: Assignment;
   isSelected: boolean;
   showColorPicker: boolean;
+  colorOptions?: ColorStatusOption[];
   onToggleSelection: () => void;
   onColorChange: (color: string | null) => void;
   onToggleColorPicker: () => void;
@@ -18,11 +25,45 @@ export default function InvoiceItem({
   invoice,
   isSelected,
   showColorPicker,
+  colorOptions = [],
   onToggleSelection,
   onColorChange,
   onToggleColorPicker,
   onOpenMemo
 }: InvoiceItemProps) {
+  const getColorDisplay = () => {
+    if (!invoice.color_status) return null;
+
+    const option = colorOptions.find(opt => opt.status_name === invoice.color_status);
+    if (option) {
+      const parts = option.color_class.split(' ');
+      const bgColor = parts.find(p => p.startsWith('bg-')) || 'bg-gray-500';
+      const borderColor = parts.find(p => p.startsWith('border-')) || 'border-gray-700';
+
+      return {
+        displayName: option.display_name,
+        bgColor,
+        borderColor
+      };
+    }
+
+    // Fallback to old hardcoded values if option not found
+    const fallbackMap: Record<string, { displayName: string; bgColor: string; borderColor: string }> = {
+      'red': { displayName: 'Will Not Pay', bgColor: 'bg-red-500', borderColor: 'border-red-700' },
+      'yellow': { displayName: 'Will Take Care', bgColor: 'bg-yellow-400', borderColor: 'border-yellow-600' },
+      'orange': { displayName: 'Will Take Care', bgColor: 'bg-yellow-400', borderColor: 'border-yellow-600' },
+      'green': { displayName: 'Will Pay', bgColor: 'bg-green-500', borderColor: 'border-green-700' }
+    };
+
+    return fallbackMap[invoice.color_status] || {
+      displayName: invoice.color_status,
+      bgColor: 'bg-gray-500',
+      borderColor: 'border-gray-700'
+    };
+  };
+
+  const colorDisplay = getColorDisplay();
+
   return (
     <div className="bg-white p-4 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
       <div className="flex items-start justify-between">
@@ -68,15 +109,9 @@ export default function InvoiceItem({
                 onClick={onToggleColorPicker}
                 className="focus:outline-none"
               >
-                {invoice.color_status ? (
-                  <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase cursor-pointer hover:opacity-80 transition-opacity ${
-                    invoice.color_status === 'red' ? 'bg-red-500 text-white border-2 border-red-700' :
-                    invoice.color_status === 'yellow' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
-                    invoice.color_status === 'orange' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
-                    invoice.color_status === 'green' ? 'bg-green-500 text-white border-2 border-green-700' :
-                    'bg-gray-200 text-gray-700'
-                  }`}>
-                    {invoice.color_status}
+                {colorDisplay ? (
+                  <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase cursor-pointer hover:opacity-80 transition-opacity text-white border-2 ${colorDisplay.bgColor} ${colorDisplay.borderColor}`}>
+                    {colorDisplay.displayName}
                   </span>
                 ) : (
                   <span className="px-3 py-1 text-xs text-gray-400 cursor-pointer hover:text-gray-600 border border-gray-300 rounded-full">Set Status</span>

@@ -36,10 +36,12 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   const [changingTicketStatus, setChangingTicketStatus] = useState<string | null>(null);
   const [promiseDateModalInvoice, setPromiseDateModalInvoice] = useState<string | null>(null);
   const [statusOptions, setStatusOptions] = useState<TicketStatusOption[]>([]);
+  const [colorOptions, setColorOptions] = useState<Array<{ status_name: string; display_name: string; color_class: string }>>([]);
 
   useEffect(() => {
     if (user && profile) {
       loadStatusOptions();
+      loadColorOptions();
       loadAssignments();
     }
   }, [user, profile]);
@@ -56,6 +58,21 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
       setStatusOptions(data || []);
     } catch (error) {
       console.error('Error loading status options:', error);
+    }
+  };
+
+  const loadColorOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('invoice_color_status_options')
+        .select('status_name, display_name, color_class')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+      setColorOptions(data || []);
+    } catch (error) {
+      console.error('Error loading color options:', error);
     }
   };
 
@@ -579,6 +596,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                       changingColorForInvoice={changingColorForInvoice}
                       changingTicketStatus={changingTicketStatus}
                       statusOptions={statusOptions}
+                      colorOptions={colorOptions}
                       onToggleInvoiceSelection={toggleInvoiceSelection}
                       onColorChange={handleColorChange}
                       onToggleColorPicker={setChangingColorForInvoice}
