@@ -10,6 +10,7 @@ import IndividualInvoiceCard from './IndividualInvoiceCard';
 import CustomerAssignmentCard from './CustomerAssignmentCard';
 import BatchActionToolbar from './BatchActionToolbar';
 import BatchNoteModal from './BatchNoteModal';
+import PromiseDateModal from './PromiseDateModal';
 
 interface MyAssignmentsProps {
   onBack?: () => void;
@@ -33,6 +34,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   const [reminderDate, setReminderDate] = useState('');
   const [processingBatch, setProcessingBatch] = useState(false);
   const [changingTicketStatus, setChangingTicketStatus] = useState<string | null>(null);
+  const [promiseDateModalInvoice, setPromiseDateModalInvoice] = useState<string | null>(null);
 
   useEffect(() => {
     if (user && profile) {
@@ -161,60 +163,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
     if (!profile?.id) return;
 
     if (newColor === 'green') {
-      const promiseDate = prompt('When did the customer promise to pay? (YYYY-MM-DD)');
-      if (!promiseDate) return;
-
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(promiseDate)) {
-        alert('Invalid date format. Please use YYYY-MM-DD format.');
-        return;
-      }
-
-      try {
-        const { data: invoice } = await supabase
-          .from('acumatica_invoices')
-          .select('id, reference_number, customer_name')
-          .eq('reference_number', invoiceRefNumber)
-          .maybeSingle();
-
-        if (!invoice) throw new Error('Invoice not found');
-
-        await supabase
-          .from('acumatica_invoices')
-          .update({
-            color_status: newColor,
-            promise_date: promiseDate,
-            promise_by_user_id: profile.id
-          })
-          .eq('reference_number', invoiceRefNumber);
-
-        await supabase.from('invoice_activity_log').insert({
-          invoice_id: invoice.id,
-          user_id: profile.id,
-          activity_type: 'color_status_change',
-          old_value: null,
-          new_value: newColor,
-          description: `Marked as "Will Pay" with promise date: ${promiseDate}`
-        });
-
-        const wantsReminder = window.confirm('Do you want to create a reminder for this promise date?');
-        if (wantsReminder) {
-          navigate('/reminders', {
-            state: {
-              createReminder: true,
-              invoiceId: invoice.id,
-              invoiceReference: invoice.reference_number,
-              customerName: invoice.customer_name,
-              promiseDate: promiseDate
-            }
-          });
-        } else {
-          setChangingColorForInvoice(null);
-          await loadAssignments();
-        }
-      } catch (error: any) {
-        console.error('Error setting promise date:', error);
-        alert('Failed to set promise date: ' + error.message);
-      }
+      setPromiseDateModalInvoice(invoiceRefNumber);
       return;
     }
 
@@ -264,6 +213,60 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
     } catch (error: any) {
       console.error('Error changing color:', error);
       alert('Failed to change color: ' + error.message);
+    }
+  };
+
+  const handlePromiseDateConfirm = async (promiseDate: string) => {
+    if (!profile?.id || !promiseDateModalInvoice) return;
+
+    try {
+      const { data: invoice } = await supabase
+        .from('acumatica_invoices')
+        .select('id, reference_number, customer_name')
+        .eq('reference_number', promiseDateModalInvoice)
+        .maybeSingle();
+
+      if (!invoice) throw new Error('Invoice not found');
+
+      await supabase
+        .from('acumatica_invoices')
+        .update({
+          color_status: 'green',
+          promise_date: promiseDate,
+          promise_by_user_id: profile.id
+        })
+        .eq('reference_number', promiseDateModalInvoice);
+
+      await supabase.from('invoice_activity_log').insert({
+        invoice_id: invoice.id,
+        user_id: profile.id,
+        activity_type: 'color_status_change',
+        old_value: null,
+        new_value: 'green',
+        description: `Marked as "Will Pay" with promise date: ${promiseDate}`
+      });
+
+      setPromiseDateModalInvoice(null);
+
+      const wantsReminder = window.confirm('Do you want to create a reminder for this promise date?');
+      if (wantsReminder) {
+        navigate('/reminders', {
+          state: {
+            createReminder: true,
+            invoiceId: invoice.id,
+            invoiceReference: invoice.reference_number,
+            customerName: invoice.customer_name,
+            promiseDate: promiseDate
+          }
+        });
+      } else {
+        setChangingColorForInvoice(null);
+        await loadAssignments();
+      }
+    } catch (error: any) {
+      console.error('Error setting promise date:', error);
+      alert('Failed to set promise date: ' + error.message);
+      setPromiseDateModalInvoice(null);
     }
   };
 
@@ -635,6 +638,14 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
             setMemoModalInvoice(null);
             loadAssignments();
           }}
+        />
+      )}
+
+      {promiseDateModalInvoice && (
+        <PromiseDateModal
+          invoiceNumber={promiseDateModalInvoice}
+          onConfirm={handlePromiseDateConfirm}
+          onCancel={() => setPromiseDateModalInvoice(null)}
         />
       )}
     </div>
