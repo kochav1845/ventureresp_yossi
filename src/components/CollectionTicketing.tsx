@@ -180,12 +180,28 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   // Handle opening a ticket from URL query parameter
   useEffect(() => {
     const ticketId = searchParams.get('ticketId');
+    const customerId = searchParams.get('customerId');
+
     if (ticketId && tickets.length > 0) {
       const ticket = tickets.find(t => t.id === ticketId);
       if (ticket) {
         loadTicketDetails(ticket);
         setActiveTab('list');
         // Clear the query parameter after opening
+        setSearchParams({});
+      }
+    } else if (customerId && tickets.length > 0) {
+      // Filter tickets by customer ID
+      const customerTickets = tickets.filter(t => t.customer_id === customerId);
+      if (customerTickets.length > 0) {
+        // Open the most recent ticket for this customer
+        loadTicketDetails(customerTickets[0]);
+        setActiveTab('list');
+        // Clear the query parameter after opening
+        setSearchParams({});
+      } else {
+        // No tickets for this customer, but stay on list view
+        setActiveTab('list');
         setSearchParams({});
       }
     }

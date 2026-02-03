@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import CustomerDetailView from './CustomerDetailView';
 import { batchedInQuery } from '../lib/batchedQuery';
-import { ArrowLeft, Plus, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, Lock, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Plus, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, Lock, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket } from 'lucide-react';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import CustomerFiles from './CustomerFiles';
 import { exportToExcel as exportExcel, formatDate, formatCurrency } from '../lib/excelExport';
@@ -118,6 +118,7 @@ export default function Customers({ onBack }: CustomersProps) {
   const [exporting, setExporting] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(true);
+  const [customersWithOpenTickets, setCustomersWithOpenTickets] = useState<Set<string>>(new Set());
   const [stats, setStats] = useState({
     total_customers: 0,
     active_customers: 0,
@@ -153,11 +154,47 @@ export default function Customers({ onBack }: CustomersProps) {
 
   useEffect(() => {
     loadCustomersWithAnalytics();
+    loadCustomersWithOpenTickets();
+
+    // Subscribe to ticket changes to update the open ticket indicator
+    const ticketSubscription = supabase
+      .channel('ticket_status_changes')
+      .on('postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'collection_tickets'
+        },
+        () => {
+          loadCustomersWithOpenTickets();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      ticketSubscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
     applyFilters();
   }, [filters, allCustomers]);
+
+  const loadCustomersWithOpenTickets = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('collection_tickets')
+        .select('customer_id')
+        .in('status', ['open', 'in_progress']);
+
+      if (error) throw error;
+
+      const customerIds = new Set((data || []).map(ticket => ticket.customer_id));
+      setCustomersWithOpenTickets(customerIds);
+    } catch (error) {
+      console.error('Error loading customers with open tickets:', error);
+    }
+  };
 
   const loadCustomersWithAnalytics = async () => {
     setLoading(true);
@@ -1545,6 +1582,16 @@ export default function Customers({ onBack }: CustomersProps) {
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="text-gray-900 font-semibold">{customer.name}</span>
+                              {customersWithOpenTickets.has(customer.id) && (
+                                <button
+                                  onClick={() => navigate(`/collection-ticketing?customerId=${customer.id}`)}
+                                  className="flex items-center gap-1 px-2 py-0.5 bg-red-100 border border-red-300 hover:bg-red-200 rounded text-xs text-red-800 transition-colors"
+                                  title="Customer has open collection tickets - Click to view"
+                                >
+                                  <Ticket size={12} />
+                                  <span>Open Ticket</span>
+                                </button>
+                              )}
                               {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
                                 <button
                                   onClick={() => handleUnpostpone(customer.id)}
