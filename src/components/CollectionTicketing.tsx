@@ -147,11 +147,13 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   const [reminderDate, setReminderDate] = useState<string>('');
   const [reminderTime, setReminderTime] = useState<string>('09:00');
   const [pendingBatchNote, setPendingBatchNote] = useState<string>('');
+  const [statusOptions, setStatusOptions] = useState<Array<{ status_name: string; display_name: string }>>([]);
 
   useEffect(() => {
     loadCustomers();
     loadCollectors();
     loadTickets();
+    loadStatusOptions();
 
     // Subscribe to ticket_invoices changes to detect when invoices are removed
     const subscription = supabase
@@ -295,6 +297,24 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
       }
     } catch (err) {
       console.error('Exception loading collectors:', err);
+    }
+  };
+
+  const loadStatusOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ticket_status_options')
+        .select('status_name, display_name')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+
+      if (error) {
+        console.error('Error loading status options:', error);
+      } else {
+        setStatusOptions(data || []);
+      }
+    } catch (err) {
+      console.error('Exception loading status options:', err);
     }
   };
 
@@ -1452,12 +1472,11 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                     onChange={(e) => setNewStatus(e.target.value)}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
                   >
-                    <option value="open">Open</option>
-                    <option value="pending">Pending</option>
-                    <option value="promised">Promised</option>
-                    <option value="paid">Paid</option>
-                    <option value="disputed">Disputed</option>
-                    <option value="closed">Closed</option>
+                    {statusOptions.map((status) => (
+                      <option key={status.status_name} value={status.status_name}>
+                        {status.display_name}
+                      </option>
+                    ))}
                   </select>
                   <button
                     onClick={handleStatusChange}
