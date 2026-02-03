@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, Calendar, Bell } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -17,9 +18,9 @@ export default function TicketPromiseDateModal({
   onClose,
   onSuccess
 }: TicketPromiseDateModalProps) {
+  const navigate = useNavigate();
   const [promiseDate, setPromiseDate] = useState('');
   const [createReminder, setCreateReminder] = useState(true);
-  const [reminderNote, setReminderNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -46,22 +47,20 @@ export default function TicketPromiseDateModal({
 
       if (ticketError) throw ticketError;
 
-      if (createReminder) {
-        const { error: reminderError } = await supabase
-          .from('invoice_reminders')
-          .insert({
-            user_id: user.id,
-            ticket_id: ticketId,
-            reminder_date: promiseDate,
-            message: reminderNote || `Follow up on promised payment for ticket ${ticketNumber} - ${customerName}`,
-            completed: false
-          });
-
-        if (reminderError) throw reminderError;
-      }
-
       onSuccess();
       onClose();
+
+      if (createReminder) {
+        navigate('/reminders', {
+          state: {
+            createReminder: true,
+            ticketId: ticketId,
+            ticketNumber: ticketNumber,
+            customerName: customerName,
+            promiseDate: promiseDate
+          }
+        });
+      }
     } catch (err) {
       console.error('Error saving promise date:', err);
       setError(err instanceof Error ? err.message : 'Failed to save promise date');
@@ -129,25 +128,15 @@ export default function TicketPromiseDateModal({
               />
               <Bell className="w-4 h-4 text-gray-600" />
               <span className="text-sm font-medium text-gray-700">
-                Create reminder for this date
+                Open reminders page to create a follow-up reminder
               </span>
             </label>
+            {createReminder && (
+              <p className="text-xs text-gray-500 mt-2 ml-6">
+                You'll be taken to the reminders page where you can add notes and customize the reminder
+              </p>
+            )}
           </div>
-
-          {createReminder && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Reminder Note (Optional)
-              </label>
-              <textarea
-                value={reminderNote}
-                onChange={(e) => setReminderNote(e.target.value)}
-                placeholder="Add any notes for the reminder..."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-              />
-            </div>
-          )}
         </div>
 
         <div className="flex justify-end gap-3 p-6 border-t bg-gray-50">

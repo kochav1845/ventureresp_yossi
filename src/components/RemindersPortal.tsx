@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Plus, Calendar, Clock, AlertCircle, CheckCircle, Edit2, Trash2, Mail, Phone, Video, DollarSign, MessageSquare, FileText, Filter, X, Save } from 'lucide-react';
+import { ArrowLeft, Plus, Calendar, Clock, AlertCircle, CheckCircle, Edit2, Trash2, Mail, Phone, Video, DollarSign, MessageSquare, FileText, Filter, X, Save, Ticket } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDate as formatDateUtil, formatDateTime as formatDateTimeUtil } from '../lib/dateUtils';
@@ -8,6 +8,7 @@ import { formatDate as formatDateUtil, formatDateTime as formatDateTimeUtil } fr
 interface Reminder {
   id: string;
   invoice_id: uuid;
+  ticket_id?: uuid;
   reminder_date: string;
   reminder_message: string;
   priority: string;
@@ -18,6 +19,7 @@ interface Reminder {
   completed_at: string | null;
   created_at: string;
   invoice_reference?: string;
+  ticket_number?: string;
   customer_name?: string;
 }
 
@@ -50,6 +52,8 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
       setPrefilledInvoiceData({
         invoiceId: state.invoiceId,
         invoiceReference: state.invoiceReference,
+        ticketId: state.ticketId,
+        ticketNumber: state.ticketNumber,
         customerName: state.customerName,
         promiseDate: state.promiseDate
       });
@@ -74,6 +78,10 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
           acumatica_invoices (
             reference_number,
             customer_name
+          ),
+          collection_tickets (
+            ticket_number,
+            customer_name
           )
         `)
         .eq('user_id', user?.id)
@@ -84,7 +92,8 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
       const flattenedData = (data || []).map(item => ({
         ...item,
         invoice_reference: item.acumatica_invoices?.reference_number,
-        customer_name: item.acumatica_invoices?.customer_name
+        customer_name: item.collection_tickets?.customer_name || item.acumatica_invoices?.customer_name,
+        ticket_number: item.collection_tickets?.ticket_number
       }));
 
       setReminders(flattenedData);
@@ -388,10 +397,11 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
                         <h3 className={`text-lg font-semibold ${reminder.completed_at ? 'text-slate-400 line-through' : 'text-white'}`}>
                           {reminder.reminder_message}
                         </h3>
-                        {(reminder.invoice_reference || reminder.customer_name) && (
+                        {(reminder.invoice_reference || reminder.ticket_number || reminder.customer_name) && (
                           <p className="text-slate-400 text-sm mt-1">
+                            {reminder.ticket_number && `Ticket #${reminder.ticket_number}`}
                             {reminder.invoice_reference && `Invoice: ${reminder.invoice_reference}`}
-                            {reminder.invoice_reference && reminder.customer_name && ' • '}
+                            {(reminder.invoice_reference || reminder.ticket_number) && reminder.customer_name && ' • '}
                             {reminder.customer_name}
                           </p>
                         )}
@@ -505,8 +515,10 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
 interface ReminderModalProps {
   reminder: Reminder | null;
   prefilledData?: {
-    invoiceId: string;
-    invoiceReference: string;
+    invoiceId?: string;
+    invoiceReference?: string;
+    ticketId?: string;
+    ticketNumber?: string;
     customerName: string;
     promiseDate?: string;
   } | null;
@@ -518,8 +530,12 @@ function ReminderModal({ reminder, prefilledData, onClose, onSave }: ReminderMod
   const { user } = useAuth();
   const defaultMessage = prefilledData
     ? prefilledData.promiseDate
-      ? `Payment promised for ${prefilledData.invoiceReference}`
-      : `Follow up on invoice ${prefilledData.invoiceReference}`
+      ? prefilledData.ticketId
+        ? `Payment promised for ticket #${prefilledData.ticketNumber} - ${prefilledData.customerName}`
+        : `Payment promised for ${prefilledData.invoiceReference}`
+      : prefilledData.ticketId
+        ? `Follow up on ticket #${prefilledData.ticketNumber}`
+        : `Follow up on invoice ${prefilledData.invoiceReference}`
     : '';
   const defaultDate = prefilledData?.promiseDate || '';
   const [message, setMessage] = useState(reminder?.reminder_message || defaultMessage);
@@ -564,6 +580,7 @@ function ReminderModal({ reminder, prefilledData, onClose, onSave }: ReminderMod
             user_id: user?.id,
             invoice_id: prefilledData?.invoiceId || null,
             invoice_reference_number: prefilledData?.invoiceReference || null,
+            ticket_id: prefilledData?.ticketId || null,
             reminder_message: message.trim(),
             reminder_date: reminderDateTime,
             priority,
@@ -609,16 +626,29 @@ function ReminderModal({ reminder, prefilledData, onClose, onSave }: ReminderMod
           {prefilledData && (
             <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-4 mb-4">
               <div className="flex items-start gap-3">
-                <FileText className="w-5 h-5 text-blue-400 mt-0.5" />
-                <div>
-                  <h3 className="text-white font-medium">Linked to Invoice</h3>
-                  <p className="text-slate-300 text-sm mt-1">
-                    Invoice: <span className="font-semibold">{prefilledData.invoiceReference}</span>
-                  </p>
-                  <p className="text-slate-400 text-sm">
-                    Customer: {prefilledData.customerName}
-                  </p>
-                </div>
+                {prefilledData.ticketId ? (
+                  <><Ticket className="w-5 h-5 text-blue-400 mt-0.5" />
+                  <div>
+                    <h3 className="text-white font-medium">Linked to Collection Ticket</h3>
+                    <p className="text-slate-300 text-sm mt-1">
+                      Ticket: <span className="font-semibold">#{prefilledData.ticketNumber}</span>
+                    </p>
+                    <p className="text-slate-400 text-sm">
+                      Customer: {prefilledData.customerName}
+                    </p>
+                  </div></>
+                ) : (
+                  <><FileText className="w-5 h-5 text-blue-400 mt-0.5" />
+                  <div>
+                    <h3 className="text-white font-medium">Linked to Invoice</h3>
+                    <p className="text-slate-300 text-sm mt-1">
+                      Invoice: <span className="font-semibold">{prefilledData.invoiceReference}</span>
+                    </p>
+                    <p className="text-slate-400 text-sm">
+                      Customer: {prefilledData.customerName}
+                    </p>
+                  </div></>
+                )}
               </div>
             </div>
           )}
