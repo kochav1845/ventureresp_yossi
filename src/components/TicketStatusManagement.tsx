@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Edit2, Trash2, Save, X, GripVertical, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Save, X, GripVertical } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -112,8 +112,7 @@ export default function TicketStatusManagement({ onBack }: TicketStatusManagemen
         .from('ticket_status_options')
         .update({
           display_name: editForm.display_name,
-          color_class: editForm.color_class,
-          is_active: editForm.is_active
+          color_class: editForm.color_class
         })
         .eq('id', editingId);
 
@@ -151,21 +150,6 @@ export default function TicketStatusManagement({ onBack }: TicketStatusManagemen
     } catch (error: any) {
       console.error('Error deleting status:', error);
       alert(error.message || 'Failed to delete status');
-    }
-  };
-
-  const handleToggleActive = async (id: string, currentActive: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('ticket_status_options')
-        .update({ is_active: !currentActive })
-        .eq('id', id);
-
-      if (error) throw error;
-      await loadStatuses();
-    } catch (error: any) {
-      console.error('Error toggling status:', error);
-      alert(error.message || 'Failed to update status');
     }
   };
 
@@ -333,15 +317,6 @@ export default function TicketStatusManagement({ onBack }: TicketStatusManagemen
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={editForm.is_active}
-                        onChange={(e) => setEditForm({ ...editForm, is_active: e.target.checked })}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm font-medium text-gray-700">Active</span>
-                    </label>
                     <span className={`px-3 py-1 rounded-full text-sm font-semibold ${editForm.color_class}`}>
                       {editForm.display_name}
                     </span>
@@ -409,17 +384,6 @@ export default function TicketStatusManagement({ onBack }: TicketStatusManagemen
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleToggleActive(status.id, status.is_active)}
-                      className={`p-2 rounded-lg ${
-                        status.is_active
-                          ? 'text-green-600 hover:bg-green-50'
-                          : 'text-gray-400 hover:bg-gray-100'
-                      }`}
-                      title={status.is_active ? 'Deactivate' : 'Activate'}
-                    >
-                      {status.is_active ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
-                    </button>
                     <button
                       onClick={() => handleEdit(status)}
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
