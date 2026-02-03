@@ -39,6 +39,8 @@ export interface Invoice {
   color_status: 'red' | 'yellow' | 'green' | null;
   color_changed_at: string | null;
   color_changed_by: string | null;
+  promise_date: string | null;
+  promise_by_user_id: string | null;
   created_at: string;
   updated_at: string;
   last_modified_datetime: string | null;

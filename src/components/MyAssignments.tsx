@@ -237,8 +237,86 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const isPromiseBroken = (invoice: any) => {
+    if (invoice.color_status !== 'green' || !invoice.promise_date || invoice.invoice_balance <= 0) {
+      return false;
+    }
+    const promiseDate = new Date(invoice.promise_date);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return promiseDate < now;
+  };
+
   const handleColorChange = async (invoiceRefNumber: string, newColor: string | null) => {
     if (!profile?.id) return;
+
+    // If changing to green (Will Pay), ask for promise date and reminder
+    if (newColor === 'green') {
+      const promiseDate = prompt('When did the customer promise to pay? (YYYY-MM-DD)');
+      if (!promiseDate) {
+        return; // User cancelled
+      }
+
+      // Validate date format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(promiseDate)) {
+        alert('Invalid date format. Please use YYYY-MM-DD format.');
+        return;
+      }
+
+      try {
+        // Get invoice details first
+        const { data: invoice } = await supabase
+          .from('acumatica_invoices')
+          .select('id, reference_number, customer_name')
+          .eq('reference_number', invoiceRefNumber)
+          .maybeSingle();
+
+        if (!invoice) throw new Error('Invoice not found');
+
+        // Update color and promise date
+        const { error: updateError } = await supabase
+          .from('acumatica_invoices')
+          .update({
+            color_status: newColor,
+            promise_date: promiseDate,
+            promise_by_user_id: profile.id
+          })
+          .eq('reference_number', invoiceRefNumber);
+
+        if (updateError) throw updateError;
+
+        // Log the activity
+        await supabase.from('invoice_activity_log').insert({
+          invoice_id: invoice.id,
+          user_id: profile.id,
+          activity_type: 'color_status_change',
+          old_value: null,
+          new_value: newColor,
+          description: `Marked as "Will Pay" with promise date: ${promiseDate}`
+        });
+
+        const wantsReminder = window.confirm('Do you want to create a reminder for this promise date?');
+        if (wantsReminder) {
+          // Navigate to reminders page with promise date prefilled
+          navigate('/reminders', {
+            state: {
+              createReminder: true,
+              invoiceId: invoice.id,
+              invoiceReference: invoice.reference_number,
+              customerName: invoice.customer_name,
+              promiseDate: promiseDate
+            }
+          });
+        } else {
+          setChangingColorForInvoice(null);
+          await loadAssignments();
+        }
+      } catch (error: any) {
+        console.error('Error setting promise date:', error);
+        alert('Failed to set promise date: ' + error.message);
+      }
+      return;
+    }
 
     // If changing to yellow (Will Take Care), ask if they want to add a reminder
     if (newColor === 'yellow') {
@@ -280,7 +358,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
       }
     }
 
-    // Complete the color change normally
+    // Complete the color change normally (for other colors or when reminders are skipped)
     try {
       const { error } = await supabase.rpc('update_invoice_color_status_by_ref', {
         p_reference_number: invoiceRefNumber,
@@ -858,6 +936,11 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                                   }`}>
                                     {invoice.invoice_status}
                                   </span>
+                                  {isPromiseBroken(invoice) && (
+                                    <span className="px-2 py-1 rounded text-xs font-bold bg-red-600 text-white animate-pulse border-2 border-red-800 shadow-lg" title={`Promised payment date was ${new Date(invoice.promise_date).toLocaleDateString()}`}>
+                                      BROKEN PROMISE
+                                    </span>
+                                  )}
                                   <div className="relative color-picker-container">
                                     <button
                                       onClick={() => setChangingColorForInvoice(changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number)}
@@ -1009,6 +1092,11 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                           }`}>
                             {invoice.invoice_status}
                           </span>
+                          {isPromiseBroken(invoice) && (
+                            <span className="px-2 py-1 rounded text-xs font-bold bg-red-600 text-white animate-pulse border-2 border-red-800 shadow-lg" title={`Promised payment date was ${new Date(invoice.promise_date).toLocaleDateString()}`}>
+                              BROKEN PROMISE
+                            </span>
+                          )}
                           <div className="relative color-picker-container">
                             <button
                               onClick={() => setChangingColorForInvoice(changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number)}

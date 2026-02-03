@@ -50,7 +50,8 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
       setPrefilledInvoiceData({
         invoiceId: state.invoiceId,
         invoiceReference: state.invoiceReference,
-        customerName: state.customerName
+        customerName: state.customerName,
+        promiseDate: state.promiseDate
       });
       setShowCreateModal(true);
 
@@ -507,6 +508,7 @@ interface ReminderModalProps {
     invoiceId: string;
     invoiceReference: string;
     customerName: string;
+    promiseDate?: string;
   } | null;
   onClose: () => void;
   onSave: () => void;
@@ -515,15 +517,18 @@ interface ReminderModalProps {
 function ReminderModal({ reminder, prefilledData, onClose, onSave }: ReminderModalProps) {
   const { user } = useAuth();
   const defaultMessage = prefilledData
-    ? `Follow up on invoice ${prefilledData.invoiceReference}`
+    ? prefilledData.promiseDate
+      ? `Payment promised for ${prefilledData.invoiceReference}`
+      : `Follow up on invoice ${prefilledData.invoiceReference}`
     : '';
+  const defaultDate = prefilledData?.promiseDate || '';
   const [message, setMessage] = useState(reminder?.reminder_message || defaultMessage);
-  const [date, setDate] = useState(reminder?.reminder_date?.split('T')[0] || '');
+  const [date, setDate] = useState(reminder?.reminder_date?.split('T')[0] || defaultDate);
   const [time, setTime] = useState(
     reminder?.reminder_date ? new Date(reminder.reminder_date).toTimeString().slice(0, 5) : '09:00'
   );
   const [priority, setPriority] = useState(reminder?.priority || 'medium');
-  const [type, setType] = useState(reminder?.reminder_type || 'general');
+  const [type, setType] = useState(reminder?.reminder_type || 'payment_promise');
   const [notes, setNotes] = useState(reminder?.notes || '');
   const [sendEmail, setSendEmail] = useState(reminder?.send_email_notification || false);
   const [saving, setSaving] = useState(false);
