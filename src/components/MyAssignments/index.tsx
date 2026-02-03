@@ -79,6 +79,28 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
 
         const ticketGroupsArray = Array.from(ticketGroups.values());
         await Promise.all(ticketGroupsArray.map(async (ticket) => {
+          // Fetch promise date info from collection_tickets
+          const { data: ticketData } = await supabase
+            .from('collection_tickets')
+            .select('promise_date, promise_by_user_id')
+            .eq('id', ticket.ticket_id)
+            .maybeSingle();
+
+          if (ticketData) {
+            ticket.promise_date = ticketData.promise_date;
+
+            // Fetch promise_by user name if exists
+            if (ticketData.promise_by_user_id) {
+              const { data: userData } = await supabase
+                .from('user_profiles')
+                .select('full_name')
+                .eq('id', ticketData.promise_by_user_id)
+                .maybeSingle();
+
+              ticket.promise_by_user_name = userData?.full_name || null;
+            }
+          }
+
           const { data: lastStatus } = await supabase
             .from('ticket_status_history')
             .select('new_status, changed_at, changed_by, user_profiles!ticket_status_history_changed_by_fkey(full_name)')

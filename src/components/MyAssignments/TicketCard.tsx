@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar } from 'lucide-react';
+import { formatDistanceToNow, isPast, parseISO } from 'date-fns';
 import { TicketGroup, Assignment } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
 import { getAcumaticaCustomerUrl } from '../../lib/acumaticaLinks';
@@ -55,6 +55,10 @@ export default function TicketCard({
     onPromiseDateSet();
   };
 
+  const isBrokenPromise = ticket.ticket_status === 'promised' &&
+    ticket.promise_date &&
+    isPast(parseISO(ticket.promise_date));
+
   return (
     <>
       {showPromiseDateModal && (
@@ -85,6 +89,46 @@ export default function TicketCard({
             Priority: {ticket.ticket_priority.toUpperCase()}
           </span>
         </div>
+
+        {isBrokenPromise && (
+          <div className="mb-3 p-3 bg-red-100 border-2 border-red-500 rounded-lg">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-700 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-bold text-red-900 text-sm">BROKEN PROMISE</p>
+                <p className="text-xs text-red-800">
+                  Customer promised to pay by {new Date(ticket.promise_date!).toLocaleDateString()}
+                  {' '}({formatDistanceToNow(parseISO(ticket.promise_date!), { addSuffix: true })})
+                </p>
+                {ticket.promise_by_user_name && (
+                  <p className="text-xs text-red-700 mt-1">
+                    Promise recorded by: {ticket.promise_by_user_name}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {ticket.ticket_status === 'promised' && ticket.promise_date && !isBrokenPromise && (
+          <div className="mb-3 p-3 bg-blue-50 border border-blue-300 rounded-lg">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-blue-700 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-semibold text-blue-900 text-sm">Payment Promise Active</p>
+                <p className="text-xs text-blue-800">
+                  Customer promised to pay by {new Date(ticket.promise_date!).toLocaleDateString()}
+                  {' '}({formatDistanceToNow(parseISO(ticket.promise_date!), { addSuffix: true })})
+                </p>
+                {ticket.promise_by_user_name && (
+                  <p className="text-xs text-blue-700 mt-1">
+                    Promise recorded by: {ticket.promise_by_user_name}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 mb-3">
           <button

@@ -25,6 +25,8 @@ export interface TicketGroup {
   ticket_priority: string;
   customer_id: string;
   customer_name: string;
+  promise_date?: string | null;
+  promise_by_user_name?: string | null;
   invoices: Assignment[];
   last_status_change?: {
     status: string;
