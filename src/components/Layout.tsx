@@ -24,7 +24,8 @@ import {
   Code,
   Menu,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Palette
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import RemindersSidebar from './RemindersSidebar';
@@ -151,6 +152,7 @@ export default function Layout() {
       title: 'Administration',
       items: [
         ...(isAdmin ? [{ id: 'collection-ticketing', name: 'Ticketing System', icon: Ticket }] : []),
+        ...(isAdmin ? [{ id: 'invoice-color-settings', name: 'Invoice Color Settings', icon: Palette }] : []),
         ...(hasPermission(PERMISSION_KEYS.ADMIN_SYNC_CONFIG) ? [{ id: 'sync-config', name: 'Sync Settings', icon: Settings, permission: PERMISSION_KEYS.ADMIN_SYNC_CONFIG }] : []),
       ]
     },

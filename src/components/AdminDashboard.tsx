@@ -41,6 +41,7 @@ import InvoiceFormatChecker from './InvoiceFormatChecker';
 import AcumaticaInvoiceVariationChecker from './AcumaticaInvoiceVariationChecker';
 import OrphanedApplicationDiagnostic from './OrphanedApplicationDiagnostic';
 import CollectionTicketing from './CollectionTicketing';
+import InvoiceColorStatusManagement from './InvoiceColorStatusManagement';
 import MyAssignments from './MyAssignments';
 import CollectorPerformanceAnalytics from './CollectorPerformanceAnalytics';
 import RevenueAnalytics from './RevenueAnalytics';
@@ -57,7 +58,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import { Lock } from 'lucide-react';
 
-type View = 'dashboard' | 'inbox' | 'formulas' | 'templates' | 'customers' | 'assignments' | 'schedule' | 'logs' | 'users' | 'acumatica' | 'acumatica-customers' | 'acumatica-invoices' | 'acumatica-payments' | 'invoice-analytics' | 'payment-analytics' | 'webhooks' | 'sync-status' | 'sync-config' | 'invoice-status-admin' | 'invoice-status-analytics' | 'customer-reports-monthly' | 'customer-reports' | 'system-documentation' | 'acumatica-files-test' | 'reminders' | 'credential-tester' | 'batch-fetcher' | 'bulk-fetcher' | 'sync-logs' | 'payment-diagnostic' | 'payment-attachment-test' | 'payment-count' | 'stripe-payments' | 'payment-app-status' | 'orphaned-invoice-fixer' | 'application-date-diagnostic' | 'invoice-format-checker' | 'invoice-variation-checker' | 'orphaned-application-diagnostic' | 'collection-ticketing' | 'admin-dashboard' | 'customer-dashboard' | 'invoice-status' | 'payment-applications' | 'my-assignments' | 'collector-performance' | 'revenue-analytics' | 'customer-analytics' | 'user-activity' | 'email-analytics' | 'stripe-analytics' | 'collector-control-panel' | 'collector-monitoring' | 'user-approval' | 'recent-sync-app-check';
+type View = 'dashboard' | 'inbox' | 'formulas' | 'templates' | 'customers' | 'assignments' | 'schedule' | 'logs' | 'users' | 'acumatica' | 'acumatica-customers' | 'acumatica-invoices' | 'acumatica-payments' | 'invoice-analytics' | 'payment-analytics' | 'webhooks' | 'sync-status' | 'sync-config' | 'invoice-status-admin' | 'invoice-status-analytics' | 'customer-reports-monthly' | 'customer-reports' | 'system-documentation' | 'acumatica-files-test' | 'reminders' | 'credential-tester' | 'batch-fetcher' | 'bulk-fetcher' | 'sync-logs' | 'payment-diagnostic' | 'payment-attachment-test' | 'payment-count' | 'stripe-payments' | 'payment-app-status' | 'orphaned-invoice-fixer' | 'application-date-diagnostic' | 'invoice-format-checker' | 'invoice-variation-checker' | 'orphaned-application-diagnostic' | 'collection-ticketing' | 'invoice-color-settings' | 'admin-dashboard' | 'customer-dashboard' | 'invoice-status' | 'payment-applications' | 'my-assignments' | 'collector-performance' | 'revenue-analytics' | 'customer-analytics' | 'user-activity' | 'email-analytics' | 'stripe-analytics' | 'collector-control-panel' | 'collector-monitoring' | 'user-approval' | 'recent-sync-app-check';
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
@@ -149,6 +150,8 @@ export default function AdminDashboard() {
         return <OrphanedApplicationDiagnostic onBack={() => setCurrentView('acumatica-payments')} />;
       case 'collection-ticketing':
         return <CollectionTicketing onBack={() => setCurrentView('admin-dashboard')} />;
+      case 'invoice-color-settings':
+        return <InvoiceColorStatusManagement onBack={() => setCurrentView('admin-dashboard')} />;
       case 'my-assignments':
         return <MyAssignments onBack={() => setCurrentView('admin-dashboard')} />;
       case 'collector-performance':
