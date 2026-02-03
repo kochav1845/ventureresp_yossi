@@ -528,7 +528,7 @@ function ReminderModal({ reminder, prefilledData, onClose, onSave }: ReminderMod
     reminder?.reminder_date ? new Date(reminder.reminder_date).toTimeString().slice(0, 5) : '09:00'
   );
   const [priority, setPriority] = useState(reminder?.priority || 'medium');
-  const [type, setType] = useState(reminder?.reminder_type || 'payment_promise');
+  const [type, setType] = useState(reminder?.reminder_type || 'payment');
   const [notes, setNotes] = useState(reminder?.notes || '');
   const [sendEmail, setSendEmail] = useState(reminder?.send_email_notification || false);
   const [saving, setSaving] = useState(false);
