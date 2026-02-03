@@ -76,6 +76,8 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   const [createReminder, setCreateReminder] = useState(false);
   const [reminderDate, setReminderDate] = useState('');
   const [processingBatch, setProcessingBatch] = useState(false);
+  const [ticketStatusChanges, setTicketStatusChanges] = useState<Map<string, string>>(new Map());
+  const [changingTicketStatus, setChangingTicketStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (user && profile) {
@@ -305,6 +307,28 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
       alert('Failed to change colors: ' + error.message);
     } finally {
       setProcessingBatch(false);
+    }
+  };
+
+  const handleTicketStatusChange = async (ticketId: string, newStatus: string) => {
+    if (!profile?.id) return;
+
+    setChangingTicketStatus(ticketId);
+    try {
+      const { error } = await supabase
+        .from('collection_tickets')
+        .update({ status: newStatus })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      await loadAssignments();
+      alert('Ticket status updated successfully');
+    } catch (error: any) {
+      console.error('Error changing ticket status:', error);
+      alert('Failed to change ticket status: ' + error.message);
+    } finally {
+      setChangingTicketStatus(null);
     }
   };
 
@@ -670,6 +694,42 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                       <p className="text-sm text-gray-600">
                         Customer ID: {ticket.customer_id}
                       </p>
+
+                      {/* Ticket Status Change Section */}
+                      <div className="mt-4 pt-4 border-t border-gray-300">
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Change Ticket Status</h4>
+                        <div className="flex gap-2 items-center">
+                          <select
+                            value={ticketStatusChanges.get(ticket.ticket_id) || ticket.ticket_status}
+                            onChange={(e) => {
+                              const newMap = new Map(ticketStatusChanges);
+                              newMap.set(ticket.ticket_id, e.target.value);
+                              setTicketStatusChanges(newMap);
+                            }}
+                            className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          >
+                            <option value="open">Open</option>
+                            <option value="pending">Pending</option>
+                            <option value="promised">Promised</option>
+                            <option value="paid">Paid</option>
+                            <option value="disputed">Disputed</option>
+                            <option value="closed">Closed</option>
+                          </select>
+                          <button
+                            onClick={() => {
+                              const newStatus = ticketStatusChanges.get(ticket.ticket_id) || ticket.ticket_status;
+                              handleTicketStatusChange(ticket.ticket_id, newStatus);
+                            }}
+                            disabled={
+                              changingTicketStatus === ticket.ticket_id ||
+                              (ticketStatusChanges.get(ticket.ticket_id) || ticket.ticket_status) === ticket.ticket_status
+                            }
+                            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                          >
+                            {changingTicketStatus === ticket.ticket_id ? 'Updating...' : 'Update'}
+                          </button>
+                        </div>
+                      </div>
 
                       {/* Last Status Change and Activity */}
                       <div className="mt-3 pt-3 border-t border-gray-200">
