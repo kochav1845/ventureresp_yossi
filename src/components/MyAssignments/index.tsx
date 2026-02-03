@@ -544,6 +544,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                       onToggleColorPicker={setChangingColorForInvoice}
                       onOpenMemo={handleOpenMemo}
                       onTicketStatusChange={handleTicketStatusChange}
+                      onPromiseDateSet={loadAssignments}
                     />
                   ))}
                 </>

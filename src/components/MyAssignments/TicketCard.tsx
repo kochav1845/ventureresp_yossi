@@ -6,6 +6,7 @@ import { TicketGroup, Assignment } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
 import { getAcumaticaCustomerUrl } from '../../lib/acumaticaLinks';
 import InvoiceItem from './InvoiceItem';
+import TicketPromiseDateModal from './TicketPromiseDateModal';
 
 interface TicketCardProps {
   ticket: TicketGroup;
@@ -17,6 +18,7 @@ interface TicketCardProps {
   onToggleColorPicker: (refNumber: string | null) => void;
   onOpenMemo: (invoice: Assignment) => void;
   onTicketStatusChange: (ticketId: string, newStatus: string) => void;
+  onPromiseDateSet: () => void;
 }
 
 export default function TicketCard({
@@ -28,12 +30,45 @@ export default function TicketCard({
   onColorChange,
   onToggleColorPicker,
   onOpenMemo,
-  onTicketStatusChange
+  onTicketStatusChange,
+  onPromiseDateSet
 }: TicketCardProps) {
   const navigate = useNavigate();
   const [localTicketStatus, setLocalTicketStatus] = useState(ticket.ticket_status);
+  const [showPromiseDateModal, setShowPromiseDateModal] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+
+  const handleStatusUpdate = () => {
+    if (localTicketStatus === 'promised') {
+      setPendingStatus(localTicketStatus);
+      setShowPromiseDateModal(true);
+    } else {
+      onTicketStatusChange(ticket.ticket_id, localTicketStatus);
+    }
+  };
+
+  const handlePromiseDateSuccess = () => {
+    if (pendingStatus) {
+      onTicketStatusChange(ticket.ticket_id, pendingStatus);
+      setPendingStatus(null);
+    }
+    onPromiseDateSet();
+  };
 
   return (
+    <>
+      {showPromiseDateModal && (
+        <TicketPromiseDateModal
+          ticketId={ticket.ticket_id}
+          ticketNumber={ticket.ticket_number}
+          customerName={ticket.customer_name}
+          onClose={() => {
+            setShowPromiseDateModal(false);
+            setPendingStatus(null);
+          }}
+          onSuccess={handlePromiseDateSuccess}
+        />
+      )}
     <div className="border-2 border-gray-200 rounded-lg hover:shadow-md transition-shadow">
       <div className={`p-4 border-b-2 ${getPriorityColor(ticket.ticket_priority)}`}>
         <div className="flex items-center justify-between mb-2">
@@ -89,7 +124,7 @@ export default function TicketCard({
               <option value="closed">Closed</option>
             </select>
             <button
-              onClick={() => onTicketStatusChange(ticket.ticket_id, localTicketStatus)}
+              onClick={handleStatusUpdate}
               disabled={
                 changingTicketStatus === ticket.ticket_id ||
                 localTicketStatus === ticket.ticket_status
@@ -164,5 +199,6 @@ export default function TicketCard({
         </div>
       </div>
     </div>
+    </>
   );
 }
