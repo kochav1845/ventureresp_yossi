@@ -37,7 +37,6 @@ export default function TicketStatusManagement({ onBack }: TicketStatusManagemen
   const [addingNew, setAddingNew] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newStatus, setNewStatus] = useState({
-    status_name: '',
     display_name: '',
     color_class: 'bg-gray-100 text-gray-800'
   });
@@ -65,7 +64,7 @@ export default function TicketStatusManagement({ onBack }: TicketStatusManagemen
   };
 
   const handleAddNew = async () => {
-    if (!newStatus.status_name || !newStatus.display_name) {
+    if (!newStatus.display_name || !newStatus.display_name.trim()) {
       alert('Please fill in all required fields');
       return;
     }
@@ -77,7 +76,7 @@ export default function TicketStatusManagement({ onBack }: TicketStatusManagemen
       const { error } = await supabase
         .from('ticket_status_options')
         .insert([{
-          status_name: newStatus.status_name.toLowerCase().replace(/\s+/g, '_'),
+          status_name: newStatus.display_name.toLowerCase().replace(/\s+/g, '_'),
           display_name: newStatus.display_name,
           color_class: newStatus.color_class,
           sort_order: maxSortOrder + 1,
@@ -88,7 +87,7 @@ export default function TicketStatusManagement({ onBack }: TicketStatusManagemen
 
       if (error) throw error;
 
-      setNewStatus({ status_name: '', display_name: '', color_class: 'bg-gray-100 text-gray-800' });
+      setNewStatus({ display_name: '', color_class: 'bg-gray-100 text-gray-800' });
       setAddingNew(false);
       await loadStatuses();
     } catch (error: any) {
@@ -286,7 +285,7 @@ export default function TicketStatusManagement({ onBack }: TicketStatusManagemen
               <button
                 onClick={() => {
                   setAddingNew(false);
-                  setNewStatus({ status_name: '', display_name: '', color_class: 'bg-gray-100 text-gray-800' });
+                  setNewStatus({ display_name: '', color_class: 'bg-gray-100 text-gray-800' });
                 }}
                 className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
               >
