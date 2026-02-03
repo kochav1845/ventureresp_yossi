@@ -160,6 +160,14 @@ export function DeveloperTools() {
       category: 'payment'
     },
     {
+      id: 'sync-diagnostic',
+      name: 'Sync Diagnostic',
+      description: 'Diagnose sync issues and check sync health',
+      icon: AlertCircle,
+      path: '/sync-diagnostic',
+      category: 'sync'
+    },
+    {
       id: 'sync-logs',
       name: 'Sync Change Logs',
       description: 'View synchronization change logs',

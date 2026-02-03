@@ -30,6 +30,7 @@ import AcumaticaCredentialTester from './components/AcumaticaCredentialTester';
 import BatchApplicationFetcher from './components/BatchApplicationFetcher';
 import BulkApplicationFetcher from './components/BulkApplicationFetcher';
 import SyncChangeLogsViewer from './components/SyncChangeLogsViewer';
+import SyncDiagnostic from './components/SyncDiagnostic';
 import PaymentStructureDiagnostic from './components/PaymentStructureDiagnostic';
 import PaymentAttachmentTest from './components/PaymentAttachmentTest';
 import RecentSyncApplicationCheck from './components/RecentSyncApplicationCheck';
@@ -137,6 +138,7 @@ function AppContent() {
         <Route path="batch-fetcher" element={<BatchApplicationFetcher />} />
         <Route path="bulk-fetcher" element={<BulkApplicationFetcher />} />
         <Route path="sync-logs" element={<SyncChangeLogsViewer />} />
+        <Route path="sync-diagnostic" element={<SyncDiagnostic />} />
         <Route path="payment-diagnostic" element={<PaymentStructureDiagnostic />} />
         <Route path="payment-attachment-test" element={<PaymentAttachmentTest />} />
         <Route path="recent-sync-app-check" element={<RecentSyncApplicationCheck />} />
