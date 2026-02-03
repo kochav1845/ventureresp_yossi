@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Plus, Calendar, Clock, AlertCircle, CheckCircle, Edit2, Trash2, Mail, Phone, Video, DollarSign, MessageSquare, FileText, Filter, X, Save } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -30,6 +30,7 @@ type FilterType = 'all' | 'today' | 'tomorrow' | 'week' | 'overdue' | 'completed
 export default function RemindersPortal({ onBack }: RemindersPortalProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const handleBack = onBack || (() => navigate(-1));
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [filteredReminders, setFilteredReminders] = useState<Reminder[]>([]);
@@ -38,9 +39,24 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
   const [sendingEmails, setSendingEmails] = useState(false);
+  const [prefilledInvoiceData, setPrefilledInvoiceData] = useState<any>(null);
 
   useEffect(() => {
     loadReminders();
+
+    // Check if we should open the create modal with prefilled data
+    const state = location.state as any;
+    if (state?.createReminder) {
+      setPrefilledInvoiceData({
+        invoiceId: state.invoiceId,
+        invoiceReference: state.invoiceReference,
+        customerName: state.customerName
+      });
+      setShowCreateModal(true);
+
+      // Clear the state so it doesn't trigger again on component update
+      window.history.replaceState({}, document.title);
+    }
   }, []);
 
   useEffect(() => {
@@ -467,13 +483,16 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
       {showCreateModal && (
         <ReminderModal
           reminder={editingReminder}
+          prefilledData={prefilledInvoiceData}
           onClose={() => {
             setShowCreateModal(false);
             setEditingReminder(null);
+            setPrefilledInvoiceData(null);
           }}
           onSave={() => {
             setShowCreateModal(false);
             setEditingReminder(null);
+            setPrefilledInvoiceData(null);
             loadReminders();
           }}
         />
@@ -484,13 +503,21 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
 
 interface ReminderModalProps {
   reminder: Reminder | null;
+  prefilledData?: {
+    invoiceId: string;
+    invoiceReference: string;
+    customerName: string;
+  } | null;
   onClose: () => void;
   onSave: () => void;
 }
 
-function ReminderModal({ reminder, onClose, onSave }: ReminderModalProps) {
+function ReminderModal({ reminder, prefilledData, onClose, onSave }: ReminderModalProps) {
   const { user } = useAuth();
-  const [message, setMessage] = useState(reminder?.reminder_message || '');
+  const defaultMessage = prefilledData
+    ? `Follow up on invoice ${prefilledData.invoiceReference}`
+    : '';
+  const [message, setMessage] = useState(reminder?.reminder_message || defaultMessage);
   const [date, setDate] = useState(reminder?.reminder_date?.split('T')[0] || '');
   const [time, setTime] = useState(
     reminder?.reminder_date ? new Date(reminder.reminder_date).toTimeString().slice(0, 5) : '09:00'
@@ -530,7 +557,8 @@ function ReminderModal({ reminder, onClose, onSave }: ReminderModalProps) {
           .from('invoice_reminders')
           .insert({
             user_id: user?.id,
-            invoice_id: null,
+            invoice_id: prefilledData?.invoiceId || null,
+            invoice_reference_number: prefilledData?.invoiceReference || null,
             reminder_message: message.trim(),
             reminder_date: reminderDateTime,
             priority,
@@ -573,6 +601,23 @@ function ReminderModal({ reminder, onClose, onSave }: ReminderModalProps) {
         </div>
 
         <div className="p-6 space-y-4">
+          {prefilledData && (
+            <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-3">
+                <FileText className="w-5 h-5 text-blue-400 mt-0.5" />
+                <div>
+                  <h3 className="text-white font-medium">Linked to Invoice</h3>
+                  <p className="text-slate-300 text-sm mt-1">
+                    Invoice: <span className="font-semibold">{prefilledData.invoiceReference}</span>
+                  </p>
+                  <p className="text-slate-400 text-sm">
+                    Customer: {prefilledData.customerName}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-slate-300 font-medium mb-2">Reminder Message *</label>
             <input

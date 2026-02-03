@@ -78,12 +78,6 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   const [processingBatch, setProcessingBatch] = useState(false);
   const [ticketStatusChanges, setTicketStatusChanges] = useState<Map<string, string>>(new Map());
   const [changingTicketStatus, setChangingTicketStatus] = useState<string | null>(null);
-  const [showReminderPrompt, setShowReminderPrompt] = useState(false);
-  const [pendingColorChange, setPendingColorChange] = useState<{ invoiceRef: string; color: string } | null>(null);
-  const [reminderDateTime, setReminderDateTime] = useState('');
-  const [reminderTitle, setReminderTitle] = useState('');
-  const [reminderDescription, setReminderDescription] = useState('');
-  const [creatingReminder, setCreatingReminder] = useState(false);
 
   useEffect(() => {
     if (user && profile) {
@@ -250,17 +244,43 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
     if (newColor === 'yellow') {
       const wantsReminder = window.confirm('Do you want to add a reminder for this invoice?');
       if (wantsReminder) {
-        setPendingColorChange({ invoiceRef: invoiceRefNumber, color: newColor });
-        setReminderTitle(`Follow up on invoice ${invoiceRefNumber}`);
-        setReminderDescription('');
-        setReminderDateTime('');
-        setShowReminderPrompt(true);
-        setChangingColorForInvoice(null);
+        // First change the color
+        try {
+          const { error } = await supabase.rpc('update_invoice_color_status_by_ref', {
+            p_reference_number: invoiceRefNumber,
+            p_color_status: newColor,
+            p_user_id: profile.id
+          });
+
+          if (error) throw error;
+
+          // Get invoice details for navigation
+          const { data: invoice } = await supabase
+            .from('acumatica_invoices')
+            .select('id, reference_number, customer_name')
+            .eq('reference_number', invoiceRefNumber)
+            .maybeSingle();
+
+          if (!invoice) throw new Error('Invoice not found');
+
+          // Navigate to reminders page with state to open create modal
+          navigate('/reminders', {
+            state: {
+              createReminder: true,
+              invoiceId: invoice.id,
+              invoiceReference: invoice.reference_number,
+              customerName: invoice.customer_name
+            }
+          });
+        } catch (error: any) {
+          console.error('Error changing color:', error);
+          alert('Failed to change color: ' + error.message);
+        }
         return;
       }
     }
 
-    // Complete the color change
+    // Complete the color change normally
     try {
       const { error } = await supabase.rpc('update_invoice_color_status_by_ref', {
         p_reference_number: invoiceRefNumber,
@@ -271,85 +291,6 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
       if (error) throw error;
 
       setChangingColorForInvoice(null);
-      await loadAssignments();
-    } catch (error: any) {
-      console.error('Error changing color:', error);
-      alert('Failed to change color: ' + error.message);
-    }
-  };
-
-  const completeColorChangeWithReminder = async () => {
-    if (!pendingColorChange || !profile?.id || !reminderDateTime) {
-      alert('Please fill in all required fields');
-      return;
-    }
-
-    setCreatingReminder(true);
-    try {
-      // First, change the color
-      const { error: colorError } = await supabase.rpc('update_invoice_color_status_by_ref', {
-        p_reference_number: pendingColorChange.invoiceRef,
-        p_color_status: pendingColorChange.color,
-        p_user_id: profile.id
-      });
-
-      if (colorError) throw colorError;
-
-      // Get the invoice ID
-      const { data: invoice } = await supabase
-        .from('acumatica_invoices')
-        .select('id')
-        .eq('reference_number', pendingColorChange.invoiceRef)
-        .maybeSingle();
-
-      if (!invoice) throw new Error('Invoice not found');
-
-      // Create the reminder
-      const { error: reminderError } = await supabase
-        .from('invoice_reminders')
-        .insert({
-          invoice_id: invoice.id,
-          invoice_reference_number: pendingColorChange.invoiceRef,
-          user_id: profile.id,
-          reminder_date: reminderDateTime,
-          title: reminderTitle,
-          description: reminderDescription,
-          reminder_message: reminderDescription,
-          status: 'pending'
-        });
-
-      if (reminderError) throw reminderError;
-
-      // Reset and reload
-      setShowReminderPrompt(false);
-      setPendingColorChange(null);
-      setReminderDateTime('');
-      setReminderTitle('');
-      setReminderDescription('');
-      await loadAssignments();
-      alert('Color changed and reminder created successfully');
-    } catch (error: any) {
-      console.error('Error:', error);
-      alert('Failed to complete action: ' + error.message);
-    } finally {
-      setCreatingReminder(false);
-    }
-  };
-
-  const skipReminderAndCompleteColorChange = async () => {
-    if (!pendingColorChange || !profile?.id) return;
-
-    try {
-      const { error } = await supabase.rpc('update_invoice_color_status_by_ref', {
-        p_reference_number: pendingColorChange.invoiceRef,
-        p_color_status: pendingColorChange.color,
-        p_user_id: profile.id
-      });
-
-      if (error) throw error;
-
-      setShowReminderPrompt(false);
-      setPendingColorChange(null);
       await loadAssignments();
     } catch (error: any) {
       console.error('Error changing color:', error);
@@ -1304,90 +1245,6 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {processingBatch ? 'Adding...' : `Add Note to ${selectedInvoices.size} Invoice(s)`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showReminderPrompt && pendingColorChange && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-2xl font-bold text-gray-900">Add Reminder</h2>
-              <p className="text-gray-600 mt-1">
-                Create a reminder for invoice {pendingColorChange.invoiceRef}
-              </p>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Reminder Date & Time <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="datetime-local"
-                  value={reminderDateTime}
-                  onChange={(e) => setReminderDateTime(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Reminder Title
-                </label>
-                <input
-                  type="text"
-                  value={reminderTitle}
-                  onChange={(e) => setReminderTitle(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter reminder title..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={reminderDescription}
-                  onChange={(e) => setReminderDescription(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  rows={3}
-                  placeholder="Enter reminder details..."
-                />
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowReminderPrompt(false);
-                  setPendingColorChange(null);
-                  setReminderDateTime('');
-                  setReminderTitle('');
-                  setReminderDescription('');
-                }}
-                disabled={creatingReminder}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={skipReminderAndCompleteColorChange}
-                disabled={creatingReminder}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50"
-              >
-                Skip Reminder
-              </button>
-              <button
-                onClick={completeColorChangeWithReminder}
-                disabled={creatingReminder || !reminderDateTime}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {creatingReminder ? 'Creating...' : 'Create Reminder'}
               </button>
             </div>
           </div>
