@@ -51,7 +51,7 @@ export const calculateTotalBalance = (invoices: Assignment[]) => {
 };
 
 export const isPromiseBroken = (invoice: Assignment) => {
-  if (invoice.color_status !== 'green' || !invoice.promise_date || (invoice.balance ?? 0) <= 0) {
+  if (invoice.color_status !== 'green' || !invoice.promise_date) {
     return false;
   }
   const promiseDate = new Date(invoice.promise_date);
