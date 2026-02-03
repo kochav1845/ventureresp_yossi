@@ -24,6 +24,7 @@ interface Assignment {
   color_status: string | null;
   description: string;
   assignment_notes: string;
+  promise_date?: string | null;
 }
 
 interface TicketGroup {
@@ -238,7 +239,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   }, []);
 
   const isPromiseBroken = (invoice: any) => {
-    if (invoice.color_status !== 'green' || !invoice.promise_date || invoice.invoice_balance <= 0) {
+    if (invoice.color_status !== 'green' || !invoice.promise_date || (invoice.balance ?? 0) <= 0) {
       return false;
     }
     const promiseDate = new Date(invoice.promise_date);
@@ -1006,7 +1007,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <DollarSign className="w-4 h-4" />
-                                    <span>Balance: ${invoice.balance.toFixed(2)}</span>
+                                    <span>Balance: ${(invoice.balance ?? 0).toFixed(2)}</span>
                                   </div>
                                 </div>
                               </div>
@@ -1177,7 +1178,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                           <div>
                             <p className="text-gray-500">Balance Due</p>
                             <p className="font-bold text-red-600 text-lg">
-                              ${invoice.balance.toFixed(2)}
+                              ${(invoice.balance ?? 0).toFixed(2)}
                             </p>
                           </div>
                         </div>
