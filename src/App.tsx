@@ -65,6 +65,7 @@ import AdminCreateUser from './components/AdminCreateUser';
 import ResendTemporaryPassword from './components/ResendTemporaryPassword';
 import ForceDeleteUser from './components/ForceDeleteUser';
 import TicketStatusManagement from './components/TicketStatusManagement';
+import InvoiceColorStatusManagement from './components/InvoiceColorStatusManagement';
 
 function LoadingScreen() {
   return (
@@ -174,6 +175,7 @@ function AppContent() {
         <Route path="resend-temp-password" element={<ResendTemporaryPassword onBack={() => window.history.back()} />} />
         <Route path="force-delete-user" element={<ForceDeleteUser onBack={() => window.history.back()} />} />
         <Route path="ticket-status-settings" element={<TicketStatusManagement onBack={() => window.history.back()} />} />
+        <Route path="invoice-color-settings" element={<InvoiceColorStatusManagement onBack={() => window.history.back()} />} />
       </Route>
 
       <Route path="*" element={<Navigate to={defaultRoute} replace />} />

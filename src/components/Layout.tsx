@@ -152,7 +152,6 @@ export default function Layout() {
       title: 'Administration',
       items: [
         ...(isAdmin ? [{ id: 'collection-ticketing', name: 'Ticketing System', icon: Ticket }] : []),
-        ...(isAdmin ? [{ id: 'invoice-color-settings', name: 'Invoice Color Settings', icon: Palette }] : []),
         ...(hasPermission(PERMISSION_KEYS.ADMIN_SYNC_CONFIG) ? [{ id: 'sync-config', name: 'Sync Settings', icon: Settings, permission: PERMISSION_KEYS.ADMIN_SYNC_CONFIG }] : []),
       ]
     },
@@ -188,6 +187,7 @@ export default function Layout() {
     { id: 'email-analytics', name: 'Email Analytics', icon: Mail },
     { id: 'sync-status', name: 'Synchronization Status', icon: RefreshCw },
     { id: 'ticket-status-settings', name: 'Ticket Status Settings', icon: Settings },
+    { id: 'invoice-color-settings', name: 'Invoice Color Settings', icon: Palette },
   ] : [];
 
   const developerItems = [
