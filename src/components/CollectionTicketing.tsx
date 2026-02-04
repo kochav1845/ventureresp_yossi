@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, MessageSquare, ChevronDown, ChevronUp, FileText, ChevronRight, Calendar, DollarSign, Paperclip } from 'lucide-react';
+import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, MessageSquare, ChevronDown, ChevronUp, FileText, ChevronRight, Calendar, DollarSign, Paperclip, Bell } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { formatDistanceToNow } from 'date-fns';
 import TicketNoteModal from './TicketNoteModal';
 import TicketPromiseDateModal from './MyAssignments/TicketPromiseDateModal';
+import CreateReminderModal from './CreateReminderModal';
 
 interface Customer {
   customer_id: string;
@@ -168,6 +169,13 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   const [statusOptions, setStatusOptions] = useState<Array<{ status_name: string; display_name: string }>>([]);
   const [showPromiseDateModal, setShowPromiseDateModal] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [reminderModal, setReminderModal] = useState<{
+    type: 'ticket' | 'invoice';
+    ticketId?: string;
+    ticketNumber?: string;
+    invoiceReference?: string;
+    customerName?: string;
+  } | null>(null);
 
   useEffect(() => {
     loadCustomers();
@@ -1590,6 +1598,19 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                   )}
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setReminderModal({
+                      type: 'ticket',
+                      ticketId: selectedTicket.id,
+                      ticketNumber: selectedTicket.ticket_number,
+                      customerName: selectedTicket.customer_name
+                    })}
+                    className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors flex items-center gap-2"
+                    title="Set Reminder for this Ticket"
+                  >
+                    <Bell className="w-4 h-4" />
+                    Set Reminder
+                  </button>
                   {profile?.role === 'admin' && (
                     <button
                       onClick={() => handleToggleActive(selectedTicket.id, selectedTicket.active ?? true)}
@@ -1933,6 +1954,19 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                             )}
                           </div>
                         </div>
+                        <button
+                          onClick={() => setReminderModal({
+                            type: 'invoice',
+                            ticketId: selectedTicket?.id,
+                            ticketNumber: selectedTicket?.ticket_number,
+                            invoiceReference: ti.invoice_reference_number,
+                            customerName: selectedTicket?.customer_name
+                          })}
+                          className="ml-4 p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                          title="Set Reminder for this Invoice"
+                        >
+                          <Bell className="w-5 h-5" />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -2226,6 +2260,22 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                                   <span>{ticket.note_count} note{ticket.note_count !== 1 ? 's' : ''}</span>
                                 </div>
                               )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setReminderModal({
+                                    type: 'ticket',
+                                    ticketId: ticket.id,
+                                    ticketNumber: ticket.ticket_number,
+                                    customerName: ticket.customer_name
+                                  });
+                                }}
+                                className="flex items-center gap-1 text-purple-600 hover:text-purple-800"
+                                title="Set Reminder"
+                              >
+                                <Bell className="w-4 h-4" />
+                                <span>Reminder</span>
+                              </button>
                             </div>
                             {ticket.notes && (
                               <p className="mt-2 text-sm text-gray-600 italic line-clamp-2">
@@ -2667,6 +2717,24 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
             setPendingStatus(null);
           }}
           onSuccess={handlePromiseDateSuccess}
+        />
+      )}
+
+      {/* Create Reminder Modal */}
+      {reminderModal && (
+        <CreateReminderModal
+          type={reminderModal.type}
+          ticketId={reminderModal.ticketId}
+          ticketNumber={reminderModal.ticketNumber}
+          invoiceReference={reminderModal.invoiceReference}
+          customerName={reminderModal.customerName}
+          onClose={() => setReminderModal(null)}
+          onSuccess={() => {
+            loadTickets();
+            if (selectedTicket) {
+              loadTicketDetails(selectedTicket);
+            }
+          }}
         />
       )}
     </div>

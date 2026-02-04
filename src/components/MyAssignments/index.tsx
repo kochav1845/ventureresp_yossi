@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ticket, FileText, ArrowLeft, DollarSign, CheckSquare, Square } from 'lucide-react';
 import InvoiceMemoModal from '../InvoiceMemoModal';
+import CreateReminderModal from '../CreateReminderModal';
 import { Assignment, TicketGroup, CustomerAssignment, TicketStatusOption } from './types';
 import TicketCard from './TicketCard';
 import IndividualInvoiceCard from './IndividualInvoiceCard';
@@ -37,6 +38,13 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   const [promiseDateModalInvoice, setPromiseDateModalInvoice] = useState<string | null>(null);
   const [statusOptions, setStatusOptions] = useState<TicketStatusOption[]>([]);
   const [colorOptions, setColorOptions] = useState<Array<{ status_name: string; display_name: string; color_class: string }>>([]);
+  const [reminderModal, setReminderModal] = useState<{
+    type: 'ticket' | 'invoice';
+    ticketId?: string;
+    ticketNumber?: string;
+    invoiceReference?: string;
+    customerName?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (user && profile) {
@@ -533,6 +541,25 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
     }
   };
 
+  const handleOpenTicketReminder = (ticket: TicketGroup) => {
+    setReminderModal({
+      type: 'ticket',
+      ticketId: ticket.ticket_id,
+      ticketNumber: ticket.ticket_number,
+      customerName: ticket.customer_name
+    });
+  };
+
+  const handleOpenInvoiceReminder = (invoice: Assignment) => {
+    setReminderModal({
+      type: 'invoice',
+      invoiceReference: invoice.invoice_reference_number,
+      customerName: invoice.customer_name,
+      ticketId: invoice.ticket_id || undefined,
+      ticketNumber: invoice.ticket_number || undefined
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -662,6 +689,8 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                       onOpenMemo={handleOpenMemo}
                       onTicketStatusChange={handleTicketStatusChange}
                       onPromiseDateSet={loadAssignments}
+                      onOpenTicketReminder={handleOpenTicketReminder}
+                      onOpenInvoiceReminder={handleOpenInvoiceReminder}
                     />
                   ))}
                 </>
@@ -704,6 +733,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                         changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number
                       )}
                       onOpenMemo={() => handleOpenMemo(invoice)}
+                      onOpenReminder={() => handleOpenInvoiceReminder(invoice)}
                     />
                   ))}
                 </>
@@ -764,6 +794,18 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
           invoiceNumber={promiseDateModalInvoice}
           onConfirm={handlePromiseDateConfirm}
           onCancel={() => setPromiseDateModalInvoice(null)}
+        />
+      )}
+
+      {reminderModal && (
+        <CreateReminderModal
+          type={reminderModal.type}
+          ticketId={reminderModal.ticketId}
+          ticketNumber={reminderModal.ticketNumber}
+          invoiceReference={reminderModal.invoiceReference}
+          customerName={reminderModal.customerName}
+          onClose={() => setReminderModal(null)}
+          onSuccess={loadAssignments}
         />
       )}
     </div>

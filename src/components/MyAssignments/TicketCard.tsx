@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell } from 'lucide-react';
 import { formatDistanceToNow, isPast, parseISO } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
@@ -27,6 +27,8 @@ interface TicketCardProps {
   onOpenMemo: (invoice: Assignment) => void;
   onTicketStatusChange: (ticketId: string, newStatus: string) => void;
   onPromiseDateSet: () => void;
+  onOpenTicketReminder: (ticket: TicketGroup) => void;
+  onOpenInvoiceReminder: (invoice: Assignment) => void;
 }
 
 export default function TicketCard({
@@ -41,7 +43,9 @@ export default function TicketCard({
   onToggleColorPicker,
   onOpenMemo,
   onTicketStatusChange,
-  onPromiseDateSet
+  onPromiseDateSet,
+  onOpenTicketReminder,
+  onOpenInvoiceReminder
 }: TicketCardProps) {
   const navigate = useNavigate();
   const [localTicketStatus, setLocalTicketStatus] = useState(ticket.ticket_status);
@@ -144,23 +148,33 @@ export default function TicketCard({
           </div>
         )}
 
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate(`/customers?customer=${ticket.customer_id}`)}
+              className="text-xl font-bold text-blue-600 hover:text-blue-800 hover:underline"
+            >
+              {ticket.customer_name}
+            </button>
+            <a
+              href={getAcumaticaCustomerUrl(ticket.customer_id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
+              title="View in Acumatica"
+            >
+              <ExternalLink className="w-3 h-3" />
+              View in Acumatica
+            </a>
+          </div>
           <button
-            onClick={() => navigate(`/customers?customer=${ticket.customer_id}`)}
-            className="text-xl font-bold text-blue-600 hover:text-blue-800 hover:underline"
+            onClick={() => onOpenTicketReminder(ticket)}
+            className="px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 text-sm"
+            title="Set Reminder for this Ticket"
           >
-            {ticket.customer_name}
+            <Bell className="w-4 h-4" />
+            Set Reminder
           </button>
-          <a
-            href={getAcumaticaCustomerUrl(ticket.customer_id)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
-            title="View in Acumatica"
-          >
-            <ExternalLink className="w-3 h-3" />
-            View in Acumatica
-          </a>
         </div>
         <p className="text-sm text-gray-600">
           Customer ID: {ticket.customer_id}
@@ -281,6 +295,7 @@ export default function TicketCard({
                 changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number
               )}
               onOpenMemo={() => onOpenMemo(invoice)}
+              onOpenReminder={() => onOpenInvoiceReminder(invoice)}
             />
           ))}
         </div>

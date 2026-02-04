@@ -1,4 +1,4 @@
-import { Calendar, DollarSign, MessageSquare, ExternalLink, CheckSquare, Square, Paperclip } from 'lucide-react';
+import { Calendar, DollarSign, MessageSquare, ExternalLink, CheckSquare, Square, Paperclip, Bell } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Assignment } from './types';
 import { isPromiseBroken } from './utils';
@@ -20,6 +20,7 @@ interface InvoiceItemProps {
   onColorChange: (color: string | null) => void;
   onToggleColorPicker: () => void;
   onOpenMemo: () => void;
+  onOpenReminder?: () => void;
 }
 
 export default function InvoiceItem({
@@ -30,7 +31,8 @@ export default function InvoiceItem({
   onToggleSelection,
   onColorChange,
   onToggleColorPicker,
-  onOpenMemo
+  onOpenMemo,
+  onOpenReminder
 }: InvoiceItemProps) {
   const getColorDisplay = () => {
     if (!invoice.color_status) return null;
@@ -160,22 +162,33 @@ export default function InvoiceItem({
             </div>
           )}
         </div>
-        <button
-          onClick={onOpenMemo}
-          className={`ml-4 p-2 rounded-lg transition-colors relative ${
-            invoice.memo_count && invoice.memo_count > 0
-              ? 'bg-amber-600 text-white hover:bg-amber-700'
-              : 'bg-blue-600 text-white hover:bg-blue-700'
-          }`}
-          title="View/Add Notes"
-        >
-          <MessageSquare className="w-5 h-5" />
-          {invoice.memo_count && invoice.memo_count > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
-              {invoice.memo_count}
-            </span>
+        <div className="flex gap-2 ml-4">
+          {onOpenReminder && (
+            <button
+              onClick={onOpenReminder}
+              className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              title="Set Reminder"
+            >
+              <Bell className="w-5 h-5" />
+            </button>
           )}
-        </button>
+          <button
+            onClick={onOpenMemo}
+            className={`p-2 rounded-lg transition-colors relative ${
+              invoice.memo_count && invoice.memo_count > 0
+                ? 'bg-amber-600 text-white hover:bg-amber-700'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+            title="View/Add Notes"
+          >
+            <MessageSquare className="w-5 h-5" />
+            {invoice.memo_count && invoice.memo_count > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                {invoice.memo_count}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

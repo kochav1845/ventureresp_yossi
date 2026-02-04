@@ -398,12 +398,33 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
                           {reminder.reminder_message}
                         </h3>
                         {(reminder.invoice_reference || reminder.ticket_number || reminder.customer_name) && (
-                          <p className="text-slate-400 text-sm mt-1">
-                            {reminder.ticket_number && `Ticket #${reminder.ticket_number}`}
-                            {reminder.invoice_reference && `Invoice: ${reminder.invoice_reference}`}
-                            {(reminder.invoice_reference || reminder.ticket_number) && reminder.customer_name && ' • '}
-                            {reminder.customer_name}
-                          </p>
+                          <div className="flex items-center gap-2 text-slate-400 text-sm mt-1 flex-wrap">
+                            {reminder.ticket_number && (
+                              <>
+                                <button
+                                  onClick={() => navigate('/ticketing', { state: { ticketId: reminder.ticket_id } })}
+                                  className="flex items-center gap-1 text-blue-400 hover:text-blue-300 hover:underline"
+                                >
+                                  <Ticket className="w-3 h-3" />
+                                  Ticket #{reminder.ticket_number}
+                                </button>
+                                {reminder.invoice_reference && <span>•</span>}
+                              </>
+                            )}
+                            {reminder.invoice_reference && (
+                              <>
+                                <button
+                                  onClick={() => navigate('/customers', { state: { searchInvoice: reminder.invoice_reference } })}
+                                  className="flex items-center gap-1 text-blue-400 hover:text-blue-300 hover:underline"
+                                >
+                                  <FileText className="w-3 h-3" />
+                                  Invoice: {reminder.invoice_reference}
+                                </button>
+                                {reminder.customer_name && <span>•</span>}
+                              </>
+                            )}
+                            {reminder.customer_name && <span>{reminder.customer_name}</span>}
+                          </div>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
