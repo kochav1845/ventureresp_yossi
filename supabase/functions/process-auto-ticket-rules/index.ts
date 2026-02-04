@@ -91,9 +91,9 @@ Deno.serve(async (req: Request) => {
 
         const { data: existingTickets, error: ticketsError } = await supabase
           .from("collection_tickets")
-          .select("id, invoice_ids")
+          .select("id")
           .eq("customer_id", rule.customer_id)
-          .eq("assigned_to", rule.assigned_collector_id)
+          .eq("assigned_collector_id", rule.assigned_collector_id)
           .eq("active", true)
           .order("created_at", { ascending: false })
           .limit(1);
@@ -107,22 +107,34 @@ Deno.serve(async (req: Request) => {
 
         if (existingTickets && existingTickets.length > 0) {
           const ticket = existingTickets[0];
-          const currentInvoices = ticket.invoice_ids || [];
-          const newInvoices = invoiceRefs.filter((ref) => !currentInvoices.includes(ref));
+
+          // Get existing invoice references for this ticket
+          const { data: existingInvoices, error: existingInvoicesError } = await supabase
+            .from("ticket_invoices")
+            .select("invoice_reference_number")
+            .eq("ticket_id", ticket.id);
+
+          if (existingInvoicesError) {
+            results.errors.push(`Get ticket invoices ${ticket.id}: ${existingInvoicesError.message}`);
+            continue;
+          }
+
+          const currentInvoiceRefs = (existingInvoices || []).map((ti) => ti.invoice_reference_number);
+          const newInvoices = invoiceRefs.filter((ref) => !currentInvoiceRefs.includes(ref));
 
           if (newInvoices.length > 0) {
-            const updatedInvoices = [...currentInvoices, ...newInvoices];
+            // Insert new invoice references into ticket_invoices
+            const { error: insertError } = await supabase
+              .from("ticket_invoices")
+              .insert(
+                newInvoices.map((ref) => ({
+                  ticket_id: ticket.id,
+                  invoice_reference_number: ref,
+                }))
+              );
 
-            const { error: updateError } = await supabase
-              .from("collection_tickets")
-              .update({
-                invoice_ids: updatedInvoices,
-                updated_at: new Date().toISOString()
-              })
-              .eq("id", ticket.id);
-
-            if (updateError) {
-              results.errors.push(`Update ticket ${ticket.id}: ${updateError.message}`);
+            if (insertError) {
+              results.errors.push(`Add invoices to ticket ${ticket.id}: ${insertError.message}`);
             } else {
               results.tickets_updated++;
               results.invoices_added += newInvoices.length;
@@ -140,20 +152,38 @@ Deno.serve(async (req: Request) => {
             continue;
           }
 
-          const { error: createError } = await supabase
+          const { data: newTicket, error: createError } = await supabase
             .from("collection_tickets")
             .insert({
               customer_id: rule.customer_id,
               customer_name: customer?.customer_name || rule.customer_id,
-              assigned_to: rule.assigned_collector_id,
-              invoice_ids: invoiceRefs,
-              status: "new",
+              assigned_collector_id: rule.assigned_collector_id,
+              status: "open",
               ticket_type: "auto",
               active: true,
-            });
+              created_by: rule.assigned_collector_id,
+            })
+            .select("id")
+            .single();
 
           if (createError) {
             results.errors.push(`Create ticket for ${rule.customer_id}: ${createError.message}`);
+            continue;
+          }
+
+          // Insert invoice references into ticket_invoices
+          const { error: invoicesInsertError } = await supabase
+            .from("ticket_invoices")
+            .insert(
+              invoiceRefs.map((ref) => ({
+                ticket_id: newTicket.id,
+                invoice_reference_number: ref,
+                added_by: rule.assigned_collector_id,
+              }))
+            );
+
+          if (invoicesInsertError) {
+            results.errors.push(`Add invoices to new ticket ${newTicket.id}: ${invoicesInsertError.message}`);
           } else {
             results.tickets_created++;
             results.invoices_added += invoiceRefs.length;
