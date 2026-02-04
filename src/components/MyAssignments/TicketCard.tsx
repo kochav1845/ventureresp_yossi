@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip } from 'lucide-react';
 import { formatDistanceToNow, isPast, parseISO } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
@@ -165,6 +165,35 @@ export default function TicketCard({
         <p className="text-sm text-gray-600">
           Customer ID: {ticket.customer_id}
         </p>
+
+        {ticket.note_count && ticket.note_count > 0 && (
+          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <MessageSquare className="w-4 h-4 text-blue-600" />
+                {ticket.has_attachments && (
+                  <Paperclip className="w-4 h-4 text-blue-600" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-blue-900">
+                  {ticket.note_count} Note{ticket.note_count !== 1 ? 's' : ''}
+                  {ticket.has_attachments && ' (with attachment)'}
+                </p>
+                {ticket.last_note && (
+                  <>
+                    <p className="text-xs text-blue-800 mt-1 line-clamp-2">
+                      {ticket.last_note.note_text}
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      {formatDistanceToNow(new Date(ticket.last_note.created_at), { addSuffix: true })}
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 pt-4 border-t border-gray-300">
           <h4 className="text-sm font-semibold text-gray-700 mb-2">Change Ticket Status</h4>

@@ -166,6 +166,65 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
               created_by_name: (lastActivity as any).user_profiles?.full_name || 'Unknown'
             };
           }
+
+          // Fetch ticket notes count and latest note
+          const { data: notes, count: noteCount } = await supabase
+            .from('ticket_notes')
+            .select('note_text, created_at, attachment_type, document_urls', { count: 'exact' })
+            .eq('ticket_id', ticket.ticket_id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          ticket.note_count = noteCount || 0;
+          ticket.has_attachments = notes && notes.length > 0 &&
+            (notes[0].attachment_type || (notes[0].document_urls && notes[0].document_urls.length > 0));
+
+          if (notes && notes.length > 0) {
+            ticket.last_note = {
+              note_text: notes[0].note_text || '',
+              created_at: notes[0].created_at
+            };
+          }
+
+          // Fetch memo counts and attachments for each invoice
+          await Promise.all(ticket.invoices.map(async (invoice) => {
+            const { data: memos, count: memoCount } = await supabase
+              .from('invoice_memos')
+              .select('memo_text, created_at, attachment_type', { count: 'exact' })
+              .eq('invoice_reference', invoice.invoice_reference_number)
+              .order('created_at', { ascending: false })
+              .limit(1);
+
+            invoice.memo_count = memoCount || 0;
+            invoice.has_attachments = memos && memos.length > 0 && !!memos[0].attachment_type;
+
+            if (memos && memos.length > 0) {
+              invoice.last_memo = {
+                memo_text: memos[0].memo_text || '',
+                created_at: memos[0].created_at
+              };
+            }
+          }));
+        }));
+
+        // Fetch memo counts for individual invoices
+        await Promise.all(individualList.map(async (invoice) => {
+          const { data: memos, count: memoCount } = await supabase
+            .from('invoice_memos')
+            .select('memo_text, created_at, attachment_type', { count: 'exact' })
+            .eq('invoice_reference', invoice.invoice_reference_number)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          invoice.memo_count = memoCount || 0;
+          invoice.has_attachments = memos && memos.length > 0 && !!memos[0].attachment_type;
+
+          if (memos && memos.length > 0) {
+            invoice.last_memo = {
+              memo_text: memos[0].memo_text || '',
+              created_at: memos[0].created_at
+            };
+          }
         }));
 
         setTickets(ticketGroupsArray);

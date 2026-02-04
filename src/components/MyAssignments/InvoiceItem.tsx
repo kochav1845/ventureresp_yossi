@@ -1,4 +1,5 @@
-import { Calendar, DollarSign, MessageSquare, ExternalLink, CheckSquare, Square } from 'lucide-react';
+import { Calendar, DollarSign, MessageSquare, ExternalLink, CheckSquare, Square, Paperclip } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { Assignment } from './types';
 import { isPromiseBroken } from './utils';
 import { getAcumaticaInvoiceUrl } from '../../lib/acumaticaLinks';
@@ -137,13 +138,43 @@ export default function InvoiceItem({
               <span>Balance: ${(invoice.balance ?? 0).toFixed(2)}</span>
             </div>
           </div>
+          {invoice.memo_count && invoice.memo_count > 0 && (
+            <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-3 h-3 text-amber-600" />
+                {invoice.has_attachments && (
+                  <Paperclip className="w-3 h-3 text-amber-600" />
+                )}
+                <span className="font-semibold text-amber-900">
+                  {invoice.memo_count} Memo{invoice.memo_count !== 1 ? 's' : ''}
+                </span>
+              </div>
+              {invoice.last_memo && (
+                <div className="mt-1 text-amber-800">
+                  <p className="line-clamp-1">{invoice.last_memo.memo_text}</p>
+                  <p className="text-amber-600 mt-0.5">
+                    {formatDistanceToNow(new Date(invoice.last_memo.created_at), { addSuffix: true })}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <button
           onClick={onOpenMemo}
-          className="ml-4 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className={`ml-4 p-2 rounded-lg transition-colors relative ${
+            invoice.memo_count && invoice.memo_count > 0
+              ? 'bg-amber-600 text-white hover:bg-amber-700'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
           title="View/Add Notes"
         >
           <MessageSquare className="w-5 h-5" />
+          {invoice.memo_count && invoice.memo_count > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+              {invoice.memo_count}
+            </span>
+          )}
         </button>
       </div>
     </div>

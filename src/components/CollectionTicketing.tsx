@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, MessageSquare, ChevronDown, ChevronUp, FileText, ChevronRight, Calendar, DollarSign } from 'lucide-react';
+import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, MessageSquare, ChevronDown, ChevronUp, FileText, ChevronRight, Calendar, DollarSign, Paperclip } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { formatDistanceToNow } from 'date-fns';
@@ -26,6 +26,12 @@ interface Invoice {
   color_status: string | null;
   promise_date: string | null;
   type: string | null;
+  memo_count?: number;
+  has_attachments?: boolean;
+  last_memo?: {
+    memo_text: string;
+    created_at: string;
+  };
 }
 
 interface Collector {
@@ -63,6 +69,12 @@ interface Ticket {
     description: string;
     created_at: string;
     created_by_name: string;
+  };
+  note_count?: number;
+  has_attachments?: boolean;
+  last_note?: {
+    note_text: string;
+    created_at: string;
   };
 }
 
@@ -423,6 +435,22 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
             };
           }
 
+          // Fetch ticket notes count and latest note
+          const { data: notes, count: noteCount } = await supabase
+            .from('ticket_notes')
+            .select('note_text, created_at, attachment_type, document_urls', { count: 'exact' })
+            .eq('ticket_id', ticket.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          const note_count = noteCount || 0;
+          const has_attachments = notes && notes.length > 0 &&
+            (notes[0].attachment_type || (notes[0].document_urls && notes[0].document_urls.length > 0));
+          const last_note = notes && notes.length > 0 ? {
+            note_text: notes[0].note_text || '',
+            created_at: notes[0].created_at
+          } : undefined;
+
           return {
             ...ticket,
             invoice_count: count || 0,
@@ -430,7 +458,10 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
             collector_name: collectorData?.full_name || collectorData?.email || 'Unassigned',
             assigner_email: assignerEmail,
             last_status_change,
-            last_activity
+            last_activity,
+            note_count,
+            has_attachments,
+            last_note
           };
         })
       );
@@ -523,6 +554,28 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
         invoices = (invoicesRes.data || []).map((ti: any) => ({
           ...ti,
           invoice: (invoiceData || []).find((inv: any) => inv.reference_number === ti.invoice_reference_number)
+        }));
+
+        // Fetch memos for each invoice
+        await Promise.all(invoices.map(async (invoice) => {
+          const { data: memos, count: memoCount } = await supabase
+            .from('invoice_memos')
+            .select('memo_text, created_at, attachment_type', { count: 'exact' })
+            .eq('invoice_reference', invoice.invoice_reference_number)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (invoice.invoice) {
+            invoice.invoice.memo_count = memoCount || 0;
+            invoice.invoice.has_attachments = memos && memos.length > 0 && !!memos[0].attachment_type;
+
+            if (memos && memos.length > 0) {
+              invoice.invoice.last_memo = {
+                memo_text: memos[0].memo_text || '',
+                created_at: memos[0].created_at
+              };
+            }
+          }
         }));
       }
 
@@ -1505,6 +1558,34 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                           </div>
                         )}
                       </div>
+                      {selectedTicket.note_count && selectedTicket.note_count > 0 && (
+                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <MessageSquare className="w-4 h-4 text-blue-600" />
+                              {selectedTicket.has_attachments && (
+                                <Paperclip className="w-4 h-4 text-blue-600" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-blue-900">
+                                {selectedTicket.note_count} Note{selectedTicket.note_count !== 1 ? 's' : ''}
+                                {selectedTicket.has_attachments && ' (with attachment)'}
+                              </p>
+                              {selectedTicket.last_note && (
+                                <>
+                                  <p className="text-xs text-blue-800 mt-1 line-clamp-2">
+                                    {selectedTicket.last_note.note_text}
+                                  </p>
+                                  <p className="text-xs text-blue-600 mt-1">
+                                    {formatDistanceToNow(new Date(selectedTicket.last_note.created_at), { addSuffix: true })}
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1829,6 +1910,27 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                                 )}
                               </div>
                             )}
+                            {ti.invoice?.memo_count && ti.invoice.memo_count > 0 && (
+                              <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <MessageSquare className="w-3 h-3 text-amber-600" />
+                                  {ti.invoice.has_attachments && (
+                                    <Paperclip className="w-3 h-3 text-amber-600" />
+                                  )}
+                                  <span className="font-semibold text-amber-900">
+                                    {ti.invoice.memo_count} Memo{ti.invoice.memo_count !== 1 ? 's' : ''}
+                                  </span>
+                                </div>
+                                {ti.invoice.last_memo && (
+                                  <div className="text-amber-800">
+                                    <p className="line-clamp-1">{ti.invoice.last_memo.memo_text}</p>
+                                    <p className="text-amber-600 mt-0.5">
+                                      {formatDistanceToNow(new Date(ti.invoice.last_memo.created_at), { addSuffix: true })}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2115,11 +2217,32 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                                 <FileText className="w-4 h-4" />
                                 <span>{ticket.invoice_count} invoices</span>
                               </div>
+                              {ticket.note_count && ticket.note_count > 0 && (
+                                <div className="flex items-center gap-1 text-blue-600">
+                                  <MessageSquare className="w-4 h-4" />
+                                  {ticket.has_attachments && (
+                                    <Paperclip className="w-3 h-3" />
+                                  )}
+                                  <span>{ticket.note_count} note{ticket.note_count !== 1 ? 's' : ''}</span>
+                                </div>
+                              )}
                             </div>
                             {ticket.notes && (
                               <p className="mt-2 text-sm text-gray-600 italic line-clamp-2">
                                 {ticket.notes}
                               </p>
+                            )}
+                            {ticket.last_note && (
+                              <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
+                                <div className="flex items-center gap-1 mb-1">
+                                  <MessageSquare className="w-3 h-3 text-blue-600" />
+                                  <span className="font-semibold text-blue-900">Last Note:</span>
+                                </div>
+                                <p className="text-blue-800 line-clamp-2">{ticket.last_note.note_text}</p>
+                                <p className="text-blue-600 mt-1">
+                                  {formatDistanceToNow(new Date(ticket.last_note.created_at), { addSuffix: true })}
+                                </p>
+                              </div>
                             )}
                           </div>
                           <div className="text-right text-sm text-gray-500">

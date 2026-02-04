@@ -16,6 +16,12 @@ export interface Assignment {
   description: string;
   assignment_notes: string;
   promise_date?: string | null;
+  memo_count?: number;
+  has_attachments?: boolean;
+  last_memo?: {
+    memo_text: string;
+    created_at: string;
+  };
 }
 
 export interface TicketGroup {
@@ -37,6 +43,12 @@ export interface TicketGroup {
     description: string;
     created_at: string;
     created_by_name: string;
+  };
+  note_count?: number;
+  has_attachments?: boolean;
+  last_note?: {
+    note_text: string;
+    created_at: string;
   };
 }
 
