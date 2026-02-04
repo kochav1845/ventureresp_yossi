@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, MessageSquare, ChevronDown, ChevronUp, FileText, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, X, Ticket, User, AlertCircle, ExternalLink, Clock, MessageSquare, ChevronDown, ChevronUp, FileText, ChevronRight, Calendar, DollarSign } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { formatDistanceToNow } from 'date-fns';
@@ -23,6 +23,9 @@ interface Invoice {
   balance: number;
   status: string;
   description: string;
+  color_status: string | null;
+  promise_date: string | null;
+  type: string | null;
 }
 
 interface Collector {
@@ -147,6 +150,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   const [showReminderPrompt, setShowReminderPrompt] = useState(false);
   const [reminderDate, setReminderDate] = useState<string>('');
   const [reminderTime, setReminderTime] = useState<string>('09:00');
+  const [colorOptions, setColorOptions] = useState<any[]>([]);
   const [pendingBatchNote, setPendingBatchNote] = useState<string>('');
   const [statusOptions, setStatusOptions] = useState<Array<{ status_name: string; display_name: string }>>([]);
   const [showPromiseDateModal, setShowPromiseDateModal] = useState(false);
@@ -157,6 +161,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     loadCollectors();
     loadTickets();
     loadStatusOptions();
+    loadColorStatusOptions();
 
     // Subscribe to ticket_invoices changes to detect when invoices are removed
     const subscription = supabase
@@ -318,6 +323,24 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
       }
     } catch (err) {
       console.error('Exception loading status options:', err);
+    }
+  };
+
+  const loadColorStatusOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('invoice_color_status_options')
+        .select('status_name, display_name, color_class')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+
+      if (error) {
+        console.error('Error loading color status options:', error);
+      } else {
+        setColorOptions(data || []);
+      }
+    } catch (err) {
+      console.error('Exception loading color status options:', err);
     }
   };
 
@@ -1640,8 +1663,10 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                             className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                           />
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="font-medium text-gray-900">Invoice #{ti.invoice_reference_number}</p>
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="font-mono font-semibold text-gray-900">
+                                #{ti.invoice_reference_number}
+                              </span>
                               <a
                                 href={getAcumaticaInvoiceUrl(ti.invoice_reference_number)}
                                 target="_blank"
@@ -1651,81 +1676,112 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                               >
                                 <ExternalLink className="w-4 h-4" />
                               </a>
+                              {ti.invoice?.status && (
+                                <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                  ti.invoice.status === 'Open'
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {ti.invoice.status}
+                                </span>
+                              )}
+                              {ti.invoice?.promise_date && new Date(ti.invoice.promise_date) < new Date() && (
+                                <span className="px-2 py-1 rounded text-xs font-bold bg-red-600 text-white animate-pulse border-2 border-red-800 shadow-lg" title={`Promised payment date was ${new Date(ti.invoice.promise_date).toLocaleDateString()}`}>
+                                  BROKEN PROMISE
+                                </span>
+                              )}
+                              {ti.invoice && (
+                                <div className="relative color-picker-container">
+                                  <button
+                                    onClick={() => setChangingColorForInvoice(changingColorForInvoice === ti.invoice_reference_number ? null : ti.invoice_reference_number)}
+                                    className="focus:outline-none"
+                                  >
+                                    {ti.invoice.color_status ? (() => {
+                                      const option = colorOptions.find((opt: any) => opt.status_name === ti.invoice.color_status);
+                                      if (option) {
+                                        const parts = option.color_class.split(' ');
+                                        const bgColor = parts.find((p: string) => p.startsWith('bg-')) || 'bg-gray-500';
+                                        const borderColor = parts.find((p: string) => p.startsWith('border-')) || 'border-gray-700';
+                                        return (
+                                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase cursor-pointer hover:opacity-80 transition-opacity text-white border-2 ${bgColor} ${borderColor}`}>
+                                            {option.display_name}
+                                          </span>
+                                        );
+                                      }
+                                      // Fallback for old statuses
+                                      return (
+                                        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase cursor-pointer hover:opacity-80 transition-opacity ${
+                                          ti.invoice.color_status === 'red' ? 'bg-red-500 text-white border-2 border-red-700' :
+                                          ti.invoice.color_status === 'yellow' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
+                                          ti.invoice.color_status === 'orange' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
+                                          ti.invoice.color_status === 'green' ? 'bg-green-500 text-white border-2 border-green-700' :
+                                          'bg-gray-200 text-gray-700'
+                                        }`}>
+                                          {ti.invoice.color_status}
+                                        </span>
+                                      );
+                                    })() : (
+                                      <span className="px-3 py-1 text-xs text-gray-400 cursor-pointer hover:text-gray-600 border border-gray-300 rounded-full">Set Status</span>
+                                    )}
+                                  </button>
+
+                                  {changingColorForInvoice === ti.invoice_reference_number && (
+                                    <div className="absolute z-50 right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[180px]">
+                                      {colorOptions.map((option: any) => {
+                                        const parts = option.color_class.split(' ');
+                                        const bgColor = parts.find((p: string) => p.startsWith('bg-')) || 'bg-gray-500';
+                                        const borderColor = parts.find((p: string) => p.startsWith('border-')) || 'border-gray-700';
+                                        const hoverBgColor = bgColor.replace('bg-', 'hover:bg-').replace('-500', '-50').replace('-400', '-50');
+                                        return (
+                                          <button
+                                            key={option.status_name}
+                                            onClick={() => handleColorChange(ti.invoice_reference_number, option.status_name)}
+                                            className={`w-full text-left px-3 py-2 text-sm ${hoverBgColor} rounded flex items-center gap-2`}
+                                          >
+                                            <span className={`w-4 h-4 rounded-full border-2 ${bgColor} ${borderColor}`}></span>
+                                            {option.display_name}
+                                          </button>
+                                        );
+                                      })}
+                                      {ti.invoice.color_status && (
+                                        <>
+                                          <div className="border-t border-gray-200 my-1"></div>
+                                          <button
+                                            onClick={() => handleColorChange(ti.invoice_reference_number, null)}
+                                            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded text-gray-600"
+                                          >
+                                            Clear Status
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                             {ti.invoice && (
-                              <>
-                                <p className="text-sm text-gray-600">
-                                  Open Balance: <span className="font-semibold">${ti.invoice.balance.toFixed(2)}</span> of ${ti.invoice.amount.toFixed(2)}
-                                </p>
-                                <p className="text-xs text-gray-500 mt-1">
-                                  Invoice Date: {new Date(ti.invoice.date).toLocaleDateString()}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  Due Date: {new Date(ti.invoice.due_date).toLocaleDateString()}
-                                </p>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        {ti.invoice && (
-                          <div className="relative color-picker-container">
-                            <button
-                              onClick={() => setChangingColorForInvoice(changingColorForInvoice === ti.invoice_reference_number ? null : ti.invoice_reference_number)}
-                              className="focus:outline-none"
-                            >
-                              {ti.invoice.color_status ? (
-                                <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase cursor-pointer hover:opacity-80 transition-opacity ${
-                                  ti.invoice.color_status === 'red' ? 'bg-red-500 text-white border-2 border-red-700' :
-                                  ti.invoice.color_status === 'yellow' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
-                                  ti.invoice.color_status === 'orange' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
-                                  ti.invoice.color_status === 'green' ? 'bg-green-500 text-white border-2 border-green-700' :
-                                  'bg-gray-200 text-gray-700'
-                                }`}>
-                                  {ti.invoice.color_status}
-                                </span>
-                              ) : (
-                                <span className="px-3 py-1 text-xs text-gray-400 cursor-pointer hover:text-gray-600 border border-gray-300 rounded-full">Set Status</span>
-                              )}
-                            </button>
-
-                            {changingColorForInvoice === ti.invoice_reference_number && (
-                              <div className="absolute z-50 right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[140px]">
-                                <button
-                                  onClick={() => handleColorChange(ti.invoice_reference_number, 'red')}
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 rounded flex items-center gap-2"
-                                >
-                                  <span className="w-4 h-4 rounded-full bg-red-500 border-2 border-red-700"></span>
-                                  Will Not Pay
-                                </button>
-                                <button
-                                  onClick={() => handleColorChange(ti.invoice_reference_number, 'yellow')}
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-yellow-50 rounded flex items-center gap-2"
-                                >
-                                  <span className="w-4 h-4 rounded-full bg-yellow-400 border-2 border-yellow-600"></span>
-                                  Will Take Care
-                                </button>
-                                <button
-                                  onClick={() => handleColorChange(ti.invoice_reference_number, 'green')}
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 rounded flex items-center gap-2"
-                                >
-                                  <span className="w-4 h-4 rounded-full bg-green-500 border-2 border-green-700"></span>
-                                  Will Pay
-                                </button>
-                                {ti.invoice.color_status && (
-                                  <>
-                                    <div className="border-t border-gray-200 my-1"></div>
-                                    <button
-                                      onClick={() => handleColorChange(ti.invoice_reference_number, null)}
-                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded text-gray-600"
-                                    >
-                                      Clear Status
-                                    </button>
-                                  </>
+                              <div className="grid grid-cols-2 gap-3 text-sm text-gray-600">
+                                <div className="flex items-center gap-1">
+                                  <Clock className="w-4 h-4" />
+                                  <span>Due: {new Date(ti.invoice.due_date).toLocaleDateString()}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="font-semibold">Balance: ${(ti.invoice.balance ?? 0).toFixed(2)}</span>
+                                </div>
+                                {ti.invoice.type && (
+                                  <div className="text-xs text-gray-500">
+                                    Type: {ti.invoice.type}
+                                  </div>
+                                )}
+                                {ti.invoice.description && (
+                                  <div className="text-xs text-gray-500 col-span-2">
+                                    {ti.invoice.description}
+                                  </div>
                                 )}
                               </div>
                             )}
                           </div>
-                        )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -2242,23 +2298,80 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                                   : ''
                               }`}
                             >
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="font-medium text-gray-900">
-                                    Invoice #{invoice.reference_number}
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    Invoice: {new Date(invoice.date).toLocaleDateString()} | Due: {new Date(invoice.due_date).toLocaleDateString()}
-                                  </p>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-3 flex-1">
+                                  <span className="font-mono font-semibold text-gray-900">
+                                    #{invoice.reference_number}
+                                  </span>
+                                  <a
+                                    href={getAcumaticaInvoiceUrl(invoice.reference_number)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title="View in Acumatica"
+                                  >
+                                    <ExternalLink className="w-4 h-4" />
+                                  </a>
+                                  {invoice.status && (
+                                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                      invoice.status === 'Open'
+                                        ? 'bg-green-100 text-green-800'
+                                        : 'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {invoice.status}
+                                    </span>
+                                  )}
+                                  {invoice.promise_date && new Date(invoice.promise_date) < new Date() && (
+                                    <span className="px-2 py-1 rounded text-xs font-bold bg-red-600 text-white animate-pulse border-2 border-red-800 shadow-lg" title={`Promised payment date was ${new Date(invoice.promise_date).toLocaleDateString()}`}>
+                                      BROKEN PROMISE
+                                    </span>
+                                  )}
+                                  {invoice.color_status && (() => {
+                                    const option = colorOptions.find((opt: any) => opt.status_name === invoice.color_status);
+                                    if (option) {
+                                      const parts = option.color_class.split(' ');
+                                      const bgColor = parts.find((p: string) => p.startsWith('bg-')) || 'bg-gray-500';
+                                      const borderColor = parts.find((p: string) => p.startsWith('border-')) || 'border-gray-700';
+                                      return (
+                                        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase text-white border-2 ${bgColor} ${borderColor}`}>
+                                          {option.display_name}
+                                        </span>
+                                      );
+                                    }
+                                    return (
+                                      <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase ${
+                                        invoice.color_status === 'red' ? 'bg-red-500 text-white border-2 border-red-700' :
+                                        invoice.color_status === 'yellow' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
+                                        invoice.color_status === 'orange' ? 'bg-yellow-400 text-gray-900 border-2 border-yellow-600' :
+                                        invoice.color_status === 'green' ? 'bg-green-500 text-white border-2 border-green-700' :
+                                        'bg-gray-200 text-gray-700'
+                                      }`}>
+                                        {invoice.color_status}
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
-                                <div className="text-right">
-                                  <p className="font-semibold text-gray-900">
-                                    ${invoice.balance.toFixed(2)}
-                                  </p>
-                                  <p className="text-sm text-gray-500">
-                                    of ${invoice.amount.toFixed(2)}
-                                  </p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-sm text-gray-600">
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="w-4 h-4" />
+                                  <span>Due: {new Date(invoice.due_date).toLocaleDateString()}</span>
                                 </div>
+                                <div className="flex items-center gap-1">
+                                  <DollarSign className="w-4 h-4" />
+                                  <span>Balance: ${(invoice.balance ?? 0).toFixed(2)}</span>
+                                </div>
+                                {invoice.type && (
+                                  <div className="text-xs text-gray-500">
+                                    Type: {invoice.type}
+                                  </div>
+                                )}
+                                {invoice.description && (
+                                  <div className="text-xs text-gray-500 col-span-2">
+                                    {invoice.description}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           ))}
