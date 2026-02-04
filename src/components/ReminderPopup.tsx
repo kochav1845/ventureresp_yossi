@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
-import { X, Bell, CheckCircle, Clock, AlertCircle, ChevronRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, Bell, CheckCircle, Clock, AlertCircle, ChevronRight, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 interface ActiveReminder {
   id: string;
   invoice_id: string | null;
+  ticket_id: string | null;
   reminder_date: string;
   title: string;
   priority: string;
   reminder_type: string;
   notes: string | null;
   invoice_reference: string | null;
+  ticket_number: string | null;
   customer_name: string | null;
 }
 
@@ -21,6 +24,7 @@ interface ReminderPopupProps {
 
 export default function ReminderPopup({ onViewAll }: ReminderPopupProps) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [reminders, setReminders] = useState<ActiveReminder[]>([]);
   const [dismissed, setDismissed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -154,12 +158,30 @@ export default function ReminderPopup({ onViewAll }: ReminderPopupProps) {
                   <h4 className="text-white font-medium text-sm line-clamp-2">
                     {reminder.title}
                   </h4>
-                  {(reminder.invoice_reference || reminder.customer_name) && (
-                    <p className="text-slate-400 text-xs mt-1">
-                      {reminder.invoice_reference && `Invoice: ${reminder.invoice_reference}`}
-                      {reminder.invoice_reference && reminder.customer_name && ' • '}
-                      {reminder.customer_name}
-                    </p>
+                  {(reminder.invoice_reference || reminder.ticket_number || reminder.customer_name) && (
+                    <div className="flex flex-wrap items-center gap-2 text-xs mt-1">
+                      {reminder.invoice_reference && (
+                        <button
+                          onClick={() => navigate(`/customers?invoice=${reminder.invoice_reference}`)}
+                          className="flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors"
+                        >
+                          Invoice: {reminder.invoice_reference}
+                          <ExternalLink className="w-3 h-3" />
+                        </button>
+                      )}
+                      {reminder.ticket_number && (
+                        <button
+                          onClick={() => navigate(`/ticketing?ticket=${reminder.ticket_id}`)}
+                          className="flex items-center gap-1 text-purple-400 hover:text-purple-300 transition-colors"
+                        >
+                          Ticket #{reminder.ticket_number}
+                          <ExternalLink className="w-3 h-3" />
+                        </button>
+                      )}
+                      {reminder.customer_name && (
+                        <span className="text-slate-400">{reminder.customer_name}</span>
+                      )}
+                    </div>
                   )}
                   <div className="flex items-center gap-2 mt-2">
                     <span className={`text-xs ${isOverdue(reminder.reminder_date) ? 'text-red-400 font-medium' : 'text-slate-400'}`}>

@@ -402,8 +402,8 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
                             {reminder.ticket_number && (
                               <>
                                 <button
-                                  onClick={() => navigate('/ticketing', { state: { ticketId: reminder.ticket_id } })}
-                                  className="flex items-center gap-1 text-blue-400 hover:text-blue-300 hover:underline"
+                                  onClick={() => navigate(`/ticketing?ticket=${reminder.ticket_id}`)}
+                                  className="flex items-center gap-1 text-purple-400 hover:text-purple-300 hover:underline"
                                 >
                                   <Ticket className="w-3 h-3" />
                                   Ticket #{reminder.ticket_number}
@@ -414,7 +414,7 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
                             {reminder.invoice_reference && (
                               <>
                                 <button
-                                  onClick={() => navigate('/customers', { state: { searchInvoice: reminder.invoice_reference } })}
+                                  onClick={() => navigate(`/customers?invoice=${reminder.invoice_reference}`)}
                                   className="flex items-center gap-1 text-blue-400 hover:text-blue-300 hover:underline"
                                 >
                                   <FileText className="w-3 h-3" />
