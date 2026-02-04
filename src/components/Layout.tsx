@@ -188,6 +188,7 @@ export default function Layout() {
     { id: 'sync-status', name: 'Synchronization Status', icon: RefreshCw },
     { id: 'ticket-status-settings', name: 'Ticket Status Settings', icon: Settings },
     { id: 'invoice-color-settings', name: 'Invoice Color Settings', icon: Palette },
+    { id: 'auto-ticket-rules', name: 'Auto-Ticket Rules', icon: Clock },
   ] : [];
 
   const developerItems = [
