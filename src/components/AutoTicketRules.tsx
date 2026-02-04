@@ -75,23 +75,39 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
 
   const fetchRules = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: rulesData, error: rulesError } = await supabase
         .from('auto_ticket_rules')
-        .select(`
-          *,
-          customer:acumatica_customers!auto_ticket_rules_customer_id_fkey(customer_name),
-          collector:user_profiles!auto_ticket_rules_assigned_collector_id_fkey(full_name, email)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (rulesError) throw rulesError;
 
-      const enrichedRules = data?.map((rule: any) => ({
-        ...rule,
-        customer_name: rule.customer?.customer_name || rule.customer_id,
-        collector_name: rule.collector?.full_name || 'Unknown',
-        collector_email: rule.collector?.email || '',
-      })) || [];
+      const { data: collectorsData, error: collectorsError } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, email');
+
+      if (collectorsError) throw collectorsError;
+
+      const { data: customersData, error: customersError } = await supabase
+        .from('acumatica_customers')
+        .select('customer_id, customer_name');
+
+      if (customersError) throw customersError;
+
+      const collectorsMap = new Map(collectorsData?.map(c => [c.id, c]) || []);
+      const customersMap = new Map(customersData?.map(c => [c.customer_id, c]) || []);
+
+      const enrichedRules = rulesData?.map((rule: any) => {
+        const collector = collectorsMap.get(rule.assigned_collector_id);
+        const customer = customersMap.get(rule.customer_id);
+
+        return {
+          ...rule,
+          customer_name: customer?.customer_name || rule.customer_id,
+          collector_name: collector?.full_name || 'Unknown',
+          collector_email: collector?.email || '',
+        };
+      }) || [];
 
       setRules(enrichedRules);
     } catch (error: any) {
