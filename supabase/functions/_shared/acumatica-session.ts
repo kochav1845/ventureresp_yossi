@@ -131,15 +131,19 @@ export class AcumaticaSessionManager {
    */
   private parseSessionCookie(setCookieHeader: string): string | null {
     // The Set-Cookie header may contain multiple cookies separated by commas
-    // We're looking for the .AspNet.ApplicationCookie or similar
+    // We're looking for the .AspNet.ApplicationCookie, ASP.NET_SessionId, or similar
     const cookies = setCookieHeader.split(',').map(c => c.trim());
 
     for (const cookie of cookies) {
       // Extract the cookie name=value part (before any semicolon)
       const cookiePart = cookie.split(';')[0].trim();
 
-      // Look for AspNet cookie
-      if (cookiePart.includes('.AspNet') || cookiePart.includes('ARRAffinity')) {
+      // Look for AspNet cookie (various formats)
+      if (
+        cookiePart.includes('.AspNet') ||
+        cookiePart.includes('ASP.NET') ||
+        cookiePart.includes('ARRAffinity')
+      ) {
         return cookiePart;
       }
     }
