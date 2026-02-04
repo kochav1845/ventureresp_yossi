@@ -68,6 +68,7 @@ import ForceDeleteUser from './components/ForceDeleteUser';
 import TicketStatusManagement from './components/TicketStatusManagement';
 import InvoiceColorStatusManagement from './components/InvoiceColorStatusManagement';
 import SyncHealthDashboard from './components/SyncHealthDashboard';
+import AutoTicketRules from './components/AutoTicketRules';
 
 function LoadingScreen() {
   return (
@@ -179,6 +180,7 @@ function AppContent() {
         <Route path="force-delete-user" element={<ForceDeleteUser onBack={() => window.history.back()} />} />
         <Route path="ticket-status-settings" element={<TicketStatusManagement onBack={() => window.history.back()} />} />
         <Route path="invoice-color-settings" element={<InvoiceColorStatusManagement onBack={() => window.history.back()} />} />
+        <Route path="auto-ticket-rules" element={<AutoTicketRules onBack={() => window.history.back()} />} />
         <Route path="sync-health" element={<SyncHealthDashboard />} />
       </Route>
 
