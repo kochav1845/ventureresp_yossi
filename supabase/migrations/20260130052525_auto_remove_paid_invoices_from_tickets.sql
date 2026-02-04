@@ -35,15 +35,15 @@ BEGIN
     INSERT INTO user_activity_logs (
       user_id,
       action_type,
-      resource_type,
-      resource_id,
+      entity_type,
+      entity_id,
       details
     )
     VALUES (
       auth.uid(),
       'invoice_auto_removed_from_ticket',
       'invoice',
-      NEW.id,
+      NEW.id::text,
       jsonb_build_object(
         'invoice_reference', NEW.reference_number,
         'reason', 'Invoice closed/paid',
