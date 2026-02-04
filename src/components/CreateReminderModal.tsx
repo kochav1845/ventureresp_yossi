@@ -45,7 +45,7 @@ export default function CreateReminderModal({
       const reminderData: any = {
         user_id: profile.id,
         reminder_date: reminderDateTime.toISOString(),
-        reminder_message: title.trim(),
+        title: title.trim(),
         description: description || null,
         send_email_notification: sendEmail,
         status: 'pending'
