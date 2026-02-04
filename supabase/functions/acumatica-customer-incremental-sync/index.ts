@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { AcumaticaSessionManager } from "../_shared/acumatica-session.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,6 +39,9 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Initialize session manager
+    const sessionManager = new AcumaticaSessionManager(supabaseUrl, supabaseKey);
 
     const requestBody = await req.json().catch(() => ({}));
     const {
@@ -89,33 +93,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const loginBody: any = { name: username, password: password };
-    if (company) loginBody.company = company;
-    if (branch) loginBody.branch = branch;
+    const credentials = {
+      acumaticaUrl,
+      username,
+      password,
+      company,
+      branch
+    };
 
-    const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(loginBody),
-    });
-
-    if (!loginResponse.ok) {
-      const errorText = await loginResponse.text();
-      return new Response(
-        JSON.stringify({ error: `Authentication failed: ${errorText}` }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const setCookieHeader = loginResponse.headers.get("set-cookie");
-    if (!setCookieHeader) {
-      return new Response(
-        JSON.stringify({ error: "No authentication cookies received" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
+    // Get session cookie using session manager
+    console.log('Getting Acumatica session...');
+    const sessionCookie = await sessionManager.getSession(credentials);
+    console.log('Session obtained successfully');
 
     const cutoffTime = new Date(Date.now() - lookbackMinutes * 60 * 1000);
     const filterDate = cutoffTime.toISOString().split('.')[0];
@@ -128,16 +117,12 @@ Deno.serve(async (req: Request) => {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "Cookie": cookies,
+        "Cookie": sessionCookie,
       },
     });
 
     if (!customersResponse.ok) {
       const errorText = await customersResponse.text();
-      await fetch(`${acumaticaUrl}/entity/auth/logout`, {
-        method: "POST",
-        headers: { "Cookie": cookies },
-      });
       return new Response(
         JSON.stringify({ error: `Failed to fetch customers: ${errorText}` }),
         { status: customersResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -145,10 +130,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const customersData = await customersResponse.json();
-    await fetch(`${acumaticaUrl}/entity/auth/logout`, {
-      method: "POST",
-      headers: { "Cookie": cookies },
-    });
+    // Session is automatically managed, no need to manually logout
 
     const customers = Array.isArray(customersData) ? customersData : [];
 

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { AcumaticaSessionManager } from "../_shared/acumatica-session.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,21 +10,15 @@ const corsHeaders = {
 
 async function fetchAndUpsertMissingInvoice(
   supabase: any,
-  acumaticaUrl: string,
-  cookies: string,
+  sessionManager: AcumaticaSessionManager,
+  credentials: any,
   invoiceRefNbr: string
 ): Promise<{ success: boolean; invoiceId?: string; error?: string }> {
   try {
     console.log(`[FETCH-MISSING-INVOICE] Fetching invoice ${invoiceRefNbr} from Acumatica...`);
 
-    const invoiceUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice/${invoiceRefNbr}`;
-    const response = await fetch(invoiceUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: cookies,
-      },
-    });
+    const invoiceUrl = `${credentials.acumaticaUrl}/entity/Default/24.200.001/Invoice/${invoiceRefNbr}`;
+    const response = await sessionManager.makeAuthenticatedRequest(credentials, invoiceUrl);
 
     if (!response.ok) {
       if (response.status === 404 || response.status === 500) {
@@ -89,6 +84,9 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Initialize session manager
+    const sessionManager = new AcumaticaSessionManager(supabaseUrl, supabaseKey);
+
     const requestBody = await req.json().catch(() => ({}));
     const {
       lookbackMinutes = 2,
@@ -139,33 +137,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const loginBody: any = { name: username, password: password };
-    if (company) loginBody.company = company;
-    if (branch) loginBody.branch = branch;
+    const credentials = {
+      acumaticaUrl,
+      username,
+      password,
+      company,
+      branch
+    };
 
-    const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(loginBody),
-    });
-
-    if (!loginResponse.ok) {
-      const errorText = await loginResponse.text();
-      return new Response(
-        JSON.stringify({ error: `Authentication failed: ${errorText}` }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const setCookieHeader = loginResponse.headers.get("set-cookie");
-    if (!setCookieHeader) {
-      return new Response(
-        JSON.stringify({ error: "No authentication cookies received" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
+    // Get session cookie using session manager
+    console.log('Getting Acumatica session...');
+    const sessionCookie = await sessionManager.getSession(credentials);
+    console.log('Session obtained successfully');
 
     const cutoffTime = new Date(Date.now() - lookbackMinutes * 60 * 1000);
     const filterDate = cutoffTime.toISOString().split('.')[0];
@@ -179,16 +162,12 @@ Deno.serve(async (req: Request) => {
       headers: {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "Cookie": cookies,
+        "Cookie": sessionCookie,
       },
     });
 
     if (!paymentsResponse.ok) {
       const errorText = await paymentsResponse.text();
-      await fetch(`${acumaticaUrl}/entity/auth/logout`, {
-        method: "POST",
-        headers: { "Cookie": cookies },
-      });
       return new Response(
         JSON.stringify({ error: `Failed to fetch payments: ${errorText}` }),
         { status: paymentsResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -324,14 +303,7 @@ Deno.serve(async (req: Request) => {
               const directUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(type)}/${encodeURIComponent(refNbr)}?$expand=ApplicationHistory`;
               console.log(`[APP-HISTORY] Fetching ApplicationHistory for ${type} ${refNbr} via direct endpoint`);
 
-              const detailResponse = await fetch(directUrl, {
-                method: "GET",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Accept": "application/json",
-                  "Cookie": cookies,
-                },
-              });
+              const detailResponse = await sessionManager.makeAuthenticatedRequest(credentials, directUrl);
 
               if (detailResponse.ok) {
                 const detailData = await detailResponse.json();
@@ -351,14 +323,7 @@ Deno.serve(async (req: Request) => {
                 const filterUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$expand=ApplicationHistory&$filter=ReferenceNbr eq '${refNbr}' and Type eq '${type}'`;
                 console.log(`[APP-HISTORY] Trying filter-based fallback for ${refNbr}`);
 
-                const fallbackResponse = await fetch(filterUrl, {
-                  method: "GET",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                    "Cookie": cookies,
-                  },
-                });
+                const fallbackResponse = await sessionManager.makeAuthenticatedRequest(credentials, filterUrl);
 
                 if (fallbackResponse.ok) {
                   const fallbackData = await fallbackResponse.json();
@@ -406,8 +371,8 @@ Deno.serve(async (req: Request) => {
 
                 const fetchResult = await fetchAndUpsertMissingInvoice(
                   supabase,
-                  acumaticaUrl,
-                  cookies,
+                  sessionManager,
+                  credentials,
                   invoiceRefNbr
                 );
 
@@ -518,9 +483,7 @@ Deno.serve(async (req: Request) => {
 
               try {
                 const fileUrl = `${acumaticaUrl}/(W(2))/Frames/GetFile.ashx?fileID=${fileId}`;
-                const fileResponse = await fetch(fileUrl, {
-                  headers: { "Cookie": cookies },
-                });
+                const fileResponse = await sessionManager.makeAuthenticatedRequest(credentials, fileUrl);
 
                 if (fileResponse.ok) {
                   const fileBlob = await fileResponse.arrayBuffer();
@@ -590,14 +553,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    try {
-      await fetch(`${acumaticaUrl}/entity/auth/logout`, {
-        method: "POST",
-        headers: { "Cookie": cookies },
-      });
-    } catch (logoutError) {
-      console.error('Logout error (non-critical):', logoutError);
-    }
+    // Session is automatically managed, no need to manually logout
 
     const syncResultData = {
       entity_type: 'payment',
