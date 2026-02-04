@@ -64,8 +64,15 @@ export class AcumaticaSessionManager {
   private async createNewSession(credentials: AcumaticaCredentials): Promise<string> {
     const { acumaticaUrl, username, password, company, branch } = credentials;
 
-    // Invalidate all existing sessions before creating new one
-    await this.invalidateAllSessions();
+    // Check one more time if a session was created by another concurrent request
+    const existingSession = await this.getCachedSession();
+    if (existingSession) {
+      console.log('Another request created a session, using that one');
+      return existingSession.session_cookie;
+    }
+
+    // Only invalidate expired or invalid sessions, not ALL sessions
+    await this.invalidateExpiredSessions();
 
     // Perform login
     const loginUrl = `${acumaticaUrl}/entity/auth/login`;
@@ -149,6 +156,17 @@ export class AcumaticaSessionManager {
       .from('acumatica_session_cache')
       .update({ last_used_at: new Date().toISOString() })
       .eq('id', sessionId);
+  }
+
+  /**
+   * Invalidate expired sessions only
+   */
+  async invalidateExpiredSessions() {
+    await this.supabase
+      .from('acumatica_session_cache')
+      .update({ is_valid: false })
+      .lt('expires_at', new Date().toISOString())
+      .eq('is_valid', true);
   }
 
   /**
