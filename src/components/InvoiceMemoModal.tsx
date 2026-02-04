@@ -49,7 +49,7 @@ interface ActivityLog {
 interface Reminder {
   id: string;
   reminder_date: string;
-  reminder_message: string;
+  title: string;
   is_triggered: boolean;
   triggered_at: string | null;
   created_at: string;
@@ -576,7 +576,7 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
         invoice_id: invoice.id,
         user_id: user?.id,
         reminder_date: reminderDateTime,
-        reminder_message: reminderMessage.trim(),
+        title: reminderMessage.trim(),
         send_email_notification: sendEmailNotification,
         priority: 'medium',
         reminder_type: 'general'
@@ -1063,7 +1063,7 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
                           </span>
                         )}
                       </div>
-                      <p className="text-slate-300">{reminder.reminder_message}</p>
+                      <p className="text-slate-300">{reminder.title}</p>
                     </div>
                     {!reminder.is_triggered && (
                       <button

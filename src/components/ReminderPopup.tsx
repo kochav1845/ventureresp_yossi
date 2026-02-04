@@ -7,7 +7,7 @@ interface ActiveReminder {
   id: string;
   invoice_id: string | null;
   reminder_date: string;
-  reminder_message: string;
+  title: string;
   priority: string;
   reminder_type: string;
   notes: string | null;
@@ -152,7 +152,7 @@ export default function ReminderPopup({ onViewAll }: ReminderPopupProps) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="text-white font-medium text-sm line-clamp-2">
-                    {reminder.reminder_message}
+                    {reminder.title}
                   </h4>
                   {(reminder.invoice_reference || reminder.customer_name) && (
                     <p className="text-slate-400 text-xs mt-1">

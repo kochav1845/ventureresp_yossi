@@ -1174,7 +1174,6 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
             reminder_date: reminderDateTime.toISOString(),
             title: `Follow up on invoice ${invoice.reference_number}`,
             description: pendingBatchNote,
-            reminder_message: pendingBatchNote,
             status: 'pending'
           });
       }

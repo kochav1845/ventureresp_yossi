@@ -497,7 +497,6 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
               reminder_date: reminderDate,
               title: `Follow up on invoice ${refNumber}`,
               description: batchNote,
-              reminder_message: batchNote,
               status: 'pending'
             });
         }

@@ -10,7 +10,7 @@ interface Reminder {
   id: string;
   user_id: string;
   invoice_id: string | null;
-  reminder_message: string;
+  title: string;
   reminder_date: string;
   priority: string;
   reminder_type: string;
@@ -44,7 +44,6 @@ Deno.serve(async (req: Request) => {
         invoice_id,
         invoice_reference_number,
         ticket_id,
-        reminder_message,
         title,
         description,
         reminder_date,
@@ -115,7 +114,7 @@ Deno.serve(async (req: Request) => {
         const invoiceUrl = invoiceRef ? `${appDomain}/customers?invoice=${invoiceRef}` : null;
         const ticketUrl = ticketId ? `${appDomain}/ticketing?ticket=${ticketId}` : null;
 
-        const emailSubject = `Reminder: ${reminder.title || reminder.reminder_message}`;
+        const emailSubject = `Reminder: ${reminder.title}`;
         const emailBody = `
 <!DOCTYPE html>
 <html>
@@ -131,7 +130,7 @@ Deno.serve(async (req: Request) => {
   
   <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e9ecef;">
     <div style="background: white; padding: 25px; border-radius: 8px; border-left: 4px solid ${getPriorityColor(reminder.priority)};">
-      <h2 style="color: #2d3748; margin-top: 0; font-size: 22px;">${reminder.reminder_message}</h2>
+      <h2 style="color: #2d3748; margin-top: 0; font-size: 22px;">${reminder.title}</h2>
       
       <div style="margin: 20px 0;">
         <p style="margin: 8px 0;"><strong>Priority:</strong> <span style="background: ${getPriorityBadgeColor(reminder.priority)}; padding: 4px 12px; border-radius: 12px; font-size: 12px; text-transform: uppercase;">${reminder.priority}</span></p>

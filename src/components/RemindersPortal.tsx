@@ -10,7 +10,7 @@ interface Reminder {
   invoice_id: uuid;
   ticket_id?: uuid;
   reminder_date: string;
-  reminder_message: string;
+  title: string;
   priority: string;
   reminder_type: string;
   notes: string | null;
@@ -395,7 +395,7 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
                     <div className="flex items-start justify-between gap-4 mb-2">
                       <div className="flex-1">
                         <h3 className={`text-lg font-semibold ${reminder.completed_at ? 'text-slate-400 line-through' : 'text-white'}`}>
-                          {reminder.reminder_message}
+                          {reminder.title}
                         </h3>
                         {(reminder.invoice_reference || reminder.ticket_number || reminder.customer_name) && (
                           <div className="flex items-center gap-2 text-slate-400 text-sm mt-1 flex-wrap">
@@ -559,7 +559,7 @@ function ReminderModal({ reminder, prefilledData, onClose, onSave }: ReminderMod
         : `Follow up on invoice ${prefilledData.invoiceReference}`
     : '';
   const defaultDate = prefilledData?.promiseDate || '';
-  const [message, setMessage] = useState(reminder?.reminder_message || defaultMessage);
+  const [message, setMessage] = useState(reminder?.title || defaultMessage);
   const [date, setDate] = useState(reminder?.reminder_date?.split('T')[0] || defaultDate);
   const [time, setTime] = useState(
     reminder?.reminder_date ? new Date(reminder.reminder_date).toTimeString().slice(0, 5) : '09:00'
@@ -584,7 +584,7 @@ function ReminderModal({ reminder, prefilledData, onClose, onSave }: ReminderMod
         const { error } = await supabase
           .from('invoice_reminders')
           .update({
-            reminder_message: message.trim(),
+            title: message.trim(),
             reminder_date: reminderDateTime,
             priority,
             reminder_type: type,
@@ -602,7 +602,7 @@ function ReminderModal({ reminder, prefilledData, onClose, onSave }: ReminderMod
             invoice_id: prefilledData?.invoiceId || null,
             invoice_reference_number: prefilledData?.invoiceReference || null,
             ticket_id: prefilledData?.ticketId || null,
-            reminder_message: message.trim(),
+            title: message.trim(),
             reminder_date: reminderDateTime,
             priority,
             reminder_type: type,

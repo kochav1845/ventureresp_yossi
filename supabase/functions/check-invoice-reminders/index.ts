@@ -54,7 +54,7 @@ Deno.serve(async (req: Request) => {
       user_id: reminder.user_id,
       reminder_id: reminder.id,
       invoice_id: reminder.invoice_id,
-      message: `Reminder for Invoice ${(reminder.acumatica_invoices as any).reference_number}: ${reminder.reminder_message}`
+      message: `Reminder for Invoice ${(reminder.acumatica_invoices as any).reference_number}: ${reminder.title}`
     }));
 
     const { error: notifError } = await supabase
@@ -87,7 +87,7 @@ Deno.serve(async (req: Request) => {
           id: r.id,
           invoice: (r.acumatica_invoices as any).reference_number,
           user_id: r.user_id,
-          message: r.reminder_message
+          message: r.title
         }))
       }),
       {
