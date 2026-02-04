@@ -159,7 +159,7 @@ Deno.serve(async (req: Request) => {
               customer_name: customer?.customer_name || rule.customer_id,
               assigned_collector_id: rule.assigned_collector_id,
               status: "open",
-              ticket_type: "auto",
+              ticket_type: "overdue payment",
               active: true,
               created_by: rule.assigned_collector_id,
             })
