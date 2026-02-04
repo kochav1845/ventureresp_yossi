@@ -12,6 +12,8 @@ import * as XLSX from 'xlsx';
 interface CustomerAnalyticsData {
   customer_id: string;
   calculated_balance: number;
+  gross_balance: number;
+  credit_memo_balance: number;
   open_invoice_count: number;
   max_days_overdue: number;
   red_count: number;
@@ -118,6 +120,7 @@ export default function Customers({ onBack }: CustomersProps) {
   const [exporting, setExporting] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(true);
+  const [excludeCreditMemos, setExcludeCreditMemos] = useState(false);
   const [customersWithOpenTickets, setCustomersWithOpenTickets] = useState<Set<string>>(new Set());
   const [stats, setStats] = useState({
     total_customers: 0,
@@ -178,7 +181,7 @@ export default function Customers({ onBack }: CustomersProps) {
 
   useEffect(() => {
     applyFilters();
-  }, [filters, allCustomers]);
+  }, [filters, allCustomers, excludeCreditMemos]);
 
   const loadCustomersWithOpenTickets = async () => {
     try {
@@ -237,7 +240,8 @@ export default function Customers({ onBack }: CustomersProps) {
           p_min_open_invoices: null,
           p_max_open_invoices: null,
           p_min_invoice_amount: null,
-          p_max_invoice_amount: null
+          p_max_invoice_amount: null,
+          p_exclude_credit_memos: excludeCreditMemos
         });
 
       if (analyticsError) {
@@ -334,7 +338,8 @@ export default function Customers({ onBack }: CustomersProps) {
             p_min_open_invoices: filters.minInvoiceCount > 0 ? filters.minInvoiceCount : null,
             p_max_open_invoices: filters.maxInvoiceCount !== Infinity ? filters.maxInvoiceCount : null,
             p_min_invoice_amount: filters.minInvoiceAmount > 0 ? filters.minInvoiceAmount : null,
-            p_max_invoice_amount: filters.maxInvoiceAmount !== Infinity ? filters.maxInvoiceAmount : null
+            p_max_invoice_amount: filters.maxInvoiceAmount !== Infinity ? filters.maxInvoiceAmount : null,
+            p_exclude_credit_memos: excludeCreditMemos
           });
 
         if (analyticsError) throw analyticsError;
@@ -1142,6 +1147,36 @@ export default function Customers({ onBack }: CustomersProps) {
               <Plus size={18} />
               Add Customer
             </button>
+          </div>
+        </div>
+
+        {/* Credit Memo Toggle */}
+        <div className="bg-white rounded-xl shadow-sm p-4 mb-4 border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={excludeCreditMemos}
+                  onChange={(e) => setExcludeCreditMemos(e.target.checked)}
+                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm font-semibold text-gray-700">
+                  Exclude Credit Memos from Balance Calculation
+                </span>
+              </label>
+              <div className="px-3 py-1 bg-blue-50 border border-blue-200 rounded-lg">
+                <span className="text-xs font-medium text-blue-700">
+                  {excludeCreditMemos ? 'Showing Gross Balance (Invoices Only)' : 'Showing Net Balance (Invoices - Credit Memos)'}
+                </span>
+              </div>
+            </div>
+            <div className="text-xs text-gray-600">
+              {excludeCreditMemos
+                ? 'Balance shows total invoices without credit memo deductions'
+                : 'Balance shows invoices minus credit memos (actual amount owed)'
+              }
+            </div>
           </div>
         </div>
 
