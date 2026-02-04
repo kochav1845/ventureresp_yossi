@@ -10,8 +10,11 @@ const corsHeaders = {
 interface AutoTicketRule {
   id: string;
   customer_id: string;
-  min_days_old: number;
-  max_days_old: number;
+  rule_type: 'invoice_age' | 'payment_recency';
+  min_days_old: number | null;
+  max_days_old: number | null;
+  check_payment_within_days_min: number | null;
+  check_payment_within_days_max: number | null;
   assigned_collector_id: string;
 }
 
@@ -64,28 +67,94 @@ Deno.serve(async (req: Request) => {
       try {
         results.processed++;
 
-        const minDate = new Date(today);
-        minDate.setDate(minDate.getDate() - rule.max_days_old);
+        let invoiceRefs: string[] = [];
 
-        const maxDate = new Date(today);
-        maxDate.setDate(maxDate.getDate() - rule.min_days_old);
+        if (rule.rule_type === 'invoice_age') {
+          // Original logic: Find old invoices within date range
+          const minDate = new Date(today);
+          minDate.setDate(minDate.getDate() - rule.max_days_old!);
 
-        const { data: invoices, error: invoicesError } = await supabase
-          .from("acumatica_invoices")
-          .select("reference_number, customer, balance, status, date")
-          .eq("customer", rule.customer_id)
-          .eq("type", "Invoice")
-          .gt("balance", 0)
-          .gte("date", minDate.toISOString().split("T")[0])
-          .lte("date", maxDate.toISOString().split("T")[0])
-          .in("status", ["Open", "open"]);
+          const maxDate = new Date(today);
+          maxDate.setDate(maxDate.getDate() - rule.min_days_old!);
 
-        if (invoicesError) {
-          results.errors.push(`Customer ${rule.customer_id}: ${invoicesError.message}`);
+          const { data: invoices, error: invoicesError } = await supabase
+            .from("acumatica_invoices")
+            .select("reference_number, customer, balance, status, date")
+            .eq("customer", rule.customer_id)
+            .eq("type", "Invoice")
+            .gt("balance", 0)
+            .gte("date", minDate.toISOString().split("T")[0])
+            .lte("date", maxDate.toISOString().split("T")[0])
+            .in("status", ["Open", "open"]);
+
+          if (invoicesError) {
+            results.errors.push(`Customer ${rule.customer_id}: ${invoicesError.message}`);
+            continue;
+          }
+
+          if (!invoices || invoices.length === 0) {
+            continue;
+          }
+
+          invoiceRefs = invoices.map((inv: Invoice) => inv.reference_number);
+        } else if (rule.rule_type === 'payment_recency') {
+          // New logic: Check if customer has open invoices and no recent payment
+          const { data: openInvoices, error: openInvoicesError } = await supabase
+            .from("acumatica_invoices")
+            .select("reference_number")
+            .eq("customer", rule.customer_id)
+            .eq("type", "Invoice")
+            .gt("balance", 0)
+            .in("status", ["Open", "open"]);
+
+          if (openInvoicesError) {
+            results.errors.push(`Customer ${rule.customer_id}: ${openInvoicesError.message}`);
+            continue;
+          }
+
+          if (!openInvoices || openInvoices.length === 0) {
+            continue;
+          }
+
+          // Find last payment date for this customer
+          const { data: lastPayment, error: lastPaymentError } = await supabase
+            .from("acumatica_payments")
+            .select("application_date")
+            .eq("customer_id", rule.customer_id)
+            .eq("type", "Payment")
+            .not("application_date", "is", null)
+            .order("application_date", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (lastPaymentError) {
+            results.errors.push(`Customer ${rule.customer_id}: ${lastPaymentError.message}`);
+            continue;
+          }
+
+          // Calculate days since last payment
+          let daysSincePayment = Infinity;
+          if (lastPayment && lastPayment.application_date) {
+            const lastPaymentDate = new Date(lastPayment.application_date);
+            daysSincePayment = Math.floor((today.getTime() - lastPaymentDate.getTime()) / (1000 * 60 * 60 * 24));
+          }
+
+          // Check if days since payment falls within the rule's range
+          const minDays = rule.check_payment_within_days_min!;
+          const maxDays = rule.check_payment_within_days_max!;
+
+          if (daysSincePayment < minDays || daysSincePayment > maxDays) {
+            continue;
+          }
+
+          // Include all open invoices for this customer
+          invoiceRefs = openInvoices.map((inv) => inv.reference_number);
+        } else {
+          results.errors.push(`Unknown rule type: ${rule.rule_type}`);
           continue;
         }
 
-        if (!invoices || invoices.length === 0) {
+        if (invoiceRefs.length === 0) {
           continue;
         }
 
@@ -102,8 +171,6 @@ Deno.serve(async (req: Request) => {
           results.errors.push(`Customer ${rule.customer_id}: ${ticketsError.message}`);
           continue;
         }
-
-        const invoiceRefs = invoices.map((inv: Invoice) => inv.reference_number);
 
         if (existingTickets && existingTickets.length > 0) {
           const ticket = existingTickets[0];
