@@ -16,11 +16,11 @@ interface AutoTicketRule {
 }
 
 interface Invoice {
-  reference_nbr: string;
-  customer_id: string;
+  reference_number: string;
+  customer: string;
   balance: number;
   status: string;
-  invoice_date: string;
+  date: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -72,12 +72,12 @@ Deno.serve(async (req: Request) => {
 
         const { data: invoices, error: invoicesError } = await supabase
           .from("acumatica_invoices")
-          .select("reference_nbr, customer_id, balance, status, invoice_date")
-          .eq("customer_id", rule.customer_id)
+          .select("reference_number, customer, balance, status, date")
+          .eq("customer", rule.customer_id)
           .eq("type", "Invoice")
           .gt("balance", 0)
-          .gte("invoice_date", minDate.toISOString().split("T")[0])
-          .lte("invoice_date", maxDate.toISOString().split("T")[0])
+          .gte("date", minDate.toISOString().split("T")[0])
+          .lte("date", maxDate.toISOString().split("T")[0])
           .in("status", ["Open", "open"]);
 
         if (invoicesError) {
@@ -103,7 +103,7 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        const invoiceRefs = invoices.map((inv: Invoice) => inv.reference_nbr);
+        const invoiceRefs = invoices.map((inv: Invoice) => inv.reference_number);
 
         if (existingTickets && existingTickets.length > 0) {
           const ticket = existingTickets[0];
