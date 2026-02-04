@@ -80,6 +80,14 @@ export function DeveloperTools() {
       category: 'payment'
     },
     {
+      id: 'payment-sync-diagnostic',
+      name: 'Payment Sync Diagnostic',
+      description: 'Diagnose and fix payment sync issues (recommended first step)',
+      icon: Activity,
+      path: '/payment-sync-diagnostic',
+      category: 'sync'
+    },
+    {
       id: 'refetch-2024-payments',
       name: 'Refetch 2024 Payments',
       description: 'Batch refetch payment applications for all 2024 payments (100 at a time)',

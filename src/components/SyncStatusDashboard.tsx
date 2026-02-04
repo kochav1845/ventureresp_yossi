@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Activity, CheckCircle, XCircle, Clock, Play, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Activity, CheckCircle, XCircle, Clock, Play, ChevronLeft, ChevronRight, Stethoscope } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import CronJobControl from './CronJobControl';
 
@@ -277,6 +277,13 @@ export default function SyncStatusDashboard({ onBack }: SyncStatusDashboardProps
                   Trigger Sync Now
                 </>
               )}
+            </button>
+            <button
+              onClick={() => navigate('/payment-sync-diagnostic')}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+            >
+              <Stethoscope className="w-5 h-5" />
+              Diagnose Issues
             </button>
           </div>
         </div>

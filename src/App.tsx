@@ -59,6 +59,7 @@ import AutoBackfillMonitor from './components/AutoBackfillMonitor';
 import PaymentStatusDiagnostic from './components/PaymentStatusDiagnostic';
 import PaymentDateRangeResync from './components/PaymentDateRangeResync';
 import PaymentSyncHealthCheck from './components/PaymentSyncHealthCheck';
+import PaymentSyncDiagnostic from './components/PaymentSyncDiagnostic';
 import { DeveloperTools } from './components/DeveloperTools';
 import Refetch2024Payments from './components/Refetch2024Payments';
 import AdminCreateUser from './components/AdminCreateUser';
@@ -170,6 +171,7 @@ function AppContent() {
         <Route path="payment-status-diagnostic" element={<PaymentStatusDiagnostic />} />
         <Route path="payment-date-range-resync" element={<PaymentDateRangeResync />} />
         <Route path="payment-sync-health" element={<PaymentSyncHealthCheck />} />
+        <Route path="payment-sync-diagnostic" element={<PaymentSyncDiagnostic />} />
         <Route path="developer-tools" element={<DeveloperTools />} />
         <Route path="refetch-2024-payments" element={<Refetch2024Payments />} />
         <Route path="resend-temp-password" element={<ResendTemporaryPassword onBack={() => window.history.back()} />} />
