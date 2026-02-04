@@ -31,7 +31,7 @@ export default function PaymentSyncDiagnostic({ onBack }: { onBack?: () => void 
       const { data: syncStatus, error: syncError } = await supabase
         .from('sync_status')
         .select('*')
-        .eq('entity_type', 'payments')
+        .eq('entity_type', 'payment')
         .maybeSingle();
 
       if (syncError) {
@@ -131,7 +131,7 @@ export default function PaymentSyncDiagnostic({ onBack }: { onBack?: () => void 
       const { data: recentSyncs, error: syncLogError } = await supabase
         .from('sync_change_logs')
         .select('*')
-        .eq('entity_type', 'payments')
+        .eq('sync_type', 'payment')
         .order('created_at', { ascending: false })
         .limit(5);
 
