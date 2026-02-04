@@ -171,7 +171,7 @@ export default function ReminderPopup({ onViewAll }: ReminderPopupProps) {
                       )}
                       {reminder.ticket_number && (
                         <button
-                          onClick={() => navigate(`/ticketing?ticket=${reminder.ticket_id}`)}
+                          onClick={() => navigate(`/collection-ticketing?ticketId=${reminder.ticket_id}`)}
                           className="flex items-center gap-1 text-purple-400 hover:text-purple-300 transition-colors"
                         >
                           Ticket #{reminder.ticket_number}

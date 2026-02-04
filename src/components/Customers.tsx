@@ -88,8 +88,27 @@ export default function Customers({ onBack }: CustomersProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const customerIdParam = searchParams.get('customer');
+  const invoiceParam = searchParams.get('invoice');
   const handleBack = onBack || (() => navigate(-1));
   const hasAccess = hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW, 'view');
+
+  // Handle invoice parameter by looking up the customer
+  useEffect(() => {
+    if (invoiceParam && !customerIdParam) {
+      const lookupInvoiceCustomer = async () => {
+        const { data, error } = await supabase
+          .from('acumatica_invoices')
+          .select('customer')
+          .eq('reference_number', invoiceParam)
+          .maybeSingle();
+
+        if (data && !error) {
+          navigate(`/customers?customer=${data.customer}`, { replace: true });
+        }
+      };
+      lookupInvoiceCustomer();
+    }
+  }, [invoiceParam, customerIdParam, navigate]);
 
   // If a specific customer is requested, show CustomerDetailView
   if (customerIdParam) {
