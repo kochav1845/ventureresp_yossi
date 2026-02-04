@@ -87,7 +87,8 @@ export default function ComprehensiveAdminDashboard({ onNavigate }: Comprehensiv
         'user-activity': '/user-activity',
         'email-analytics': '/email-analytics',
         'stripe-analytics': '/stripe-analytics',
-        'recent-sync-app-check': '/recent-sync-app-check'
+        'recent-sync-app-check': '/recent-sync-app-check',
+        'auto-ticket-rules': '/admin-dashboard'
       };
       navigate(routeMap[view] || '/dashboard');
     }
@@ -302,6 +303,19 @@ export default function ComprehensiveAdminDashboard({ onNavigate }: Comprehensiv
       iconBg: metrics.cronJobs.hasErrors ? 'bg-red-500/10' : 'bg-green-500/10',
       iconColor: metrics.cronJobs.hasErrors ? 'text-red-600' : 'text-green-600',
       view: 'logs'
+    },
+    {
+      title: 'Auto-Ticket Rules',
+      subtitle: 'Automated ticketing',
+      icon: Clock,
+      metrics: [
+        { label: 'Manage Rules', value: '→' },
+        { label: 'Daily @ 6 AM', value: '⏰' }
+      ],
+      gradient: 'from-amber-500 via-orange-500 to-red-500',
+      iconBg: 'bg-amber-500/10',
+      iconColor: 'text-amber-600',
+      view: 'auto-ticket-rules'
     }
   ];
 
