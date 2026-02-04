@@ -466,7 +466,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
       setNewNote('');
       setNoteType('general');
-      loadCustomerData();
+      await loadCustomerBasicInfo();
     } catch (error) {
       console.error('Error saving note:', error);
       alert('Failed to save note');
@@ -578,7 +578,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
       setChangingColorForInvoice(null);
 
-      await loadCustomerData();
+      await loadCustomerBasicInfo();
       await loadInvoiceStats();
       await loadFilteredStats();
 
@@ -1568,7 +1568,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             setInvoiceToAssign(null);
           }}
           onAssignmentComplete={() => {
-            loadCustomerData();
+            loadCustomerBasicInfo();
           }}
         />
       )}
