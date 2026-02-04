@@ -91,12 +91,32 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
 
       const flattenedData = (data || []).map(item => ({
         ...item,
-        invoice_reference: item.acumatica_invoices?.reference_number,
+        // Use invoice_reference_number if available, otherwise fall back to joined data
+        invoice_reference: item.invoice_reference_number || item.acumatica_invoices?.reference_number,
         customer_name: item.collection_tickets?.customer_name || item.acumatica_invoices?.customer_name,
         ticket_number: item.collection_tickets?.ticket_number
       }));
 
-      setReminders(flattenedData);
+      // Enrich reminders with customer names from invoices if needed
+      const enrichedData = await Promise.all(
+        flattenedData.map(async (item) => {
+          // If we have an invoice reference but no customer name, look it up
+          if (item.invoice_reference && !item.customer_name) {
+            const { data: invoiceData } = await supabase
+              .from('acumatica_invoices')
+              .select('customer_name')
+              .eq('reference_number', item.invoice_reference)
+              .maybeSingle();
+
+            if (invoiceData) {
+              return { ...item, customer_name: invoiceData.customer_name };
+            }
+          }
+          return item;
+        })
+      );
+
+      setReminders(enrichedData);
     } catch (error) {
       console.error('Error loading reminders:', error);
     } finally {
