@@ -131,19 +131,25 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
   const fetchCustomers = async () => {
     try {
       if (formData.rule_type === 'payment_recency') {
-        const { data: customersWithDebt, error } = await supabase
-          .rpc('get_customers_with_balance', {
-            p_min_balance: 0.01,
-            p_exclude_from_reporting: false,
-            p_exclude_from_analytics: false
-          });
+        const { data: openInvoices, error } = await supabase
+          .from('acumatica_invoices')
+          .select('customer')
+          .eq('type', 'Invoice')
+          .gt('balance', 0)
+          .in('status', ['Open', 'open']);
 
         if (error) throw error;
-        const formattedCustomers = customersWithDebt?.map((c: any) => ({
-          customer_id: c.customer_id,
-          customer_name: c.customer_name
-        })) || [];
-        setCustomers(formattedCustomers);
+
+        const uniqueCustomerIds = [...new Set(openInvoices?.map(inv => inv.customer) || [])];
+
+        const { data: customersData, error: customersError } = await supabase
+          .from('acumatica_customers')
+          .select('customer_id, customer_name')
+          .in('customer_id', uniqueCustomerIds)
+          .order('customer_name');
+
+        if (customersError) throw customersError;
+        setCustomers(customersData || []);
       } else {
         const { data, error } = await supabase
           .from('acumatica_customers')
