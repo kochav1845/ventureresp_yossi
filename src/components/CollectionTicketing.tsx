@@ -349,6 +349,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
       const { data: ticketsData, error: ticketsError } = await supabase
         .from('collection_tickets')
         .select('*')
+        .eq('active', true)
         .order('created_at', { ascending: false });
 
       if (ticketsError) {
@@ -553,6 +554,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
         .select('*')
         .eq('customer_id', selectedCustomer)
         .eq('assigned_collector_id', selectedCollector)
+        .eq('active', true)
         .in('status', ['open', 'in_progress'])
         .order('created_at', { ascending: false })
         .limit(1);
