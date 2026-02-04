@@ -123,10 +123,7 @@ Deno.serve(async (req: Request) => {
 
     if (!customersResponse.ok) {
       const errorText = await customersResponse.text();
-      return new Response(
-        JSON.stringify({ error: `Failed to fetch customers: ${errorText}` }),
-        { status: customersResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      throw new Error(`Failed to fetch customers: ${customersResponse.status} ${customersResponse.statusText}. Details: ${errorText.substring(0, 500)}`);
     }
 
     const customersData = await customersResponse.json();

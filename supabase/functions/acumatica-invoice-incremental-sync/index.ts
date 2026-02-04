@@ -120,10 +120,7 @@ Deno.serve(async (req: Request) => {
 
     if (!invoicesResponse.ok) {
       const errorText = await invoicesResponse.text();
-      return new Response(
-        JSON.stringify({ error: `Failed to fetch invoices: ${errorText}` }),
-        { status: invoicesResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      throw new Error(`Failed to fetch invoices: ${invoicesResponse.status} ${invoicesResponse.statusText}. Details: ${errorText.substring(0, 500)}`);
     }
 
     let invoicesData;

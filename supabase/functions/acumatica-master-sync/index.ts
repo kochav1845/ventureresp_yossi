@@ -133,8 +133,15 @@ Deno.serve(async (req: Request) => {
           }),
         });
 
-        const result = await response.json();
         const syncDuration = Date.now() - syncStart;
+
+        let result;
+        try {
+          result = await response.json();
+        } catch (parseErr) {
+          const responseText = await response.text();
+          throw new Error(`Failed to parse sync response for ${entityType}: ${response.status} ${response.statusText}. Response: ${responseText.substring(0, 500)}`);
+        }
 
         console.log(`${entityType} sync completed in ${syncDuration}ms`);
 

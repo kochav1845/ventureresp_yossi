@@ -168,10 +168,7 @@ Deno.serve(async (req: Request) => {
 
     if (!paymentsResponse.ok) {
       const errorText = await paymentsResponse.text();
-      return new Response(
-        JSON.stringify({ error: `Failed to fetch payments: ${errorText}` }),
-        { status: paymentsResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      throw new Error(`Failed to fetch payments: ${paymentsResponse.status} ${paymentsResponse.statusText}. Details: ${errorText.substring(0, 500)}`);
     }
 
     const paymentsData = await paymentsResponse.json();
