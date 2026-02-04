@@ -53,6 +53,7 @@ interface Ticket {
   collector_email?: string;
   collector_name?: string;
   assigner_email?: string;
+  active?: boolean;
   last_status_change?: {
     status: string;
     changed_at: string;
@@ -855,6 +856,41 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     }
   };
 
+  const handleToggleActive = async (ticketId: string, currentActive: boolean) => {
+    if (profile?.role !== 'admin') {
+      alert('Only admins can change ticket active status');
+      return;
+    }
+
+    const newActive = !currentActive;
+    const action = newActive ? 'reactivate' : 'deactivate';
+
+    if (!confirm(`Are you sure you want to ${action} this ticket? ${!newActive ? 'It will be hidden from all views.' : ''}`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('collection_tickets')
+        .update({ active: newActive })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      alert(`Ticket ${newActive ? 'reactivated' : 'deactivated'} successfully!`);
+      await loadTickets();
+
+      // Close modal if viewing this ticket
+      if (selectedTicket?.id === ticketId && !newActive) {
+        setSelectedTicket(null);
+        setTicketDetails(null);
+      }
+    } catch (error: any) {
+      console.error('Error updating ticket active status:', error);
+      alert('Failed to update ticket status: ' + error.message);
+    }
+  };
+
   const handleColorChange = async (invoiceRefNumber: string, newColor: string | null) => {
     if (!profile?.id) return;
 
@@ -1472,15 +1508,26 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={() => {
-                    setSelectedTicket(null);
-                    setTicketDetails(null);
-                  }}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {profile?.role === 'admin' && (
+                    <button
+                      onClick={() => handleToggleActive(selectedTicket.id, selectedTicket.active ?? true)}
+                      className="px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                      title="Mark ticket as inactive"
+                    >
+                      Deactivate Ticket
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setSelectedTicket(null);
+                      setTicketDetails(null);
+                    }}
+                    className="p-2 hover:bg-gray-100 rounded-lg"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -2082,6 +2129,18 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                             )}
                             {ticket.assigner_email && (
                               <p className="text-xs text-gray-400">by {ticket.assigner_email}</p>
+                            )}
+                            {profile?.role === 'admin' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleActive(ticket.id, ticket.active ?? true);
+                                }}
+                                className="mt-3 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                                title="Mark ticket as inactive"
+                              >
+                                Deactivate
+                              </button>
                             )}
                           </div>
                         </div>
