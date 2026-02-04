@@ -48,8 +48,7 @@ export default function CreateReminderModal({
         title: title.trim(),
         description: description || null,
         send_email_notification: sendEmail,
-        status: 'pending',
-        reminder_message: title.trim() // Store as reminder_message for backward compatibility
+        status: 'pending'
       };
 
       if (type === 'ticket' && ticketId) {
