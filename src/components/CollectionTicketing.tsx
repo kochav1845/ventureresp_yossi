@@ -8,6 +8,7 @@ import { formatDistanceToNow } from 'date-fns';
 import TicketNoteModal from './TicketNoteModal';
 import TicketPromiseDateModal from './MyAssignments/TicketPromiseDateModal';
 import CreateReminderModal from './CreateReminderModal';
+import { sortTicketsByPriority } from './MyAssignments/utils';
 
 interface Customer {
   customer_id: string;
@@ -148,6 +149,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     mergeHistory: MergeEvent[];
   } | null>(null);
   const [newStatus, setNewStatus] = useState<string>('');
+  const [newPriority, setNewPriority] = useState<string>('');
   const [statusNote, setStatusNote] = useState<string>('');
   const [newNote, setNewNote] = useState<string>('');
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -509,6 +511,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     setDetailsLoading(true);
     setSelectedTicket(ticket);
     setNewStatus(ticket.status);
+    setNewPriority(ticket.priority);
 
     try {
       // Load merge history separately since it might not exist in all environments
@@ -873,6 +876,28 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     } catch (error: any) {
       console.error('Error updating status:', error);
       alert('Failed to update status: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePriorityChange = async () => {
+    if (!selectedTicket || !newPriority || !profile?.id) return;
+
+    setLoading(true);
+    try {
+      await supabase.rpc('update_ticket_priority', {
+        p_ticket_id: selectedTicket.id,
+        p_new_priority: newPriority,
+        p_user_id: profile.id
+      });
+
+      alert('Priority updated successfully!');
+      loadTickets();
+      loadTicketDetails({ ...selectedTicket, priority: newPriority });
+    } catch (error: any) {
+      console.error('Error updating priority:', error);
+      alert('Failed to update priority: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -1693,6 +1718,29 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
               </div>
 
               <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Change Priority</h3>
+                <div className="flex gap-3">
+                  <select
+                    value={newPriority}
+                    onChange={(e) => setNewPriority(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                  >
+                    <option value="urgent">Urgent</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                  <button
+                    onClick={handlePriorityChange}
+                    disabled={loading || newPriority === selectedTicket.priority}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Update Priority
+                  </button>
+                </div>
+              </div>
+
+              <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Ticket Notes</h3>
                 <p className="text-sm text-gray-600 mb-3">
                   Add notes with text, voice recordings, images, or documents
@@ -2166,7 +2214,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                       <p className="text-gray-500">No tickets created yet</p>
                     </div>
                   ) : (
-                    tickets.map(ticket => (
+                    sortTicketsByPriority(tickets).map(ticket => (
                       <div
                         key={ticket.id}
                         onClick={() => loadTicketDetails(ticket)}
