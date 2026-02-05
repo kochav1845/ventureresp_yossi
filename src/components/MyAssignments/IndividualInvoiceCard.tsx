@@ -116,9 +116,21 @@ export default function IndividualInvoiceCard({
             </div>
             <div>
               <p className="text-gray-500">Balance Due</p>
-              <p className="font-bold text-red-600 text-lg">
-                ${(invoice.balance ?? 0).toFixed(2)}
-              </p>
+              {invoice.amount !== invoice.balance ? (
+                <div>
+                  <p className="text-gray-400 line-through text-sm">
+                    ${(invoice.amount ?? 0).toFixed(2)}
+                  </p>
+                  <p className="font-bold text-orange-600 text-lg">
+                    ${(invoice.balance ?? 0).toFixed(2)}
+                  </p>
+                  <p className="text-xs text-orange-600 font-semibold">(short-paid)</p>
+                </div>
+              ) : (
+                <p className="font-bold text-red-600 text-lg">
+                  ${(invoice.balance ?? 0).toFixed(2)}
+                </p>
+              )}
             </div>
           </div>
           {invoice.assignment_notes && (

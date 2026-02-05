@@ -1916,7 +1916,15 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                                   <span>Due: {new Date(ti.invoice.due_date).toLocaleDateString()}</span>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                  <span className="font-semibold">Balance: ${(ti.invoice.balance ?? 0).toFixed(2)}</span>
+                                  {ti.invoice.amount !== ti.invoice.balance ? (
+                                    <span>
+                                      <span className="text-gray-500 line-through mr-1">${(ti.invoice.amount ?? 0).toFixed(2)}</span>
+                                      <span className="font-semibold text-orange-600">${(ti.invoice.balance ?? 0).toFixed(2)}</span>
+                                      <span className="ml-1 text-xs text-orange-600">(short-paid)</span>
+                                    </span>
+                                  ) : (
+                                    <span className="font-semibold">Balance: ${(ti.invoice.balance ?? 0).toFixed(2)}</span>
+                                  )}
                                 </div>
                                 {ti.invoice.type && (
                                   <div className="text-xs text-gray-500">
@@ -2593,7 +2601,15 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                                 </div>
                                 <div className="flex items-center gap-1">
                                   <DollarSign className="w-4 h-4" />
-                                  <span>Balance: ${(invoice.balance ?? 0).toFixed(2)}</span>
+                                  {invoice.amount !== invoice.balance ? (
+                                    <span>
+                                      <span className="text-gray-500 line-through mr-1">${(invoice.amount ?? 0).toFixed(2)}</span>
+                                      <span className="font-semibold text-orange-600">${(invoice.balance ?? 0).toFixed(2)}</span>
+                                      <span className="ml-1 text-xs text-orange-600">(short-paid)</span>
+                                    </span>
+                                  ) : (
+                                    <span>Balance: ${(invoice.balance ?? 0).toFixed(2)}</span>
+                                  )}
                                 </div>
                                 {invoice.type && (
                                   <div className="text-xs text-gray-500">
