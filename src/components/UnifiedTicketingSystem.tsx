@@ -394,16 +394,30 @@ export default function UnifiedTicketingSystem({
   };
 
   const handleCustomerSelect = (customerId: string) => {
+    const customer = customers.find(c => c.customer_id === customerId);
+    if (customer) {
+      setSearchTerm(customer.customer_name);
+    }
     setSelectedCustomer(customerId);
     setShowCustomerDropdown(false);
     setSelectedInvoicesForTicket([]);
     loadCustomerInvoices(customerId);
   };
 
-  const filteredCustomers = customers.filter(c =>
-    c.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.customer_id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Show all customers when search is empty, otherwise filter
+  const getFilteredCustomers = () => {
+    if (!searchTerm || searchTerm.trim() === '') {
+      return customers;
+    }
+
+    const search = searchTerm.toLowerCase().trim();
+    return customers.filter(c =>
+      c.customer_name.toLowerCase().includes(search) ||
+      c.customer_id.toLowerCase().includes(search)
+    );
+  };
+
+  const filteredCustomers = getFilteredCustomers();
 
   const handleCreateTicket = async () => {
     if (!selectedCustomer || !selectedCollector || selectedInvoicesForTicket.length === 0) {
@@ -899,55 +913,65 @@ export default function UnifiedTicketingSystem({
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Customer
+                    Customer {customers.length > 0 && <span className="text-gray-500 text-xs">({customers.length} available)</span>}
                   </label>
                   <div className="relative" ref={dropdownRef}>
                     <input
                       type="text"
-                      placeholder="Search for customer..."
+                      placeholder="Type to search or click to see all customers..."
                       value={searchTerm}
                       onChange={(e) => {
                         setSearchTerm(e.target.value);
+                        setSelectedCustomer('');
                         setShowCustomerDropdown(true);
                       }}
-                      onFocus={() => setShowCustomerDropdown(true)}
+                      onFocus={() => {
+                        setShowCustomerDropdown(true);
+                      }}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
 
                     {showCustomerDropdown && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      <div className="absolute z-50 w-full mt-1 bg-white border-2 border-blue-500 rounded-lg shadow-2xl max-h-80 overflow-y-auto">
                         {loadingCustomers ? (
-                          <div className="px-4 py-3 text-gray-500 text-center">
-                            Loading customers...
+                          <div className="px-4 py-8 text-gray-500 text-center">
+                            <div className="animate-pulse">Loading customers...</div>
                           </div>
                         ) : filteredCustomers.length > 0 ? (
-                          filteredCustomers.slice(0, 50).map((customer) => (
-                            <button
-                              key={customer.customer_id}
-                              onClick={() => handleCustomerSelect(customer.customer_id)}
-                              className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
-                            >
-                              <div className="font-medium text-gray-900">{customer.customer_name}</div>
-                              <div className="text-sm text-gray-500">ID: {customer.customer_id}</div>
-                              <div className="text-sm text-red-600 font-semibold">
-                                Balance: ${customer.balance.toFixed(2)}
-                              </div>
-                            </button>
-                          ))
+                          <>
+                            <div className="sticky top-0 bg-gray-50 px-4 py-2 text-xs text-gray-600 border-b">
+                              Showing {Math.min(filteredCustomers.length, 100)} of {filteredCustomers.length} customers
+                            </div>
+                            {filteredCustomers.slice(0, 100).map((customer) => (
+                              <button
+                                key={customer.customer_id}
+                                onClick={() => handleCustomerSelect(customer.customer_id)}
+                                className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                              >
+                                <div className="font-medium text-gray-900">{customer.customer_name}</div>
+                                <div className="text-sm text-gray-500">ID: {customer.customer_id}</div>
+                                <div className="text-sm text-red-600 font-semibold">
+                                  Balance: ${customer.balance.toFixed(2)}
+                                </div>
+                              </button>
+                            ))}
+                          </>
                         ) : customers.length === 0 ? (
-                          <div className="px-4 py-3 text-gray-500 text-center">
-                            No customers available
+                          <div className="px-4 py-8 text-gray-500 text-center">
+                            <div className="text-red-600 font-semibold mb-2">No customers loaded</div>
+                            <div className="text-sm">Please check your database connection</div>
                           </div>
                         ) : (
-                          <div className="px-4 py-3 text-gray-500 text-center">
-                            No customers match "{searchTerm}"
+                          <div className="px-4 py-8 text-gray-500 text-center">
+                            <div className="font-semibold mb-2">No customers match "{searchTerm}"</div>
+                            <div className="text-sm">Try a different search term</div>
                           </div>
                         )}
                       </div>
                     )}
                   </div>
-                  {selectedCustomerData && (
-                    <div className="mt-2 p-3 bg-blue-50 rounded-lg">
+                  {selectedCustomer && selectedCustomerData && (
+                    <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
                       <p className="font-semibold text-blue-900">{selectedCustomerData.customer_name}</p>
                       <p className="text-sm text-blue-700">Balance: ${selectedCustomerData.balance.toFixed(2)}</p>
                     </div>
