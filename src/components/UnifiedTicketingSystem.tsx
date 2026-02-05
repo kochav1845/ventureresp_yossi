@@ -348,13 +348,26 @@ export default function UnifiedTicketingSystem({
     setLoadingCustomers(true);
     try {
       const { data, error } = await supabase.rpc('get_customers_with_balance', {
-        p_date_context: 'all'
+        p_balance_filter: 'positive',
+        p_limit: 1000
       });
 
-      if (error) throw error;
-      setCustomers(data || []);
+      if (error) {
+        console.error('Error loading customers:', error);
+        throw error;
+      }
+
+      // Map the calculated_balance to balance for the Customer interface
+      const mappedCustomers = (data || []).map((c: any) => ({
+        customer_id: c.customer_id,
+        customer_name: c.customer_name,
+        balance: c.calculated_balance || 0
+      }));
+
+      setCustomers(mappedCustomers);
     } catch (error) {
       console.error('Error loading customers:', error);
+      setCustomers([]);
     } finally {
       setLoadingCustomers(false);
     }
