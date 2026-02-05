@@ -349,7 +349,8 @@ export default function UnifiedTicketingSystem({
     try {
       const { data, error } = await supabase.rpc('get_customers_with_balance', {
         p_balance_filter: 'all',
-        p_limit: 1000
+        p_limit: 1000,
+        p_exclude_credit_memos: true
       });
 
       if (error) {
@@ -357,11 +358,11 @@ export default function UnifiedTicketingSystem({
         throw error;
       }
 
-      // Map the calculated_balance to balance for the Customer interface
+      // Map the gross_balance (invoices only, excluding credit memos) for collection purposes
       const mappedCustomers = (data || []).map((c: any) => ({
         customer_id: c.customer_id,
         customer_name: c.customer_name,
-        balance: c.calculated_balance || 0
+        balance: c.gross_balance || 0
       }));
 
       setCustomers(mappedCustomers);
