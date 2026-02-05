@@ -1,0 +1,1261 @@
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  Ticket as TicketIcon,
+  FileText,
+  ArrowLeft,
+  DollarSign,
+  CheckSquare,
+  Square,
+  Plus,
+  AlertTriangle,
+  Users
+} from 'lucide-react';
+import InvoiceMemoModal from './InvoiceMemoModal';
+import CreateReminderModal from './CreateReminderModal';
+import { Assignment, TicketGroup, TicketStatusOption } from './MyAssignments/types';
+import TicketCard from './MyAssignments/TicketCard';
+import IndividualInvoiceCard from './MyAssignments/IndividualInvoiceCard';
+import BatchActionToolbar from './MyAssignments/BatchActionToolbar';
+import BatchNoteModal from './MyAssignments/BatchNoteModal';
+import PromiseDateModal from './MyAssignments/PromiseDateModal';
+import { sortTicketsByPriority } from './MyAssignments/utils';
+import TicketSearchFilter, { TicketFilters, filterTickets } from './TicketSearchFilter';
+import { format, isPast, parseISO } from 'date-fns';
+
+interface UnifiedTicketingSystemProps {
+  showOnlyAssigned?: boolean;
+  onBack?: () => void;
+  title?: string;
+}
+
+interface Customer {
+  customer_id: string;
+  customer_name: string;
+  balance: number;
+}
+
+interface Invoice {
+  reference_number: string;
+  date: string;
+  due_date: string;
+  amount: number;
+  balance: number;
+  description: string;
+}
+
+interface Collector {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
+export default function UnifiedTicketingSystem({
+  showOnlyAssigned = false,
+  onBack,
+  title = 'Ticketing System'
+}: UnifiedTicketingSystemProps) {
+  const { user, profile } = useAuth();
+  const navigate = useNavigate();
+
+  // View states
+  const [activeTab, setActiveTab] = useState<'create' | 'tickets' | 'individual' | 'overdue'>('tickets');
+
+  // Ticket data
+  const [tickets, setTickets] = useState<TicketGroup[]>([]);
+  const [individualAssignments, setIndividualAssignments] = useState<Assignment[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Create ticket states
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [collectors, setCollectors] = useState<Collector[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<string>('');
+  const [customerInvoices, setCustomerInvoices] = useState<Invoice[]>([]);
+  const [selectedInvoicesForTicket, setSelectedInvoicesForTicket] = useState<string[]>([]);
+  const [selectedCollector, setSelectedCollector] = useState<string>('');
+  const [priority, setPriority] = useState<string>('medium');
+  const [ticketType, setTicketType] = useState<string>('');
+  const [ticketNotes, setTicketNotes] = useState<string>('');
+  const [ticketDueDate, setTicketDueDate] = useState<string>('');
+  const [creating, setCreating] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Batch operations
+  const [memoModalInvoice, setMemoModalInvoice] = useState<any>(null);
+  const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
+  const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
+  const [showBatchColorMenu, setShowBatchColorMenu] = useState(false);
+  const [showBatchNoteModal, setShowBatchNoteModal] = useState(false);
+  const [batchNote, setBatchNote] = useState('');
+  const [createReminder, setCreateReminder] = useState(false);
+  const [reminderDate, setReminderDate] = useState('');
+  const [processingBatch, setProcessingBatch] = useState(false);
+  const [changingTicketStatus, setChangingTicketStatus] = useState<string | null>(null);
+  const [changingTicketPriority, setChangingTicketPriority] = useState<string | null>(null);
+  const [promiseDateModalInvoice, setPromiseDateModalInvoice] = useState<string | null>(null);
+
+  // Options
+  const [statusOptions, setStatusOptions] = useState<TicketStatusOption[]>([]);
+  const [colorOptions, setColorOptions] = useState<Array<{ status_name: string; display_name: string; color_class: string }>>([]);
+  const [ticketTypeOptions, setTicketTypeOptions] = useState<Array<{ value: string; label: string }>>([]);
+
+  // Reminder modal
+  const [reminderModal, setReminderModal] = useState<{
+    type: 'ticket' | 'invoice';
+    ticketId?: string;
+    ticketNumber?: string;
+    invoiceReference?: string;
+    customerName?: string;
+  } | null>(null);
+
+  // Filters
+  const [filters, setFilters] = useState<TicketFilters>({
+    searchTerm: '',
+    status: '',
+    priority: '',
+    ticketType: '',
+    dateFrom: '',
+    dateTo: '',
+    assignedTo: ''
+  });
+
+  // Apply filters
+  const filteredTickets = filterTickets(tickets, filters);
+  const filteredIndividualAssignments = filterTickets(individualAssignments, filters);
+
+  // Filter overdue tickets
+  const overdueTickets = tickets.filter(ticket =>
+    ticket.ticket_due_date && isPast(parseISO(ticket.ticket_due_date))
+  );
+
+  useEffect(() => {
+    if (user && profile) {
+      loadStatusOptions();
+      loadColorOptions();
+      loadTicketTypeOptions();
+      loadTickets();
+
+      if (activeTab === 'create') {
+        loadCustomers();
+        loadCollectors();
+      }
+    }
+  }, [user, profile, showOnlyAssigned]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowCustomerDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const loadStatusOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ticket_status_options')
+        .select('id, status_name, display_name, color_class, sort_order')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+      setStatusOptions(data || []);
+    } catch (error) {
+      console.error('Error loading status options:', error);
+    }
+  };
+
+  const loadColorOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('invoice_color_status_options')
+        .select('status_name, display_name, color_class')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+      setColorOptions(data || []);
+    } catch (error) {
+      console.error('Error loading color options:', error);
+    }
+  };
+
+  const loadTicketTypeOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ticket_type_options')
+        .select('value, label')
+        .eq('is_active', true)
+        .order('display_order', { ascending: true });
+
+      if (error) throw error;
+      setTicketTypeOptions(data || []);
+      if (data && data.length > 0 && !ticketType) {
+        setTicketType(data[0].value);
+      }
+    } catch (error) {
+      console.error('Error loading ticket type options:', error);
+    }
+  };
+
+  const loadTickets = async () => {
+    if (!user || !profile) return;
+
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('collector_assignment_details')
+        .select('*');
+
+      // Filter by assigned collector if showOnlyAssigned is true
+      if (showOnlyAssigned) {
+        query = query.eq('assigned_collector_id', profile.id);
+      }
+
+      const { data: assignments, error } = await query;
+
+      if (error) throw error;
+
+      if (assignments) {
+        const ticketGroups = new Map<string, TicketGroup>();
+        const individualList: Assignment[] = [];
+
+        assignments.forEach((assignment: Assignment) => {
+          if (assignment.ticket_id) {
+            if (!ticketGroups.has(assignment.ticket_id)) {
+              ticketGroups.set(assignment.ticket_id, {
+                ticket_id: assignment.ticket_id,
+                ticket_number: assignment.ticket_number || '',
+                ticket_status: assignment.ticket_status || '',
+                ticket_priority: assignment.ticket_priority || '',
+                ticket_type: assignment.ticket_type || '',
+                ticket_due_date: assignment.ticket_due_date,
+                customer_id: assignment.customer,
+                customer_name: assignment.customer_name,
+                invoices: []
+              });
+            }
+            ticketGroups.get(assignment.ticket_id)!.invoices.push(assignment);
+          } else {
+            individualList.push(assignment);
+          }
+        });
+
+        const ticketGroupsArray = Array.from(ticketGroups.values());
+        await Promise.all(ticketGroupsArray.map(async (ticket) => {
+          const { data: ticketData } = await supabase
+            .from('collection_tickets')
+            .select('promise_date, promise_by_user_id')
+            .eq('id', ticket.ticket_id)
+            .maybeSingle();
+
+          if (ticketData) {
+            ticket.promise_date = ticketData.promise_date;
+
+            if (ticketData.promise_by_user_id) {
+              const { data: userData } = await supabase
+                .from('user_profiles')
+                .select('full_name')
+                .eq('id', ticketData.promise_by_user_id)
+                .maybeSingle();
+
+              if (userData) {
+                ticket.promise_by_user_name = userData.full_name;
+              }
+            }
+          }
+
+          const { data: statusChange } = await supabase
+            .from('ticket_activity_log')
+            .select(`
+              description,
+              created_at,
+              created_by:user_profiles!ticket_activity_log_created_by_fkey(full_name)
+            `)
+            .eq('ticket_id', ticket.ticket_id)
+            .eq('activity_type', 'status_change')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (statusChange) {
+            const statusMatch = statusChange.description.match(/Changed ticket status to "(.+?)"/);
+            ticket.last_status_change = {
+              status: statusMatch ? statusMatch[1] : ticket.ticket_status,
+              changed_at: statusChange.created_at,
+              changed_by_name: statusChange.created_by?.full_name || 'Unknown'
+            };
+          }
+
+          const { data: activity } = await supabase
+            .from('ticket_activity_log')
+            .select(`
+              description,
+              created_at,
+              created_by:user_profiles!ticket_activity_log_created_by_fkey(full_name)
+            `)
+            .eq('ticket_id', ticket.ticket_id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (activity) {
+            ticket.last_activity = {
+              description: activity.description,
+              created_at: activity.created_at,
+              created_by_name: activity.created_by?.full_name || 'Unknown'
+            };
+          }
+
+          const { data: noteData } = await supabase
+            .from('ticket_notes')
+            .select('note_text, created_at, attachment_url')
+            .eq('ticket_id', ticket.ticket_id)
+            .order('created_at', { ascending: false });
+
+          if (noteData && noteData.length > 0) {
+            ticket.note_count = noteData.length;
+            ticket.has_attachments = noteData.some(note => note.attachment_url);
+            ticket.last_note = {
+              note_text: noteData[0].note_text,
+              created_at: noteData[0].created_at
+            };
+          }
+        }));
+
+        const sortedTickets = sortTicketsByPriority(ticketGroupsArray);
+        setTickets(sortedTickets);
+        setIndividualAssignments(individualList);
+      }
+    } catch (error) {
+      console.error('Error loading tickets:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadCustomers = async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_customers_with_balance', {
+        p_date_context: 'all'
+      });
+
+      if (error) throw error;
+      setCustomers(data || []);
+    } catch (error) {
+      console.error('Error loading customers:', error);
+    }
+  };
+
+  const loadCollectors = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, email')
+        .in('role', ['collector', 'manager', 'admin'])
+        .eq('is_approved', true)
+        .order('full_name');
+
+      if (error) throw error;
+      setCollectors(data || []);
+    } catch (error) {
+      console.error('Error loading collectors:', error);
+    }
+  };
+
+  const loadCustomerInvoices = async (customerId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('acumatica_invoices')
+        .select('reference_number, date, due_date, amount, balance, description')
+        .eq('customer', customerId)
+        .eq('status', 'Open')
+        .gt('balance', 0)
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+      setCustomerInvoices(data || []);
+    } catch (error) {
+      console.error('Error loading customer invoices:', error);
+    }
+  };
+
+  const handleCustomerSelect = (customerId: string) => {
+    setSelectedCustomer(customerId);
+    setShowCustomerDropdown(false);
+    setSelectedInvoicesForTicket([]);
+    loadCustomerInvoices(customerId);
+  };
+
+  const filteredCustomers = customers.filter(c =>
+    c.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.customer_id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleCreateTicket = async () => {
+    if (!selectedCustomer || !selectedCollector || selectedInvoicesForTicket.length === 0) {
+      alert('Please select a customer, collector, and at least one invoice');
+      return;
+    }
+
+    if (!profile) {
+      alert('You must be logged in to create tickets');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const { data: existingTickets, error: checkError } = await supabase
+        .from('collection_tickets')
+        .select('*')
+        .eq('customer_id', selectedCustomer)
+        .eq('assigned_collector_id', selectedCollector)
+        .eq('active', true)
+        .in('status', ['open', 'in_progress']);
+
+      if (checkError) throw checkError;
+
+      if (existingTickets && existingTickets.length > 0) {
+        const confirmMerge = window.confirm(
+          `An open ticket already exists for this customer and collector (${existingTickets[0].ticket_number}). Would you like to add these invoices to the existing ticket instead?`
+        );
+
+        if (confirmMerge) {
+          for (const refNumber of selectedInvoicesForTicket) {
+            await supabase.from('invoice_assignments').insert({
+              invoice_reference_number: refNumber,
+              assigned_collector_id: selectedCollector,
+              ticket_id: existingTickets[0].id,
+              assigned_by: user!.id,
+              notes: ticketNotes || null
+            });
+          }
+
+          await supabase.from('ticket_activity_log').insert({
+            ticket_id: existingTickets[0].id,
+            created_by: user!.id,
+            activity_type: 'invoice_added',
+            description: `Added ${selectedInvoicesForTicket.length} invoice(s) to ticket`
+          });
+
+          alert(`Successfully added ${selectedInvoicesForTicket.length} invoice(s) to ticket ${existingTickets[0].ticket_number}`);
+          resetCreateForm();
+          await loadTickets();
+          setActiveTab('tickets');
+          return;
+        }
+      }
+
+      const { data: newTicket, error: ticketError } = await supabase
+        .from('collection_tickets')
+        .insert({
+          customer_id: selectedCustomer,
+          assigned_collector_id: selectedCollector,
+          assigned_by: profile.id,
+          priority: priority,
+          status: 'open',
+          ticket_type: ticketType,
+          due_date: ticketDueDate || null
+        })
+        .select()
+        .single();
+
+      if (ticketError) throw ticketError;
+
+      for (const refNumber of selectedInvoicesForTicket) {
+        await supabase.from('invoice_assignments').insert({
+          invoice_reference_number: refNumber,
+          assigned_collector_id: selectedCollector,
+          ticket_id: newTicket.id,
+          assigned_by: user!.id,
+          notes: ticketNotes || null
+        });
+      }
+
+      await supabase.from('ticket_activity_log').insert({
+        ticket_id: newTicket.id,
+        created_by: user!.id,
+        activity_type: 'created',
+        description: `Created ticket with ${selectedInvoicesForTicket.length} invoice(s)`
+      });
+
+      if (ticketNotes) {
+        await supabase.from('ticket_notes').insert({
+          ticket_id: newTicket.id,
+          created_by: user!.id,
+          note_text: ticketNotes
+        });
+      }
+
+      alert(`Ticket ${newTicket.ticket_number} created successfully!`);
+      resetCreateForm();
+      await loadTickets();
+      setActiveTab('tickets');
+    } catch (error: any) {
+      console.error('Error creating ticket:', error);
+      alert('Failed to create ticket: ' + error.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const resetCreateForm = () => {
+    setSelectedCustomer('');
+    setCustomerInvoices([]);
+    setSelectedInvoicesForTicket([]);
+    setSelectedCollector('');
+    setPriority('medium');
+    setTicketType(ticketTypeOptions[0]?.value || '');
+    setTicketNotes('');
+    setTicketDueDate('');
+    setSearchTerm('');
+  };
+
+  const handleColorChange = async (invoiceRefNumber: string, newColor: string | null) => {
+    if (!profile?.id) return;
+
+    try {
+      const { data: invoice } = await supabase
+        .from('acumatica_invoices')
+        .select('id')
+        .eq('reference_number', invoiceRefNumber)
+        .single();
+
+      if (!invoice) throw new Error('Invoice not found');
+
+      if (newColor === 'green') {
+        setPromiseDateModalInvoice(invoiceRefNumber);
+        return;
+      }
+
+      await supabase
+        .from('acumatica_invoices')
+        .update({ color_status: newColor })
+        .eq('reference_number', invoiceRefNumber);
+
+      await supabase.from('invoice_activity_log').insert({
+        invoice_id: invoice.id,
+        user_id: profile.id,
+        activity_type: 'color_status_change',
+        old_value: null,
+        new_value: newColor,
+        description: `Changed color status to ${newColor || 'none'}`
+      });
+
+      setChangingColorForInvoice(null);
+      await loadTickets();
+    } catch (error: any) {
+      console.error('Error changing color:', error);
+      alert('Failed to change color: ' + error.message);
+    }
+  };
+
+  const handlePromiseDateConfirm = async (promiseDate: string) => {
+    if (!profile?.id || !promiseDateModalInvoice) return;
+
+    try {
+      const { data: invoice } = await supabase
+        .from('acumatica_invoices')
+        .select('id, reference_number, customer_name')
+        .eq('reference_number', promiseDateModalInvoice)
+        .maybeSingle();
+
+      if (!invoice) throw new Error('Invoice not found');
+
+      await supabase
+        .from('acumatica_invoices')
+        .update({
+          color_status: 'green',
+          promise_date: promiseDate,
+          promise_by_user_id: profile.id
+        })
+        .eq('reference_number', promiseDateModalInvoice);
+
+      await supabase.from('invoice_activity_log').insert({
+        invoice_id: invoice.id,
+        user_id: profile.id,
+        activity_type: 'color_status_change',
+        old_value: null,
+        new_value: 'green',
+        description: `Marked as "Will Pay" with promise date: ${promiseDate}`
+      });
+
+      setPromiseDateModalInvoice(null);
+
+      const wantsReminder = window.confirm('Do you want to create a reminder for this promise date?');
+      if (wantsReminder) {
+        navigate('/reminders', {
+          state: {
+            createReminder: true,
+            invoiceId: invoice.id,
+            invoiceReference: invoice.reference_number,
+            customerName: invoice.customer_name,
+            promiseDate: promiseDate
+          }
+        });
+      } else {
+        await loadTickets();
+      }
+    } catch (error: any) {
+      console.error('Error setting promise date:', error);
+      alert('Failed to set promise date: ' + error.message);
+      setPromiseDateModalInvoice(null);
+    }
+  };
+
+  const toggleInvoiceSelection = (invoiceRefNumber: string) => {
+    const newSelection = new Set(selectedInvoices);
+    if (newSelection.has(invoiceRefNumber)) {
+      newSelection.delete(invoiceRefNumber);
+    } else {
+      newSelection.add(invoiceRefNumber);
+    }
+    setSelectedInvoices(newSelection);
+  };
+
+  const toggleSelectAll = () => {
+    const allInvoices: string[] = [];
+
+    if (activeTab === 'tickets') {
+      tickets.forEach(ticket => {
+        ticket.invoices.forEach(inv => allInvoices.push(inv.invoice_reference_number));
+      });
+    } else if (activeTab === 'individual') {
+      individualAssignments.forEach(inv => allInvoices.push(inv.invoice_reference_number));
+    }
+
+    if (selectedInvoices.size === allInvoices.length) {
+      setSelectedInvoices(new Set());
+    } else {
+      setSelectedInvoices(new Set(allInvoices));
+    }
+  };
+
+  const handleBatchColorChange = async (newColor: string | null) => {
+    if (!profile?.id || selectedInvoices.size === 0) return;
+
+    setProcessingBatch(true);
+    try {
+      await supabase.rpc('batch_update_invoice_color_status_by_refs', {
+        p_reference_numbers: Array.from(selectedInvoices),
+        p_color_status: newColor,
+        p_user_id: profile.id
+      });
+
+      setShowBatchColorMenu(false);
+      setSelectedInvoices(new Set());
+      await loadTickets();
+      alert(`Successfully updated ${selectedInvoices.size} invoice(s)`);
+    } catch (error: any) {
+      console.error('Error changing colors:', error);
+      alert('Failed to change colors: ' + error.message);
+    } finally {
+      setProcessingBatch(false);
+    }
+  };
+
+  const handleTicketStatusChange = async (ticketId: string, newStatus: string) => {
+    if (!profile?.id) return;
+
+    setChangingTicketStatus(ticketId);
+    try {
+      await supabase
+        .from('collection_tickets')
+        .update({ status: newStatus })
+        .eq('id', ticketId);
+
+      await loadTickets();
+      alert('Ticket status updated successfully');
+    } catch (error: any) {
+      console.error('Error changing ticket status:', error);
+      alert('Failed to change ticket status: ' + error.message);
+    } finally {
+      setChangingTicketStatus(null);
+    }
+  };
+
+  const handleTicketPriorityChange = async (ticketId: string, newPriority: string) => {
+    if (!profile?.id) return;
+
+    setChangingTicketPriority(ticketId);
+    try {
+      await supabase.rpc('update_ticket_priority', {
+        p_ticket_id: ticketId,
+        p_new_priority: newPriority,
+        p_user_id: profile.id
+      });
+
+      await loadTickets();
+      alert('Ticket priority updated successfully');
+    } catch (error: any) {
+      console.error('Error changing ticket priority:', error);
+      alert('Failed to change ticket priority: ' + error.message);
+    } finally {
+      setChangingTicketPriority(null);
+    }
+  };
+
+  const handleBatchAddNote = async () => {
+    if (!profile?.id || selectedInvoices.size === 0 || !batchNote.trim()) return;
+
+    setProcessingBatch(true);
+    try {
+      const notePromises = Array.from(selectedInvoices).map(async (refNumber) => {
+        const { data: invoice } = await supabase
+          .from('acumatica_invoices')
+          .select('id')
+          .eq('reference_number', refNumber)
+          .single();
+
+        if (!invoice) return;
+
+        await supabase
+          .from('invoice_memos')
+          .insert({
+            invoice_id: invoice.id,
+            invoice_reference: refNumber,
+            created_by_user_id: user!.id,
+            memo_text: batchNote
+          });
+
+        if (createReminder && reminderDate) {
+          await supabase
+            .from('invoice_reminders')
+            .insert({
+              invoice_id: invoice.id,
+              invoice_reference_number: refNumber,
+              user_id: user!.id,
+              reminder_date: reminderDate,
+              title: `Follow up on invoice ${refNumber}`,
+              description: batchNote,
+              status: 'pending'
+            });
+        }
+      });
+
+      await Promise.all(notePromises);
+
+      setShowBatchNoteModal(false);
+      setBatchNote('');
+      setCreateReminder(false);
+      setReminderDate('');
+      setSelectedInvoices(new Set());
+
+      await loadTickets();
+
+      alert(`Successfully added note to ${selectedInvoices.size} invoice(s)${createReminder ? ' with reminders' : ''}`);
+    } catch (error: any) {
+      console.error('Error adding notes:', error);
+      alert('Failed to add notes: ' + error.message);
+    } finally {
+      setProcessingBatch(false);
+    }
+  };
+
+  const handleOpenMemo = async (invoice: Assignment) => {
+    try {
+      const { data: invoiceData, error } = await supabase
+        .from('acumatica_invoices')
+        .select('id, reference_number, customer, customer_name, date, balance, status')
+        .eq('reference_number', invoice.invoice_reference_number)
+        .maybeSingle();
+
+      if (error || !invoiceData) {
+        alert('Failed to load invoice details');
+        return;
+      }
+
+      setMemoModalInvoice(invoiceData);
+    } catch (err) {
+      console.error('Error in handleOpenMemo:', err);
+      alert('Failed to open memo');
+    }
+  };
+
+  const handleOpenTicketReminder = (ticket: TicketGroup) => {
+    setReminderModal({
+      type: 'ticket',
+      ticketId: ticket.ticket_id,
+      ticketNumber: ticket.ticket_number,
+      customerName: ticket.customer_name
+    });
+  };
+
+  const handleOpenInvoiceReminder = (invoice: Assignment) => {
+    setReminderModal({
+      type: 'invoice',
+      invoiceReference: invoice.invoice_reference_number,
+      customerName: invoice.customer_name,
+      ticketId: invoice.ticket_id || undefined,
+      ticketNumber: invoice.ticket_number || undefined
+    });
+  };
+
+  const totalInvoiceCount =
+    activeTab === 'tickets'
+      ? tickets.reduce((sum, ticket) => sum + ticket.invoices.length, 0)
+      : individualAssignments.length;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading tickets...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const selectedCustomerData = customers.find(c => c.customer_id === selectedCustomer);
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+                Back
+              </button>
+            )}
+            <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm mb-6">
+          <div className="border-b border-gray-200">
+            <div className="flex gap-1 p-1">
+              {!showOnlyAssigned && (
+                <button
+                  onClick={() => setActiveTab('create')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                    activeTab === 'create'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <Plus className="w-5 h-5" />
+                  Create Ticket
+                </button>
+              )}
+              <button
+                onClick={() => setActiveTab('tickets')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  activeTab === 'tickets'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <TicketIcon className="w-5 h-5" />
+                Tickets ({filteredTickets.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('individual')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  activeTab === 'individual'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <FileText className="w-5 h-5" />
+                Individual Invoices ({filteredIndividualAssignments.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('overdue')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  activeTab === 'overdue'
+                    ? 'bg-red-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <AlertTriangle className="w-5 h-5" />
+                Overdue Tickets ({overdueTickets.length})
+              </button>
+            </div>
+          </div>
+
+          {activeTab === 'create' && !showOnlyAssigned && (
+            <div className="p-6">
+              <h2 className="text-xl font-semibold mb-6">Create New Collection Ticket</h2>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Customer
+                  </label>
+                  <div className="relative" ref={dropdownRef}>
+                    <input
+                      type="text"
+                      placeholder="Search for customer..."
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        setShowCustomerDropdown(true);
+                      }}
+                      onFocus={() => setShowCustomerDropdown(true)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+
+                    {showCustomerDropdown && filteredCustomers.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {filteredCustomers.slice(0, 50).map((customer) => (
+                          <button
+                            key={customer.customer_id}
+                            onClick={() => handleCustomerSelect(customer.customer_id)}
+                            className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="font-medium text-gray-900">{customer.customer_name}</div>
+                            <div className="text-sm text-gray-500">ID: {customer.customer_id}</div>
+                            <div className="text-sm text-red-600 font-semibold">
+                              Balance: ${customer.balance.toFixed(2)}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {selectedCustomerData && (
+                    <div className="mt-2 p-3 bg-blue-50 rounded-lg">
+                      <p className="font-semibold text-blue-900">{selectedCustomerData.customer_name}</p>
+                      <p className="text-sm text-blue-700">Balance: ${selectedCustomerData.balance.toFixed(2)}</p>
+                    </div>
+                  )}
+                </div>
+
+                {customerInvoices.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Invoices ({selectedInvoicesForTicket.length} selected)
+                    </label>
+                    <div className="border border-gray-300 rounded-lg max-h-64 overflow-y-auto">
+                      {customerInvoices.map((invoice) => (
+                        <label
+                          key={invoice.reference_number}
+                          className="flex items-center p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedInvoicesForTicket.includes(invoice.reference_number)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedInvoicesForTicket([...selectedInvoicesForTicket, invoice.reference_number]);
+                              } else {
+                                setSelectedInvoicesForTicket(selectedInvoicesForTicket.filter(ref => ref !== invoice.reference_number));
+                              }
+                            }}
+                            className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900">{invoice.reference_number}</div>
+                            <div className="text-sm text-gray-500">{invoice.description}</div>
+                            <div className="text-sm text-gray-500">
+                              Date: {new Date(invoice.date).toLocaleDateString()} | Due: {new Date(invoice.due_date).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm text-gray-500">Amount: ${invoice.amount.toFixed(2)}</div>
+                            <div className="font-semibold text-red-600">Balance: ${invoice.balance.toFixed(2)}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Assign to Collector
+                    </label>
+                    <select
+                      value={selectedCollector}
+                      onChange={(e) => setSelectedCollector(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Select collector...</option>
+                      {collectors.map((collector) => (
+                        <option key={collector.id} value={collector.id}>
+                          {collector.full_name} ({collector.email})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Priority
+                    </label>
+                    <select
+                      value={priority}
+                      onChange={(e) => setPriority(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="urgent">Urgent</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Ticket Type
+                    </label>
+                    <select
+                      value={ticketType}
+                      onChange={(e) => setTicketType(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      {ticketTypeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Due Date (Optional)
+                    </label>
+                    <input
+                      type="date"
+                      value={ticketDueDate}
+                      onChange={(e) => setTicketDueDate(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Notes (Optional)
+                  </label>
+                  <textarea
+                    value={ticketNotes}
+                    onChange={(e) => setTicketNotes(e.target.value)}
+                    rows={4}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    placeholder="Add any notes or context for this ticket..."
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={resetCreateForm}
+                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    onClick={handleCreateTicket}
+                    disabled={creating || !selectedCustomer || !selectedCollector || selectedInvoicesForTicket.length === 0}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {creating ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-5 h-5" />
+                        Create Ticket
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {(activeTab === 'tickets' || activeTab === 'overdue') && (
+            <div className="p-6">
+              <TicketSearchFilter
+                filters={filters}
+                onFiltersChange={setFilters}
+                showAssignedToFilter={!showOnlyAssigned}
+              />
+
+              <div className="mt-6">
+                <BatchActionToolbar
+                  selectedCount={selectedInvoices.size}
+                  totalCount={totalInvoiceCount}
+                  showBatchColorMenu={showBatchColorMenu}
+                  colorOptions={colorOptions}
+                  processingBatch={processingBatch}
+                  onToggleSelectAll={toggleSelectAll}
+                  onToggleBatchColorMenu={() => setShowBatchColorMenu(!showBatchColorMenu)}
+                  onBatchColorChange={handleBatchColorChange}
+                  onBatchAddNote={() => setShowBatchNoteModal(true)}
+                />
+              </div>
+
+              <div className="mt-6 space-y-6">
+                {(activeTab === 'overdue' ? overdueTickets : filteredTickets).length === 0 ? (
+                  <div className="text-center py-12">
+                    <TicketIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">
+                      {activeTab === 'overdue'
+                        ? 'No overdue tickets'
+                        : tickets.length === 0
+                          ? showOnlyAssigned
+                            ? 'No tickets assigned to you'
+                            : 'No tickets found'
+                          : 'No tickets match your search'
+                      }
+                    </p>
+                  </div>
+                ) : (
+                  (activeTab === 'overdue' ? overdueTickets : filteredTickets).map(ticket => (
+                    <TicketCard
+                      key={ticket.ticket_id}
+                      ticket={ticket}
+                      selectedInvoices={selectedInvoices}
+                      changingColorForInvoice={changingColorForInvoice}
+                      changingTicketStatus={changingTicketStatus}
+                      changingTicketPriority={changingTicketPriority}
+                      statusOptions={statusOptions}
+                      colorOptions={colorOptions}
+                      onToggleInvoiceSelection={toggleInvoiceSelection}
+                      onColorChange={handleColorChange}
+                      onToggleColorPicker={setChangingColorForInvoice}
+                      onOpenMemo={handleOpenMemo}
+                      onTicketStatusChange={handleTicketStatusChange}
+                      onTicketPriorityChange={handleTicketPriorityChange}
+                      onPromiseDateSet={loadTickets}
+                      onOpenTicketReminder={handleOpenTicketReminder}
+                      onOpenInvoiceReminder={handleOpenInvoiceReminder}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'individual' && (
+            <div className="p-6">
+              <TicketSearchFilter
+                filters={filters}
+                onFiltersChange={setFilters}
+                showAssignedToFilter={!showOnlyAssigned}
+              />
+
+              <div className="mt-6">
+                <BatchActionToolbar
+                  selectedCount={selectedInvoices.size}
+                  totalCount={totalInvoiceCount}
+                  showBatchColorMenu={showBatchColorMenu}
+                  colorOptions={colorOptions}
+                  processingBatch={processingBatch}
+                  onToggleSelectAll={toggleSelectAll}
+                  onToggleBatchColorMenu={() => setShowBatchColorMenu(!showBatchColorMenu)}
+                  onBatchColorChange={handleBatchColorChange}
+                  onBatchAddNote={() => setShowBatchNoteModal(true)}
+                />
+              </div>
+
+              <div className="mt-6 space-y-4">
+                {filteredIndividualAssignments.length === 0 ? (
+                  <div className="text-center py-12">
+                    <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">
+                      {individualAssignments.length === 0
+                        ? showOnlyAssigned
+                          ? 'No individual invoices assigned to you'
+                          : 'No individual invoices found'
+                        : 'No invoices match your search'
+                      }
+                    </p>
+                  </div>
+                ) : (
+                  filteredIndividualAssignments.map(invoice => (
+                    <IndividualInvoiceCard
+                      key={invoice.invoice_reference_number}
+                      invoice={invoice}
+                      isSelected={selectedInvoices.has(invoice.invoice_reference_number)}
+                      showColorPicker={changingColorForInvoice === invoice.invoice_reference_number}
+                      colorOptions={colorOptions}
+                      onToggleSelection={() => toggleInvoiceSelection(invoice.invoice_reference_number)}
+                      onColorChange={(color) => handleColorChange(invoice.invoice_reference_number, color)}
+                      onToggleColorPicker={() => setChangingColorForInvoice(
+                        changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number
+                      )}
+                      onOpenMemo={() => handleOpenMemo(invoice)}
+                      onOpenReminder={() => handleOpenInvoiceReminder(invoice)}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {memoModalInvoice && (
+        <InvoiceMemoModal
+          invoice={memoModalInvoice}
+          onClose={() => setMemoModalInvoice(null)}
+          onUpdate={() => {
+            setMemoModalInvoice(null);
+            loadTickets();
+          }}
+        />
+      )}
+
+      {showBatchNoteModal && (
+        <BatchNoteModal
+          selectedCount={selectedInvoices.size}
+          batchNote={batchNote}
+          createReminder={createReminder}
+          reminderDate={reminderDate}
+          processingBatch={processingBatch}
+          onBatchNoteChange={setBatchNote}
+          onCreateReminderChange={setCreateReminder}
+          onReminderDateChange={setReminderDate}
+          onConfirm={handleBatchAddNote}
+          onCancel={() => {
+            setShowBatchNoteModal(false);
+            setBatchNote('');
+            setCreateReminder(false);
+            setReminderDate('');
+          }}
+        />
+      )}
+
+      {promiseDateModalInvoice && (
+        <PromiseDateModal
+          invoiceNumber={promiseDateModalInvoice}
+          onConfirm={handlePromiseDateConfirm}
+          onCancel={() => setPromiseDateModalInvoice(null)}
+        />
+      )}
+
+      {reminderModal && (
+        <CreateReminderModal
+          type={reminderModal.type}
+          ticketId={reminderModal.ticketId}
+          ticketNumber={reminderModal.ticketNumber}
+          invoiceReference={reminderModal.invoiceReference}
+          customerName={reminderModal.customerName}
+          onClose={() => setReminderModal(null)}
+          onSuccess={loadTickets}
+        />
+      )}
+    </div>
+  );
+}

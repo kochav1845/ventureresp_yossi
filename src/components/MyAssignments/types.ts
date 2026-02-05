@@ -6,6 +6,7 @@ export interface Assignment {
   ticket_status: string | null;
   ticket_priority: string | null;
   ticket_type: string | null;
+  ticket_due_date?: string | null;
   customer: string;
   customer_name: string;
   date: string;
@@ -31,6 +32,7 @@ export interface TicketGroup {
   ticket_status: string;
   ticket_priority: string;
   ticket_type: string;
+  ticket_due_date?: string | null;
   customer_id: string;
   customer_name: string;
   promise_date?: string | null;

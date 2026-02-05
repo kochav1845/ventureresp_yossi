@@ -78,6 +78,8 @@ export default function TicketCard({
     ticket.promise_date &&
     isPast(parseISO(ticket.promise_date));
 
+  const isOverdue = ticket.ticket_due_date && isPast(parseISO(ticket.ticket_due_date));
+
   const currentStatus = statusOptions.find(s => s.status_name === ticket.ticket_status);
   const statusColorClass = currentStatus?.color_class || 'bg-gray-100 text-gray-800';
   const statusDisplayName = currentStatus?.display_name || ticket.ticket_status.replace('_', ' ').toUpperCase();
@@ -153,6 +155,36 @@ export default function TicketCard({
                     Promise recorded by: {ticket.promise_by_user_name}
                   </p>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isOverdue && (
+          <div className="mb-3 p-3 bg-orange-100 border-2 border-orange-500 rounded-lg">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-orange-700 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-bold text-orange-900 text-sm">TICKET OVERDUE</p>
+                <p className="text-xs text-orange-800">
+                  Due date was {new Date(ticket.ticket_due_date!).toLocaleDateString()}
+                  {' '}({formatDistanceToNow(parseISO(ticket.ticket_due_date!), { addSuffix: true })})
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {ticket.ticket_due_date && !isOverdue && (
+          <div className="mb-3 p-3 bg-green-50 border border-green-300 rounded-lg">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-green-700 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-semibold text-green-900 text-sm">Ticket Due Date</p>
+                <p className="text-xs text-green-800">
+                  Due by {new Date(ticket.ticket_due_date!).toLocaleDateString()}
+                  {' '}({formatDistanceToNow(parseISO(ticket.ticket_due_date!), { addSuffix: true })})
+                </p>
               </div>
             </div>
           </div>
