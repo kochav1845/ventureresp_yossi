@@ -170,7 +170,6 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
   const [colorOptions, setColorOptions] = useState<any[]>([]);
   const [pendingBatchNote, setPendingBatchNote] = useState<string>('');
   const [statusOptions, setStatusOptions] = useState<Array<{ status_name: string; display_name: string }>>([]);
-  const [ticketTypeOptions, setTicketTypeOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [showPromiseDateModal, setShowPromiseDateModal] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [reminderModal, setReminderModal] = useState<{
@@ -199,7 +198,6 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     loadTickets();
     loadStatusOptions();
     loadColorStatusOptions();
-    loadTicketTypeOptions();
 
     // Subscribe to ticket_invoices changes to detect when invoices are removed
     const subscription = supabase
@@ -379,24 +377,6 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
       }
     } catch (err) {
       console.error('Exception loading color status options:', err);
-    }
-  };
-
-  const loadTicketTypeOptions = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('ticket_type_options')
-        .select('value, label')
-        .eq('is_active', true)
-        .order('display_order', { ascending: true });
-
-      if (error) {
-        console.error('Error loading ticket type options:', error);
-      } else {
-        setTicketTypeOptions(data || []);
-      }
-    } catch (err) {
-      console.error('Exception loading ticket type options:', err);
     }
   };
 
@@ -2480,11 +2460,10 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                       onChange={(e) => setTicketType(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     >
-                      {ticketTypeOptions.map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
+                      <option value="overdue payment">Overdue Payment</option>
+                      <option value="partial payment">Partial Payment</option>
+                      <option value="chargeback">Chargeback</option>
+                      <option value="settlement">Settlement</option>
                     </select>
                   </div>
 

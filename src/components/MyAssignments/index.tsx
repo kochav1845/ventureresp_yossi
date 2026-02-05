@@ -423,11 +423,11 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
     const allInvoices: string[] = [];
 
     if (selectedView === 'tickets') {
-      filteredTickets.forEach(ticket => {
+      tickets.forEach(ticket => {
         ticket.invoices.forEach(inv => allInvoices.push(inv.invoice_reference_number));
       });
     } else if (selectedView === 'individual') {
-      filteredIndividualAssignments.forEach(inv => allInvoices.push(inv.invoice_reference_number));
+      individualAssignments.forEach(inv => allInvoices.push(inv.invoice_reference_number));
     }
 
     if (selectedInvoices.size === allInvoices.length) {
@@ -608,8 +608,8 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   }
 
   const totalInvoiceCount = selectedView === 'tickets'
-    ? filteredTickets.reduce((acc, t) => acc + t.invoices.length, 0)
-    : filteredIndividualAssignments.length;
+    ? tickets.reduce((acc, t) => acc + t.invoices.length, 0)
+    : individualAssignments.length;
 
   return (
     <div>
