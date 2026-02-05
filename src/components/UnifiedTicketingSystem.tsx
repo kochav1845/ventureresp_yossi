@@ -348,7 +348,7 @@ export default function UnifiedTicketingSystem({
     setLoadingCustomers(true);
     try {
       const { data, error } = await supabase.rpc('get_customers_with_balance', {
-        p_balance_filter: 'positive',
+        p_balance_filter: 'all',
         p_limit: 1000
       });
 
