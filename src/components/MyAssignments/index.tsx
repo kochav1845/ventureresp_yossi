@@ -124,6 +124,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                 ticket_number: assignment.ticket_number || '',
                 ticket_status: assignment.ticket_status || '',
                 ticket_priority: assignment.ticket_priority || '',
+                ticket_type: assignment.ticket_type || '',
                 customer_id: assignment.customer,
                 customer_name: assignment.customer_name,
                 invoices: []

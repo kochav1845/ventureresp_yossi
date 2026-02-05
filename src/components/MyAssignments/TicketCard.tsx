@@ -107,6 +107,11 @@ export default function TicketCard({
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColorClass}`}>
               {statusDisplayName}
             </span>
+            {ticket.ticket_type && (
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-300">
+                {ticket.ticket_type.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+              </span>
+            )}
           </div>
           <span className="text-sm font-semibold">
             Priority: {ticket.ticket_priority.toUpperCase()}
