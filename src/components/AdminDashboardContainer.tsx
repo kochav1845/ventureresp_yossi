@@ -13,6 +13,7 @@ import EmailAnalytics from './EmailAnalytics';
 import SyncStatusDashboard from './SyncStatusDashboard';
 import MyAssignments from './MyAssignments';
 import TicketStatusManagement from './TicketStatusManagement';
+import TicketTypeManagement from './TicketTypeManagement';
 import InvoiceColorStatusManagement from './InvoiceColorStatusManagement';
 import AutoTicketRules from './AutoTicketRules';
 
@@ -28,6 +29,7 @@ type AdminView =
   | 'sync-status'
   | 'my-assignments'
   | 'ticket-status-management'
+  | 'ticket-type-management'
   | 'invoice-color-status-management'
   | 'auto-ticket-rules';
 
@@ -110,6 +112,12 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
       permissionKey: null, // Only admins and managers
     },
     {
+      id: 'ticket-type-management' as AdminView,
+      label: 'Ticket Type Settings',
+      icon: <Ticket size={20} />,
+      permissionKey: null, // Only admins and managers
+    },
+    {
       id: 'invoice-color-status-management' as AdminView,
       label: 'Invoice Color Settings',
       icon: <Palette size={20} />,
@@ -156,6 +164,8 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
         return <SyncStatusDashboard onBack={() => setCurrentView('sync-status')} />;
       case 'ticket-status-management':
         return <TicketStatusManagement onBack={() => setCurrentView('ticket-status-management')} />;
+      case 'ticket-type-management':
+        return <TicketTypeManagement onBack={() => setCurrentView('ticket-type-management')} />;
       case 'invoice-color-status-management':
         return <InvoiceColorStatusManagement onBack={() => setCurrentView('invoice-color-status-management')} />;
       case 'auto-ticket-rules':

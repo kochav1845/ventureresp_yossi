@@ -1,5 +1,6 @@
 import { Search, X, Filter, Calendar } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 interface TicketSearchFilterProps {
   onFilterChange: (filters: TicketFilters) => void;
@@ -27,6 +28,43 @@ export default function TicketSearchFilter({ onFilterChange, showAdvancedFilters
     assignedTo: ''
   });
   const [showAdvanced, setShowAdvanced] = useState(showAdvancedFilters);
+  const [ticketTypes, setTicketTypes] = useState<Array<{ value: string; label: string }>>([]);
+  const [statusOptions, setStatusOptions] = useState<Array<{ status_name: string; display_name: string }>>([]);
+
+  useEffect(() => {
+    loadTicketTypes();
+    loadStatusOptions();
+  }, []);
+
+  const loadTicketTypes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ticket_type_options')
+        .select('value, label')
+        .eq('is_active', true)
+        .order('display_order', { ascending: true });
+
+      if (error) throw error;
+      setTicketTypes(data || []);
+    } catch (error) {
+      console.error('Error loading ticket types:', error);
+    }
+  };
+
+  const loadStatusOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ticket_status_options')
+        .select('status_name, display_name')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+      setStatusOptions(data || []);
+    } catch (error) {
+      console.error('Error loading status options:', error);
+    }
+  };
 
   const handleFilterChange = (key: keyof TicketFilters, value: string) => {
     const newFilters = { ...filters, [key]: value };
@@ -98,12 +136,11 @@ export default function TicketSearchFilter({ onFilterChange, showAdvancedFilters
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
               >
                 <option value="">All Statuses</option>
-                <option value="open">Open</option>
-                <option value="in_progress">In Progress</option>
-                <option value="pending">Pending</option>
-                <option value="promised">Promised</option>
-                <option value="resolved">Resolved</option>
-                <option value="closed">Closed</option>
+                {statusOptions.map((option) => (
+                  <option key={option.status_name} value={option.status_name}>
+                    {option.display_name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -130,11 +167,11 @@ export default function TicketSearchFilter({ onFilterChange, showAdvancedFilters
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
               >
                 <option value="">All Types</option>
-                <option value="overdue payment">Overdue Payment</option>
-                <option value="dispute">Dispute</option>
-                <option value="follow up">Follow Up</option>
-                <option value="payment plan">Payment Plan</option>
-                <option value="other">Other</option>
+                {ticketTypes.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
               </select>
             </div>
 
