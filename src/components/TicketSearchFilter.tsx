@@ -1,5 +1,6 @@
 import { Search, X, Filter, Calendar } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 interface TicketSearchFilterProps {
   onFilterChange: (filters: TicketFilters) => void;
@@ -27,6 +28,29 @@ export default function TicketSearchFilter({ onFilterChange, showAdvancedFilters
     assignedTo: ''
   });
   const [showAdvanced, setShowAdvanced] = useState(showAdvancedFilters);
+  const [ticketTypeOptions, setTicketTypeOptions] = useState<Array<{ value: string; label: string }>>([]);
+
+  useEffect(() => {
+    loadTicketTypeOptions();
+  }, []);
+
+  const loadTicketTypeOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ticket_type_options')
+        .select('value, label')
+        .eq('is_active', true)
+        .order('display_order', { ascending: true });
+
+      if (error) {
+        console.error('Error loading ticket type options:', error);
+      } else {
+        setTicketTypeOptions(data || []);
+      }
+    } catch (err) {
+      console.error('Exception loading ticket type options:', err);
+    }
+  };
 
   const handleFilterChange = (key: keyof TicketFilters, value: string) => {
     const newFilters = { ...filters, [key]: value };
@@ -130,11 +154,11 @@ export default function TicketSearchFilter({ onFilterChange, showAdvancedFilters
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
               >
                 <option value="">All Types</option>
-                <option value="overdue payment">Overdue Payment</option>
-                <option value="dispute">Dispute</option>
-                <option value="follow up">Follow Up</option>
-                <option value="payment plan">Payment Plan</option>
-                <option value="other">Other</option>
+                {ticketTypeOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
 
