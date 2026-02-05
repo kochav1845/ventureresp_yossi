@@ -138,13 +138,15 @@ export default function UnifiedTicketingSystem({
       loadColorOptions();
       loadTicketTypeOptions();
       loadTickets();
-
-      if (activeTab === 'create') {
-        loadCustomers();
-        loadCollectors();
-      }
     }
   }, [user, profile, showOnlyAssigned]);
+
+  useEffect(() => {
+    if (user && profile && activeTab === 'create') {
+      loadCustomers();
+      loadCollectors();
+    }
+  }, [user, profile, activeTab]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
