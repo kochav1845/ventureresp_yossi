@@ -12,6 +12,7 @@ import CustomerAssignmentCard from './CustomerAssignmentCard';
 import BatchActionToolbar from './BatchActionToolbar';
 import BatchNoteModal from './BatchNoteModal';
 import PromiseDateModal from './PromiseDateModal';
+import { sortTicketsByPriority } from './utils';
 
 interface MyAssignmentsProps {
   onBack?: () => void;
@@ -35,6 +36,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   const [reminderDate, setReminderDate] = useState('');
   const [processingBatch, setProcessingBatch] = useState(false);
   const [changingTicketStatus, setChangingTicketStatus] = useState<string | null>(null);
+  const [changingTicketPriority, setChangingTicketPriority] = useState<string | null>(null);
   const [promiseDateModalInvoice, setPromiseDateModalInvoice] = useState<string | null>(null);
   const [statusOptions, setStatusOptions] = useState<TicketStatusOption[]>([]);
   const [colorOptions, setColorOptions] = useState<Array<{ status_name: string; display_name: string; color_class: string }>>([]);
@@ -464,6 +466,27 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
     }
   };
 
+  const handleTicketPriorityChange = async (ticketId: string, newPriority: string) => {
+    if (!profile?.id) return;
+
+    setChangingTicketPriority(ticketId);
+    try {
+      await supabase.rpc('update_ticket_priority', {
+        p_ticket_id: ticketId,
+        p_new_priority: newPriority,
+        p_user_id: profile.id
+      });
+
+      await loadAssignments();
+      alert('Ticket priority updated successfully');
+    } catch (error: any) {
+      console.error('Error changing ticket priority:', error);
+      alert('Failed to change ticket priority: ' + error.message);
+    } finally {
+      setChangingTicketPriority(null);
+    }
+  };
+
   const handleBatchAddNote = async () => {
     if (!profile?.id || selectedInvoices.size === 0 || !batchNote.trim()) return;
 
@@ -673,13 +696,14 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                         : 'Select All Visible'}
                     </button>
                   </div>
-                  {tickets.map(ticket => (
+                  {sortTicketsByPriority(tickets).map(ticket => (
                     <TicketCard
                       key={ticket.ticket_id}
                       ticket={ticket}
                       selectedInvoices={selectedInvoices}
                       changingColorForInvoice={changingColorForInvoice}
                       changingTicketStatus={changingTicketStatus}
+                      changingTicketPriority={changingTicketPriority}
                       statusOptions={statusOptions}
                       colorOptions={colorOptions}
                       onToggleInvoiceSelection={toggleInvoiceSelection}
@@ -687,6 +711,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                       onToggleColorPicker={setChangingColorForInvoice}
                       onOpenMemo={handleOpenMemo}
                       onTicketStatusChange={handleTicketStatusChange}
+                      onTicketPriorityChange={handleTicketPriorityChange}
                       onPromiseDateSet={loadAssignments}
                       onOpenTicketReminder={handleOpenTicketReminder}
                       onOpenInvoiceReminder={handleOpenInvoiceReminder}

@@ -59,3 +59,19 @@ export const isPromiseBroken = (invoice: Assignment) => {
   now.setHours(0, 0, 0, 0);
   return promiseDate < now;
 };
+
+export const getPriorityOrder = (priority: string): number => {
+  switch (priority) {
+    case 'urgent': return 1;
+    case 'high': return 2;
+    case 'medium': return 3;
+    case 'low': return 4;
+    default: return 5;
+  }
+};
+
+export const sortTicketsByPriority = <T extends { ticket_priority: string }>(tickets: T[]): T[] => {
+  return [...tickets].sort((a, b) => {
+    return getPriorityOrder(a.ticket_priority) - getPriorityOrder(b.ticket_priority);
+  });
+};

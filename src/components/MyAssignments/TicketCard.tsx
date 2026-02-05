@@ -19,6 +19,7 @@ interface TicketCardProps {
   selectedInvoices: Set<string>;
   changingColorForInvoice: string | null;
   changingTicketStatus: string | null;
+  changingTicketPriority: string | null;
   statusOptions: TicketStatusOption[];
   colorOptions?: ColorStatusOption[];
   onToggleInvoiceSelection: (refNumber: string) => void;
@@ -26,6 +27,7 @@ interface TicketCardProps {
   onToggleColorPicker: (refNumber: string | null) => void;
   onOpenMemo: (invoice: Assignment) => void;
   onTicketStatusChange: (ticketId: string, newStatus: string) => void;
+  onTicketPriorityChange: (ticketId: string, newPriority: string) => void;
   onPromiseDateSet: () => void;
   onOpenTicketReminder: (ticket: TicketGroup) => void;
   onOpenInvoiceReminder: (invoice: Assignment) => void;
@@ -36,6 +38,7 @@ export default function TicketCard({
   selectedInvoices,
   changingColorForInvoice,
   changingTicketStatus,
+  changingTicketPriority,
   statusOptions,
   colorOptions = [],
   onToggleInvoiceSelection,
@@ -43,12 +46,14 @@ export default function TicketCard({
   onToggleColorPicker,
   onOpenMemo,
   onTicketStatusChange,
+  onTicketPriorityChange,
   onPromiseDateSet,
   onOpenTicketReminder,
   onOpenInvoiceReminder
 }: TicketCardProps) {
   const navigate = useNavigate();
   const [localTicketStatus, setLocalTicketStatus] = useState(ticket.ticket_status);
+  const [localTicketPriority, setLocalTicketPriority] = useState(ticket.ticket_priority);
   const [showPromiseDateModal, setShowPromiseDateModal] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
 
@@ -232,6 +237,32 @@ export default function TicketCard({
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
             >
               {changingTicketStatus === ticket.ticket_id ? 'Updating...' : 'Update'}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-gray-300">
+          <h4 className="text-sm font-semibold text-gray-700 mb-2">Change Priority</h4>
+          <div className="flex gap-2 items-center">
+            <select
+              value={localTicketPriority}
+              onChange={(e) => setLocalTicketPriority(e.target.value)}
+              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+            <button
+              onClick={() => onTicketPriorityChange(ticket.ticket_id, localTicketPriority)}
+              disabled={
+                changingTicketPriority === ticket.ticket_id ||
+                localTicketPriority === ticket.ticket_priority
+              }
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {changingTicketPriority === ticket.ticket_id ? 'Updating...' : 'Update'}
             </button>
           </div>
         </div>
