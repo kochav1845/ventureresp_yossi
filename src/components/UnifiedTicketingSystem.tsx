@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -417,8 +417,8 @@ export default function UnifiedTicketingSystem({
     loadCustomerInvoices(customerId);
   };
 
-  // Show all customers when search is empty, otherwise filter
-  const getFilteredCustomers = () => {
+  // Memoize filtered customers to prevent unnecessary recalculations
+  const filteredCustomers = useMemo(() => {
     if (!searchTerm || searchTerm.trim() === '') {
       return customers;
     }
@@ -428,9 +428,7 @@ export default function UnifiedTicketingSystem({
       c.customer_name.toLowerCase().includes(search) ||
       c.customer_id.toLowerCase().includes(search)
     );
-  };
-
-  const filteredCustomers = getFilteredCustomers();
+  }, [customers, searchTerm]);
 
   const handleCreateTicket = async () => {
     if (!selectedCustomer || !selectedCollector || selectedInvoicesForTicket.length === 0) {
