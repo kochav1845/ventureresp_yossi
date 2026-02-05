@@ -13,6 +13,7 @@ import BatchActionToolbar from './BatchActionToolbar';
 import BatchNoteModal from './BatchNoteModal';
 import PromiseDateModal from './PromiseDateModal';
 import { sortTicketsByPriority } from './utils';
+import TicketSearchFilter, { TicketFilters, filterTickets } from '../TicketSearchFilter';
 
 interface MyAssignmentsProps {
   onBack?: () => void;
@@ -47,6 +48,19 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
     invoiceReference?: string;
     customerName?: string;
   } | null>(null);
+  const [filters, setFilters] = useState<TicketFilters>({
+    searchTerm: '',
+    status: '',
+    priority: '',
+    ticketType: '',
+    dateFrom: '',
+    dateTo: '',
+    assignedTo: ''
+  });
+
+  // Apply filters to tickets and assignments
+  const filteredTickets = filterTickets(tickets, filters);
+  const filteredIndividualAssignments = filterTickets(individualAssignments, filters);
 
   useEffect(() => {
     if (user && profile) {
@@ -614,6 +628,8 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
         <p className="text-gray-600">Collection tickets and invoices assigned to you</p>
       </div>
 
+      <TicketSearchFilter onFilterChange={setFilters} />
+
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="border-b border-gray-200">
           <div className="flex">
@@ -627,7 +643,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
             >
               <div className="flex items-center gap-2">
                 <Ticket className="w-4 h-4" />
-                <span>Collection Tickets ({tickets.length})</span>
+                <span>Collection Tickets ({filteredTickets.length})</span>
               </div>
             </button>
             <button
@@ -640,7 +656,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
             >
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4" />
-                <span>Individual Invoices ({individualAssignments.length})</span>
+                <span>Individual Invoices ({filteredIndividualAssignments.length})</span>
               </div>
             </button>
             <button
@@ -674,10 +690,12 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
 
           {selectedView === 'tickets' ? (
             <div className="space-y-6">
-              {tickets.length === 0 ? (
+              {filteredTickets.length === 0 ? (
                 <div className="text-center py-12">
                   <Ticket className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No tickets assigned to you</p>
+                  <p className="text-gray-500">
+                    {tickets.length === 0 ? 'No tickets assigned to you' : 'No tickets match your search'}
+                  </p>
                 </div>
               ) : (
                 <>
@@ -696,7 +714,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                         : 'Select All Visible'}
                     </button>
                   </div>
-                  {sortTicketsByPriority(tickets).map(ticket => (
+                  {sortTicketsByPriority(filteredTickets).map(ticket => (
                     <TicketCard
                       key={ticket.ticket_id}
                       ticket={ticket}
@@ -722,10 +740,12 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
             </div>
           ) : selectedView === 'individual' ? (
             <div className="space-y-4">
-              {individualAssignments.length === 0 ? (
+              {filteredIndividualAssignments.length === 0 ? (
                 <div className="text-center py-12">
                   <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No individual invoices assigned to you</p>
+                  <p className="text-gray-500">
+                    {individualAssignments.length === 0 ? 'No individual invoices assigned to you' : 'No invoices match your search'}
+                  </p>
                 </div>
               ) : (
                 <>
@@ -745,7 +765,7 @@ export default function MyAssignments({ onBack }: MyAssignmentsProps) {
                     </button>
                   </div>
 
-                  {individualAssignments.map(invoice => (
+                  {filteredIndividualAssignments.map(invoice => (
                     <IndividualInvoiceCard
                       key={invoice.invoice_reference_number}
                       invoice={invoice}

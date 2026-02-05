@@ -9,6 +9,7 @@ import TicketNoteModal from './TicketNoteModal';
 import TicketPromiseDateModal from './MyAssignments/TicketPromiseDateModal';
 import CreateReminderModal from './CreateReminderModal';
 import { sortTicketsByPriority } from './MyAssignments/utils';
+import TicketSearchFilter, { TicketFilters, filterTickets } from './TicketSearchFilter';
 
 interface Customer {
   customer_id: string;
@@ -178,6 +179,18 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
     invoiceReference?: string;
     customerName?: string;
   } | null>(null);
+  const [filters, setFilters] = useState<TicketFilters>({
+    searchTerm: '',
+    status: '',
+    priority: '',
+    ticketType: '',
+    dateFrom: '',
+    dateTo: '',
+    assignedTo: ''
+  });
+
+  // Apply filters to tickets
+  const filteredTickets = filterTickets(tickets, filters);
 
   useEffect(() => {
     loadCustomers();
@@ -1517,6 +1530,10 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
           </button>
         </div>
 
+        {!selectedTicket && activeTab === 'list' && (
+          <TicketSearchFilter onFilterChange={setFilters} />
+        )}
+
         {selectedTicket && ticketDetails ? (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
             <div className="border-b border-gray-200 p-6">
@@ -2177,7 +2194,7 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  All Tickets ({tickets.length})
+                  All Tickets ({filteredTickets.length})
                 </button>
                 <button
                   onClick={() => setActiveTab('create')}
@@ -2208,13 +2225,15 @@ export default function CollectionTicketing({ onBack }: { onBack: () => void }) 
               )}
               {activeTab === 'list' ? (
                 <div className="space-y-4">
-                  {tickets.length === 0 ? (
+                  {filteredTickets.length === 0 ? (
                     <div className="text-center py-12">
                       <Ticket className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">No tickets created yet</p>
+                      <p className="text-gray-500">
+                        {tickets.length === 0 ? 'No tickets created yet' : 'No tickets match your search'}
+                      </p>
                     </div>
                   ) : (
-                    sortTicketsByPriority(tickets).map(ticket => (
+                    sortTicketsByPriority(filteredTickets).map(ticket => (
                       <div
                         key={ticket.id}
                         onClick={() => loadTicketDetails(ticket)}
