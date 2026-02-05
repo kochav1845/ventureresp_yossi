@@ -82,6 +82,7 @@ export default function UnifiedTicketingSystem({
   const [creating, setCreating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Batch operations
@@ -344,6 +345,7 @@ export default function UnifiedTicketingSystem({
   };
 
   const loadCustomers = async () => {
+    setLoadingCustomers(true);
     try {
       const { data, error } = await supabase.rpc('get_customers_with_balance', {
         p_date_context: 'all'
@@ -353,6 +355,8 @@ export default function UnifiedTicketingSystem({
       setCustomers(data || []);
     } catch (error) {
       console.error('Error loading customers:', error);
+    } finally {
+      setLoadingCustomers(false);
     }
   };
 
@@ -910,21 +914,35 @@ export default function UnifiedTicketingSystem({
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
 
-                    {showCustomerDropdown && filteredCustomers.length > 0 && (
+                    {showCustomerDropdown && (
                       <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                        {filteredCustomers.slice(0, 50).map((customer) => (
-                          <button
-                            key={customer.customer_id}
-                            onClick={() => handleCustomerSelect(customer.customer_id)}
-                            className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
-                          >
-                            <div className="font-medium text-gray-900">{customer.customer_name}</div>
-                            <div className="text-sm text-gray-500">ID: {customer.customer_id}</div>
-                            <div className="text-sm text-red-600 font-semibold">
-                              Balance: ${customer.balance.toFixed(2)}
-                            </div>
-                          </button>
-                        ))}
+                        {loadingCustomers ? (
+                          <div className="px-4 py-3 text-gray-500 text-center">
+                            Loading customers...
+                          </div>
+                        ) : filteredCustomers.length > 0 ? (
+                          filteredCustomers.slice(0, 50).map((customer) => (
+                            <button
+                              key={customer.customer_id}
+                              onClick={() => handleCustomerSelect(customer.customer_id)}
+                              className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="font-medium text-gray-900">{customer.customer_name}</div>
+                              <div className="text-sm text-gray-500">ID: {customer.customer_id}</div>
+                              <div className="text-sm text-red-600 font-semibold">
+                                Balance: ${customer.balance.toFixed(2)}
+                              </div>
+                            </button>
+                          ))
+                        ) : customers.length === 0 ? (
+                          <div className="px-4 py-3 text-gray-500 text-center">
+                            No customers available
+                          </div>
+                        ) : (
+                          <div className="px-4 py-3 text-gray-500 text-center">
+                            No customers match "{searchTerm}"
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
