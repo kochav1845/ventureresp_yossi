@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Edit2, Trash2, Copy, Check, FileText, Mail, Table, Paperclip, Eye, X } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Copy, Check, FileText, Mail, Table, Paperclip, Eye, X, Send } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import TestTemplateEmailModal from './TestTemplateEmailModal';
 
 interface CustomerReportTemplatesProps {
   onBack?: () => void;
@@ -53,6 +54,7 @@ export default function CustomerReportTemplates({ onBack }: CustomerReportTempla
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [testTemplate, setTestTemplate] = useState<Template | null>(null);
 
   useEffect(() => {
     loadTemplates();
@@ -594,6 +596,13 @@ export default function CustomerReportTemplates({ onBack }: CustomerReportTempla
 
               <div className="flex gap-2">
                 <button
+                  onClick={() => setTestTemplate(template)}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors text-sm"
+                >
+                  <Send className="w-4 h-4" />
+                  Send Test
+                </button>
+                <button
                   onClick={() => {
                     setCurrentTemplate(template);
                     setEditing(true);
@@ -605,10 +614,9 @@ export default function CustomerReportTemplates({ onBack }: CustomerReportTempla
                 </button>
                 <button
                   onClick={() => handleDuplicate(template)}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors text-sm"
+                  className="flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors text-sm"
                 >
                   <Copy className="w-4 h-4" />
-                  Duplicate
                 </button>
                 <button
                   onClick={() => handleDelete(template.id)}
@@ -628,6 +636,13 @@ export default function CustomerReportTemplates({ onBack }: CustomerReportTempla
             </div>
           )}
         </div>
+      )}
+
+      {testTemplate && (
+        <TestTemplateEmailModal
+          template={testTemplate}
+          onClose={() => setTestTemplate(null)}
+        />
       )}
     </div>
   );
