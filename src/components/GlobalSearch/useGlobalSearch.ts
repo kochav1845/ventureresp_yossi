@@ -13,6 +13,102 @@ export interface SearchResult {
 
 const RECENT_SEARCHES_KEY = 'global_search_recent';
 const MAX_RECENT = 5;
+const MAX_PER_CATEGORY = 6;
+
+async function searchInvoices(pattern: string): Promise<SearchResult[]> {
+  const { data } = await supabase
+    .from('acumatica_invoices')
+    .select('id, reference_number, customer_name, type, amount, balance, status')
+    .or(`reference_number.ilike.%${pattern}%,customer_name.ilike.%${pattern}%,customer.ilike.%${pattern}%`)
+    .limit(MAX_PER_CATEGORY);
+
+  if (!data) return [];
+  return data.map(i => ({
+    category: 'invoice',
+    item_id: i.id,
+    title: i.reference_number || '',
+    subtitle: i.customer_name || '',
+    meta_line: `${i.type || ''} | $${i.amount ?? 0} | Bal: $${i.balance ?? 0} | ${i.status || ''}`,
+    route: '/invoices',
+    relevance: (i.reference_number || '').toLowerCase().startsWith(pattern.toLowerCase()) ? 0.95 : 0.7,
+  }));
+}
+
+async function searchCustomers(pattern: string): Promise<SearchResult[]> {
+  const { data } = await supabase
+    .from('acumatica_customers')
+    .select('id, customer_name, customer_id, customer_class, general_email, balance')
+    .or(`customer_name.ilike.%${pattern}%,customer_id.ilike.%${pattern}%,general_email.ilike.%${pattern}%`)
+    .limit(MAX_PER_CATEGORY);
+
+  if (!data) return [];
+  return data.map(c => ({
+    category: 'customer',
+    item_id: c.id,
+    title: c.customer_name || '',
+    subtitle: c.customer_id || '',
+    meta_line: `${c.customer_class || ''} | ${c.general_email || ''} | Bal: $${c.balance ?? 0}`,
+    route: '/customers',
+    relevance: (c.customer_name || '').toLowerCase().startsWith(pattern.toLowerCase()) ? 0.95 : 0.7,
+  }));
+}
+
+async function searchPayments(pattern: string): Promise<SearchResult[]> {
+  const { data } = await supabase
+    .from('acumatica_payments')
+    .select('id, reference_number, customer_name, customer_id, type, payment_amount, payment_method, status')
+    .or(`reference_number.ilike.%${pattern}%,customer_name.ilike.%${pattern}%,payment_ref.ilike.%${pattern}%`)
+    .limit(MAX_PER_CATEGORY);
+
+  if (!data) return [];
+  return data.map(p => ({
+    category: 'payment',
+    item_id: p.id,
+    title: p.reference_number || '',
+    subtitle: p.customer_name || p.customer_id || '',
+    meta_line: `${p.type || ''} | $${p.payment_amount ?? 0} | ${p.payment_method || ''} | ${p.status || ''}`,
+    route: '/payments',
+    relevance: (p.reference_number || '').toLowerCase().startsWith(pattern.toLowerCase()) ? 0.95 : 0.7,
+  }));
+}
+
+async function searchTickets(pattern: string): Promise<SearchResult[]> {
+  const { data } = await supabase
+    .from('collection_tickets')
+    .select('id, ticket_number, customer_name, ticket_type, priority, status')
+    .or(`ticket_number.ilike.%${pattern}%,customer_name.ilike.%${pattern}%`)
+    .limit(MAX_PER_CATEGORY);
+
+  if (!data) return [];
+  return data.map(t => ({
+    category: 'ticket',
+    item_id: t.id,
+    title: t.ticket_number || '',
+    subtitle: t.customer_name || '',
+    meta_line: `${t.ticket_type || ''} | ${t.priority || ''} | ${t.status || ''}`,
+    route: '/tickets',
+    relevance: (t.ticket_number || '').toLowerCase().startsWith(pattern.toLowerCase()) ? 0.95 : 0.7,
+  }));
+}
+
+async function searchUsers(pattern: string): Promise<SearchResult[]> {
+  const { data } = await supabase
+    .from('user_profiles')
+    .select('id, full_name, email, role, account_status')
+    .or(`full_name.ilike.%${pattern}%,email.ilike.%${pattern}%`)
+    .limit(MAX_PER_CATEGORY);
+
+  if (!data) return [];
+  return data.map(u => ({
+    category: 'collector',
+    item_id: u.id,
+    title: u.full_name || '',
+    subtitle: u.email || '',
+    meta_line: `${u.role || ''} | ${u.account_status || ''}`,
+    route: '/admin',
+    relevance: (u.full_name || '').toLowerCase().startsWith(pattern.toLowerCase()) ? 0.95 : 0.7,
+  }));
+}
 
 export function useGlobalSearch() {
   const [query, setQuery] = useState('');
@@ -21,8 +117,8 @@ export function useGlobalSearch() {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchIdRef = useRef(0);
 
   useEffect(() => {
     try {
@@ -54,28 +150,33 @@ export function useGlobalSearch() {
       return;
     }
 
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
-    abortRef.current = new AbortController();
-
+    const currentId = ++searchIdRef.current;
     setLoading(true);
-    try {
-      const { data, error } = await supabase.rpc('global_search', {
-        search_query: trimmed,
-        max_per_category: 6
-      });
 
-      if (error) throw error;
-      setResults(data || []);
+    try {
+      const [invoices, customers, payments, tickets, users] = await Promise.all([
+        searchInvoices(trimmed).catch(() => [] as SearchResult[]),
+        searchCustomers(trimmed).catch(() => [] as SearchResult[]),
+        searchPayments(trimmed).catch(() => [] as SearchResult[]),
+        searchTickets(trimmed).catch(() => [] as SearchResult[]),
+        searchUsers(trimmed).catch(() => [] as SearchResult[]),
+      ]);
+
+      if (currentId !== searchIdRef.current) return;
+
+      const combined = [...invoices, ...customers, ...payments, ...tickets, ...users];
+      combined.sort((a, b) => b.relevance - a.relevance);
+      setResults(combined);
       setSelectedIndex(-1);
     } catch (err: any) {
-      if (err?.name !== 'AbortError') {
+      if (currentId === searchIdRef.current) {
         console.error('Search error:', err);
         setResults([]);
       }
     } finally {
-      setLoading(false);
+      if (currentId === searchIdRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -114,19 +215,16 @@ export function useGlobalSearch() {
     return acc;
   }, {});
 
-  const flatResults = results;
-
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      if (abortRef.current) abortRef.current.abort();
     };
   }, []);
 
   return {
     query,
     setQuery: handleQueryChange,
-    results: flatResults,
+    results,
     groupedResults,
     loading,
     isOpen,
