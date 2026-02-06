@@ -1,4 +1,5 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,9 +39,11 @@ interface Template {
 
 interface RequestBody {
   templateId?: string;
+  templateName?: string;
   template?: Template;
   customerData: CustomerData;
   pdfBase64?: string;
+  sentByUserId?: string;
 }
 
 const formatCurrency = (amount: number) => {
@@ -129,7 +132,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body: RequestBody = await req.json();
-    const { template, customerData, pdfBase64 } = body;
+    const { templateId, templateName, template, customerData, pdfBase64, sentByUserId } = body;
 
     if (!template || !customerData || !customerData.customer_email) {
       return new Response(
@@ -151,6 +154,10 @@ Deno.serve(async (req: Request) => {
         }
       );
     }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     let emailSubject = replacePlaceholders(template.subject, customerData);
     let emailBody = replacePlaceholders(template.body, customerData);
@@ -200,11 +207,11 @@ Deno.serve(async (req: Request) => {
       attachments,
       tracking_settings: {
         click_tracking: {
-          enable: false,
+          enable: true,
           enable_text: false
         },
         open_tracking: {
-          enable: false
+          enable: true
         }
       }
     };
@@ -221,6 +228,22 @@ Deno.serve(async (req: Request) => {
     if (!sendGridResponse.ok) {
       const errorText = await sendGridResponse.text();
       console.error('SendGrid error:', errorText);
+
+      await supabase.from('customer_email_logs').insert({
+        customer_id: customerData.customer_id,
+        customer_name: customerData.customer_name,
+        customer_email: customerData.customer_email,
+        template_id: templateId || null,
+        template_name: templateName || 'Custom Template',
+        subject: emailSubject,
+        status: 'failed',
+        error_message: errorText,
+        invoice_count: customerData.invoices?.length || 0,
+        total_balance: customerData.balance || 0,
+        had_pdf_attachment: !!pdfBase64,
+        sent_by_user_id: sentByUserId || null,
+      });
+
       return new Response(
         JSON.stringify({ error: 'Failed to send email', details: errorText }),
         {
@@ -230,8 +253,38 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const messageId = sendGridResponse.headers.get('x-message-id');
+
+    const { data: logEntry, error: logError } = await supabase
+      .from('customer_email_logs')
+      .insert({
+        customer_id: customerData.customer_id,
+        customer_name: customerData.customer_name,
+        customer_email: customerData.customer_email,
+        template_id: templateId || null,
+        template_name: templateName || 'Custom Template',
+        subject: emailSubject,
+        sendgrid_message_id: messageId,
+        status: 'sent',
+        invoice_count: customerData.invoices?.length || 0,
+        total_balance: customerData.balance || 0,
+        had_pdf_attachment: !!pdfBase64,
+        sent_by_user_id: sentByUserId || null,
+      })
+      .select()
+      .single();
+
+    if (logError) {
+      console.error('Error creating log entry:', logError);
+    }
+
     return new Response(
-      JSON.stringify({ success: true, message: 'Email sent successfully' }),
+      JSON.stringify({
+        success: true,
+        message: 'Email sent successfully',
+        logId: logEntry?.id,
+        messageId: messageId
+      }),
       {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

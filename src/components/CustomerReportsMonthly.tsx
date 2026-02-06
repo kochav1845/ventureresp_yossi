@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, Mail, Download, Filter, DollarSign, Calendar, CheckSquare, Square, CreditCard, Search, X, ArrowUpDown, FileSpreadsheet, Edit } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import { generateCustomerInvoicePDF } from '../lib/pdfGenerator';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { exportToExcel as exportExcel, formatDate, formatCurrency } from '../lib/excelExport';
@@ -45,6 +46,7 @@ type DateFilter = 'current_month' | 'all' | 'custom';
 
 export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthlyProps) {
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set());
@@ -464,6 +466,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
             },
             body: JSON.stringify({
               templateId: selectedTemplateId,
+              templateName: selectedTemplate.name,
               template: {
                 subject: selectedTemplate.subject,
                 body: selectedTemplate.body,
@@ -484,6 +487,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
                 payment_url: customerPaymentUrl,
               },
               pdfBase64: base64PDF,
+              sentByUserId: profile?.id,
             })
           }
         );
