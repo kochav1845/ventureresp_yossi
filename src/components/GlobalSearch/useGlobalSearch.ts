@@ -96,7 +96,7 @@ export function useGlobalSearch() {
     setLoading(true);
     debounceRef.current = setTimeout(() => {
       performSearch(value);
-    }, 200);
+    }, 400);
   }, [performSearch]);
 
   const close = useCallback(() => {
