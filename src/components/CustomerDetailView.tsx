@@ -127,16 +127,18 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [filteredStats, setFilteredStats] = useState<any>(null);
   const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
   const [avgDaysToCollect, setAvgDaysToCollect] = useState<number | null>(null);
+  const [excludeCreditMemos, setExcludeCreditMemos] = useState(false);
 
   useEffect(() => {
-    // Load customer info first (fastest)
     loadCustomerBasicInfo();
-
-    // Then load other sections independently
     loadInvoiceStats();
     loadChartData();
     loadTickets();
   }, [customerId]);
+
+  useEffect(() => {
+    loadCustomerBasicInfo();
+  }, [excludeCreditMemos]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -187,7 +189,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           p_max_open_invoices: null,
           p_min_invoice_amount: null,
           p_max_invoice_amount: null,
-          p_exclude_credit_memos: false
+          p_exclude_credit_memos: excludeCreditMemos
         });
 
       if (balanceError) throw balanceError;
@@ -779,6 +781,18 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               {customerNotes.length} note{customerNotes.length !== 1 ? 's' : ''}
             </p>
           </div>
+        </div>
+
+        <div className="flex items-center justify-end mb-3">
+          <label className="inline-flex items-center gap-2 cursor-pointer px-3 py-1.5 bg-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
+            <input
+              type="checkbox"
+              checked={excludeCreditMemos}
+              onChange={(e) => setExcludeCreditMemos(e.target.checked)}
+              className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-gray-700">Exclude Credit Memos</span>
+          </label>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">

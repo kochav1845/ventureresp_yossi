@@ -1207,6 +1207,23 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 </div>
               </div>
 
+              <div className="pt-4 border-t border-gray-200">
+                <label className="inline-flex items-center gap-3 cursor-pointer p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={excludeCreditMemos}
+                    onChange={(e) => setExcludeCreditMemos(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">Exclude Credit Memos</span>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Show only invoice balances without credit memo deductions
+                    </p>
+                  </div>
+                </label>
+              </div>
+
               {/* Advanced Filters */}
               <div className="pt-4 border-t border-gray-200">
                 <button
@@ -1347,23 +1364,6 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                       </div>
                     </div>
 
-                    <div className="md:col-span-2 lg:col-span-3">
-                      <label className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={!excludeCreditMemos}
-                          onChange={(e) => setExcludeCreditMemos(!e.target.checked)}
-                          className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                        />
-                        <div>
-                          <span className="text-sm font-medium text-gray-900">Include Credit Memos</span>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            When checked, credit memos are subtracted from the total balance (net balance).
-                            When unchecked, only invoices are counted toward the balance.
-                          </p>
-                        </div>
-                      </label>
-                    </div>
                   </div>
                 )}
               </div>
