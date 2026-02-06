@@ -6,13 +6,118 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
-interface RequestBody {
-  customerName: string;
-  customerEmail: string;
-  totalBalance: number;
-  pdfBase64: string;
-  paymentUrl?: string;
+interface Invoice {
+  reference_number: string;
+  invoice_date: string;
+  due_date: string;
+  amount: number;
+  balance: number;
+  description: string;
 }
+
+interface CustomerData {
+  customer_name: string;
+  customer_id: string;
+  customer_email: string;
+  balance: number;
+  total_invoices: number;
+  invoices: Invoice[];
+  date_from?: string;
+  date_to?: string;
+  oldest_invoice_date?: string;
+  days_overdue?: number;
+  payment_url?: string;
+}
+
+interface Template {
+  subject: string;
+  body: string;
+  include_invoice_table: boolean;
+  include_payment_table: boolean;
+}
+
+interface RequestBody {
+  templateId?: string;
+  template?: Template;
+  customerData: CustomerData;
+  pdfBase64?: string;
+}
+
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(amount);
+};
+
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+};
+
+const generateInvoiceTable = (invoices: Invoice[]) => {
+  const rows = invoices.map(inv => `
+    <tr>
+      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0;">${inv.reference_number}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0;">${formatDate(inv.invoice_date)}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0;">${formatDate(inv.due_date)}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right;">${formatCurrency(inv.amount)}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold;">${formatCurrency(inv.balance)}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <div style="margin: 24px 0; overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse; border: 1px solid #e2e8f0;">
+        <thead>
+          <tr style="background-color: #f1f5f9;">
+            <th style="padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #cbd5e1;">Invoice #</th>
+            <th style="padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #cbd5e1;">Invoice Date</th>
+            <th style="padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #cbd5e1;">Due Date</th>
+            <th style="padding: 12px; text-align: right; font-weight: 600; border-bottom: 2px solid #cbd5e1;">Amount</th>
+            <th style="padding: 12px; text-align: right; font-weight: 600; border-bottom: 2px solid #cbd5e1;">Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+        <tfoot>
+          <tr style="background-color: #fef2f2;">
+            <td colspan="4" style="padding: 12px; font-weight: 600; border-top: 2px solid #cbd5e1;">Total Balance Due:</td>
+            <td style="padding: 12px; text-align: right; font-weight: bold; font-size: 16px; color: #dc2626; border-top: 2px solid #cbd5e1;">
+              ${formatCurrency(invoices.reduce((sum, inv) => sum + inv.balance, 0))}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
+};
+
+const replacePlaceholders = (text: string, data: CustomerData) => {
+  const replacements: { [key: string]: string } = {
+    '{{customer_name}}': data.customer_name,
+    '{{customer_id}}': data.customer_id,
+    '{{customer_email}}': data.customer_email,
+    '{{balance}}': formatCurrency(data.balance),
+    '{{total_invoices}}': data.total_invoices.toString(),
+    '{{date_from}}': data.date_from ? formatDate(data.date_from) : '',
+    '{{date_to}}': data.date_to ? formatDate(data.date_to) : formatDate(new Date().toISOString()),
+    '{{credit_memos_count}}': '0',
+    '{{credit_memos_total}}': formatCurrency(0),
+    '{{oldest_invoice_date}}': data.oldest_invoice_date ? formatDate(data.oldest_invoice_date) : '',
+    '{{days_overdue}}': data.days_overdue?.toString() || '0',
+    '{{payment_url}}': data.payment_url || '',
+  };
+
+  let result = text;
+  Object.entries(replacements).forEach(([key, value]) => {
+    result = result.replace(new RegExp(key, 'g'), value);
+  });
+
+  return result;
+};
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -23,9 +128,10 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { customerName, customerEmail, totalBalance, pdfBase64, paymentUrl }: RequestBody = await req.json();
+    const body: RequestBody = await req.json();
+    const { template, customerData, pdfBase64 } = body;
 
-    if (!customerName || !customerEmail || !pdfBase64) {
+    if (!template || !customerData || !customerData.customer_email) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields' }),
         {
@@ -46,58 +152,52 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const formatCurrency = (amount: number) => {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD'
-      }).format(amount);
-    };
+    let emailSubject = replacePlaceholders(template.subject, customerData);
+    let emailBody = replacePlaceholders(template.body, customerData);
+
+    if (template.include_invoice_table && customerData.invoices && customerData.invoices.length > 0) {
+      const invoiceTable = generateInvoiceTable(customerData.invoices);
+      emailBody = emailBody.replace(/\{\{invoice_table\}\}/g, invoiceTable);
+    } else {
+      emailBody = emailBody.replace(/\{\{invoice_table\}\}/g, '');
+    }
+
+    emailBody = emailBody.replace(/\{\{payment_table\}\}/g, '');
+
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px;">
+        ${emailBody.replace(/\n/g, '<br>')}
+      </div>
+    `;
+
+    const attachments = [];
+    if (pdfBase64) {
+      attachments.push({
+        content: pdfBase64,
+        filename: `Invoice_Statement_${new Date().toISOString().split('T')[0]}.png`,
+        type: 'image/png',
+        disposition: 'attachment',
+      });
+    }
 
     const emailData = {
       personalizations: [
         {
-          to: [{ email: customerEmail, name: customerName }],
-          subject: `Invoice Statement - ${formatCurrency(totalBalance)} Due`,
+          to: [{ email: customerData.customer_email, name: customerData.customer_name }],
+          subject: emailSubject,
         },
       ],
       from: {
         email: 'invoices@starwork.dev',
-        name: 'Accounts Receivable',
+        name: 'Venture Respiratory - Accounts Receivable',
       },
       content: [
         {
           type: 'text/html',
-          value: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #1e293b;">Invoice Statement</h2>
-              <p>Dear ${customerName},</p>
-              <p>Please find attached your current invoice statement.</p>
-              <div style="background-color: #fee; border-left: 4px solid #dc2626; padding: 16px; margin: 20px 0;">
-                <strong style="color: #dc2626; font-size: 18px;">Total Balance Due: ${formatCurrency(totalBalance)}</strong>
-              </div>
-              ${paymentUrl ? `
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${paymentUrl}" style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                  💳 Pay Now Securely
-                </a>
-              </div>
-              ` : ''}
-              <p>Please review the attached statement and remit payment at your earliest convenience.</p>
-              <p>If you have any questions, please don't hesitate to contact us.</p>
-              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
-              <p style="color: #64748b; font-size: 12px;">Thank you for your business!</p>
-            </div>
-          `,
+          value: htmlContent,
         },
       ],
-      attachments: [
-        {
-          content: pdfBase64,
-          filename: `Invoice_Statement_${new Date().toISOString().split('T')[0]}.png`,
-          type: 'image/png',
-          disposition: 'attachment',
-        },
-      ],
+      attachments,
       tracking_settings: {
         click_tracking: {
           enable: false,

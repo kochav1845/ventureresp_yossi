@@ -19,6 +19,7 @@ import AnalyticsDashboard from './components/AnalyticsDashboard';
 import InvoiceStatusAnalytics from './components/InvoiceStatusAnalytics';
 import PaymentAnalytics from './components/PaymentAnalytics';
 import CustomerReportsMonthly from './components/CustomerReportsMonthly';
+import CustomerReportTemplates from './components/CustomerReportTemplates';
 import SystemDocumentation from './components/SystemDocumentation';
 import WebhookConfiguration from './components/WebhookConfiguration';
 import SyncStatusDashboard from './components/SyncStatusDashboard';
@@ -136,6 +137,7 @@ function AppContent() {
         <Route path="invoice-status-admin" element={<InvoiceStatusAdminPanel />} />
         <Route path="invoice-status-analytics" element={<InvoiceStatusAnalytics />} />
         <Route path="customer-reports" element={<CustomerReportsMonthly />} />
+        <Route path="customer-report-templates" element={<CustomerReportTemplates />} />
         <Route path="system-documentation" element={<SystemDocumentation />} />
         <Route path="acumatica-files-test" element={<AcumaticaFilesTest />} />
         <Route path="reminders" element={<RemindersPortal />} />

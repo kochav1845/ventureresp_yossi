@@ -16,6 +16,7 @@ import AnalyticsDashboard from './AnalyticsDashboard';
 import InvoiceStatusAnalytics from './InvoiceStatusAnalytics';
 import PaymentAnalytics from './PaymentAnalytics';
 import CustomerReportsMonthly from './CustomerReportsMonthly';
+import CustomerReportTemplates from './CustomerReportTemplates';
 import SystemDocumentation from './SystemDocumentation';
 import WebhookConfiguration from './WebhookConfiguration';
 import SyncStatusDashboard from './SyncStatusDashboard';
@@ -114,6 +115,8 @@ export default function AdminDashboard() {
         return <CustomerReportsMonthly onBack={() => setCurrentView('admin-dashboard')} />;
       case 'customer-reports':
         return <CustomerReportsMonthly onBack={() => setCurrentView('admin-dashboard')} />;
+      case 'customer-report-templates':
+        return <CustomerReportTemplates onBack={() => setCurrentView('admin-dashboard')} />;
       case 'system-documentation':
         return <SystemDocumentation onBack={() => setCurrentView('admin-dashboard')} />;
       case 'acumatica-files-test':

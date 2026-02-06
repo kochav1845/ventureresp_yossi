@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, Mail, Download, Filter, DollarSign, Calendar, CheckSquare, Square, CreditCard, Search, X, ArrowUpDown, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, FileText, Mail, Download, Filter, DollarSign, Calendar, CheckSquare, Square, CreditCard, Search, X, ArrowUpDown, FileSpreadsheet, Edit } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { generateCustomerInvoicePDF } from '../lib/pdfGenerator';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
@@ -30,6 +30,17 @@ interface Invoice {
   description: string;
 }
 
+interface ReportTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+  include_invoice_table: boolean;
+  include_payment_table: boolean;
+  include_pdf_attachment: boolean;
+  is_default: boolean;
+}
+
 type DateFilter = 'current_month' | 'all' | 'custom';
 
 export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthlyProps) {
@@ -52,6 +63,8 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
   const [sortBy, setSortBy] = useState<'name' | 'balance' | 'invoices'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [templates, setTemplates] = useState<ReportTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   const handleBack = () => {
     if (onBack) {
@@ -63,7 +76,31 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
 
   useEffect(() => {
     loadCustomersWithInvoices();
+    loadTemplates();
   }, []);
+
+  const loadTemplates = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('customer_report_templates')
+        .select('*')
+        .order('is_default', { ascending: false })
+        .order('name');
+
+      if (error) throw error;
+
+      setTemplates(data || []);
+
+      const defaultTemplate = data?.find(t => t.is_default);
+      if (defaultTemplate) {
+        setSelectedTemplateId(defaultTemplate.id);
+      } else if (data && data.length > 0) {
+        setSelectedTemplateId(data[0].id);
+      }
+    } catch (error) {
+      console.error('Error loading templates:', error);
+    }
+  };
 
   useEffect(() => {
     applyFilters();
@@ -352,22 +389,36 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
   };
 
   const sendEmails = async () => {
-    if (generatedPDFs.size === 0) {
-      alert('Please generate PDFs first');
+    if (!selectedTemplateId) {
+      alert('Please select a template');
+      return;
+    }
+
+    const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+    if (!selectedTemplate) {
+      alert('Selected template not found');
+      return;
+    }
+
+    if (selectedTemplate.include_pdf_attachment && generatedPDFs.size === 0) {
+      alert('Please generate PDFs first or disable PDF attachment in template');
       return;
     }
 
     const toSend = filteredCustomers.filter(c =>
-      selectedCustomers.has(c.customer_id) && c.email && generatedPDFs.has(c.customer_id)
+      selectedCustomers.has(c.customer_id) && c.email
     );
 
     if (toSend.length === 0) {
-      alert('No customers with valid email addresses and generated PDFs');
+      alert('No customers with valid email addresses');
       return;
     }
 
     setSendingEmails(true);
     setEmailProgress([]);
+
+    const dateFrom = dateFilter === 'custom' ? customStartDate : '';
+    const dateTo = dateFilter === 'custom' ? customEndDate : new Date().toISOString().split('T')[0];
 
     for (let i = 0; i < toSend.length; i++) {
       const customer = toSend[i];
@@ -377,21 +428,31 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
       ]);
 
       try {
-        const pdfBlob = generatedPDFs.get(customer.customer_id);
-        if (!pdfBlob) continue;
+        let base64PDF: string | undefined;
 
-        const reader = new FileReader();
-        const base64Promise = new Promise<string>((resolve) => {
-          reader.onloadend = () => {
-            const base64 = (reader.result as string).split(',')[1];
-            resolve(base64);
-          };
-          reader.readAsDataURL(pdfBlob);
-        });
+        if (selectedTemplate.include_pdf_attachment) {
+          const pdfBlob = generatedPDFs.get(customer.customer_id);
+          if (pdfBlob) {
+            const reader = new FileReader();
+            const base64Promise = new Promise<string>((resolve) => {
+              reader.onloadend = () => {
+                const base64 = (reader.result as string).split(',')[1];
+                resolve(base64);
+              };
+              reader.readAsDataURL(pdfBlob);
+            });
+            base64PDF = await base64Promise;
+          }
+        }
 
-        const base64PDF = await base64Promise;
+        const customerPaymentUrl = paymentUrl ? `${paymentUrl}?customer_id=${encodeURIComponent(customer.customer_id)}&customer_email=${encodeURIComponent(customer.email)}` : '';
 
-        const customerPaymentUrl = paymentUrl ? `${paymentUrl}?customer_id=${encodeURIComponent(customer.customer_id)}&customer_email=${encodeURIComponent(customer.email)}` : undefined;
+        const oldestInvoice = customer.unpaid_invoices.reduce((oldest, inv) =>
+          new Date(inv.invoice_date) < new Date(oldest.invoice_date) ? inv : oldest
+        , customer.unpaid_invoices[0]);
+
+        const daysOverdue = oldestInvoice?.due_date ?
+          Math.max(0, Math.floor((new Date().getTime() - new Date(oldestInvoice.due_date).getTime()) / (1000 * 60 * 60 * 24))) : 0;
 
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-customer-invoice-email`,
@@ -402,11 +463,27 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              customerName: customer.customer_name,
-              customerEmail: customer.email,
-              totalBalance: customer.total_balance,
+              templateId: selectedTemplateId,
+              template: {
+                subject: selectedTemplate.subject,
+                body: selectedTemplate.body,
+                include_invoice_table: selectedTemplate.include_invoice_table,
+                include_payment_table: selectedTemplate.include_payment_table,
+              },
+              customerData: {
+                customer_name: customer.customer_name,
+                customer_id: customer.customer_id,
+                customer_email: customer.email,
+                balance: customer.total_balance,
+                total_invoices: customer.unpaid_invoices.length,
+                invoices: customer.unpaid_invoices,
+                date_from: dateFrom,
+                date_to: dateTo,
+                oldest_invoice_date: oldestInvoice?.invoice_date || '',
+                days_overdue: daysOverdue,
+                payment_url: customerPaymentUrl,
+              },
               pdfBase64: base64PDF,
-              paymentUrl: customerPaymentUrl
             })
           }
         );
@@ -644,6 +721,34 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
         </div>
 
         <div className="bg-slate-900 rounded-lg p-6 mb-6 border border-slate-800">
+          <div className="mb-4 flex items-center gap-3">
+            <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
+              <Mail className="w-4 h-4" />
+              Email Template:
+            </label>
+            <select
+              value={selectedTemplateId || ''}
+              onChange={(e) => setSelectedTemplateId(e.target.value)}
+              className="flex-1 max-w-md px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500"
+            >
+              {templates.length === 0 && (
+                <option value="">No templates available</option>
+              )}
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name} {template.is_default ? '(Default)' : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => navigate('/customer-report-templates')}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium transition-colors"
+              title="Manage Templates"
+            >
+              <Edit className="w-4 h-4" />
+              Manage Templates
+            </button>
+          </div>
           <div className="flex flex-wrap gap-4">
             <button
               onClick={generatePDFs}
