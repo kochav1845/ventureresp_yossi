@@ -25,7 +25,8 @@ import {
   Menu,
   ChevronLeft,
   ChevronRight,
-  Palette
+  Palette,
+  Eye
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import RemindersSidebar from './RemindersSidebar';
