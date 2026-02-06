@@ -181,6 +181,7 @@ export default function Layout() {
     { id: 'create-user', name: 'Create New User', icon: Users },
     { id: 'collector-monitoring', name: 'Collector Monitoring', icon: Activity },
     { id: 'collector-performance', name: 'Collector Performance', icon: BarChart3 },
+    { id: 'customer-reports', name: 'Customer Reports', icon: FileText },
     { id: 'customer-analytics', name: 'Customer Analytics', icon: Users },
     { id: 'payment-analytics', name: 'Payment Analytics', icon: DollarSign },
     { id: 'user-activity', name: 'User Activity', icon: Activity },
