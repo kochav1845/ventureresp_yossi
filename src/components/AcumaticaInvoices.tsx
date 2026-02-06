@@ -53,49 +53,43 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   const pageSize = 50;
 
   const enrichInvoicesWithUserColors = async (invoices: any[]) => {
-    console.log('🎨 [ENRICH] Starting enrichment for', invoices.length, 'invoices');
-    if (invoices.length === 0) {
-      console.log('🎨 [ENRICH] No invoices to enrich, returning empty array');
-      return invoices;
-    }
+    if (invoices.length === 0) return invoices;
 
     const invoiceRefs = invoices.map(inv => inv.reference_nbr || inv.reference_number);
-    console.log('🎨 [ENRICH] Invoice refs:', invoiceRefs.length);
     const refLimit = 1000;
+    const refsSlice = invoiceRefs.slice(0, refLimit);
 
-    console.log('🎨 [ENRICH] Fetching invoice memos...');
-    const { data: lastMemos } = await supabase
-      .from('invoice_memos')
-      .select('invoice_reference, created_by_user_id, created_at')
-      .in('invoice_reference', invoiceRefs.slice(0, refLimit))
-      .order('created_at', { ascending: false })
-      .limit(refLimit);
-    console.log('🎨 [ENRICH] Found', lastMemos?.length || 0, 'memos');
+    const [memosResult, statusResult, assignmentsResult] = await Promise.all([
+      supabase
+        .from('invoice_memos')
+        .select('invoice_reference, created_by_user_id, created_at')
+        .in('invoice_reference', refsSlice)
+        .order('created_at', { ascending: false })
+        .limit(refLimit),
+      supabase
+        .from('invoice_status_history')
+        .select('invoice_reference, changed_by, changed_at')
+        .in('invoice_reference', refsSlice)
+        .order('changed_at', { ascending: false })
+        .limit(refLimit),
+      supabase
+        .from('invoice_assignments')
+        .select(`
+          invoice_reference_number,
+          assigned_collector_id,
+          user_profiles!invoice_assignments_assigned_collector_id_fkey(
+            id,
+            email,
+            full_name,
+            assigned_color
+          )
+        `)
+        .in('invoice_reference_number', refsSlice)
+    ]);
 
-    console.log('🎨 [ENRICH] Fetching status changes...');
-    const { data: lastStatusChanges } = await supabase
-      .from('invoice_status_history')
-      .select('invoice_reference, changed_by, changed_at')
-      .in('invoice_reference', invoiceRefs.slice(0, refLimit))
-      .order('changed_at', { ascending: false })
-      .limit(refLimit);
-    console.log('🎨 [ENRICH] Found', lastStatusChanges?.length || 0, 'status changes');
-
-    console.log('🎨 [ENRICH] Fetching assignments...');
-    const { data: assignments } = await supabase
-      .from('invoice_assignments')
-      .select(`
-        invoice_reference_number,
-        assigned_collector_id,
-        user_profiles!invoice_assignments_assigned_collector_id_fkey(
-          id,
-          email,
-          full_name,
-          assigned_color
-        )
-      `)
-      .in('invoice_reference_number', invoiceRefs.slice(0, refLimit));
-    console.log('🎨 [ENRICH] Found', assignments?.length || 0, 'assignments');
+    const lastMemos = memosResult.data;
+    const lastStatusChanges = statusResult.data;
+    const assignments = assignmentsResult.data;
 
     const lastActivityMap = new Map();
 
@@ -336,8 +330,59 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     }
   };
 
+  const buildInvoiceQuery = (offset: number, searchTermTrimmed: string | null) => {
+    const selectCols = 'id, customer, customer_name, reference_number, type, status, color_status, date, due_date, amount, balance, terms, last_modified_by_color, customer_order, description';
+
+    let query = supabase.from('acumatica_invoices').select(selectCols);
+
+    if (searchTermTrimmed) {
+      const isNumeric = /^\d+$/.test(searchTermTrimmed);
+      if (isNumeric) {
+        const padded = searchTermTrimmed.padStart(6, '0');
+        query = query.or(`reference_number.eq.${searchTermTrimmed},reference_number.eq.${padded}`);
+      } else {
+        query = query.or(`reference_number.ilike.%${searchTermTrimmed}%,customer_name.ilike.%${searchTermTrimmed}%`);
+      }
+    }
+
+    if (statusFilter !== 'all') query = query.eq('status', statusFilter);
+    if (customerFilter !== 'all') query = query.eq('customer', customerFilter);
+    if (selectedCustomers.length > 0) query = query.in('customer', selectedCustomers);
+    if (balanceFilter === 'paid') query = query.eq('balance', 0);
+    if (balanceFilter === 'unpaid') query = query.gt('balance', 0);
+    if (colorFilter !== 'all') query = query.eq('color_status', colorFilter);
+    if (dateFrom) query = query.gte('date', dateFrom);
+    if (dateTo) query = query.lte('date', dateTo);
+
+    const ascending = sortOrder === 'asc';
+    const sortCol = sortBy === 'color' ? 'color_status' : sortBy === 'customer_name' ? 'customer_name' : sortBy;
+    query = query.order(sortCol, { ascending, nullsFirst: false });
+    if (sortCol !== 'date') query = query.order('date', { ascending: false, nullsFirst: false });
+
+    query = query.range(offset, offset + pageSize - 1);
+    return query;
+  };
+
+  const processInvoiceResults = async (data: any[], append: boolean) => {
+    const invoices = (data || []).map(invoice => ({
+      ...invoice,
+      customer_name: invoice.customer_name || invoice.customer,
+      userAssignedColor: invoice.last_modified_by_color || 'none',
+      reference_nbr: invoice.reference_number
+    }));
+
+    const enrichedInvoices = await enrichInvoicesWithUserColors(invoices);
+
+    if (append) {
+      setDisplayedInvoices(prev => [...prev, ...enrichedInvoices]);
+    } else {
+      setDisplayedInvoices(enrichedInvoices);
+    }
+
+    setHasMoreResults(enrichedInvoices.length === pageSize);
+  };
+
   const loadInvoices = async (append = false) => {
-    console.log('📋 [LOAD] Loading invoices...', append ? '(appending)' : '(fresh)');
     if (append) {
       setLoadingMore(true);
     } else {
@@ -348,63 +393,12 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
 
     try {
       const offset = append ? displayedInvoices.length : 0;
-      console.log('📋 [LOAD] Offset:', offset, 'Limit:', pageSize);
+      const { data, error } = await buildInvoiceQuery(offset, null);
 
-      const params = {
-        search_term: null,
-        status_filter: null,
-        customer_filter: null,
-        customer_ids: null,
-        balance_filter: null,
-        color_filter: null,
-        date_from: null,
-        date_to: null,
-        sort_by: sortBy,
-        sort_order: sortOrder,
-        p_limit: pageSize,
-        p_offset: offset
-      };
-
-      console.log('📋 [LOAD] Calling search_invoices_paginated with params:', params);
-      const startTime = performance.now();
-
-      const { data, error } = await supabase.rpc('search_invoices_paginated', params);
-
-      const endTime = performance.now();
-      console.log(`📋 [LOAD] RPC call completed in ${(endTime - startTime).toFixed(2)}ms`);
-
-      if (error) {
-        console.error('📋 [LOAD] RPC error:', error);
-        throw error;
-      }
-
-      console.log('📋 [LOAD] Received', data?.length || 0, 'invoices');
-
-      const invoices = (data || []).map(invoice => ({
-        ...invoice,
-        customer_name: invoice.customer_name || invoice.customer,
-        userAssignedColor: invoice.last_modified_by_color || 'none',
-        reference_nbr: invoice.reference_number
-      }));
-
-      console.log('📋 [LOAD] Enriching invoices...');
-      const enrichStartTime = performance.now();
-      const enrichedInvoices = await enrichInvoicesWithUserColors(invoices);
-      const enrichEndTime = performance.now();
-      console.log(`📋 [LOAD] Enrichment completed in ${(enrichEndTime - enrichStartTime).toFixed(2)}ms`);
-
-      if (append) {
-        setDisplayedInvoices(prev => [...prev, ...enrichedInvoices]);
-      } else {
-        setDisplayedInvoices(enrichedInvoices);
-      }
-
-      setHasMoreResults(enrichedInvoices.length === pageSize);
-      console.log('📋 [LOAD] Load completed successfully!');
-    } catch (error) {
-      console.error('📋 [LOAD] Error loading invoices:', error);
-      console.error('📋 [LOAD] Error code:', error?.code);
-      console.error('📋 [LOAD] Error message:', error?.message);
+      if (error) throw error;
+      await processInvoiceResults(data || [], append);
+    } catch (error: any) {
+      console.error('Error loading invoices:', error);
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -412,122 +406,44 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   };
 
   const handleSearch = async (resetResults = true) => {
-    console.log('🔍 [SEARCH] Starting search...');
     const searchTermTrimmed = searchTerm.trim();
     const hasSearchTerm = searchTermTrimmed.length >= 3;
     const hasFilters = hasSearchTerm || statusFilter !== 'all' || customerFilter !== 'all' ||
                        selectedCustomers.length > 0 || balanceFilter !== 'all' || colorFilter !== 'all' ||
                        dateFrom || dateTo;
 
-    console.log('🔍 [SEARCH] Has filters:', hasFilters);
-    console.log('🔍 [SEARCH] Search term:', searchTermTrimmed);
-    console.log('🔍 [SEARCH] Status filter:', statusFilter);
-    console.log('🔍 [SEARCH] Balance filter:', balanceFilter);
-    console.log('🔍 [SEARCH] Color filter:', colorFilter);
-    console.log('🔍 [SEARCH] Date from:', dateFrom);
-    console.log('🔍 [SEARCH] Date to:', dateTo);
-    console.log('🔍 [SEARCH] Selected customers:', selectedCustomers.length);
-
     if (!hasFilters) {
-      console.log('🔍 [SEARCH] No filters, loading all invoices...');
       loadInvoices();
       return;
     }
 
-    if (searchTermTrimmed.length > 0 && searchTermTrimmed.length < 3) {
-      console.log('🔍 [SEARCH] Search term too short, aborting...');
-      return;
-    }
+    if (searchTermTrimmed.length > 0 && searchTermTrimmed.length < 3) return;
 
     searchAbortController.current = new AbortController();
     const currentController = searchAbortController.current;
 
     if (resetResults) {
-      console.log('🔍 [SEARCH] Resetting results, showing loading state...');
       setLoading(true);
       setDisplayedInvoices([]);
     } else {
-      console.log('🔍 [SEARCH] Loading more results...');
       setLoadingMore(true);
     }
     setIsSearching(true);
 
     try {
-      if (currentController.signal.aborted) {
-        console.log('🔍 [SEARCH] Request was aborted');
-        return;
-      }
+      if (currentController.signal.aborted) return;
 
       const offset = resetResults ? 0 : displayedInvoices.length;
-      console.log('🔍 [SEARCH] Offset:', offset, 'Limit:', pageSize);
+      const { data, error } = await buildInvoiceQuery(offset, hasSearchTerm ? searchTermTrimmed : null);
 
-      const searchParams = {
-        search_term: hasSearchTerm ? searchTermTrimmed : null,
-        status_filter: statusFilter !== 'all' ? statusFilter : null,
-        customer_filter: customerFilter !== 'all' ? customerFilter : null,
-        customer_ids: selectedCustomers.length > 0 ? selectedCustomers : null,
-        balance_filter: balanceFilter !== 'all' ? balanceFilter : null,
-        color_filter: colorFilter !== 'all' ? colorFilter : null,
-        date_from: dateFrom || null,
-        date_to: dateTo || null,
-        sort_by: sortBy,
-        sort_order: sortOrder,
-        p_limit: pageSize,
-        p_offset: offset
-      };
-
-      console.log('🔍 [SEARCH] Calling search_invoices_paginated with params:', searchParams);
-      const startTime = performance.now();
-
-      const { data, error } = await supabase.rpc('search_invoices_paginated', searchParams);
-
-      const endTime = performance.now();
-      console.log(`🔍 [SEARCH] RPC call completed in ${(endTime - startTime).toFixed(2)}ms`);
-
-      if (error) {
-        console.error('🔍 [SEARCH] RPC error:', error);
-        throw error;
-      }
-
-      console.log('🔍 [SEARCH] Received', data?.length || 0, 'invoices from database');
-
-      const invoices = (data || []).map(invoice => ({
-        ...invoice,
-        customer_name: invoice.customer_name || invoice.customer,
-        userAssignedColor: invoice.last_modified_by_color || 'none',
-        reference_nbr: invoice.reference_number
-      }));
-
-      console.log('🔍 [SEARCH] Mapped invoices, now enriching with user colors...');
-      const enrichStartTime = performance.now();
-      const enrichedInvoices = await enrichInvoicesWithUserColors(invoices);
-      const enrichEndTime = performance.now();
-      console.log(`🔍 [SEARCH] Enrichment completed in ${(enrichEndTime - enrichStartTime).toFixed(2)}ms`);
-
-      if (resetResults) {
-        console.log('🔍 [SEARCH] Setting', enrichedInvoices.length, 'invoices as displayed results');
-        setDisplayedInvoices(enrichedInvoices);
-      } else {
-        console.log('🔍 [SEARCH] Appending', enrichedInvoices.length, 'invoices to existing results');
-        setDisplayedInvoices(prev => [...prev, ...enrichedInvoices]);
-      }
-
-      setHasMoreResults(enrichedInvoices.length === pageSize);
-      console.log('🔍 [SEARCH] Has more results:', enrichedInvoices.length === pageSize);
-      console.log('🔍 [SEARCH] Search completed successfully!');
-    } catch (error) {
-      console.error('🔍 [SEARCH] Error during search:', error);
-      console.error('🔍 [SEARCH] Error code:', error?.code);
-      console.error('🔍 [SEARCH] Error message:', error?.message);
-      console.error('🔍 [SEARCH] Full error object:', JSON.stringify(error, null, 2));
-
+      if (error) throw error;
+      await processInvoiceResults(data || [], !resetResults);
+    } catch (error: any) {
+      console.error('Search error:', error);
       if (error?.code === '57014') {
         alert('Search timed out. Please add more specific filters or search terms.');
-      } else {
-        alert(`Search error: ${error?.message || 'Unknown error'}`);
       }
     } finally {
-      console.log('🔍 [SEARCH] Cleaning up loading states...');
       setLoading(false);
       setLoadingMore(false);
     }

@@ -222,49 +222,49 @@ export default function Customers({ onBack }: CustomersProps) {
     setLoading(true);
     setIsSearching(false);
     try {
-      // Get GRAND TOTAL count from acumatica_customers (unfiltered)
-      const { count: totalCustomersCount, error: countError } = await supabase
-        .from('acumatica_customers')
-        .select('*', { count: 'exact', head: true });
+      const [countResult, customerResult, analyticsResult] = await Promise.all([
+        supabase
+          .from('acumatica_customers')
+          .select('*', { count: 'exact', head: true }),
+        supabase
+          .from('customers')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        supabase
+          .rpc('get_customers_with_balance', {
+            p_search: null,
+            p_status_filter: 'all',
+            p_country_filter: 'all',
+            p_sort_by: 'customer_name',
+            p_sort_order: 'asc',
+            p_limit: 10000,
+            p_offset: 0,
+            p_date_from: null,
+            p_date_to: null,
+            p_balance_filter: 'all',
+            p_min_balance: null,
+            p_max_balance: null,
+            p_min_open_invoices: null,
+            p_max_open_invoices: null,
+            p_min_invoice_amount: null,
+            p_max_invoice_amount: null,
+            p_exclude_credit_memos: excludeCreditMemos
+          })
+      ]);
 
-      if (countError) {
-        console.error('Error getting total count:', countError);
+      if (countResult.error) {
+        console.error('Error getting total count:', countResult.error);
       } else {
-        setGrandTotalCustomers(totalCustomersCount || 0);
+        setGrandTotalCustomers(countResult.count || 0);
       }
 
-      // Get customers from customers table
-      const { data: customerData, error: customerError } = await supabase
-        .from('customers')
-        .select('*')
-        .order('created_at', { ascending: false });
+      if (customerResult.error) throw customerResult.error;
 
-      if (customerError) throw customerError;
+      const customerData = customerResult.data;
+      const analyticsData = analyticsResult.data;
 
-      // Get customers with analytics (balance, invoice counts) - NO FILTERS
-      const { data: analyticsData, error: analyticsError } = await supabase
-        .rpc('get_customers_with_balance', {
-          p_search: null,
-          p_status_filter: 'all',
-          p_country_filter: 'all',
-          p_sort_by: 'customer_name',
-          p_sort_order: 'asc',
-          p_limit: 10000,
-          p_offset: 0,
-          p_date_from: null,
-          p_date_to: null,
-          p_balance_filter: 'all',
-          p_min_balance: null,
-          p_max_balance: null,
-          p_min_open_invoices: null,
-          p_max_open_invoices: null,
-          p_min_invoice_amount: null,
-          p_max_invoice_amount: null,
-          p_exclude_credit_memos: excludeCreditMemos
-        });
-
-      if (analyticsError) {
-        console.error('Analytics error:', analyticsError);
+      if (analyticsResult.error) {
+        console.error('Analytics error:', analyticsResult.error);
       }
 
       // Create a map of analytics data by customer_id

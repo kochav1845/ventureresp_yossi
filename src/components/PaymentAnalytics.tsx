@@ -171,6 +171,22 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   // Payment applications cache
   const [paymentApplicationsCache, setPaymentApplicationsCache] = useState<Map<string, InvoiceApplication[]>>(new Map());
 
+  const customerMapRef = useRef<Map<string, string>>(new Map());
+  const customerMapLoadedRef = useRef(false);
+
+  const ensureCustomerMap = async () => {
+    if (customerMapLoadedRef.current && customerMapRef.current.size > 0) {
+      return customerMapRef.current;
+    }
+    const { data: customers } = await supabase
+      .from('acumatica_customers')
+      .select('customer_id, customer_name');
+    const map = new Map(customers?.map(c => [c.customer_id, c.customer_name]) || []);
+    customerMapRef.current = map;
+    customerMapLoadedRef.current = true;
+    return map;
+  };
+
   // Intersection observer for infinite scroll
   const observer = useRef<IntersectionObserver | null>(null);
 
@@ -876,12 +892,12 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       let hasMore = true;
       let batchCount = 0;
 
+      const customerMap = await ensureCustomerMap();
+
       while (hasMore) {
         batchCount++;
-        console.log(`Fetching payment batch ${batchCount}...`);
         setLoadingBatchInfo(`Loading batch ${batchCount}...`);
 
-        // Build query with appropriate end date filter
         let query = supabase
           .from('acumatica_payments')
           .select('*')
@@ -889,7 +905,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           .neq('status', 'Voided')
           .gte('application_date', startStr);
 
-        // Use .lte() for inclusive end dates (custom range), .lt() for exclusive (month boundary)
         if (useInclusiveEnd) {
           query = query.lte('application_date', endStr);
         } else {
@@ -903,10 +918,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         if (error) throw error;
 
         if (batch && batch.length > 0) {
-          // Process this batch immediately
           const paymentIds = batch.map(p => p.id);
 
-          // Fetch applications for this batch
           const applications = await batchedInQuery(
             supabase,
             'payment_invoice_applications',
@@ -923,16 +936,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
             applicationsByPayment.get(app.payment_id)!.push(app);
           });
 
-          // Fetch customer names for this batch
-          const customerIds = [...new Set(batch.map(p => p.customer_id).filter(Boolean))];
-          const { data: customers } = await supabase
-            .from('acumatica_customers')
-            .select('customer_id, customer_name')
-            .in('customer_id', customerIds);
-
-          const customerMap = new Map(customers?.map(c => [c.customer_id, c.customer_name]) || []);
-
-          // Create payment rows for this batch
           const batchPaymentRows: PaymentRow[] = batch.map((payment: any) => {
             const apps = applicationsByPayment.get(payment.id) || [];
             const totalApplied = apps
@@ -957,15 +960,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
             };
           });
 
-          // Append to all payments
           allPaymentRows = [...allPaymentRows, ...batchPaymentRows];
 
-          // Update state immediately with current payments
           setPayments([...allPaymentRows]);
-          console.log(`Loaded ${allPaymentRows.length} payments so far...`);
           setLoadingBatchInfo(`Loaded ${allPaymentRows.length} payments...`);
 
-          // Update running totals (excluding excluded customers)
           const nonExcludedPayments = allPaymentRows.filter(p => !excludedCustomerIds.has(p.customer_id));
           const runningTotal = nonExcludedPayments.reduce((sum, p) => sum + p.payment_amount, 0);
           const runningUniqueCustomers = new Set(nonExcludedPayments.map(p => p.customer_id).filter(Boolean));
@@ -980,8 +979,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           hasMore = false;
         }
       }
-
-      console.log(`Total payments loaded: ${allPaymentRows.length}`);
     } catch (error) {
       console.error('Error loading monthly data:', error);
     } finally {

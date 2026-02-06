@@ -55,33 +55,43 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
     };
   }, [searchTerm, statusFilter, customerFilter, typeFilter, hasApplicationsFilter, sortBy, sortOrder]);
 
+  const customerMapRef = useRef<Map<string, string>>(new Map());
+  const customerMapLoadedRef = useRef(false);
+
+  const ensureCustomerMap = async () => {
+    if (customerMapLoadedRef.current && customerMapRef.current.size > 0) {
+      return customerMapRef.current;
+    }
+    const { data: customers } = await supabase
+      .from('acumatica_customers')
+      .select('customer_id, customer_name');
+    const map = new Map(customers?.map(c => [c.customer_id, c.customer_name]) || []);
+    customerMapRef.current = map;
+    customerMapLoadedRef.current = true;
+    return map;
+  };
+
   const loadPayments = async (page = 0) => {
     setLoading(true);
     setIsSearching(false);
     try {
-      const { count } = await supabase
-        .from('acumatica_payments')
-        .select('*', { count: 'exact', head: true });
+      const [countResult, dataResult, customerMap] = await Promise.all([
+        supabase
+          .from('acumatica_payments')
+          .select('*', { count: 'exact', head: true }),
+        supabase
+          .from('acumatica_payments')
+          .select('id, reference_number, type, customer_id, status, application_date, payment_amount, available_balance, currency_id, description, payment_method, payment_ref, cash_account, hold, is_cc_payment, last_modified_datetime, synced_at, created_at, last_sync_timestamp')
+          .order('application_date', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1),
+        ensureCustomerMap()
+      ]);
 
-      setTotalCount(count || 0);
+      setTotalCount(countResult.count || 0);
 
-      const { data, error } = await supabase
-        .from('acumatica_payments')
-        .select('id, reference_number, type, customer_id, status, application_date, payment_amount, available_balance, currency_id, description, payment_method, payment_ref, cash_account, hold, is_cc_payment, last_modified_datetime, synced_at, created_at, last_sync_timestamp')
-        .order('application_date', { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
+      if (dataResult.error) throw dataResult.error;
 
-      if (error) throw error;
-
-      const { data: customers } = await supabase
-        .from('acumatica_customers')
-        .select('customer_id, customer_name');
-
-      const customerMap = new Map(
-        customers?.map(c => [c.customer_id, c.customer_name]) || []
-      );
-
-      const paymentsWithCustomerNames = (data || []).map(payment => ({
+      const paymentsWithCustomerNames = (dataResult.data || []).map(payment => ({
         ...payment,
         customer_name: customerMap.get(payment.customer_id) || payment.customer_id
       }));
@@ -117,22 +127,14 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
     setLoading(true);
     setIsSearching(true);
     try {
-      // First, fetch ALL customers to map names
-      const { data: customers } = await supabase
-        .from('acumatica_customers')
-        .select('customer_id, customer_name');
+      const customerMap = await ensureCustomerMap();
 
-      const customerMap = new Map(
-        customers?.map(c => [c.customer_id, c.customer_name]) || []
-      );
-
-      // If searching, also find customer IDs that match the search term
       let matchingCustomerIds: string[] = [];
       if (hasSearchTerm) {
         const searchLower = searchTermTrimmed.toLowerCase();
-        matchingCustomerIds = customers
-          ?.filter(c => c.customer_name?.toLowerCase().includes(searchLower))
-          .map(c => c.customer_id) || [];
+        matchingCustomerIds = Array.from(customerMap.entries())
+          .filter(([, name]) => name?.toLowerCase().includes(searchLower))
+          .map(([id]) => id);
       }
 
       let query = supabase
@@ -385,28 +387,17 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
   const fetchPaymentDetails = async (paymentId: string) => {
     setLoadingPaymentDetails(true);
     try {
-      const { data, error } = await supabase
-        .from('acumatica_payments')
-        .select('*')
-        .eq('id', paymentId)
-        .maybeSingle();
+      const [paymentResult, customerMap] = await Promise.all([
+        supabase.from('acumatica_payments').select('*').eq('id', paymentId).maybeSingle(),
+        ensureCustomerMap()
+      ]);
 
-      if (error) throw error;
+      if (paymentResult.error) throw paymentResult.error;
 
-      const { data: customers } = await supabase
-        .from('acumatica_customers')
-        .select('customer_id, customer_name');
-
-      const customerMap = new Map(
-        customers?.map(c => [c.customer_id, c.customer_name]) || []
-      );
-
-      const paymentWithCustomerName = {
-        ...data,
-        customer_name: customerMap.get(data?.customer_id) || data?.customer_id
-      };
-
-      setSelectedPayment(paymentWithCustomerName);
+      setSelectedPayment({
+        ...paymentResult.data,
+        customer_name: customerMap.get(paymentResult.data?.customer_id) || paymentResult.data?.customer_id
+      });
     } catch (error) {
       console.error('Error fetching payment details:', error);
       alert('Failed to load payment details');
