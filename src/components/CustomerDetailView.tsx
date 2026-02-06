@@ -179,7 +179,15 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           p_limit: 1,
           p_offset: 0,
           p_date_from: null,
-          p_date_to: null
+          p_date_to: null,
+          p_balance_filter: 'all',
+          p_min_balance: null,
+          p_max_balance: null,
+          p_min_open_invoices: null,
+          p_max_open_invoices: null,
+          p_min_invoice_amount: null,
+          p_max_invoice_amount: null,
+          p_exclude_credit_memos: false
         });
 
       if (balanceError) throw balanceError;

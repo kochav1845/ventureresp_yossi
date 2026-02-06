@@ -73,6 +73,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const [activeQuickFilter, setActiveQuickFilter] = useState<string | null>(null);
   const [showAssignCustomerModal, setShowAssignCustomerModal] = useState(false);
   const [customerToAssign, setCustomerToAssign] = useState<{ id: string; name: string } | null>(null);
+  const [excludeCreditMemos, setExcludeCreditMemos] = useState(false);
   const observer = useRef<IntersectionObserver | null>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -131,7 +132,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     setPage(0);
     setDisplayedCustomers([]);
     loadCustomers();
-  }, [searchTerm, statusFilter, countryFilter, balanceFilter, sortBy, sortOrder, dateFrom, dateTo, minOpenInvoices, maxOpenInvoices, minBalance, maxBalance]);
+  }, [searchTerm, statusFilter, countryFilter, balanceFilter, sortBy, sortOrder, dateFrom, dateTo, minOpenInvoices, maxOpenInvoices, minBalance, maxBalance, excludeCreditMemos]);
 
   // Load analytics from ALL filtered customers (not just displayed page)
   const loadAnalytics = useCallback(async () => {
@@ -443,6 +444,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
           p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
           p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
+          p_min_invoice_amount: null,
+          p_max_invoice_amount: null,
           p_date_context: dateRangeContext
         });
 
@@ -464,7 +467,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_min_balance: minBalance ? parseFloat(minBalance) : null,
           p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
           p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
-          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null
+          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
+          p_min_invoice_amount: null,
+          p_max_invoice_amount: null,
+          p_exclude_credit_memos: excludeCreditMemos
         });
 
       if (error) throw error;
@@ -607,6 +613,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
           p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
           p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
+          p_min_invoice_amount: null,
+          p_max_invoice_amount: null,
           p_date_context: dateRangeContext
         });
 
@@ -628,7 +636,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_min_balance: minBalance ? parseFloat(minBalance) : null,
           p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
           p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
-          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null
+          p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
+          p_min_invoice_amount: null,
+          p_max_invoice_amount: null,
+          p_exclude_credit_memos: excludeCreditMemos
         });
 
       if (error) throw error;
@@ -1334,6 +1345,24 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                           />
                         </div>
                       </div>
+                    </div>
+
+                    <div className="md:col-span-2 lg:col-span-3">
+                      <label className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={!excludeCreditMemos}
+                          onChange={(e) => setExcludeCreditMemos(!e.target.checked)}
+                          className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                        />
+                        <div>
+                          <span className="text-sm font-medium text-gray-900">Include Credit Memos</span>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            When checked, credit memos are subtracted from the total balance (net balance).
+                            When unchecked, only invoices are counted toward the balance.
+                          </p>
+                        </div>
+                      </label>
                     </div>
                   </div>
                 )}
