@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare, Download, UserPlus } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare, Download, UserPlus, Settings } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import AcumaticaInvoiceTest from './AcumaticaInvoiceTest';
 import CustomerDetailView from './CustomerDetailView';
 import AssignCustomerModal from './AssignCustomerModal';
+import QuickFilterManager from './QuickFilterManager';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { exportToExcel } from '../lib/excelExport';
 
@@ -74,6 +75,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const [showAssignCustomerModal, setShowAssignCustomerModal] = useState(false);
   const [customerToAssign, setCustomerToAssign] = useState<{ id: string; name: string } | null>(null);
   const [excludeCreditMemos, setExcludeCreditMemos] = useState(false);
+  const [customQuickFilters, setCustomQuickFilters] = useState<any[]>([]);
+  const [showQuickFilterManager, setShowQuickFilterManager] = useState(false);
   const observer = useRef<IntersectionObserver | null>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -83,6 +86,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     loadGrandTotal();
     loadExcludedCustomers();
     loadSavedFilters();
+    loadCustomQuickFilters();
     loadCustomers();
     // Load banner dismissal states from localStorage
     const bannerDismissed = localStorage.getItem('customers_exclusionBannerDismissed');
@@ -222,6 +226,22 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       setSavedFilters(data || []);
     } catch (error) {
       console.error('Error loading saved filters:', error);
+    }
+  };
+
+  const loadCustomQuickFilters = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_quick_filters')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+
+      setCustomQuickFilters(data || []);
+    } catch (error) {
+      console.error('Error loading custom quick filters:', error);
     }
   };
 
@@ -562,6 +582,14 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     setActiveQuickFilter(preset);
     const today = new Date();
 
+    // Check if this is a custom filter
+    const customFilter = customQuickFilters.find(f => f.id === preset);
+    if (customFilter) {
+      applyCustomFilterConfig(customFilter.filter_config);
+      return;
+    }
+
+    // Handle built-in presets
     switch (preset) {
       case 'last_90_days_debt':
         const date90 = new Date(today);
@@ -595,6 +623,47 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         setBalanceFilter('positive');
         break;
     }
+  };
+
+  const applyCustomFilterConfig = (config: any) => {
+    const today = new Date();
+
+    // Apply date range
+    if (config.dateRange) {
+      if (config.dateRange.type === 'relative' && config.dateRange.relativeDays) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - config.dateRange.relativeDays);
+        setDateFrom(date.toISOString().split('T')[0]);
+        setDateTo(today.toISOString().split('T')[0]);
+      } else if (config.dateRange.type === 'absolute') {
+        if (config.dateRange.fromDate) setDateFrom(config.dateRange.fromDate);
+        if (config.dateRange.toDate) setDateTo(config.dateRange.toDate);
+      }
+    }
+
+    // Apply balance filters
+    if (config.balance) {
+      if (config.balance.min !== undefined) {
+        setMinBalance(config.balance.min.toString());
+        setBalanceFilter('positive');
+      }
+      if (config.balance.max !== undefined) {
+        setMaxBalance(config.balance.max.toString());
+      }
+    }
+
+    // Apply invoice count filters
+    if (config.invoiceCount) {
+      if (config.invoiceCount.min !== undefined) {
+        setMinOpenInvoices(config.invoiceCount.min.toString());
+      }
+      if (config.invoiceCount.max !== undefined) {
+        setMaxOpenInvoices(config.invoiceCount.max.toString());
+      }
+    }
+
+    // Note: Some filters like colorStatus, hasCollectorAssigned, hasActiveTickets
+    // may need additional state variables or backend support to filter properly
   };
 
   const handleExportToExcel = async () => {
@@ -1033,56 +1102,74 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
         <div className="mb-6 space-y-4">
           {/* Quick Preset Filters */}
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Zap className="w-5 h-5 text-yellow-400" />
-              <h3 className="text-sm font-semibold text-gray-900">Quick Filters</h3>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-yellow-400" />
+                <h3 className="text-sm font-semibold text-gray-900">Quick Filters</h3>
+              </div>
+              <button
+                onClick={() => setShowQuickFilterManager(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-medium transition-all"
+                title="Manage Quick Filters"
+              >
+                <Settings className="w-4 h-4" />
+                Manage
+              </button>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => applyQuickFilter('last_90_days_debt')}
-                className={`flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-gray-900 rounded-lg text-sm font-medium transition-all ${
-                  activeQuickFilter === 'last_90_days_debt' ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-white shadow-lg scale-105' : ''
-                }`}
-              >
-                <Clock className="w-4 h-4" />
-                Last 90 Days with Debt
-              </button>
-              <button
-                onClick={() => applyQuickFilter('last_30_days')}
-                className={`flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-all ${
-                  activeQuickFilter === 'last_30_days' ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-white shadow-lg scale-105' : ''
-                }`}
-              >
-                <Calendar className="w-4 h-4" />
-                Last 30 Days
-              </button>
-              <button
-                onClick={() => applyQuickFilter('last_180_days')}
-                className={`flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-all ${
-                  activeQuickFilter === 'last_180_days' ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-white shadow-lg scale-105' : ''
-                }`}
-              >
-                <Calendar className="w-4 h-4" />
-                Last 180 Days
-              </button>
-              <button
-                onClick={() => applyQuickFilter('high_balance')}
-                className={`flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-all ${
-                  activeQuickFilter === 'high_balance' ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-white shadow-lg scale-105' : ''
-                }`}
-              >
-                <DollarSign className="w-4 h-4" />
-                High Balance ($10K+)
-              </button>
-              <button
-                onClick={() => applyQuickFilter('multiple_overdue')}
-                className={`flex items-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-gray-900 rounded-lg text-sm font-medium transition-all ${
-                  activeQuickFilter === 'multiple_overdue' ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-white shadow-lg scale-105' : ''
-                }`}
-              >
-                <Target className="w-4 h-4" />
-                Multiple Overdue (3+)
-              </button>
+              {customQuickFilters.length === 0 ? (
+                <div className="text-sm text-gray-500 py-2">
+                  No quick filters yet. Click "Manage" to create your first custom filter!
+                </div>
+              ) : (
+                customQuickFilters.map((filter) => {
+                  const getColorClasses = (color: string) => {
+                    const colorMap: Record<string, string> = {
+                      blue: 'bg-blue-600 hover:bg-blue-700 text-white',
+                      red: 'bg-red-600 hover:bg-red-700 text-white',
+                      green: 'bg-green-600 hover:bg-green-700 text-white',
+                      purple: 'bg-purple-600 hover:bg-purple-700 text-white',
+                      orange: 'bg-orange-600 hover:bg-orange-700 text-white',
+                      yellow: 'bg-yellow-500 hover:bg-yellow-600 text-gray-900',
+                      pink: 'bg-pink-600 hover:bg-pink-700 text-white',
+                      cyan: 'bg-cyan-600 hover:bg-cyan-700 text-white',
+                      gray: 'bg-gray-600 hover:bg-gray-700 text-white'
+                    };
+                    return colorMap[color] || colorMap.blue;
+                  };
+
+                  const getIconComponent = (iconName: string) => {
+                    const iconMap: Record<string, any> = {
+                      'filter': Filter,
+                      'zap': Zap,
+                      'calendar': Calendar,
+                      'clock': Clock,
+                      'dollar-sign': DollarSign,
+                      'file-text': FileText,
+                      'alert-triangle': AlertTriangle,
+                      'target': Target,
+                      'users': Users
+                    };
+                    const IconComponent = iconMap[iconName] || Filter;
+                    return <IconComponent className="w-4 h-4" />;
+                  };
+
+                  return (
+                    <button
+                      key={filter.id}
+                      onClick={() => applyQuickFilter(filter.id)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                        getColorClasses(filter.color)
+                      } ${
+                        activeQuickFilter === filter.id ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-white shadow-lg scale-105' : ''
+                      }`}
+                    >
+                      {getIconComponent(filter.icon)}
+                      {filter.name}
+                    </button>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -2128,6 +2215,17 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           }}
           onAssignmentComplete={() => {
             loadCustomers();
+          }}
+        />
+      )}
+
+      {/* Quick Filter Manager */}
+      {showQuickFilterManager && (
+        <QuickFilterManager
+          onClose={() => setShowQuickFilterManager(false)}
+          onFiltersUpdated={() => {
+            loadCustomQuickFilters();
+            setShowQuickFilterManager(false);
           }}
         />
       )}
