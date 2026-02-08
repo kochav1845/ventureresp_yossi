@@ -867,9 +867,9 @@ export default function UnifiedTicketingSystem({
         </div>
 
         <div className="bg-white rounded-lg shadow-sm mb-6">
-          <div className="border-b border-gray-200">
-            <div className="flex gap-1 p-1">
-              {!showOnlyAssigned && (
+          {!showOnlyAssigned && (
+            <div className="border-b border-gray-200">
+              <div className="flex gap-1 p-1">
                 <button
                   onClick={() => setActiveTab('create')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
@@ -881,42 +881,42 @@ export default function UnifiedTicketingSystem({
                   <Plus className="w-5 h-5" />
                   Create Ticket
                 </button>
-              )}
-              <button
-                onClick={() => setActiveTab('tickets')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeTab === 'tickets'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <TicketIcon className="w-5 h-5" />
-                Tickets ({filteredTickets.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('individual')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeTab === 'individual'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <FileText className="w-5 h-5" />
-                Individual Invoices ({filteredIndividualAssignments.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('overdue')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeTab === 'overdue'
-                    ? 'bg-red-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <AlertTriangle className="w-5 h-5" />
-                Overdue Tickets ({overdueTickets.length})
-              </button>
+                <button
+                  onClick={() => setActiveTab('tickets')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                    activeTab === 'tickets'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <TicketIcon className="w-5 h-5" />
+                  Tickets ({filteredTickets.length})
+                </button>
+                <button
+                  onClick={() => setActiveTab('individual')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                    activeTab === 'individual'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <FileText className="w-5 h-5" />
+                  Individual Invoices ({filteredIndividualAssignments.length})
+                </button>
+                <button
+                  onClick={() => setActiveTab('overdue')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                    activeTab === 'overdue'
+                      ? 'bg-red-600 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <AlertTriangle className="w-5 h-5" />
+                  Overdue Tickets ({overdueTickets.length})
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {activeTab === 'create' && !showOnlyAssigned && (
             <div className="p-6">
@@ -1139,7 +1139,7 @@ export default function UnifiedTicketingSystem({
             </div>
           )}
 
-          {(activeTab === 'tickets' || activeTab === 'overdue') && (
+          {(showOnlyAssigned || activeTab === 'tickets' || activeTab === 'overdue') && (
             <div className="p-6">
               <TicketSearchFilter
                 filters={filters}
@@ -1162,7 +1162,7 @@ export default function UnifiedTicketingSystem({
               </div>
 
               <div className="mt-6 space-y-6">
-                {(activeTab === 'overdue' ? overdueTickets : filteredTickets).length === 0 ? (
+                {(showOnlyAssigned ? filteredTickets : activeTab === 'overdue' ? overdueTickets : filteredTickets).length === 0 ? (
                   <div className="text-center py-12">
                     <TicketIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-500">
@@ -1177,7 +1177,7 @@ export default function UnifiedTicketingSystem({
                     </p>
                   </div>
                 ) : (
-                  (activeTab === 'overdue' ? overdueTickets : filteredTickets).map(ticket => (
+                  (showOnlyAssigned ? filteredTickets : activeTab === 'overdue' ? overdueTickets : filteredTickets).map(ticket => (
                     <TicketCard
                       key={ticket.ticket_id}
                       ticket={ticket}
