@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare, Download, UserPlus, Settings } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare, Download, UserPlus, Settings, Info, HelpCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
@@ -13,6 +13,39 @@ import { exportToExcel } from '../lib/excelExport';
 
 interface AcumaticaCustomersProps {
   onBack?: () => void;
+}
+
+interface TooltipProps {
+  content: string;
+  title?: string;
+  children?: React.ReactNode;
+}
+
+function InfoTooltip({ content, title, children }: TooltipProps) {
+  const [isVisible, setIsVisible] = useState(false);
+
+  return (
+    <div className="relative inline-block">
+      <button
+        type="button"
+        onMouseEnter={() => setIsVisible(true)}
+        onMouseLeave={() => setIsVisible(false)}
+        onClick={() => setIsVisible(!isVisible)}
+        className="ml-1.5 text-gray-400 hover:text-blue-500 transition-colors focus:outline-none"
+      >
+        {children || <Info className="w-4 h-4" />}
+      </button>
+      {isVisible && (
+        <div className="absolute z-50 w-80 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl left-6 top-0 transform -translate-y-1/4">
+          <div className="absolute left-0 top-1/4 transform -translate-x-1 translate-y-1">
+            <div className="w-2 h-2 bg-gray-900 rotate-45"></div>
+          </div>
+          {title && <div className="font-semibold mb-1.5 text-blue-300">{title}</div>}
+          <div className="leading-relaxed whitespace-normal">{content}</div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) {
@@ -136,7 +169,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     setPage(0);
     setDisplayedCustomers([]);
     loadCustomers();
-  }, [searchTerm, statusFilter, countryFilter, balanceFilter, sortBy, sortOrder, dateFrom, dateTo, minOpenInvoices, maxOpenInvoices, minBalance, maxBalance, excludeCreditMemos]);
+  }, [searchTerm, statusFilter, countryFilter, balanceFilter, sortBy, sortOrder, dateFrom, dateTo, minOpenInvoices, maxOpenInvoices, minBalance, maxBalance, excludeCreditMemos, dateRangeContext]);
 
   // Load analytics from ALL filtered customers (not just displayed page)
   const loadAnalytics = useCallback(async () => {
@@ -490,7 +523,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
           p_min_invoice_amount: null,
           p_max_invoice_amount: null,
-          p_exclude_credit_memos: excludeCreditMemos
+          p_exclude_credit_memos: excludeCreditMemos,
+          p_date_context: dateRangeContext
         });
 
       if (error) throw error;
@@ -812,13 +846,15 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     searchTerm !== '',
     statusFilter !== 'all',
     countryFilter !== 'all',
-    balanceFilter !== 'all',
+    balanceFilter !== 'positive', // 'positive' is the default, not a filter
     dateFrom !== '',
     dateTo !== '',
     minOpenInvoices !== '',
     maxOpenInvoices !== '',
     minBalance !== '',
-    maxBalance !== ''
+    maxBalance !== '',
+    excludeCreditMemos === true, // Only count if explicitly enabled
+    dateRangeContext !== 'invoice_date' // 'invoice_date' is the default
   ].filter(Boolean).length;
 
 
@@ -1197,8 +1233,14 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 placeholder="Search by customer ID, name, email, class, city, or country..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full pl-12 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
               />
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <InfoTooltip
+                  title="Global Customer Search"
+                  content="Search across multiple customer fields simultaneously: Customer ID (exact or partial match), Customer Name, Email Address, Customer Class, City, and Country. The search is case-insensitive and works with partial matches. Combines with all other active filters."
+                />
+              </div>
             </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
@@ -1235,8 +1277,12 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
                     Status
+                    <InfoTooltip
+                      title="Customer Status Filter"
+                      content="Filter customers by their current status in Acumatica. Active = doing business, Inactive = not currently engaged, Hold = temporarily suspended. This is the status synced from Acumatica."
+                    />
                   </label>
                   <select
                     value={statusFilter}
@@ -1251,8 +1297,12 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
                     Country
+                    <InfoTooltip
+                      title="Country Filter"
+                      content="Filter customers by their billing or shipping country. Only customers with a country specified in Acumatica will appear in this dropdown. Useful for regional analysis or targeted collection efforts."
+                    />
                   </label>
                   <select
                     value={countryFilter}
@@ -1267,8 +1317,12 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
                     Balance
+                    <InfoTooltip
+                      title="Balance Filter"
+                      content="Filter by customer balance type. Positive = owes money (accounts receivable), Negative = has credit on account, Zero = no outstanding balance. The balance is calculated from all open invoices minus payments and credit memos applied."
+                    />
                   </label>
                   <select
                     value={balanceFilter}
@@ -1283,8 +1337,12 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
                     Sort By
+                    <InfoTooltip
+                      title="Sort Options"
+                      content="Order the customer list by different criteria. Click the arrow button to toggle between ascending (↑) and descending (↓) order. Sorting applies to all loaded customers and affects pagination."
+                    />
                   </label>
                   <div className="flex gap-2">
                     <select
@@ -1318,8 +1376,14 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     onChange={(e) => setExcludeCreditMemos(e.target.checked)}
                     className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
                   />
-                  <div>
-                    <span className="text-sm font-medium text-gray-900">Exclude Credit Memos</span>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm font-medium text-gray-900">Exclude Credit Memos</span>
+                      <InfoTooltip
+                        title="Credit Memo Exclusion"
+                        content="When enabled, customer balances are calculated WITHOUT subtracting credit memos. This shows the gross amount owed before any credits are applied. Useful for seeing full invoice obligations before adjustments. When disabled (default), balances show the net amount after credit memos are deducted."
+                      />
+                    </div>
                     <p className="text-xs text-gray-500 mt-0.5">
                       Show only invoice balances without credit memo deductions
                     </p>
@@ -1341,7 +1405,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 {showAdvancedFilters && (
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-white/50 rounded-lg border border-gray-200">
                     <div className="md:col-span-2 lg:col-span-3">
-                      <h4 className="text-sm font-medium text-gray-700 mb-3">Date Range Filter</h4>
+                      <div className="flex items-center gap-2 mb-3">
+                        <h4 className="text-sm font-medium text-gray-700">Date Range Filter</h4>
+                        <InfoTooltip
+                          title="Date Range Filter Types"
+                          content="This filter has THREE modes: (1) INVOICE DATE - finds customers with invoices created between the dates (absolute date range). (2) BALANCE DATE - shows customers who owed money as of the end date (point-in-time snapshot). (3) CUSTOMER ADDED - shows new customers first synced in the date range. Select your mode first, then set the dates."
+                        />
+                      </div>
 
                       <div className="mb-4 space-y-2 bg-gray-50/50 p-3 rounded-lg border border-gray-200">
                         <p className="text-xs text-gray-600 mb-2 font-semibold">What do you want to see in this date range?</p>
@@ -1391,7 +1461,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
                       <div className="grid md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs text-gray-600 mb-1">From Date</label>
+                          <div className="flex items-center gap-1 mb-1">
+                            <label className="block text-xs text-gray-600">From Date</label>
+                            <InfoTooltip
+                              title="From Date (Absolute)"
+                              content="The start date for the filter range. This is an ABSOLUTE date - it uses the exact calendar date you select. Leave empty to search from the beginning of time. Used with the filter mode selected above."
+                            />
+                          </div>
                           <input
                             type="date"
                             value={dateFrom}
@@ -1400,7 +1476,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-600 mb-1">To Date</label>
+                          <div className="flex items-center gap-1 mb-1">
+                            <label className="block text-xs text-gray-600">To Date</label>
+                            <InfoTooltip
+                              title="To Date (Absolute)"
+                              content="The end date for the filter range. This is an ABSOLUTE date - it uses the exact calendar date you select. Leave empty to search through today. The time is set to 11:59:59 PM on this date to include the entire day."
+                            />
+                          </div>
                           <input
                             type="date"
                             value={dateTo}
@@ -1412,7 +1494,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     </div>
 
                     <div className="md:col-span-2 lg:col-span-3">
-                      <h4 className="text-sm font-medium text-gray-700 mb-3">Open Invoices Count</h4>
+                      <div className="flex items-center gap-2 mb-3">
+                        <h4 className="text-sm font-medium text-gray-700">Open Invoices Count</h4>
+                        <InfoTooltip
+                          title="Open Invoice Count Filter"
+                          content="Filter customers by how many unpaid/open invoices they have. Min = at least this many invoices, Max = no more than this many. Example: Min=5, Max=20 shows customers with 5 to 20 open invoices. Useful for targeting customers with many small invoices or identifying large account issues. Leave blank for no limits."
+                        />
+                      </div>
                       <div className="grid md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs text-gray-600 mb-1">Minimum</label>
@@ -1440,7 +1528,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     </div>
 
                     <div className="md:col-span-2 lg:col-span-3">
-                      <h4 className="text-sm font-medium text-gray-700 mb-3">Balance Range</h4>
+                      <div className="flex items-center gap-2 mb-3">
+                        <h4 className="text-sm font-medium text-gray-700">Balance Range</h4>
+                        <InfoTooltip
+                          title="Balance Range Filter"
+                          content="Filter customers by their total outstanding balance amount in dollars. Min = customers owing at least this much, Max = customers owing no more than this much. Example: Min=1000, Max=5000 shows customers owing between $1,000 and $5,000. Works with the Balance filter above and credit memo settings. Leave blank for no limits."
+                        />
+                      </div>
                       <div className="grid md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs text-gray-600 mb-1">Minimum ($)</label>
