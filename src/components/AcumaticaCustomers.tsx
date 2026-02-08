@@ -1117,6 +1117,22 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               </button>
             </div>
             <div className="flex flex-wrap gap-2">
+              {/* None Button - Always visible */}
+              <button
+                onClick={() => {
+                  clearFilters();
+                  setActiveQuickFilter(null);
+                }}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeQuickFilter === null
+                    ? 'bg-gray-700 hover:bg-gray-800 text-white ring-2 ring-blue-500 ring-offset-2 ring-offset-white shadow-lg scale-105'
+                    : 'bg-gray-300 hover:bg-gray-400 text-gray-700'
+                }`}
+              >
+                <X className="w-4 h-4" />
+                None
+              </button>
+
               {customQuickFilters.length === 0 ? (
                 <div className="text-sm text-gray-500 py-2">
                   No quick filters yet. Click "Manage" to create your first custom filter!
