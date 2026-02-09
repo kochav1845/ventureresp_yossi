@@ -77,26 +77,29 @@ export default function TicketCard({
           .select('id, ticket_number, status, priority')
           .eq('customer_id', ticket.customer_id)
           .eq('active', true)
-          .neq('id', ticket.ticket_id)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
 
         if (data && data.length > 0) {
-          const ticketsWithCounts = await Promise.all(
-            data.map(async (t) => {
-              const { count } = await supabase
-                .from('invoice_assignments')
-                .select('*', { count: 'exact', head: true })
-                .eq('ticket_id', t.id);
+          const otherTickets = data.filter(t => t.id !== ticket.ticket_id);
 
-              return {
-                ...t,
-                invoice_count: count || 0
-              };
-            })
-          );
-          setRelatedTickets(ticketsWithCounts);
+          if (otherTickets.length > 0) {
+            const ticketsWithCounts = await Promise.all(
+              otherTickets.map(async (t) => {
+                const { count } = await supabase
+                  .from('invoice_assignments')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('ticket_id', t.id);
+
+                return {
+                  ...t,
+                  invoice_count: count || 0
+                };
+              })
+            );
+            setRelatedTickets(ticketsWithCounts);
+          }
         }
       } catch (error) {
         console.error('Error fetching related tickets:', error);
