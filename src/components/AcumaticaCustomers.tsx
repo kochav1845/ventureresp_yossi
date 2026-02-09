@@ -1705,14 +1705,14 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {filteredCustomers.map((customer, index) => {
-                    const hasOverdueOver90Days = customer.max_days_overdue > 90 && customer.calculated_balance > 0;
+                    const exceedsRedThreshold = (customer.max_days_overdue || 0) >= (customer.red_threshold_days || 30) && (customer.calculated_balance || 0) > 0;
                     return (
                     <tr
                       key={customer.id}
                       ref={index === filteredCustomers.length - 1 ? lastCustomerRef : undefined}
                       className={`transition-colors ${
-                        hasOverdueOver90Days
-                          ? 'bg-red-900/40 hover:bg-red-900/60 border-l-4 border-l-red-500'
+                        exceedsRedThreshold
+                          ? 'bg-red-100 hover:bg-red-200 border-l-4 border-l-red-600'
                           : 'hover:bg-gray-100/50'
                       }`}
                     >

@@ -19,6 +19,7 @@ interface CustomerAnalyticsData {
   red_count: number;
   yellow_count: number;
   green_count: number;
+  red_threshold_days: number;
   exclude_from_payment_analytics: boolean;
   exclude_from_customer_analytics: boolean;
 }
@@ -40,6 +41,10 @@ type Customer = {
   oldest_invoice_date?: string | null;
   newest_invoice_date?: string | null;
   max_days_overdue?: number;
+  red_threshold_days?: number;
+  red_count?: number;
+  yellow_count?: number;
+  green_count?: number;
   // Exclusion fields
   exclude_from_payment_analytics?: boolean;
   exclude_from_customer_analytics?: boolean;
@@ -275,6 +280,7 @@ export default function Customers({ onBack }: CustomersProps) {
           balance: item.calculated_balance || 0,
           invoice_count: item.open_invoice_count || 0,
           max_days_overdue: item.max_days_overdue || 0,
+          red_threshold_days: item.red_threshold_days || 30,
           red_count: item.red_count || 0,
           yellow_count: item.yellow_count || 0,
           green_count: item.green_count || 0,
@@ -292,6 +298,7 @@ export default function Customers({ onBack }: CustomersProps) {
           balance: analytics?.balance || 0,
           invoice_count: analytics?.invoice_count || 0,
           max_days_overdue: analytics?.max_days_overdue || 0,
+          red_threshold_days: analytics?.red_threshold_days || 30,
           red_count: analytics?.red_count || 0,
           yellow_count: analytics?.yellow_count || 0,
           green_count: analytics?.green_count || 0,
@@ -1637,9 +1644,17 @@ export default function Customers({ onBack }: CustomersProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {customers.map((customer, index) => (
-                    <tr key={customer.id} className={`border-b border-gray-200 hover:bg-blue-50 transition-colors ${
-                      index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                  {customers.map((customer, index) => {
+                    // Check if customer exceeds their red threshold
+                    const exceedsRedThreshold = (customer.max_days_overdue || 0) >= (customer.red_threshold_days || 30);
+
+                    return (
+                    <tr key={customer.id} className={`border-b border-gray-200 transition-colors ${
+                      exceedsRedThreshold
+                        ? 'bg-red-50 hover:bg-red-100'
+                        : index % 2 === 0
+                          ? 'bg-white hover:bg-blue-50'
+                          : 'bg-gray-50 hover:bg-blue-50'
                     }`}>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
@@ -1819,7 +1834,8 @@ export default function Customers({ onBack }: CustomersProps) {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
