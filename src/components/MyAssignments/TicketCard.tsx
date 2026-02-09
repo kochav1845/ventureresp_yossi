@@ -81,8 +81,12 @@ export default function TicketCard({
 
         if (error) throw error;
 
+        console.log('All active tickets for customer:', data);
+        console.log('Current ticket ID:', ticket.ticket_id);
+
         if (data && data.length > 0) {
           const otherTickets = data.filter(t => t.id !== ticket.ticket_id);
+          console.log('Other tickets after filtering:', otherTickets);
 
           if (otherTickets.length > 0) {
             const ticketsWithCounts = await Promise.all(
