@@ -350,7 +350,8 @@ export default function UnifiedTicketingSystem({
       const { data, error } = await supabase.rpc('get_customers_with_balance', {
         p_balance_filter: 'all',
         p_limit: 1000,
-        p_exclude_credit_memos: true
+        p_exclude_credit_memos: true,
+        p_calculate_avg_days: false
       });
 
       if (error) {

@@ -248,7 +248,8 @@ export default function Customers({ onBack }: CustomersProps) {
             p_max_open_invoices: null,
             p_min_invoice_amount: null,
             p_max_invoice_amount: null,
-            p_exclude_credit_memos: excludeCreditMemos
+            p_exclude_credit_memos: excludeCreditMemos,
+            p_calculate_avg_days: false
           })
       ]);
 
@@ -358,7 +359,8 @@ export default function Customers({ onBack }: CustomersProps) {
             p_max_open_invoices: filters.maxInvoiceCount !== Infinity ? filters.maxInvoiceCount : null,
             p_min_invoice_amount: filters.minInvoiceAmount > 0 ? filters.minInvoiceAmount : null,
             p_max_invoice_amount: filters.maxInvoiceAmount !== Infinity ? filters.maxInvoiceAmount : null,
-            p_exclude_credit_memos: excludeCreditMemos
+            p_exclude_credit_memos: excludeCreditMemos,
+            p_calculate_avg_days: false
           });
 
         if (analyticsError) throw analyticsError;

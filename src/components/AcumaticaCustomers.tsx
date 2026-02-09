@@ -524,7 +524,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_min_invoice_amount: null,
           p_max_invoice_amount: null,
           p_exclude_credit_memos: excludeCreditMemos,
-          p_date_context: dateRangeContext
+          p_date_context: dateRangeContext,
+          p_calculate_avg_days: sortBy === 'avg_days_to_collect'
         });
 
       if (error) throw error;
@@ -742,7 +743,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
           p_min_invoice_amount: null,
           p_max_invoice_amount: null,
-          p_exclude_credit_memos: excludeCreditMemos
+          p_exclude_credit_memos: excludeCreditMemos,
+          p_calculate_avg_days: false
         });
 
       if (error) throw error;
