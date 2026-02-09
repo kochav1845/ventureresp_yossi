@@ -27,18 +27,33 @@ interface CustomerNote {
 
 interface CustomerData {
   id: string;
-  acumatica_id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  address: string | null;
+  customer_id: string;
+  customer_name: string;
+  customer_status: string | null;
+  email_address: string | null;
+  phone1: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
   city: string | null;
   state: string | null;
-  zip: string | null;
-  status: string | null;
-  current_balance: number | null;
-  overdue_balance: number | null;
+  postal_code: string | null;
+  country: string | null;
+  customer_class: string | null;
+  terms: string | null;
   credit_limit: number | null;
+  calculated_balance: number | null;
+  gross_balance: number | null;
+  credit_memo_balance: number | null;
+  open_invoice_count: number | null;
+  red_count: number | null;
+  yellow_count: number | null;
+  green_count: number | null;
+  max_days_overdue: number | null;
+  customer_type?: string;
+  contact_status?: string;
+  last_contact_date?: string;
+  last_order_date?: string;
+  days_from_invoice_threshold?: number;
 }
 
 interface InvoiceData {
