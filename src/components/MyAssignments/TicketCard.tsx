@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2 } from 'lucide-react';
 import { formatDistanceToNow, isPast, parseISO } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
 import { getAcumaticaCustomerUrl } from '../../lib/acumaticaLinks';
+import { supabase } from '../../lib/supabase';
 import InvoiceItem from './InvoiceItem';
 import TicketPromiseDateModal from './TicketPromiseDateModal';
 
@@ -56,6 +57,56 @@ export default function TicketCard({
   const [localTicketPriority, setLocalTicketPriority] = useState(ticket.ticket_priority);
   const [showPromiseDateModal, setShowPromiseDateModal] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [relatedTickets, setRelatedTickets] = useState<Array<{
+    id: string;
+    ticket_number: string;
+    status: string;
+    priority: string;
+    invoice_count: number;
+  }>>([]);
+  const [loadingRelated, setLoadingRelated] = useState(false);
+
+  useEffect(() => {
+    const fetchRelatedTickets = async () => {
+      if (!ticket.customer_id) return;
+
+      setLoadingRelated(true);
+      try {
+        const { data, error } = await supabase
+          .from('collection_tickets')
+          .select('id, ticket_number, status, priority')
+          .eq('customer_id', ticket.customer_id)
+          .eq('active', true)
+          .neq('id', ticket.ticket_id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          const ticketsWithCounts = await Promise.all(
+            data.map(async (t) => {
+              const { count } = await supabase
+                .from('invoice_assignments')
+                .select('*', { count: 'exact', head: true })
+                .eq('ticket_id', t.id);
+
+              return {
+                ...t,
+                invoice_count: count || 0
+              };
+            })
+          );
+          setRelatedTickets(ticketsWithCounts);
+        }
+      } catch (error) {
+        console.error('Error fetching related tickets:', error);
+      } finally {
+        setLoadingRelated(false);
+      }
+    };
+
+    fetchRelatedTickets();
+  }, [ticket.customer_id, ticket.ticket_id]);
 
   const handleStatusUpdate = () => {
     if (localTicketStatus === 'promised') {
@@ -98,7 +149,7 @@ export default function TicketCard({
           onSuccess={handlePromiseDateSuccess}
         />
       )}
-    <div className="border-2 border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+    <div id={`ticket-${ticket.ticket_id}`} className="border-2 border-gray-200 rounded-lg hover:shadow-md transition-shadow">
       <div className={`p-4 border-b-2 ${getPriorityColor(ticket.ticket_priority)}`}>
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
@@ -221,6 +272,61 @@ export default function TicketCard({
         <p className="text-sm text-gray-600">
           Customer ID: {ticket.customer_id}
         </p>
+
+        {relatedTickets.length > 0 && (
+          <div className="mt-3 p-3 bg-amber-50 border border-amber-300 rounded-lg">
+            <div className="flex items-start gap-2">
+              <Link2 className="w-4 h-4 text-amber-700 flex-shrink-0 mt-1" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-amber-900 mb-2">
+                  {relatedTickets.length} Other Active Ticket{relatedTickets.length !== 1 ? 's' : ''} for this Customer
+                </p>
+                <div className="space-y-1">
+                  {relatedTickets.map((relatedTicket) => {
+                    const statusOption = statusOptions.find(s => s.status_name === relatedTicket.status);
+                    const statusDisplayName = statusOption?.display_name || relatedTicket.status.replace('_', ' ').toUpperCase();
+                    const statusColorClass = statusOption?.color_class || 'bg-gray-100 text-gray-800';
+
+                    return (
+                      <div
+                        key={relatedTicket.id}
+                        className="flex items-center justify-between gap-2 p-2 bg-white rounded border border-amber-200 hover:border-amber-400 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="font-mono text-sm font-semibold text-amber-900">
+                            {relatedTicket.ticket_number}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColorClass}`}>
+                            {statusDisplayName}
+                          </span>
+                          <span className="text-xs text-amber-700">
+                            {relatedTicket.invoice_count} invoice{relatedTicket.invoice_count !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const element = document.getElementById(`ticket-${relatedTicket.id}`);
+                            if (element) {
+                              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              element.classList.add('ring-4', 'ring-amber-400');
+                              setTimeout(() => {
+                                element.classList.remove('ring-4', 'ring-amber-400');
+                              }, 2000);
+                            }
+                          }}
+                          className="px-2 py-1 text-xs bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors flex items-center gap-1 whitespace-nowrap"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          View
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {ticket.note_count && ticket.note_count > 0 && (
           <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
