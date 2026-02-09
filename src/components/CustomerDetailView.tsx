@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, Lock, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, UserPlus, Ticket, ChevronRight } from 'lucide-react';
+import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, Lock, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Ticket, ChevronRight } from 'lucide-react';
 import { supabase, logActivity } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
@@ -8,8 +8,6 @@ import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl } from '../lib/acumaticaLinks';
 import InvoiceFilterPanel from './InvoiceFilterPanel';
 import CustomerTimelineChart from './CustomerTimelineChart';
-import AssignInvoiceModal from './AssignInvoiceModal';
-import ReassignCollectorModal from './ReassignCollectorModal';
 
 interface CustomerDetailViewProps {
   customerId: string;
@@ -121,10 +119,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  const [showAssignInvoiceModal, setShowAssignInvoiceModal] = useState(false);
-  const [invoiceToAssign, setInvoiceToAssign] = useState<{ refNum: string; customerName: string; amount: number } | null>(null);
-  const [showReassignCollectorModal, setShowReassignCollectorModal] = useState(false);
-  const [invoiceToReassign, setInvoiceToReassign] = useState<{ id: string; refNum: string; currentCollectorId?: string } | null>(null);
   const observer = useRef<IntersectionObserver | null>(null);
   const ITEMS_PER_PAGE = 50;
 
@@ -1237,33 +1231,13 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                             <div className="flex items-center justify-center gap-2">
                               <button
                                 onClick={() => {
-                                  setInvoiceToAssign({
-                                    refNum: invoice.reference_number,
-                                    customerName: customer?.customer_name || 'Unknown',
-                                    amount: invoice.balance
-                                  });
-                                  setShowAssignInvoiceModal(true);
+                                  navigate(`/collection-ticketing?customerId=${customerId}&invoiceRef=${invoice.reference_number}`);
                                 }}
                                 className="inline-flex items-center px-3 py-1 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded transition-colors"
-                                title="Assign to collector"
+                                title="Create new ticket for this invoice"
                               >
-                                <UserPlus className="w-4 h-4 mr-1" />
-                                Assign
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setInvoiceToReassign({
-                                    id: invoice.id,
-                                    refNum: invoice.reference_number,
-                                    currentCollectorId: undefined
-                                  });
-                                  setShowReassignCollectorModal(true);
-                                }}
-                                className="inline-flex items-center px-3 py-1 text-sm text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded transition-colors"
-                                title="Assign Collector"
-                              >
-                                <User className="w-4 h-4 mr-1" />
-                                Collector
+                                <Ticket className="w-4 h-4 mr-1" />
+                                Create New Ticket
                               </button>
                               <a
                                 href={getAcumaticaInvoiceUrl(invoice.reference_number)}
@@ -1594,38 +1568,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         </div>
       </div>
 
-      {/* Assign Invoice Modal */}
-      {showAssignInvoiceModal && invoiceToAssign && (
-        <AssignInvoiceModal
-          invoiceReferenceNumber={invoiceToAssign.refNum}
-          customerName={invoiceToAssign.customerName}
-          invoiceAmount={invoiceToAssign.amount}
-          onClose={() => {
-            setShowAssignInvoiceModal(false);
-            setInvoiceToAssign(null);
-          }}
-          onAssignmentComplete={() => {
-            loadCustomerBasicInfo();
-          }}
-        />
-      )}
-
-      {/* Reassign Collector Modal */}
-      {showReassignCollectorModal && invoiceToReassign && (
-        <ReassignCollectorModal
-          isOpen={showReassignCollectorModal}
-          invoiceId={invoiceToReassign.id}
-          invoiceRef={invoiceToReassign.refNum}
-          currentCollectorId={invoiceToReassign.currentCollectorId}
-          onClose={() => {
-            setShowReassignCollectorModal(false);
-            setInvoiceToReassign(null);
-          }}
-          onReassigned={() => {
-            loadInvoices();
-          }}
-        />
-      )}
     </div>
   );
 }
