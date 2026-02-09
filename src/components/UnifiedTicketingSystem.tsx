@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -59,6 +59,7 @@ export default function UnifiedTicketingSystem({
 }: UnifiedTicketingSystemProps) {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // View states
   const [activeTab, setActiveTab] = useState<'create' | 'tickets' | 'individual' | 'overdue'>('tickets');
@@ -159,6 +160,37 @@ export default function UnifiedTicketingSystem({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Handle URL parameters for creating new ticket
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const customerId = params.get('customerId');
+    const invoiceRef = params.get('invoiceRef');
+
+    if ((customerId || invoiceRef) && user && profile) {
+      setActiveTab('create');
+
+      // Load necessary data for create tab
+      if (customers.length === 0) {
+        loadCustomers();
+      }
+      if (collectors.length === 0) {
+        loadCollectors();
+      }
+
+      if (customerId) {
+        setSelectedCustomer(customerId);
+        loadCustomerInvoices(customerId);
+      }
+
+      if (invoiceRef) {
+        // Select the invoice after invoices are loaded
+        setTimeout(() => {
+          setSelectedInvoicesForTicket([invoiceRef]);
+        }, 500);
+      }
+    }
+  }, [location.search, user, profile]);
 
   const loadStatusOptions = async () => {
     try {
