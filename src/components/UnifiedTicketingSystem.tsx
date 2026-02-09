@@ -466,12 +466,14 @@ export default function UnifiedTicketingSystem({
 
         if (confirmMerge) {
           for (const refNumber of selectedInvoicesForTicket) {
-            await supabase.from('invoice_assignments').insert({
+            await supabase.from('invoice_assignments').upsert({
               invoice_reference_number: refNumber,
               assigned_collector_id: selectedCollector,
               ticket_id: existingTickets[0].id,
               assigned_by: user!.id,
               notes: ticketNotes || null
+            }, {
+              onConflict: 'invoice_reference_number'
             });
           }
 
@@ -513,12 +515,14 @@ export default function UnifiedTicketingSystem({
       if (ticketError) throw ticketError;
 
       for (const refNumber of selectedInvoicesForTicket) {
-        await supabase.from('invoice_assignments').insert({
+        await supabase.from('invoice_assignments').upsert({
           invoice_reference_number: refNumber,
           assigned_collector_id: selectedCollector,
           ticket_id: newTicket.id,
           assigned_by: user!.id,
           notes: ticketNotes || null
+        }, {
+          onConflict: 'invoice_reference_number'
         });
       }
 
