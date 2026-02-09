@@ -203,8 +203,8 @@ export default function CollectorActivityMonitor({ onBack }: CollectorActivityMo
   };
 
   const filteredCollectors = collectors.filter(c =>
-    c.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchTerm.toLowerCase())
+    (c.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.email || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getActivityBadge = (count: number) => {
@@ -402,23 +402,23 @@ export default function CollectorActivityMonitor({ onBack }: CollectorActivityMo
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
                     <div className="text-slate-400 text-xs mb-1">Total Actions</div>
-                    <div className="text-xl font-bold text-white">{collector.total_actions}</div>
+                    <div className="text-xl font-bold text-white">{collector.total_actions || 0}</div>
                   </div>
                   <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
                     <div className="text-slate-400 text-xs mb-1">Logins</div>
-                    <div className="text-xl font-bold text-green-400">{collector.login_count}</div>
+                    <div className="text-xl font-bold text-green-400">{collector.login_count || 0}</div>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2 mb-4">
-                  <span className={`px-2 py-1 rounded text-xs font-medium border ${getActivityBadge(collector.tickets_created)}`}>
-                    {collector.tickets_created} Tickets
+                  <span className={`px-2 py-1 rounded text-xs font-medium border ${getActivityBadge(collector.tickets_created || 0)}`}>
+                    {collector.tickets_created || 0} Tickets
                   </span>
-                  <span className={`px-2 py-1 rounded text-xs font-medium border ${getActivityBadge(collector.notes_added)}`}>
-                    {collector.notes_added} Notes
+                  <span className={`px-2 py-1 rounded text-xs font-medium border ${getActivityBadge(collector.notes_added || 0)}`}>
+                    {collector.notes_added || 0} Notes
                   </span>
-                  <span className={`px-2 py-1 rounded text-xs font-medium border ${getActivityBadge(collector.status_changes)}`}>
-                    {collector.status_changes} Status
+                  <span className={`px-2 py-1 rounded text-xs font-medium border ${getActivityBadge(collector.status_changes || 0)}`}>
+                    {collector.status_changes || 0} Status
                   </span>
                 </div>
 
