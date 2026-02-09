@@ -84,6 +84,7 @@ export default function UnifiedTicketingSystem({
   const [searchTerm, setSearchTerm] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [pendingInvoiceRef, setPendingInvoiceRef] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Batch operations
@@ -170,7 +171,6 @@ export default function UnifiedTicketingSystem({
     if ((customerId || invoiceRef) && user && profile) {
       setActiveTab('create');
 
-      // Load necessary data for create tab
       if (customers.length === 0) {
         loadCustomers();
       }
@@ -184,13 +184,31 @@ export default function UnifiedTicketingSystem({
       }
 
       if (invoiceRef) {
-        // Select the invoice after invoices are loaded
-        setTimeout(() => {
-          setSelectedInvoicesForTicket([invoiceRef]);
-        }, 500);
+        setPendingInvoiceRef(invoiceRef);
       }
     }
   }, [location.search, user, profile]);
+
+  // Auto-select pending invoice once invoices finish loading
+  useEffect(() => {
+    if (pendingInvoiceRef && customerInvoices.length > 0) {
+      const match = customerInvoices.find(inv => inv.reference_number === pendingInvoiceRef);
+      if (match) {
+        setSelectedInvoicesForTicket([pendingInvoiceRef]);
+      }
+      setPendingInvoiceRef(null);
+    }
+  }, [pendingInvoiceRef, customerInvoices]);
+
+  // Set customer name in search field when customers load and one is pre-selected
+  useEffect(() => {
+    if (selectedCustomer && customers.length > 0 && !searchTerm) {
+      const customer = customers.find(c => c.customer_id === selectedCustomer);
+      if (customer) {
+        setSearchTerm(customer.customer_name);
+      }
+    }
+  }, [selectedCustomer, customers]);
 
   const loadStatusOptions = async () => {
     try {
