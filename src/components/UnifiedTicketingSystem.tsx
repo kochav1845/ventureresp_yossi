@@ -485,12 +485,18 @@ export default function UnifiedTicketingSystem({
         }
       }
 
+      const selectedCustomerData = customers.find(c => c.customer_id === selectedCustomer);
+      if (!selectedCustomerData) {
+        throw new Error('Selected customer not found');
+      }
+
       const { data: newTicket, error: ticketError } = await supabase
         .from('collection_tickets')
         .insert({
           customer_id: selectedCustomer,
+          customer_name: selectedCustomerData.customer_name,
           assigned_collector_id: selectedCollector,
-          assigned_by: profile.id,
+          created_by: profile.id,
           priority: priority,
           status: 'open',
           ticket_type: ticketType,
