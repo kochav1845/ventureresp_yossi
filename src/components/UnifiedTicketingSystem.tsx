@@ -319,13 +319,17 @@ export default function UnifiedTicketingSystem({
 
           const { data: noteData } = await supabase
             .from('ticket_notes')
-            .select('note_text, created_at, attachment_url')
+            .select('note_text, created_at, document_urls, has_voice_note, has_image')
             .eq('ticket_id', ticket.ticket_id)
             .order('created_at', { ascending: false });
 
           if (noteData && noteData.length > 0) {
             ticket.note_count = noteData.length;
-            ticket.has_attachments = noteData.some(note => note.attachment_url);
+            ticket.has_attachments = noteData.some(note =>
+              (note.document_urls && note.document_urls.length > 0) ||
+              note.has_voice_note ||
+              note.has_image
+            );
             ticket.last_note = {
               note_text: noteData[0].note_text,
               created_at: noteData[0].created_at

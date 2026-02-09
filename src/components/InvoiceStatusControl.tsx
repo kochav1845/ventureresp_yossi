@@ -148,9 +148,21 @@ export default function InvoiceStatusControl({ invoiceReference, customerId, cur
         else attachmentType = 'document';
       }
 
+      // Get invoice_id from reference number
+      const { data: invoiceData, error: invoiceError } = await supabase
+        .from('acumatica_invoices')
+        .select('id')
+        .eq('reference_number', invoiceReference)
+        .single();
+
+      if (invoiceError || !invoiceData) {
+        throw new Error('Invoice not found');
+      }
+
       await supabase
         .from('invoice_memos')
         .insert({
+          invoice_id: invoiceData.id,
           invoice_reference: invoiceReference,
           customer_id: customerId,
           created_by_user_id: currentUser.id,
@@ -340,16 +352,43 @@ export default function InvoiceStatusControl({ invoiceReference, customerId, cur
                     {memo.memo_text && (
                       <p className="text-sm text-gray-700 mb-2">{memo.memo_text}</p>
                     )}
-                    {memo.attachment_url && (
+                    {memo.voice_note_url && (
                       <a
-                        href={memo.attachment_url}
+                        href={memo.voice_note_url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
                       >
-                        {getAttachmentIcon(memo.attachment_type)}
-                        <span>View attachment</span>
+                        {getAttachmentIcon('voice')}
+                        <span>Play voice note</span>
                       </a>
+                    )}
+                    {memo.image_url && (
+                      <a
+                        href={memo.image_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+                      >
+                        {getAttachmentIcon('image')}
+                        <span>View image</span>
+                      </a>
+                    )}
+                    {memo.document_urls && memo.document_urls.length > 0 && (
+                      <div className="space-y-1">
+                        {memo.document_urls.map((url: string, idx: number) => (
+                          <a
+                            key={idx}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+                          >
+                            {getAttachmentIcon('document')}
+                            <span>{memo.document_names?.[idx] || `Document ${idx + 1}`}</span>
+                          </a>
+                        ))}
+                      </div>
                     )}
                   </div>
                 ))
