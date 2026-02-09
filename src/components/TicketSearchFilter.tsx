@@ -3,8 +3,11 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
 interface TicketSearchFilterProps {
-  onFilterChange: (filters: TicketFilters) => void;
+  filters?: TicketFilters;
+  onFilterChange?: (filters: TicketFilters) => void;
+  onFiltersChange?: (filters: TicketFilters) => void;
   showAdvancedFilters?: boolean;
+  showAssignedToFilter?: boolean;
 }
 
 export interface TicketFilters {
@@ -17,8 +20,14 @@ export interface TicketFilters {
   assignedTo: string;
 }
 
-export default function TicketSearchFilter({ onFilterChange, showAdvancedFilters = false }: TicketSearchFilterProps) {
-  const [filters, setFilters] = useState<TicketFilters>({
+export default function TicketSearchFilter({
+  filters: controlledFilters,
+  onFilterChange,
+  onFiltersChange,
+  showAdvancedFilters = false,
+  showAssignedToFilter = false
+}: TicketSearchFilterProps) {
+  const [internalFilters, setInternalFilters] = useState<TicketFilters>({
     searchTerm: '',
     status: '',
     priority: '',
@@ -27,14 +36,20 @@ export default function TicketSearchFilter({ onFilterChange, showAdvancedFilters
     dateTo: '',
     assignedTo: ''
   });
+
+  const filters = controlledFilters || internalFilters;
   const [showAdvanced, setShowAdvanced] = useState(showAdvancedFilters);
   const [ticketTypes, setTicketTypes] = useState<Array<{ value: string; label: string }>>([]);
   const [statusOptions, setStatusOptions] = useState<Array<{ status_name: string; display_name: string }>>([]);
+  const [collectors, setCollectors] = useState<Array<{ id: string; full_name: string; email: string }>>([]);
 
   useEffect(() => {
     loadTicketTypes();
     loadStatusOptions();
-  }, []);
+    if (showAssignedToFilter) {
+      loadCollectors();
+    }
+  }, [showAssignedToFilter]);
 
   const loadTicketTypes = async () => {
     try {
@@ -66,10 +81,34 @@ export default function TicketSearchFilter({ onFilterChange, showAdvancedFilters
     }
   };
 
+  const loadCollectors = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, email')
+        .eq('account_status', 'approved')
+        .order('full_name', { ascending: true });
+
+      if (error) throw error;
+      setCollectors(data || []);
+    } catch (error) {
+      console.error('Error loading collectors:', error);
+    }
+  };
+
   const handleFilterChange = (key: keyof TicketFilters, value: string) => {
     const newFilters = { ...filters, [key]: value };
-    setFilters(newFilters);
-    onFilterChange(newFilters);
+
+    if (!controlledFilters) {
+      setInternalFilters(newFilters);
+    }
+
+    if (onFilterChange) {
+      onFilterChange(newFilters);
+    }
+    if (onFiltersChange) {
+      onFiltersChange(newFilters);
+    }
   };
 
   const clearFilters = () => {
@@ -82,8 +121,17 @@ export default function TicketSearchFilter({ onFilterChange, showAdvancedFilters
       dateTo: '',
       assignedTo: ''
     };
-    setFilters(emptyFilters);
-    onFilterChange(emptyFilters);
+
+    if (!controlledFilters) {
+      setInternalFilters(emptyFilters);
+    }
+
+    if (onFilterChange) {
+      onFilterChange(emptyFilters);
+    }
+    if (onFiltersChange) {
+      onFiltersChange(emptyFilters);
+    }
   };
 
   const hasActiveFilters = Object.values(filters).some(v => v !== '');
@@ -200,6 +248,24 @@ export default function TicketSearchFilter({ onFilterChange, showAdvancedFilters
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
               />
             </div>
+
+            {showAssignedToFilter && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Assigned To</label>
+                <select
+                  value={filters.assignedTo}
+                  onChange={(e) => handleFilterChange('assignedTo', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="">All Collectors</option>
+                  {collectors.map((collector) => (
+                    <option key={collector.id} value={collector.id}>
+                      {collector.full_name} ({collector.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         )}
 
@@ -246,6 +312,14 @@ export default function TicketSearchFilter({ onFilterChange, showAdvancedFilters
                   handleFilterChange('dateFrom', '');
                   handleFilterChange('dateTo', '');
                 }} className="hover:text-blue-900">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filters.assignedTo && showAssignedToFilter && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                Assigned to: {collectors.find(c => c.id === filters.assignedTo)?.full_name || filters.assignedTo}
+                <button onClick={() => handleFilterChange('assignedTo', '')} className="hover:text-blue-900">
                   <X className="w-3 h-3" />
                 </button>
               </span>
