@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import InvoiceMemoModal from './InvoiceMemoModal';
 import CreateReminderModal from './CreateReminderModal';
+import TicketStatusChangeModal from './TicketStatusChangeModal';
 import { Assignment, TicketGroup, TicketStatusOption } from './MyAssignments/types';
 import TicketCard from './MyAssignments/TicketCard';
 import IndividualInvoiceCard from './MyAssignments/IndividualInvoiceCard';
@@ -113,6 +114,16 @@ export default function UnifiedTicketingSystem({
     ticketNumber?: string;
     invoiceReference?: string;
     customerName?: string;
+  } | null>(null);
+
+  // Status change modal
+  const [statusChangeModal, setStatusChangeModal] = useState<{
+    ticketId: string;
+    ticketNumber: string;
+    currentStatus: string;
+    newStatus: string;
+    currentStatusDisplay?: string;
+    newStatusDisplay?: string;
   } | null>(null);
 
   // Filters
@@ -761,13 +772,83 @@ export default function UnifiedTicketingSystem({
   const handleTicketStatusChange = async (ticketId: string, newStatus: string) => {
     if (!profile?.id) return;
 
+    // Find the ticket to get its current status and ticket number
+    const ticket = tickets.find(t => t.ticket_id === ticketId);
+    if (!ticket) {
+      alert('Ticket not found');
+      return;
+    }
+
+    // Get display names for statuses
+    const currentStatusOption = statusOptions.find(opt => opt.status_name === ticket.ticket_status);
+    const newStatusOption = statusOptions.find(opt => opt.status_name === newStatus);
+
+    // Show the modal to get the note
+    setStatusChangeModal({
+      ticketId,
+      ticketNumber: ticket.ticket_number,
+      currentStatus: ticket.ticket_status,
+      newStatus,
+      currentStatusDisplay: currentStatusOption?.display_name,
+      newStatusDisplay: newStatusOption?.display_name
+    });
+  };
+
+  const confirmTicketStatusChange = async (note: string) => {
+    if (!statusChangeModal || !profile?.id) return;
+
+    const { ticketId, currentStatus, newStatus } = statusChangeModal;
+
     setChangingTicketStatus(ticketId);
     try {
-      await supabase
+      // Get the ticket details for logging
+      const { data: ticketData, error: ticketError } = await supabase
+        .from('collection_tickets')
+        .select('ticket_number, customer_id')
+        .eq('id', ticketId)
+        .single();
+
+      if (ticketError) throw ticketError;
+
+      // Update the ticket status
+      const { error: updateError } = await supabase
         .from('collection_tickets')
         .update({ status: newStatus })
         .eq('id', ticketId);
 
+      if (updateError) throw updateError;
+
+      // Insert status history with note
+      const { error: historyError } = await supabase
+        .from('ticket_status_history')
+        .insert({
+          ticket_id: ticketId,
+          old_status: currentStatus,
+          new_status: newStatus,
+          changed_by: profile.id,
+          notes: note
+        });
+
+      if (historyError) throw historyError;
+
+      // Insert activity log
+      const { error: activityError } = await supabase
+        .from('ticket_activity_log')
+        .insert({
+          ticket_id: ticketId,
+          activity_type: 'status_change',
+          description: `Status changed from ${currentStatus} to ${newStatus}: ${note}`,
+          created_by: profile.id,
+          metadata: {
+            old_status: currentStatus,
+            new_status: newStatus,
+            note: note
+          }
+        });
+
+      if (activityError) throw activityError;
+
+      setStatusChangeModal(null);
       await loadTickets();
       alert('Ticket status updated successfully');
     } catch (error: any) {
@@ -1375,6 +1456,19 @@ export default function UnifiedTicketingSystem({
           customerName={reminderModal.customerName}
           onClose={() => setReminderModal(null)}
           onSuccess={loadTickets}
+        />
+      )}
+
+      {statusChangeModal && (
+        <TicketStatusChangeModal
+          ticketId={statusChangeModal.ticketId}
+          ticketNumber={statusChangeModal.ticketNumber}
+          currentStatus={statusChangeModal.currentStatus}
+          newStatus={statusChangeModal.newStatus}
+          currentStatusDisplay={statusChangeModal.currentStatusDisplay}
+          newStatusDisplay={statusChangeModal.newStatusDisplay}
+          onConfirm={confirmTicketStatusChange}
+          onCancel={() => setStatusChangeModal(null)}
         />
       )}
     </div>
