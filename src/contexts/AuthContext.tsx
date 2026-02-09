@@ -197,6 +197,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+    // Log the login event if successful
+    if (!error && data?.user) {
+      try {
+        await supabase.rpc('log_user_login', { p_user_id: data.user.id });
+      } catch (logError) {
+        console.error('Failed to log login event:', logError);
+      }
+    }
+
     return { data, error };
   };
 
@@ -206,7 +216,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await logActivity('user_signed_out');
+    // Log the logout event
+    if (user) {
+      try {
+        await supabase.rpc('log_user_logout', { p_user_id: user.id });
+      } catch (logError) {
+        console.error('Failed to log logout event:', logError);
+      }
+    }
+
     localStorage.removeItem('impersonation');
     await supabase.auth.signOut();
     setProfile(null);
