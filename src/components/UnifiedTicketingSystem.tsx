@@ -380,7 +380,7 @@ export default function UnifiedTicketingSystem({
         .from('user_profiles')
         .select('id, full_name, email')
         .in('role', ['collector', 'manager', 'admin'])
-        .eq('is_approved', true)
+        .eq('account_status', 'approved')
         .order('full_name');
 
       if (error) throw error;
