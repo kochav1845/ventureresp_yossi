@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, AlertCircle, CheckCircle, RefreshCw, Database } from 'lucide-react';
+import { ArrowLeft, Download, AlertCircle, CheckCircle, RefreshCw, Database, CreditCard } from 'lucide-react';
 
 interface AcumaticaPaymentFetchProps {
   onBack?: () => void;
 }
 
 export default function AcumaticaPaymentFetch({ onBack }: AcumaticaPaymentFetchProps) {
-  // SECURITY: Credentials are stored in edge functions, NOT in frontend code
   const navigate = useNavigate();
 
   const [batchSize, setBatchSize] = useState(50);
@@ -20,6 +19,7 @@ export default function AcumaticaPaymentFetch({ onBack }: AcumaticaPaymentFetchP
   const [logs, setLogs] = useState<string[]>([]);
   const [syncingLinks, setSyncingLinks] = useState(false);
   const [fetchingMissing, setFetchingMissing] = useState(false);
+  const [fetchingPrepayments, setFetchingPrepayments] = useState(false);
 
   const handleBack = () => {
     if (onBack) {
@@ -201,6 +201,50 @@ export default function AcumaticaPaymentFetch({ onBack }: AcumaticaPaymentFetchP
       addLog(`🔴 Error: ${err.message}`);
     } finally {
       setFetchingMissing(false);
+    }
+  };
+
+  const handleFetchAllPrepayments = async () => {
+    setFetchingPrepayments(true);
+    setError('');
+    addLog('Fetching ALL prepayments from Acumatica...');
+    addLog('⚠️ This may take several minutes depending on the number of prepayments');
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-all-prepayments`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: Failed to fetch prepayments`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        addLog(`✨ Prepayment fetch complete!`);
+        addLog(`📊 Total fetched: ${result.totalFetched}, Created: ${result.created}, Updated: ${result.updated}, Skipped: ${result.skipped}`);
+        if (result.totalErrors > 0) {
+          addLog(`⚠️ ${result.totalErrors} errors occurred`);
+        }
+        addLog(`⏱️ Duration: ${(result.durationMs / 1000).toFixed(1)}s`);
+      } else {
+        throw new Error(result.error || 'Fetch failed');
+      }
+
+    } catch (err: any) {
+      setError(err.message || 'An error occurred while fetching prepayments');
+      addLog(`🔴 Error: ${err.message}`);
+    } finally {
+      setFetchingPrepayments(false);
     }
   };
 
@@ -391,7 +435,32 @@ export default function AcumaticaPaymentFetch({ onBack }: AcumaticaPaymentFetchP
 
               <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
                 <p className="text-amber-400 text-sm">
-                  <strong>💡 Tip:</strong> Use "Sync Existing History" first (fast). If payments are still missing links, use "Fetch Missing History" to retrieve from Acumatica (slower, processes 100 payments per run).
+                  <strong>Tip:</strong> Use "Sync Existing History" first (fast). If payments are still missing links, use "Fetch Missing History" to retrieve from Acumatica (slower, processes 100 payments per run).
+                </p>
+              </div>
+
+              <div className="border-t border-slate-700 pt-4 mt-4">
+                <h3 className="text-lg font-semibold text-white mb-3">Prepayments</h3>
+                <button
+                  onClick={handleFetchAllPrepayments}
+                  disabled={loading || syncingLinks || fetchingMissing || fetchingPrepayments}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                  title="Fetch all prepayments from Acumatica including their application history"
+                >
+                  {fetchingPrepayments ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      Fetching Prepayments...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="w-5 h-5" />
+                      Fetch All Prepayments from Acumatica
+                    </>
+                  )}
+                </button>
+                <p className="text-slate-400 text-sm mt-2">
+                  Fetches all prepayments from Acumatica and syncs their application history. The cron job will continue syncing prepayments automatically going forward.
                 </p>
               </div>
             </div>
