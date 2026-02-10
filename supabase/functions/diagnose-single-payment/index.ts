@@ -146,6 +146,24 @@ Deno.serve(async (req: Request) => {
 
     if (!paymentResponse.ok) {
       const errorText = await paymentResponse.text();
+
+      // Check if it's a "not found" error
+      if (errorText.includes("No entity satisfies the condition") || paymentResponse.status === 404) {
+        return new Response(
+          JSON.stringify({
+            error: "Payment not found in Acumatica",
+            message: `Payment ${paymentRef} (Type: ${paymentType}) does not exist in Acumatica. It may have been deleted or the reference number is incorrect.`,
+            storedData: storedPayment,
+            dbApplications: [],
+            notFoundInAcumatica: true
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
       throw new Error(
         `Failed to fetch payment: ${paymentResponse.status} - ${errorText}`
       );

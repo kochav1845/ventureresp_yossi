@@ -160,10 +160,63 @@ export default function PaymentStatusDiagnostic() {
       {/* Results */}
       {result && (
         <div className="space-y-6">
+          {/* Payment Not Found Warning */}
+          {result.notFoundInAcumatica && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <AlertCircle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h2 className="text-lg font-semibold text-yellow-900 mb-2">
+                    Payment Not Found in Acumatica
+                  </h2>
+                  <p className="text-yellow-800 mb-2">{result.message}</p>
+                  <p className="text-sm text-yellow-700">
+                    This payment exists in our database but was not found in Acumatica.
+                    This typically means the payment was deleted or voided in Acumatica after it was synced.
+                  </p>
+                </div>
+              </div>
+
+              {result.storedData && (
+                <div className="mt-4 p-4 bg-white rounded border border-yellow-200">
+                  <h3 className="font-medium text-gray-900 mb-3">Our Database Record:</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-600">Reference:</span>
+                      <span className="ml-2 font-mono">{result.storedData.reference_number}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Type:</span>
+                      <span className="ml-2">{result.storedData.type}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Status:</span>
+                      <span className="ml-2">{result.storedData.status}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Amount:</span>
+                      <span className="ml-2">${result.storedData.amount}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Customer:</span>
+                      <span className="ml-2">{result.storedData.customer_name}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Last Synced:</span>
+                      <span className="ml-2 text-xs">{new Date(result.storedData.last_sync_timestamp).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Status Comparison */}
+          {!result.notFoundInAcumatica && (
+          <>
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              {result.comparison.statusMismatch ? (
+              {result.comparison?.statusMismatch ? (
                 <>
                   <AlertCircle className="w-5 h-5 text-yellow-600" />
                   Status Mismatch Detected
@@ -368,8 +421,11 @@ export default function PaymentStatusDiagnostic() {
               </div>
             )}
           </div>
+          </>
+          )}
 
           {/* Raw Data */}
+          {!result.notFoundInAcumatica && (
           <div className="grid grid-cols-2 gap-6">
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="font-medium text-gray-900 mb-3">Acumatica Raw Data</h3>
@@ -385,6 +441,7 @@ export default function PaymentStatusDiagnostic() {
               </pre>
             </div>
           </div>
+          )}
         </div>
       )}
     </div>
