@@ -82,6 +82,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const [maxOpenInvoices, setMaxOpenInvoices] = useState('');
   const [minBalance, setMinBalance] = useState('');
   const [maxBalance, setMaxBalance] = useState('');
+  const [minDaysOverdue, setMinDaysOverdue] = useState('');
+  const [maxDaysOverdue, setMaxDaysOverdue] = useState('');
   const [showAnalytics, setShowAnalytics] = useState(true);
   const [analyticsStats, setAnalyticsStats] = useState({
     totalCustomers: 0,
@@ -169,7 +171,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     setPage(0);
     setDisplayedCustomers([]);
     loadCustomers();
-  }, [searchTerm, statusFilter, countryFilter, balanceFilter, sortBy, sortOrder, dateFrom, dateTo, minOpenInvoices, maxOpenInvoices, minBalance, maxBalance, excludeCreditMemos, dateRangeContext]);
+  }, [searchTerm, statusFilter, countryFilter, balanceFilter, sortBy, sortOrder, dateFrom, dateTo, minOpenInvoices, maxOpenInvoices, minBalance, maxBalance, minDaysOverdue, maxDaysOverdue, excludeCreditMemos, dateRangeContext]);
 
   // Load analytics from ALL filtered customers (not just displayed page)
   const loadAnalytics = useCallback(async () => {
@@ -499,7 +501,9 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
           p_min_invoice_amount: null,
           p_max_invoice_amount: null,
-          p_date_context: dateRangeContext
+          p_date_context: dateRangeContext,
+          p_min_days_overdue: minDaysOverdue ? parseInt(minDaysOverdue) : null,
+          p_max_days_overdue: maxDaysOverdue ? parseInt(maxDaysOverdue) : null
         });
 
       if (countError) throw countError;
@@ -521,6 +525,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
           p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
           p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
+          p_min_days_overdue: minDaysOverdue ? parseInt(minDaysOverdue) : null,
+          p_max_days_overdue: maxDaysOverdue ? parseInt(maxDaysOverdue) : null,
           p_min_invoice_amount: null,
           p_max_invoice_amount: null,
           p_exclude_credit_memos: excludeCreditMemos,
@@ -608,6 +614,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     setMaxOpenInvoices('');
     setMinBalance('');
     setMaxBalance('');
+    setMinDaysOverdue('');
+    setMaxDaysOverdue('');
     setDateRangeContext('invoice_date');
     setActiveQuickFilter(null);
   };
@@ -697,6 +705,16 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       }
     }
 
+    // Apply days overdue filters
+    if (config.daysOverdue) {
+      if (config.daysOverdue.min !== undefined) {
+        setMinDaysOverdue(config.daysOverdue.min.toString());
+      }
+      if (config.daysOverdue.max !== undefined) {
+        setMaxDaysOverdue(config.daysOverdue.max.toString());
+      }
+    }
+
     // Note: Some filters like colorStatus, hasCollectorAssigned, hasActiveTickets
     // may need additional state variables or backend support to filter properly
   };
@@ -719,7 +737,9 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
           p_min_invoice_amount: null,
           p_max_invoice_amount: null,
-          p_date_context: dateRangeContext
+          p_date_context: dateRangeContext,
+          p_min_days_overdue: minDaysOverdue ? parseInt(minDaysOverdue) : null,
+          p_max_days_overdue: maxDaysOverdue ? parseInt(maxDaysOverdue) : null
         });
 
       if (countError) throw countError;
