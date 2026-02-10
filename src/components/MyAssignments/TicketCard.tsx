@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2 } from 'lucide-react';
-import { formatDistanceToNow, isPast, parseISO } from 'date-fns';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays } from 'lucide-react';
+import { formatDistanceToNow, isPast, parseISO, format as formatDate } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
 import { getAcumaticaCustomerUrl } from '../../lib/acumaticaLinks';
@@ -276,9 +276,50 @@ export default function TicketCard({
             Set Reminder
           </button>
         </div>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-gray-600 mb-2">
           Customer ID: {ticket.customer_id}
         </p>
+
+        {/* Real-time Balance Tracking */}
+        {(ticket.customer_balance !== undefined || ticket.open_invoice_count !== undefined || ticket.oldest_invoice_date) && (
+          <div className="mb-3 p-3 bg-slate-50 border border-slate-300 rounded-lg">
+            <div className="grid grid-cols-3 gap-4">
+              {ticket.customer_balance !== undefined && (
+                <div className="flex items-start gap-2">
+                  <DollarSign className="w-4 h-4 text-green-700 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-medium text-gray-600">Customer Balance</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      ${ticket.customer_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {ticket.open_invoice_count !== undefined && (
+                <div className="flex items-start gap-2">
+                  <FileText className="w-4 h-4 text-blue-700 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-medium text-gray-600">Open Invoices</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      {ticket.open_invoice_count} invoice{ticket.open_invoice_count !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {ticket.oldest_invoice_date && (
+                <div className="flex items-start gap-2">
+                  <CalendarDays className="w-4 h-4 text-orange-700 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-medium text-gray-600">Oldest Invoice</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      {formatDate(new Date(ticket.oldest_invoice_date), 'MMM d, yyyy')}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {relatedTickets.length > 0 && (
           <div className="mt-3 p-3 bg-amber-50 border border-amber-300 rounded-lg">

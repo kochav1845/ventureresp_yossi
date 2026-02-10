@@ -54,6 +54,10 @@ export interface TicketGroup {
     note_text: string;
     created_at: string;
   };
+  // Real-time customer balance tracking
+  customer_balance?: number;
+  open_invoice_count?: number;
+  oldest_invoice_date?: string | null;
 }
 
 export interface CustomerAssignment {

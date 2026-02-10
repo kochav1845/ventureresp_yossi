@@ -398,6 +398,54 @@ export default function UnifiedTicketingSystem({
           }
         }));
 
+        // Fetch real-time customer balance data for all unique customers
+        const uniqueCustomerIds = [...new Set(ticketGroupsArray.map(t => t.customer_id))];
+
+        if (uniqueCustomerIds.length > 0) {
+          const { data: customerBalances, error: balanceError } = await supabase
+            .from('acumatica_invoices')
+            .select('customer, date, balance, status')
+            .in('customer', uniqueCustomerIds)
+            .neq('status', 'Closed');
+
+          if (!balanceError && customerBalances) {
+            // Calculate balance data for each customer
+            const customerStats = new Map<string, {
+              balance: number;
+              invoice_count: number;
+              oldest_date: string | null;
+            }>();
+
+            customerBalances.forEach(inv => {
+              if (!customerStats.has(inv.customer)) {
+                customerStats.set(inv.customer, {
+                  balance: 0,
+                  invoice_count: 0,
+                  oldest_date: null
+                });
+              }
+
+              const stats = customerStats.get(inv.customer)!;
+              stats.balance += inv.balance || 0;
+              stats.invoice_count += 1;
+
+              if (!stats.oldest_date || (inv.date && inv.date < stats.oldest_date)) {
+                stats.oldest_date = inv.date;
+              }
+            });
+
+            // Merge balance data into tickets
+            ticketGroupsArray.forEach(ticket => {
+              const stats = customerStats.get(ticket.customer_id);
+              if (stats) {
+                ticket.customer_balance = stats.balance;
+                ticket.open_invoice_count = stats.invoice_count;
+                ticket.oldest_invoice_date = stats.oldest_date;
+              }
+            });
+          }
+        }
+
         const sortedTickets = sortTicketsByPriority(ticketGroupsArray);
         setTickets(sortedTickets);
         setIndividualAssignments(individualList);
