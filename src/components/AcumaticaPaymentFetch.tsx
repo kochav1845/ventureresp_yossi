@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, AlertCircle, CheckCircle, RefreshCw, Database, CreditCard } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface AcumaticaPaymentFetchProps {
   onBack?: () => void;
@@ -41,6 +42,11 @@ export default function AcumaticaPaymentFetch({ onBack }: AcumaticaPaymentFetchP
     addLog('Starting payment fetch...');
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
       let totalFetched = 0;
       let totalSaved = 0;
       let totalInvoiceLinks = 0;
@@ -61,7 +67,7 @@ export default function AcumaticaPaymentFetch({ onBack }: AcumaticaPaymentFetchP
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Authorization': `Bearer ${session.access_token}`,
               },
               body: JSON.stringify({
                 count,
@@ -132,13 +138,18 @@ export default function AcumaticaPaymentFetch({ onBack }: AcumaticaPaymentFetchP
     addLog('Starting application history sync from existing payments...');
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/payment-invoice-links-sync`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${session.access_token}`,
           },
         }
       );
@@ -171,13 +182,18 @@ export default function AcumaticaPaymentFetch({ onBack }: AcumaticaPaymentFetchP
     addLog('⚠️ This may take several minutes for large datasets');
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resync-payments-without-applications`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${session.access_token}`,
           },
         }
       );
@@ -211,16 +227,22 @@ export default function AcumaticaPaymentFetch({ onBack }: AcumaticaPaymentFetchP
     addLog('⚠️ This may take several minutes depending on the number of prepayments');
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-all-prepayments`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-        }
-      );
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-all-prepayments`;
+      addLog(`📡 Calling: ${apiUrl}`);
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({}),
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
