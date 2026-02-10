@@ -621,16 +621,19 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   };
 
   const applyQuickFilter = (preset: string) => {
-    clearFilters();
     setActiveQuickFilter(preset);
     const today = new Date();
 
     // Check if this is a custom filter
     const customFilter = customQuickFilters.find(f => f.id === preset);
     if (customFilter) {
+      // Custom filters handle their own state setting
       applyCustomFilterConfig(customFilter.filter_config);
       return;
     }
+
+    // Built-in presets need filters cleared first
+    clearFilters();
 
     // Handle built-in presets
     switch (preset) {
@@ -671,60 +674,69 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const applyCustomFilterConfig = (config: any) => {
     const today = new Date();
 
-    // Reset all filters first
-    setDateFrom('');
-    setDateTo('');
-    setMinBalance('');
-    setMaxBalance('');
-    setMinOpenInvoices('');
-    setMaxOpenInvoices('');
-    setMinDaysOverdue('');
-    setMaxDaysOverdue('');
-    setBalanceFilter('positive'); // Default to positive balance
+    // Calculate all values first
+    let newDateFrom = '';
+    let newDateTo = '';
+    let newMinBalance = '';
+    let newMaxBalance = '';
+    let newMinOpenInvoices = '';
+    let newMaxOpenInvoices = '';
+    let newMinDaysOverdue = '';
+    let newMaxDaysOverdue = '';
 
     // Apply date range only if explicitly set
     if (config.dateRange && config.dateRange.type !== 'none') {
       if (config.dateRange.type === 'relative' && config.dateRange.relativeDays) {
         const date = new Date(today);
         date.setDate(date.getDate() - config.dateRange.relativeDays);
-        setDateFrom(date.toISOString().split('T')[0]);
-        setDateTo(today.toISOString().split('T')[0]);
+        newDateFrom = date.toISOString().split('T')[0];
+        newDateTo = today.toISOString().split('T')[0];
       } else if (config.dateRange.type === 'absolute') {
-        if (config.dateRange.fromDate) setDateFrom(config.dateRange.fromDate);
-        if (config.dateRange.toDate) setDateTo(config.dateRange.toDate);
+        if (config.dateRange.fromDate) newDateFrom = config.dateRange.fromDate;
+        if (config.dateRange.toDate) newDateTo = config.dateRange.toDate;
       }
     }
 
     // Apply balance filters
     if (config.balance) {
       if (config.balance.min !== undefined) {
-        setMinBalance(config.balance.min.toString());
+        newMinBalance = config.balance.min.toString();
         setBalanceFilter('positive');
       }
       if (config.balance.max !== undefined) {
-        setMaxBalance(config.balance.max.toString());
+        newMaxBalance = config.balance.max.toString();
       }
     }
 
     // Apply invoice count filters
     if (config.invoiceCount) {
       if (config.invoiceCount.min !== undefined) {
-        setMinOpenInvoices(config.invoiceCount.min.toString());
+        newMinOpenInvoices = config.invoiceCount.min.toString();
       }
       if (config.invoiceCount.max !== undefined) {
-        setMaxOpenInvoices(config.invoiceCount.max.toString());
+        newMaxOpenInvoices = config.invoiceCount.max.toString();
       }
     }
 
     // Apply days overdue filters
     if (config.daysOverdue) {
       if (config.daysOverdue.min !== undefined) {
-        setMinDaysOverdue(config.daysOverdue.min.toString());
+        newMinDaysOverdue = config.daysOverdue.min.toString();
       }
       if (config.daysOverdue.max !== undefined) {
-        setMaxDaysOverdue(config.daysOverdue.max.toString());
+        newMaxDaysOverdue = config.daysOverdue.max.toString();
       }
     }
+
+    // Now set all state at once
+    setDateFrom(newDateFrom);
+    setDateTo(newDateTo);
+    setMinBalance(newMinBalance);
+    setMaxBalance(newMaxBalance);
+    setMinOpenInvoices(newMinOpenInvoices);
+    setMaxOpenInvoices(newMaxOpenInvoices);
+    setMinDaysOverdue(newMinDaysOverdue);
+    setMaxDaysOverdue(newMaxDaysOverdue);
 
     // Note: Some filters like colorStatus, hasCollectorAssigned, hasActiveTickets
     // may need additional state variables or backend support to filter properly
