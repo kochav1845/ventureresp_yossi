@@ -671,8 +671,19 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const applyCustomFilterConfig = (config: any) => {
     const today = new Date();
 
-    // Apply date range
-    if (config.dateRange) {
+    // Reset all filters first
+    setDateFrom('');
+    setDateTo('');
+    setMinBalance('');
+    setMaxBalance('');
+    setMinOpenInvoices('');
+    setMaxOpenInvoices('');
+    setMinDaysOverdue('');
+    setMaxDaysOverdue('');
+    setBalanceFilter('positive'); // Default to positive balance
+
+    // Apply date range only if explicitly set
+    if (config.dateRange && config.dateRange.type !== 'none') {
       if (config.dateRange.type === 'relative' && config.dateRange.relativeDays) {
         const date = new Date(today);
         date.setDate(date.getDate() - config.dateRange.relativeDays);
