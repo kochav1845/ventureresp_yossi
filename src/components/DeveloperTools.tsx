@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2 } from 'lucide-react';
+import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard } from 'lucide-react';
 
 interface Tool {
   id: string;
@@ -15,6 +15,14 @@ export function DeveloperTools() {
   const navigate = useNavigate();
 
   const tools: Tool[] = [
+    {
+      id: 'payment-bulk-fetch',
+      name: 'Payment Bulk Fetch',
+      description: 'Bulk fetch payments, credit memos, and prepayments from Acumatica',
+      icon: CreditCard,
+      path: '/payment-bulk-fetch',
+      category: 'payment'
+    },
     {
       id: 'test-payment-sync',
       name: 'Test Payment App & Attachment Sync',
