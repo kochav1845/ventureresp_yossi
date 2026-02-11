@@ -239,6 +239,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const refreshAnalytics = async () => {
     setRefreshingAnalytics(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/calculate-payment-analytics`;
 
       let requestBody: any = {};
@@ -263,7 +268,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody)
@@ -555,6 +560,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     setFetchingApplications(true);
     setFetchResult(null);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
       const year = selectedMonth.getFullYear();
       const month = selectedMonth.getMonth() + 1;
 
@@ -563,7 +573,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ month, year })
@@ -587,6 +597,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     setFetchingAttachments(true);
     setAttachmentResult(null);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
       const year = selectedMonth.getFullYear();
       const month = selectedMonth.getMonth() + 1;
       const startDate = new Date(year, month - 1, 1);
@@ -618,7 +633,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              'Authorization': `Bearer ${session.access_token}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({ paymentRefNumber: payment.reference_number })
