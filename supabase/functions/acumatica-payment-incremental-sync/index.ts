@@ -197,12 +197,17 @@ Deno.serve(async (req: Request) => {
             refNbr = refNbr.padStart(6, '0');
           }
 
+          const status = payment.Status?.value || null;
+          const applicationDate = status === 'Voided'
+            ? (payment.LastModifiedDateTime?.value || payment.ApplicationDate?.value || payment.PaymentDate?.value || null)
+            : (payment.ApplicationDate?.value || payment.PaymentDate?.value || null);
+
           const paymentData: any = {
             reference_number: refNbr,
             type: type,
-            status: payment.Status?.value || null,
+            status: status,
             hold: payment.Hold?.value || false,
-            application_date: payment.ApplicationDate?.value || payment.PaymentDate?.value || null,
+            application_date: applicationDate,
             payment_amount: payment.PaymentAmount?.value || 0,
             available_balance: payment.UnappliedBalance?.value || 0,
             customer_id: payment.CustomerID?.value || null,
