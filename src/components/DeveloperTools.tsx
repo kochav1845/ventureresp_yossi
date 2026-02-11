@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard } from 'lucide-react';
+import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor } from 'lucide-react';
 
 interface Tool {
   id: string;
@@ -93,6 +93,14 @@ export function DeveloperTools() {
       description: 'Diagnose and fix payment sync issues (recommended first step)',
       icon: Activity,
       path: '/payment-sync-diagnostic',
+      category: 'sync'
+    },
+    {
+      id: 'live-sync-monitor',
+      name: 'Live Sync Monitor',
+      description: 'Real-time monitoring of all sync operations with live progress tracking',
+      icon: Monitor,
+      path: '/live-sync-monitor',
       category: 'sync'
     },
     {

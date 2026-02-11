@@ -61,6 +61,7 @@ import TestPaymentAppAndAttachmentSync from './components/TestPaymentAppAndAttac
 import AutoBackfillMonitor from './components/AutoBackfillMonitor';
 import PaymentStatusDiagnostic from './components/PaymentStatusDiagnostic';
 import PaymentDateRangeResync from './components/PaymentDateRangeResync';
+import LiveSyncMonitor from './components/LiveSyncMonitor';
 import PaymentSyncHealthCheck from './components/PaymentSyncHealthCheck';
 import PaymentSyncDiagnostic from './components/PaymentSyncDiagnostic';
 import { DeveloperTools } from './components/DeveloperTools';
@@ -178,6 +179,7 @@ function AppContent() {
         <Route path="auto-backfill" element={<AutoBackfillMonitor />} />
         <Route path="payment-status-diagnostic" element={<PaymentStatusDiagnostic />} />
         <Route path="payment-date-range-resync" element={<PaymentDateRangeResync />} />
+        <Route path="live-sync-monitor" element={<LiveSyncMonitor />} />
         <Route path="payment-sync-health" element={<PaymentSyncHealthCheck />} />
         <Route path="payment-sync-diagnostic" element={<PaymentSyncDiagnostic />} />
         <Route path="developer-tools" element={<DeveloperTools />} />

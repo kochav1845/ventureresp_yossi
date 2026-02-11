@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const MAX_PAYMENTS_PER_RUN = 20; // Reduced to prevent timeout (each payment can have 2 API calls)
+const MAX_PAYMENTS_PER_RUN = 5; // Each payment = 2 API calls to Acumatica (Payment + Voided Payment types). At ~10-15s per API call, 5 payments = ~100-150s = safe within 2min timeout
 
 async function logoutAcumaticaSession(acumaticaUrl: string, cookies: string): Promise<boolean> {
   try {
