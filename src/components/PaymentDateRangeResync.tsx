@@ -179,6 +179,25 @@ export default function PaymentDateRangeResync() {
         </button>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+          <div className="flex items-center gap-3 mb-3">
+            <RefreshCw className="w-5 h-5 text-blue-600 animate-spin" />
+            <div>
+              <p className="font-medium text-blue-900">Syncing payments...</p>
+              <p className="text-blue-700 text-sm">
+                Fetching both Payment and Voided Payment records from Acumatica. This may take a moment.
+              </p>
+            </div>
+          </div>
+          <div className="bg-blue-100 rounded-full h-2 overflow-hidden">
+            <div className="bg-blue-600 h-full w-full animate-pulse"></div>
+          </div>
+          <p className="text-blue-600 text-xs mt-2">Please wait, do not close this page...</p>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-start gap-3">
@@ -253,6 +272,7 @@ export default function PaymentDateRangeResync() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Payment Ref</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Old Status</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">New Status</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
@@ -262,6 +282,11 @@ export default function PaymentDateRangeResync() {
                     {progress.statusChanges.map((change: any, idx: number) => (
                       <tr key={idx}>
                         <td className="px-4 py-2 whitespace-nowrap font-mono text-sm">{change.paymentRef}</td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">
+                            {change.type || 'Payment'}
+                          </span>
+                        </td>
                         <td className="px-4 py-2 whitespace-nowrap">
                           <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">
                             {change.oldStatus}
