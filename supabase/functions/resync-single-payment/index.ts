@@ -177,34 +177,24 @@ Deno.serve(async (req: Request) => {
     const paddedRef = paymentRef.padStart(6, '0');
     console.log(`Fetching payment ${paddedRef} from Acumatica...`);
 
-    const { data: existingPayment } = await supabase
-      .from('acumatica_payments')
-      .select('type')
-      .eq('reference_number', paddedRef)
-      .maybeSingle();
+    const typesToTry = ['Payment', 'Voided Payment'];
+    const fetchedPayments: any[] = [];
 
-    const paymentType = existingPayment?.type || 'Payment';
-    console.log(`Using payment type: ${paymentType}`);
+    for (const paymentType of typesToTry) {
+      const directUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(paymentType)}/${encodeURIComponent(paddedRef)}?$expand=ApplicationHistory`;
+      console.log(`Trying ${paymentType}: ${directUrl}`);
 
-    const directUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(paymentType)}/${encodeURIComponent(paddedRef)}?$expand=ApplicationHistory`;
-    console.log(`Direct endpoint URL: ${directUrl}`);
+      let paymentResponse = await fetch(directUrl, {
+        method: 'GET',
+        headers: {
+          'Cookie': cookies,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      });
 
-    let paymentResponse = await fetch(directUrl, {
-      method: 'GET',
-      headers: {
-        'Cookie': cookies,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!paymentResponse.ok) {
-      const errorText = await paymentResponse.text();
-      console.error(`Acumatica API error: ${paymentResponse.status} - ${errorText}`);
-
-      if (paymentResponse.status === 401 || errorText.includes('API Login Limit')) {
+      if (paymentResponse.status === 401) {
         console.log('Session issue, getting fresh session...');
-
         try {
           cookies = await getOrCreateSession(supabase, acumaticaUrl, credentials, true);
         } catch (retryLoginError: any) {
@@ -228,19 +218,20 @@ Deno.serve(async (req: Request) => {
             'Content-Type': 'application/json',
           },
         });
+      }
 
-        if (!paymentResponse.ok) {
-          const retryError = await paymentResponse.text();
-          throw new Error(`Failed after retry: ${paymentResponse.status} - ${retryError}`);
+      if (paymentResponse.ok) {
+        const acumaticaPayment = await paymentResponse.json();
+        if (acumaticaPayment && acumaticaPayment.ReferenceNbr) {
+          console.log(`Found ${paymentType} record for ${paddedRef}`);
+          fetchedPayments.push(acumaticaPayment);
         }
       } else {
-        throw new Error(`Failed to fetch payment: ${paymentResponse.status} - ${errorText}`);
+        console.log(`${paymentType} not found for ${paddedRef} (status: ${paymentResponse.status})`);
       }
     }
 
-    const acumaticaPayment = await paymentResponse.json();
-
-    if (!acumaticaPayment || !acumaticaPayment.ReferenceNbr) {
+    if (fetchedPayments.length === 0) {
       return new Response(
         JSON.stringify({
           error: 'Payment not found in Acumatica',
@@ -250,54 +241,87 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const updateData = {
-      customer_id: acumaticaPayment.CustomerID?.value || null,
-      customer_name: acumaticaPayment.CustomerName?.value || acumaticaPayment.Customer?.value || null,
-      type: acumaticaPayment.Type?.value || null,
-      payment_method: acumaticaPayment.PaymentMethod?.value || null,
-      cash_account: acumaticaPayment.CashAccount?.value || null,
-      card_account_nbr: acumaticaPayment.CardAccountNbr?.value || null,
-      status: acumaticaPayment.Status?.value || null,
-      application_date: acumaticaPayment.ApplicationDate?.value || null,
-      payment_amount: acumaticaPayment.PaymentAmount?.value || null,
-      available_balance: acumaticaPayment.UnappliedBalance?.value || null,
-      description: acumaticaPayment.Description?.value || null,
-      currency_id: acumaticaPayment.CurrencyID?.value || null,
-      hold: acumaticaPayment.Hold?.value || null,
-      payment_ref: acumaticaPayment.PaymentRef?.value || null,
-      last_modified_datetime: acumaticaPayment.LastModifiedDateTime?.value || null,
-      application_history: acumaticaPayment.ApplicationHistory || [],
-      last_sync_timestamp: new Date().toISOString(),
-    };
+    let totalApplications = 0;
+    const results: any[] = [];
 
-    const { error: updateError } = await supabase
-      .from('acumatica_payments')
-      .update(updateData)
-      .eq('reference_number', paddedRef);
+    for (const acumaticaPayment of fetchedPayments) {
+      const paymentType = acumaticaPayment.Type?.value;
 
-    if (updateError) {
-      throw new Error(`Failed to update payment: ${updateError.message}`);
-    }
+      const updateData = {
+        reference_number: paddedRef,
+        customer_id: acumaticaPayment.CustomerID?.value || null,
+        customer_name: acumaticaPayment.CustomerName?.value || acumaticaPayment.Customer?.value || null,
+        type: paymentType,
+        payment_method: acumaticaPayment.PaymentMethod?.value || null,
+        cash_account: acumaticaPayment.CashAccount?.value || null,
+        card_account_nbr: acumaticaPayment.CardAccountNbr?.value || null,
+        status: acumaticaPayment.Status?.value || null,
+        application_date: acumaticaPayment.ApplicationDate?.value || null,
+        payment_amount: acumaticaPayment.PaymentAmount?.value || null,
+        available_balance: acumaticaPayment.UnappliedBalance?.value || null,
+        description: acumaticaPayment.Description?.value || null,
+        currency_id: acumaticaPayment.CurrencyID?.value || null,
+        hold: acumaticaPayment.Hold?.value || null,
+        payment_ref: acumaticaPayment.PaymentRef?.value || null,
+        last_modified_datetime: acumaticaPayment.LastModifiedDateTime?.value || null,
+        application_history: acumaticaPayment.ApplicationHistory || [],
+        last_sync_timestamp: new Date().toISOString(),
+      };
 
-    if (acumaticaPayment.ApplicationHistory && acumaticaPayment.ApplicationHistory.length > 0) {
-      await supabase
-        .from('payment_invoice_applications')
-        .delete()
-        .eq('payment_reference_number', paddedRef);
+      const { data: existing } = await supabase
+        .from('acumatica_payments')
+        .select('id')
+        .eq('reference_number', paddedRef)
+        .eq('type', paymentType)
+        .maybeSingle();
 
-      const applications = acumaticaPayment.ApplicationHistory.map((app: any) => ({
-        payment_reference_number: paddedRef,
-        doc_type: app.DocType?.value || null,
-        reference_number: app.ReferenceNbr?.value || null,
-        invoice_date: app.Date?.value || null,
-        status: app.Status?.value || null,
-        amount_paid: parseFloat(app.AmountPaid?.value || '0'),
-        balance: parseFloat(app.Balance?.value || '0'),
-      }));
+      if (existing) {
+        const { error: updateError } = await supabase
+          .from('acumatica_payments')
+          .update(updateData)
+          .eq('reference_number', paddedRef)
+          .eq('type', paymentType);
 
-      await supabase
-        .from('payment_invoice_applications')
-        .insert(applications);
+        if (updateError) {
+          console.error(`Failed to update ${paymentType}: ${updateError.message}`);
+        } else {
+          results.push({ type: paymentType, action: 'updated', status: updateData.status });
+        }
+      } else {
+        const { error: insertError } = await supabase
+          .from('acumatica_payments')
+          .insert(updateData);
+
+        if (insertError) {
+          console.error(`Failed to insert ${paymentType}: ${insertError.message}`);
+        } else {
+          results.push({ type: paymentType, action: 'created', status: updateData.status });
+        }
+      }
+
+      if (acumaticaPayment.ApplicationHistory && acumaticaPayment.ApplicationHistory.length > 0) {
+        await supabase
+          .from('payment_invoice_applications')
+          .delete()
+          .eq('payment_reference_number', paddedRef)
+          .eq('doc_type', paymentType);
+
+        const applications = acumaticaPayment.ApplicationHistory.map((app: any) => ({
+          payment_reference_number: paddedRef,
+          doc_type: app.DocType?.value || paymentType,
+          reference_number: app.ReferenceNbr?.value || null,
+          invoice_date: app.Date?.value || null,
+          status: app.Status?.value || null,
+          amount_paid: parseFloat(app.AmountPaid?.value || '0'),
+          balance: parseFloat(app.Balance?.value || '0'),
+        }));
+
+        await supabase
+          .from('payment_invoice_applications')
+          .insert(applications);
+
+        totalApplications += applications.length;
+      }
     }
 
     await supabase
@@ -308,15 +332,16 @@ Deno.serve(async (req: Request) => {
         sync_type: 'manual_resync',
         action_type: 'updated',
         old_value: null,
-        new_value: updateData.status,
+        new_value: JSON.stringify(results),
       });
 
     return new Response(
       JSON.stringify({
         success: true,
         message: `Payment ${paddedRef} resynced successfully`,
-        updatedStatus: updateData.status,
-        applicationsCount: acumaticaPayment.ApplicationHistory?.length || 0,
+        recordsProcessed: fetchedPayments.length,
+        results,
+        applicationsCount: totalApplications,
       }),
       {
         status: 200,
