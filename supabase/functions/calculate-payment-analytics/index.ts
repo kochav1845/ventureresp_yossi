@@ -93,7 +93,6 @@ Deno.serve(async (req: Request) => {
         .from('acumatica_payments')
         .select('application_date, payment_amount, customer_id, type, payment_method, status')
         .neq('type', 'Credit Memo')
-        .neq('status', 'Voided')
         .gte('application_date', queryStartDate)
         .lte('application_date', queryEndDate)
         .range(offset, offset + batchSize - 1);
