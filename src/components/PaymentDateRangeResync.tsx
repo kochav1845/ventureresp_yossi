@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, RefreshCw, ArrowLeft, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 
 export default function PaymentDateRangeResync() {
   const navigate = useNavigate();
@@ -9,6 +10,33 @@ export default function PaymentDateRangeResync() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [syncId, setSyncId] = useState<string | null>(null);
+  const [liveProgress, setLiveProgress] = useState<any>(null);
+
+  // Poll for progress updates
+  useEffect(() => {
+    if (!syncId || !loading) return;
+
+    const pollInterval = setInterval(async () => {
+      const { data } = await supabase
+        .from('sync_progress')
+        .select('*')
+        .eq('sync_id', syncId)
+        .order('last_updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (data) {
+        setLiveProgress(data);
+
+        if (data.status === 'completed' || data.status === 'failed') {
+          clearInterval(pollInterval);
+        }
+      }
+    }, 500); // Poll every 500ms
+
+    return () => clearInterval(pollInterval);
+  }, [syncId, loading]);
 
   const resyncDateRange = async () => {
     if (!startDate || !endDate) {
@@ -19,6 +47,8 @@ export default function PaymentDateRangeResync() {
     setLoading(true);
     setError(null);
     setProgress(null);
+    setSyncId(null);
+    setLiveProgress(null);
 
     try {
       const response = await fetch(
@@ -39,6 +69,7 @@ export default function PaymentDateRangeResync() {
       }
 
       const data = await response.json();
+      setSyncId(data.syncId);
       setProgress(data);
     } catch (err: any) {
       setError(err.message);
@@ -184,16 +215,37 @@ export default function PaymentDateRangeResync() {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
           <div className="flex items-center gap-3 mb-3">
             <RefreshCw className="w-5 h-5 text-blue-600 animate-spin" />
-            <div>
+            <div className="flex-1">
               <p className="font-medium text-blue-900">Syncing payments...</p>
               <p className="text-blue-700 text-sm">
                 Fetching both Payment and Voided Payment records from Acumatica. This may take a moment.
               </p>
+              {liveProgress && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-blue-800 text-sm font-medium">
+                    Progress: {liveProgress.processed_items} / {liveProgress.total_items} payments
+                  </p>
+                  {liveProgress.current_item && (
+                    <p className="text-blue-600 text-xs font-mono">
+                      Currently processing: {liveProgress.current_item}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-          <div className="bg-blue-100 rounded-full h-2 overflow-hidden">
-            <div className="bg-blue-600 h-full w-full animate-pulse"></div>
-          </div>
+          {liveProgress && liveProgress.total_items > 0 ? (
+            <div className="bg-blue-100 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-blue-600 h-full transition-all duration-300"
+                style={{ width: `${(liveProgress.processed_items / liveProgress.total_items) * 100}%` }}
+              ></div>
+            </div>
+          ) : (
+            <div className="bg-blue-100 rounded-full h-2 overflow-hidden">
+              <div className="bg-blue-600 h-full w-full animate-pulse"></div>
+            </div>
+          )}
           <p className="text-blue-600 text-xs mt-2">Please wait, do not close this page...</p>
         </div>
       )}

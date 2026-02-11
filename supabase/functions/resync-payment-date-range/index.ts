@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const MAX_PAYMENTS_PER_RUN = 50;
+const MAX_PAYMENTS_PER_RUN = 20; // Reduced to prevent timeout (each payment can have 2 API calls)
 
 async function logoutAcumaticaSession(acumaticaUrl: string, cookies: string): Promise<boolean> {
   try {
@@ -134,6 +134,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const startTime = Date.now();
+  const syncId = crypto.randomUUID();
 
   try {
     const supabase = createClient(
@@ -150,7 +151,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    console.log(`Resyncing payments from ${startDate} to ${endDate}`);
+    console.log(`Resyncing payments from ${startDate} to ${endDate} (syncId: ${syncId})`);
 
     const { data: credentials, error: credError } = await supabase
       .from('acumatica_sync_credentials')
@@ -224,6 +225,16 @@ Deno.serve(async (req: Request) => {
     const uniqueRefs = [...new Set(paymentRefs.map(p => p.reference_number))];
     console.log(`Processing ${uniqueRefs.length} unique payment references`);
 
+    // Initialize progress tracking
+    await supabase.from('sync_progress').insert({
+      sync_id: syncId,
+      operation_type: 'payment_date_range_resync',
+      total_items: uniqueRefs.length,
+      processed_items: 0,
+      status: 'running',
+      metadata: { startDate, endDate }
+    });
+
     const results = {
       totalProcessed: 0,
       successCount: 0,
@@ -235,7 +246,17 @@ Deno.serve(async (req: Request) => {
     let sessionRetried = false;
     const typesToTry = ['Payment', 'Voided Payment'];
 
-    for (const refNumber of uniqueRefs) {
+    for (let i = 0; i < uniqueRefs.length; i++) {
+      const refNumber = uniqueRefs[i];
+
+      // Update progress
+      await supabase.from('sync_progress')
+        .update({
+          processed_items: i,
+          current_item: refNumber,
+          last_updated_at: new Date().toISOString()
+        })
+        .eq('sync_id', syncId);
       try {
         const fetchedPayments: any[] = [];
 
@@ -402,6 +423,23 @@ Deno.serve(async (req: Request) => {
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1) + 's';
 
+    // Mark sync as completed
+    await supabase.from('sync_progress')
+      .update({
+        processed_items: uniqueRefs.length,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        last_updated_at: new Date().toISOString(),
+        metadata: {
+          startDate,
+          endDate,
+          duration,
+          successCount: results.successCount,
+          errorCount: results.errorCount
+        }
+      })
+      .eq('sync_id', syncId);
+
     await supabase
       .from('sync_change_logs')
       .insert({
@@ -423,6 +461,7 @@ Deno.serve(async (req: Request) => {
         duration,
         message: responseMessage,
         totalInRange,
+        syncId,
       }),
       {
         status: 200,
@@ -432,8 +471,27 @@ Deno.serve(async (req: Request) => {
   } catch (error: any) {
     console.error('Date range resync error:', error);
 
+    // Mark sync as failed
+    try {
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      );
+
+      await supabase.from('sync_progress')
+        .update({
+          status: 'failed',
+          error_message: error.message,
+          completed_at: new Date().toISOString(),
+          last_updated_at: new Date().toISOString()
+        })
+        .eq('sync_id', syncId);
+    } catch (updateError) {
+      console.error('Failed to update sync progress:', updateError);
+    }
+
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error.message, syncId }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
