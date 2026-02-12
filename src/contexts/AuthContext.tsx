@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useMemo } from 'react';
 import { User, AuthError } from '@supabase/supabase-js';
-import { supabase, UserProfile, logActivity } from '../lib/supabase';
+import { supabase, UserProfile, logActivity, withTimeout, withRetry } from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -27,7 +27,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const { data: { session }, error } = await withTimeout(
+          supabase.auth.getSession(),
+          10000,
+          'Session check timed out'
+        );
 
         if (error) {
           console.error('Session error:', error);
@@ -108,40 +112,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const loadProfile = async (userId: string, retryCount = 0) => {
-    const maxRetries = 3;
-    const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000);
-
+  const loadProfile = async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
+      const { data, error } = await withRetry(
+        () =>
+          withTimeout(
+            supabase
+              .from('user_profiles')
+              .select('*')
+              .eq('id', userId)
+              .maybeSingle(),
+            10000,
+            'Profile load timed out'
+          ),
+        3,
+        1000
+      );
 
       if (error) throw error;
       setProfile(data);
     } catch (error: any) {
       console.error('Error loading profile:', error);
 
-      // Check if it's a network error and we haven't exceeded retry limit
-      const isNetworkError = error?.message?.includes('fetch') ||
-                            error?.message?.includes('network') ||
-                            error?.code === 'PGRST301';
-
-      if (isNetworkError && retryCount < maxRetries) {
-        console.log(`Retrying profile load (${retryCount + 1}/${maxRetries}) in ${retryDelay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
-        return loadProfile(userId, retryCount + 1);
-      }
-
-      // If we've exhausted retries or it's not a network error, clear auth
-      if (retryCount >= maxRetries) {
-        console.error('Max retries exceeded. Clearing auth state.');
-        await supabase.auth.signOut();
-        setUser(null);
-        setProfile(null);
-      }
+      // If we've exhausted retries, clear auth
+      console.error('Failed to load profile. Clearing auth state.');
+      await supabase.auth.signOut();
+      setUser(null);
+      setProfile(null);
     } finally {
       setLoading(false);
     }

@@ -2,11 +2,17 @@
 
 ## The Problem
 
-You're seeing "Failed to fetch" errors when trying to log in. This is happening because:
+You're seeing network errors like:
+- "Failed to fetch"
+- "Connection terminated due to connection timeout"
+- "Failed to run sql query: Connection terminated"
+
+This is happening because:
 
 1. **WebContainer Environment**: The preview environment runs in a browser-based sandbox (WebContainer)
-2. **Network Restrictions**: WebContainers have security restrictions that can block external API calls
-3. **Supabase Connection**: Your app needs to connect to Supabase, which is blocked by these restrictions
+2. **Network Restrictions**: WebContainers have security restrictions that can block or timeout external API calls
+3. **Supabase Connection**: Your app needs to connect to Supabase, but the connection is being blocked or timing out
+4. **Query Timeouts**: Database queries may timeout before completing due to network latency
 
 ## Quick Fixes
 
@@ -42,10 +48,35 @@ When running locally, you won't have these WebContainer restrictions.
 
 To help with this issue, we've added:
 
-1. **Retry Logic**: The auth system now retries failed requests up to 3 times with exponential backoff
-2. **Better Error Messages**: Clear error messages with links to diagnostics
-3. **Connection Diagnostic Tool**: Available at `/connection-test` to identify the exact issue
-4. **WebContainer Detection**: The sign-in page shows a warning when it detects the WebContainer environment
+1. **Retry Logic with Timeout Protection**:
+   - All database queries now retry up to 3 times with exponential backoff
+   - 10-second timeout on all queries to prevent indefinite hanging
+   - Automatic network error detection and graceful fallback
+
+2. **Error Boundary**:
+   - Global error handler that catches connection failures
+   - User-friendly error messages with actionable solutions
+   - Automatic detection of connection vs. application errors
+
+3. **Better Error Messages**:
+   - Clear error messages with links to diagnostics
+   - Environment-specific troubleshooting tips
+   - Direct links to connection testing tools
+
+4. **Connection Diagnostic Tool**:
+   - Available at `/connection-test` to identify the exact issue
+   - Tests environment configuration, network, auth, and database
+   - WebContainer-specific guidance and solutions
+
+5. **WebContainer Detection**:
+   - The sign-in page shows a warning when it detects the WebContainer environment
+   - Proactive guidance before errors occur
+   - Links to troubleshooting resources
+
+6. **Optimized Supabase Client**:
+   - Reduced connection overhead
+   - Better timeout handling
+   - Improved error recovery
 
 ## Why This Happens
 
