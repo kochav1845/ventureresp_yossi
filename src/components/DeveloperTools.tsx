@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor } from 'lucide-react';
+import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor, XCircle } from 'lucide-react';
 
 interface Tool {
   id: string;
@@ -85,6 +85,14 @@ export function DeveloperTools() {
       description: 'Verify payment sync accuracy and detect mismatches',
       icon: HeartPulse,
       path: '/payment-sync-health',
+      category: 'payment'
+    },
+    {
+      id: 'voided-payments-by-date',
+      name: 'Voided Payments by Date',
+      description: 'Search voided payments with timezone-aware date filtering (UTC vs ET)',
+      icon: XCircle,
+      path: '/voided-payments-by-date',
       category: 'payment'
     },
     {
