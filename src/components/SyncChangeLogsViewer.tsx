@@ -27,85 +27,47 @@ export default function SyncChangeLogsViewer({ onBack }: Props) {
   const handleBack = onBack || (() => navigate(-1));
   const [logs, setLogs] = useState<SyncChangeLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedLog, setSelectedLog] = useState<SyncChangeLog | null>(null);
   const [filterType, setFilterType] = useState<string>('all');
   const [filterAction, setFilterAction] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
-  const [totalCount, setTotalCount] = useState<number>(0);
-  const [currentPage, setCurrentPage] = useState(0);
-  const BATCH_SIZE = 500;
 
   useEffect(() => {
-    loadLogs(true);
+    loadLogs();
   }, [filterType, filterAction, filterSource]);
 
-  const loadLogs = async (reset: boolean = false) => {
+  const loadLogs = async () => {
     try {
-      if (reset) {
-        setLoading(true);
-        setCurrentPage(0);
-      } else {
-        setLoadingMore(true);
-      }
+      setLoading(true);
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-      const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
-      const pageToLoad = reset ? 0 : currentPage + 1;
-      const offset = pageToLoad * BATCH_SIZE;
-
-      // Build count query
-      let countQuery = supabase
-        .from('sync_change_logs')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', fifteenDaysAgo);
-
-      // Build data query
-      let dataQuery = supabase
+      let query = supabase
         .from('sync_change_logs')
         .select('*')
-        .gte('created_at', fifteenDaysAgo)
+        .gte('created_at', twentyFourHoursAgo)
         .order('created_at', { ascending: false })
-        .range(offset, offset + BATCH_SIZE - 1);
+        .limit(500); // Limit to 500 most recent logs to prevent timeout
 
-      // Apply filters to both queries
       if (filterType !== 'all') {
-        countQuery = countQuery.eq('sync_type', filterType);
-        dataQuery = dataQuery.eq('sync_type', filterType);
+        query = query.eq('sync_type', filterType);
       }
       if (filterAction !== 'all') {
-        countQuery = countQuery.eq('action_type', filterAction);
-        dataQuery = dataQuery.eq('action_type', filterAction);
+        query = query.eq('action_type', filterAction);
       }
       if (filterSource !== 'all') {
-        countQuery = countQuery.eq('sync_source', filterSource);
-        dataQuery = dataQuery.eq('sync_source', filterSource);
+        query = query.eq('sync_source', filterSource);
       }
 
-      // Execute queries in parallel
-      const [{ count }, { data, error }] = await Promise.all([
-        countQuery,
-        dataQuery
-      ]);
+      const { data, error } = await query;
 
       if (error) throw error;
-
-      if (reset) {
-        setLogs(data || []);
-      } else {
-        setLogs(prev => [...prev, ...(data || [])]);
-      }
-
-      setTotalCount(count || 0);
-      setCurrentPage(pageToLoad);
+      setLogs(data || []);
     } catch (error) {
       console.error('Error loading sync logs:', error);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
   };
-
-  const hasMoreLogs = logs.length < totalCount;
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -164,11 +126,11 @@ export default function SyncChangeLogsViewer({ onBack }: Props) {
             </button>
             <div>
               <h1 className="text-2xl font-bold text-white">Sync Change Logs</h1>
-              <p className="text-slate-400 text-sm">Changes from Acumatica syncs (last 15 days)</p>
+              <p className="text-slate-400 text-sm">Recent changes from Acumatica syncs (last 24 hours, max 500 entries)</p>
             </div>
           </div>
           <button
-            onClick={() => loadLogs(true)}
+            onClick={loadLogs}
             disabled={loading}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
           >
@@ -240,17 +202,9 @@ export default function SyncChangeLogsViewer({ onBack }: Props) {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-2">
-              <div className="flex items-center justify-between text-slate-400 text-sm mb-4">
-                <span>
-                  Showing {logs.length.toLocaleString()} of {totalCount.toLocaleString()} changes
-                </span>
-                {hasMoreLogs && (
-                  <span className="text-xs">
-                    {totalCount - logs.length} more available
-                  </span>
-                )}
+              <div className="text-slate-400 text-sm mb-4">
+                Showing {logs.length} most recent changes (max 500)
               </div>
-
               {logs.map((log) => (
                 <div
                   key={log.id}
@@ -280,31 +234,10 @@ export default function SyncChangeLogsViewer({ onBack }: Props) {
                 </div>
               ))}
 
-              {logs.length === 0 && !loading && (
+              {logs.length === 0 && (
                 <div className="text-center py-12">
                   <AlertCircle className="w-12 h-12 text-slate-600 mx-auto mb-4" />
                   <p className="text-slate-400">No sync logs found with the selected filters</p>
-                </div>
-              )}
-
-              {hasMoreLogs && (
-                <div className="flex justify-center pt-4">
-                  <button
-                    onClick={() => loadLogs(false)}
-                    disabled={loadingMore}
-                    className="flex items-center gap-2 px-6 py-3 bg-slate-700/50 hover:bg-slate-700 text-white rounded-lg transition-colors border border-slate-600 disabled:opacity-50"
-                  >
-                    {loadingMore ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        Loading more...
-                      </>
-                    ) : (
-                      <>
-                        Load More ({Math.min(BATCH_SIZE, totalCount - logs.length)} more)
-                      </>
-                    )}
-                  </button>
                 </div>
               )}
             </div>
