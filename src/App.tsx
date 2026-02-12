@@ -75,6 +75,7 @@ import InvoiceColorStatusManagement from './components/InvoiceColorStatusManagem
 import SyncHealthDashboard from './components/SyncHealthDashboard';
 import AutoTicketRules from './components/AutoTicketRules';
 import VoidedPaymentAnalysis from './components/VoidedPaymentAnalysis';
+import VoidedPaymentsByDate from './components/VoidedPaymentsByDate';
 
 function LoadingScreen() {
   return (
@@ -137,6 +138,7 @@ function AppContent() {
         <Route path="invoice-analytics" element={<AnalyticsDashboard />} />
         <Route path="payment-analytics" element={<PaymentAnalytics />} />
         <Route path="voided-payment-analysis" element={<VoidedPaymentAnalysis />} />
+        <Route path="voided-payments-by-date" element={<VoidedPaymentsByDate />} />
         <Route path="webhooks" element={<WebhookConfiguration />} />
         <Route path="sync-status" element={<SyncStatusDashboard />} />
         <Route path="sync-config" element={<SyncConfiguration />} />

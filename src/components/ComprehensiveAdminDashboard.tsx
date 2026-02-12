@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import {
   BarChart3, DollarSign, Users, FileText, TrendingUp, Mail,
   Activity, CreditCard, ArrowRight, Target, RefreshCw, Lock,
-  Sparkles, TrendingDown, CheckCircle2, Clock, AlertCircle, XCircle
+  Sparkles, TrendingDown, CheckCircle2, Clock, AlertCircle, XCircle,
+  Calendar, Search
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
@@ -241,6 +242,18 @@ export default function ComprehensiveAdminDashboard({ onNavigate }: Comprehensiv
       iconBg: 'bg-red-500/10',
       iconColor: 'text-red-600',
       view: 'voided-payment-analysis'
+    },
+    {
+      title: 'Voided Payments by Date',
+      subtitle: 'Timezone-aware search',
+      icon: Calendar,
+      metrics: [
+        { label: 'Search by date', value: 'Search Tool', icon: Search }
+      ],
+      gradient: 'from-orange-500 via-red-500 to-pink-500',
+      iconBg: 'bg-orange-500/10',
+      iconColor: 'text-orange-600',
+      view: 'voided-payments-by-date'
     },
     {
       title: 'User Activity',
