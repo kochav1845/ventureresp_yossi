@@ -197,9 +197,19 @@ export default function SignIn() {
               </p>
 
               {error && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                  <p className="text-red-800 text-sm">{error}</p>
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-start gap-3 mb-2">
+                    <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                    <p className="text-red-800 text-sm">{error}</p>
+                  </div>
+                  {(error.includes('fetch') || error.includes('network') || error.includes('Failed to')) && (
+                    <a
+                      href="/connection-test"
+                      className="text-sm text-blue-600 hover:text-blue-800 underline ml-8 inline-block"
+                    >
+                      Run connection diagnostic →
+                    </a>
+                  )}
                 </div>
               )}
 
@@ -353,9 +363,19 @@ export default function SignIn() {
 
           <div className="p-8">
             {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-                <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                <p className="text-red-800 text-sm">{error}</p>
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start gap-3 mb-2">
+                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <p className="text-red-800 text-sm">{error}</p>
+                </div>
+                {(error.includes('fetch') || error.includes('network') || error.includes('Failed to')) && (
+                  <a
+                    href="/connection-test"
+                    className="text-sm text-blue-600 hover:text-blue-800 underline ml-8 inline-block"
+                  >
+                    Run connection diagnostic →
+                  </a>
+                )}
               </div>
             )}
 

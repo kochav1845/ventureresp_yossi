@@ -77,6 +77,7 @@ import AutoTicketRules from './components/AutoTicketRules';
 import VoidedPaymentAnalysis from './components/VoidedPaymentAnalysis';
 import VoidedPaymentsByDate from './components/VoidedPaymentsByDate';
 import Last15DaysPaymentFetch from './components/Last15DaysPaymentFetch';
+import ConnectionDiagnostic from './components/ConnectionDiagnostic';
 
 function LoadingScreen() {
   return (
@@ -111,6 +112,7 @@ function AppContent() {
     return (
       <Routes>
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/connection-test" element={<ConnectionDiagnostic />} />
         <Route path="*" element={<SignIn />} />
       </Routes>
     );
