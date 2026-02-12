@@ -913,7 +913,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         let query = supabase
           .from('acumatica_payments')
           .select('*')
-          .neq('type', 'Credit Memo')
           .gte('application_date', startStr);
 
         if (useInclusiveEnd) {

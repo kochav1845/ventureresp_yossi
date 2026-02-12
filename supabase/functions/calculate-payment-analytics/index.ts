@@ -92,7 +92,6 @@ Deno.serve(async (req: Request) => {
       const { data, error } = await supabase
         .from('acumatica_payments')
         .select('application_date, payment_amount, customer_id, type, payment_method, status')
-        .neq('type', 'Credit Memo')
         .gte('application_date', queryStartDate)
         .lte('application_date', queryEndDate)
         .range(offset, offset + batchSize - 1);
