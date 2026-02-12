@@ -362,6 +362,25 @@ export default function SignIn() {
           </div>
 
           <div className="p-8">
+            {window.location.hostname.includes('webcontainer') && (
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="text-yellow-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div>
+                    <p className="text-yellow-900 text-sm font-medium mb-1">Preview Environment Limitations</p>
+                    <p className="text-yellow-800 text-xs">
+                      This preview environment may have network restrictions. If you experience connection issues, try:
+                    </p>
+                    <ul className="text-yellow-800 text-xs list-disc list-inside mt-2 space-y-1">
+                      <li>Refreshing the page (Ctrl+R or Cmd+R)</li>
+                      <li>Opening in a new browser tab</li>
+                      <li>Using the <a href="/connection-test" className="underline font-medium">connection diagnostic</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
                 <div className="flex items-start gap-3 mb-2">

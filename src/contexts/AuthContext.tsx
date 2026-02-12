@@ -108,7 +108,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const loadProfile = async (userId: string) => {
+  const loadProfile = async (userId: string, retryCount = 0) => {
+    const maxRetries = 3;
+    const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000);
+
     try {
       const { data, error } = await supabase
         .from('user_profiles')
@@ -118,8 +121,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
       setProfile(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading profile:', error);
+
+      // Check if it's a network error and we haven't exceeded retry limit
+      const isNetworkError = error?.message?.includes('fetch') ||
+                            error?.message?.includes('network') ||
+                            error?.code === 'PGRST301';
+
+      if (isNetworkError && retryCount < maxRetries) {
+        console.log(`Retrying profile load (${retryCount + 1}/${maxRetries}) in ${retryDelay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        return loadProfile(userId, retryCount + 1);
+      }
+
+      // If we've exhausted retries or it's not a network error, clear auth
+      if (retryCount >= maxRetries) {
+        console.error('Max retries exceeded. Clearing auth state.');
+        await supabase.auth.signOut();
+        setUser(null);
+        setProfile(null);
+      }
     } finally {
       setLoading(false);
     }

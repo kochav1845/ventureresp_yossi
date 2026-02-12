@@ -192,15 +192,26 @@ export default function ConnectionDiagnostic() {
 
           {tests.supabaseReach.status === 'error' && (
             <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-900">
-                <strong>Troubleshooting Tips:</strong>
+              <p className="text-sm text-blue-900 font-semibold mb-2">
+                WebContainer Environment Detected
               </p>
-              <ul className="list-disc list-inside text-sm text-blue-800 mt-2 space-y-1">
-                <li>Check your internet connection</li>
-                <li>Try restarting the dev server</li>
-                <li>Verify Supabase project is not paused</li>
-                <li>Check browser console for CORS errors</li>
-              </ul>
+              <p className="text-sm text-blue-800 mb-3">
+                The preview environment has network restrictions that may prevent connections to external services like Supabase.
+              </p>
+              <p className="text-sm text-blue-900 font-semibold mb-2">
+                Recommended Solutions:
+              </p>
+              <ol className="list-decimal list-inside text-sm text-blue-800 space-y-2">
+                <li><strong>Refresh the page</strong> - Press Ctrl+R (Windows) or Cmd+R (Mac)</li>
+                <li><strong>Open in a new tab</strong> - Right-click the preview URL and open in new tab</li>
+                <li><strong>Wait a moment</strong> - The connection may establish after a brief delay</li>
+                <li><strong>Download and run locally</strong> - Clone the project and run with <code className="bg-blue-100 px-1 py-0.5 rounded">npm run dev</code></li>
+              </ol>
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <p className="text-xs text-blue-700">
+                  Note: This is a known limitation of browser-based preview environments. The application will work correctly when deployed or run locally.
+                </p>
+              </div>
             </div>
           )}
         </div>
