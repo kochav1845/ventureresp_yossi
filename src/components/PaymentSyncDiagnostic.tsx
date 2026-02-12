@@ -127,13 +127,11 @@ export default function PaymentSyncDiagnostic({ onBack }: { onBack?: () => void 
         }
       }
 
-      // Check 4: Check recent sync activity (last 24 hours)
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      // Check 4: Check recent sync activity
       const { data: recentSyncs, error: syncLogError } = await supabase
         .from('sync_change_logs')
         .select('*')
         .eq('sync_type', 'payment')
-        .gte('created_at', oneDayAgo)
         .order('created_at', { ascending: false })
         .limit(5);
 

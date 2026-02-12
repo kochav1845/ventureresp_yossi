@@ -80,14 +80,6 @@ export function DeveloperTools() {
       category: 'payment'
     },
     {
-      id: 'last-15-days-payments',
-      name: 'Last 15 Days Payment Fetch',
-      description: 'Fetch payments from the last 15 days with batch processing support',
-      icon: Download,
-      path: '/last-15-days-payments',
-      category: 'payment'
-    },
-    {
       id: 'payment-sync-health',
       name: 'Payment Sync Health Check',
       description: 'Verify payment sync accuracy and detect mismatches',
