@@ -76,6 +76,7 @@ import SyncHealthDashboard from './components/SyncHealthDashboard';
 import AutoTicketRules from './components/AutoTicketRules';
 import VoidedPaymentAnalysis from './components/VoidedPaymentAnalysis';
 import VoidedPaymentsByDate from './components/VoidedPaymentsByDate';
+import Last15DaysPaymentFetch from './components/Last15DaysPaymentFetch';
 
 function LoadingScreen() {
   return (
@@ -195,6 +196,7 @@ function AppContent() {
         <Route path="invoice-color-settings" element={<InvoiceColorStatusManagement onBack={() => window.history.back()} />} />
         <Route path="auto-ticket-rules" element={<AutoTicketRules onBack={() => window.history.back()} />} />
         <Route path="sync-health" element={<SyncHealthDashboard />} />
+        <Route path="last-15-days-payments" element={<Last15DaysPaymentFetch />} />
       </Route>
 
       <Route path="*" element={<Navigate to={defaultRoute} replace />} />
