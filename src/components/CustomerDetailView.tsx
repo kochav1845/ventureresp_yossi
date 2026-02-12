@@ -75,8 +75,13 @@ interface PaymentData {
   payment_date: string;
   payment_method: string | null;
   amount: number;
+  payment_amount?: number;
+  application_date?: string;
   unapplied_balance: number | null;
   status: string;
+  type?: string;
+  description?: string;
+  available_balance?: number;
 }
 
 interface TicketData {
@@ -329,8 +334,13 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   // Load payments on-demand when tab is clicked
   const loadPaymentsData = async () => {
     if (payments.length > 0) return; // Already loaded
+    if (!customer) return; // Need customer data first
+
     setLoadingPayments(true);
     try {
+      // Get the Acumatica customer ID from customer object
+      const acumaticaCustomerId = customer.customer_id;
+
       let allPaymentsData: any[] = [];
       let hasMorePayments = true;
       let offset = 0;
@@ -339,8 +349,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       while (hasMorePayments) {
         const { data: chunk, error: paymentsError } = await supabase
           .from('acumatica_payments')
-          .select('id, reference_number, application_date, payment_method, status, payment_amount, available_balance, description')
-          .eq('customer_id', customerId)
+          .select('id, reference_number, application_date, payment_method, status, payment_amount, available_balance, description, type')
+          .eq('customer_id', acumaticaCustomerId)
           .order('application_date', { ascending: false })
           .range(offset, offset + CHUNK_SIZE - 1);
 
@@ -686,10 +696,19 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   };
 
   // Use calculated balance from customer data (not just displayed invoices)
+  // Use calculated balance from customer data (not just displayed invoices)
   const currentBalance = customer?.calculated_balance || 0;
-  const totalPaid = payments
-    .filter(p => p.status !== 'Voided')
-    .reduce((sum, p) => sum + (p.payment_amount || 0), 0);
+
+  // Filter out voided payments, voided payment reversals, and credit memos
+  const validPayments = payments.filter(p =>
+    p.status !== 'Voided' &&
+    p.type !== 'Voided Payment' &&
+    p.type !== 'Credit Memo'
+  );
+
+  const totalPaid = validPayments.reduce((sum, p) => sum + (parseFloat(p.payment_amount as any) || 0), 0);
+  const paymentCount = validPayments.length;
+
   const totalInvoiced = displayedInvoices
     .filter(inv => inv.status !== 'Voided')
     .reduce((sum, inv) => sum + (inv.amount || 0), 0);
@@ -820,7 +839,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             </div>
             <p className="text-sm text-green-600 font-medium mb-1">Total Paid (Lifetime)</p>
             <p className="text-2xl font-bold text-green-900">{formatCurrency(totalPaid)}</p>
-            <p className="text-xs text-green-700 mt-1">{payments.length} payment{payments.length !== 1 ? 's' : ''}</p>
+            <p className="text-xs text-green-700 mt-1">{paymentCount} payment{paymentCount !== 1 ? 's' : ''}</p>
           </div>
 
           <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-6">
@@ -1032,7 +1051,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             >
               <div className="flex items-center">
                 <CreditCard className="w-4 h-4 mr-2" />
-                Payment History ({payments.length})
+                Payment History ({paymentCount})
               </div>
             </button>
           </nav>
@@ -1381,7 +1400,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                   <p className="mt-4 text-gray-600">Loading payments...</p>
                 </div>
-              ) : payments.length === 0 ? (
+              ) : validPayments.length === 0 ? (
                 <div className="text-center py-12">
                   <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                   <p className="text-gray-500 font-medium">No payments found</p>
@@ -1394,6 +1413,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                       <div>
                         <p className="text-sm text-green-700 font-medium">Total Lifetime Payments</p>
                         <p className="text-2xl font-bold text-green-900">{formatCurrency(totalPaid)}</p>
+                        <p className="text-xs text-green-700 mt-1">{paymentCount} valid payment{paymentCount !== 1 ? 's' : ''} (excluding voided)</p>
                       </div>
                       <TrendingUp className="w-12 h-12 text-green-500" />
                     </div>
@@ -1425,7 +1445,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {payments.map((payment) => (
+                      {validPayments.map((payment) => (
                         <tr key={payment.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {payment.reference_number}
