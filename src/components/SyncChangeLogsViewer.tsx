@@ -45,7 +45,8 @@ export default function SyncChangeLogsViewer({ onBack }: Props) {
         .from('sync_change_logs')
         .select('*')
         .gte('created_at', twentyFourHoursAgo)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(500); // Limit to 500 most recent logs to prevent timeout
 
       if (filterType !== 'all') {
         query = query.eq('sync_type', filterType);
@@ -125,7 +126,7 @@ export default function SyncChangeLogsViewer({ onBack }: Props) {
             </button>
             <div>
               <h1 className="text-2xl font-bold text-white">Sync Change Logs</h1>
-              <p className="text-slate-400 text-sm">Last 24 hours of changes from Acumatica syncs</p>
+              <p className="text-slate-400 text-sm">Recent changes from Acumatica syncs (last 24 hours, max 500 entries)</p>
             </div>
           </div>
           <button
@@ -202,7 +203,7 @@ export default function SyncChangeLogsViewer({ onBack }: Props) {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-2">
               <div className="text-slate-400 text-sm mb-4">
-                Showing {logs.length} changes from last 24 hours
+                Showing {logs.length} most recent changes (max 500)
               </div>
               {logs.map((log) => (
                 <div
