@@ -74,6 +74,7 @@ import TicketStatusManagement from './components/TicketStatusManagement';
 import InvoiceColorStatusManagement from './components/InvoiceColorStatusManagement';
 import SyncHealthDashboard from './components/SyncHealthDashboard';
 import AutoTicketRules from './components/AutoTicketRules';
+import VoidedPaymentAnalysis from './components/VoidedPaymentAnalysis';
 
 function LoadingScreen() {
   return (
@@ -135,6 +136,7 @@ function AppContent() {
         <Route path="acumatica-payments" element={<AcumaticaPayments />} />
         <Route path="invoice-analytics" element={<AnalyticsDashboard />} />
         <Route path="payment-analytics" element={<PaymentAnalytics />} />
+        <Route path="voided-payment-analysis" element={<VoidedPaymentAnalysis />} />
         <Route path="webhooks" element={<WebhookConfiguration />} />
         <Route path="sync-status" element={<SyncStatusDashboard />} />
         <Route path="sync-config" element={<SyncConfiguration />} />

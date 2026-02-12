@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   BarChart3, DollarSign, Users, FileText, TrendingUp, Mail,
   Activity, CreditCard, ArrowRight, Target, RefreshCw, Lock,
-  Sparkles, TrendingDown, CheckCircle2, Clock, AlertCircle
+  Sparkles, TrendingDown, CheckCircle2, Clock, AlertCircle, XCircle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
@@ -84,6 +84,7 @@ export default function ComprehensiveAdminDashboard({ onNavigate }: Comprehensiv
         'customer-analytics': '/customer-analytics',
         'invoice-analytics': '/invoice-status-analytics',
         'payment-analytics': '/payment-analytics',
+        'voided-payment-analysis': '/voided-payment-analysis',
         'user-activity': '/user-activity',
         'email-analytics': '/email-analytics',
         'stripe-analytics': '/stripe-analytics',
@@ -228,6 +229,18 @@ export default function ComprehensiveAdminDashboard({ onNavigate }: Comprehensiv
       iconBg: 'bg-teal-500/10',
       iconColor: 'text-teal-600',
       view: 'payment-analytics'
+    },
+    {
+      title: 'Voided Payment Analysis',
+      subtitle: 'Dual-entry payments',
+      icon: XCircle,
+      metrics: [
+        { label: 'Check dual entries', value: 'View Report', icon: AlertCircle }
+      ],
+      gradient: 'from-red-500 via-orange-500 to-amber-500',
+      iconBg: 'bg-red-500/10',
+      iconColor: 'text-red-600',
+      view: 'voided-payment-analysis'
     },
     {
       title: 'User Activity',
