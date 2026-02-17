@@ -34,10 +34,10 @@ Deno.serve(async (req: Request) => {
     // If no parameters provided, calculate for current month
     const now = new Date();
     const targetYear = year || now.getFullYear();
-    const targetMonth = month !== undefined ? month : (now.getMonth() + 1);
+    const targetMonth = month; // Don't default month - let it be undefined for full year calculations
     const targetPeriodType = periodType || 'monthly';
 
-    console.log(`Calculating ${targetPeriodType} analytics for year=${targetYear}, month=${targetMonth}, day=${day}`);
+    console.log(`Calculating ${targetPeriodType} analytics for year=${targetYear}, month=${targetMonth || 'all'}, day=${day}`);
 
     let queryStartDate: string;
     let queryEndDate: string;
