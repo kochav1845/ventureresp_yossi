@@ -50,6 +50,7 @@ export default function Layout() {
   const [adminDashboardOpen, setAdminDashboardOpen] = useState(false);
   const [showUserSidebar, setShowUserSidebar] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [cronJobHealthy, setCronJobHealthy] = useState(true);
 
   const currentView = location.pathname.substring(1) || 'dashboard';
 
@@ -119,6 +120,27 @@ export default function Layout() {
       }
     } catch (error) {
       console.error('Error checking overdue reminders:', error);
+    }
+  };
+
+  useEffect(() => {
+    checkCronJobHealth();
+    const interval = setInterval(checkCronJobHealth, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const checkCronJobHealth = async () => {
+    try {
+      const { data, error } = await supabase.rpc('check_cron_job_health');
+
+      if (!error && data !== null) {
+        setCronJobHealthy(data);
+      } else {
+        setCronJobHealthy(false);
+      }
+    } catch (error) {
+      console.error('Error checking cron job health:', error);
+      setCronJobHealthy(false);
     }
   };
 
@@ -411,14 +433,34 @@ export default function Layout() {
                         setDeveloperSettingsOpen(!developerSettingsOpen);
                       }
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-all mb-2 ${sidebarCollapsed ? 'justify-center' : ''}`}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all mb-2 ${
+                      !cronJobHealthy
+                        ? 'text-red-600 bg-red-50 hover:bg-red-100'
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    } ${sidebarCollapsed ? 'justify-center' : ''}`}
                   >
                     {sidebarCollapsed ? (
-                      <Code size={18} />
+                      <div className="relative">
+                        <Code size={18} />
+                        {!cronJobHealthy && (
+                          <>
+                            <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></span>
+                            <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                          </>
+                        )}
+                      </div>
                     ) : (
                       <>
                         <div className="flex items-center gap-2">
-                          <Code size={16} />
+                          <div className="relative">
+                            <Code size={16} />
+                            {!cronJobHealthy && (
+                              <>
+                                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></span>
+                                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                              </>
+                            )}
+                          </div>
                           <span className="text-xs font-semibold uppercase tracking-wider">Developer Settings</span>
                         </div>
                         {developerSettingsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -427,7 +469,7 @@ export default function Layout() {
                   </button>
                   {sidebarCollapsed && (
                     <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none">
-                      Developer Settings
+                      Developer Settings {!cronJobHealthy && '⚠️'}
                       <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-900"></div>
                     </div>
                   )}
