@@ -89,7 +89,7 @@ Deno.serve(async (req: Request) => {
 
     const requestBody = await req.json().catch(() => ({}));
     const {
-      lookbackMinutes,
+      lookbackMinutes: lookbackFromRequest,
       acumaticaUrl: urlFromRequest,
       username: usernameFromRequest,
       password: passwordFromRequest,
@@ -102,9 +102,11 @@ Deno.serve(async (req: Request) => {
     let password = passwordFromRequest;
     let company = companyFromRequest || "";
     let branch = branchFromRequest || "";
+    let lookbackMinutes = lookbackFromRequest;
 
-    if (!acumaticaUrl || !username || !password) {
-      console.log('Credentials not provided in request, loading from database...');
+    // Load sync configuration from database if not provided
+    if (!acumaticaUrl || !username || !password || !lookbackMinutes) {
+      console.log('Loading configuration from database...');
 
       const { data: config, error: configError } = await supabase
         .from('acumatica_sync_credentials')
@@ -112,8 +114,18 @@ Deno.serve(async (req: Request) => {
         .limit(1)
         .maybeSingle();
 
+      const { data: syncConfig, error: syncError } = await supabase
+        .from('sync_status')
+        .select('lookback_minutes')
+        .eq('entity_type', 'payment')
+        .maybeSingle();
+
       if (configError) {
         console.error('Error loading credentials from database:', configError);
+      }
+
+      if (syncError) {
+        console.error('Error loading sync config from database:', syncError);
       }
 
       if (config) {
@@ -124,6 +136,17 @@ Deno.serve(async (req: Request) => {
         branch = branch || config.branch || "";
         console.log('Loaded credentials from database');
       }
+
+      if (syncConfig) {
+        lookbackMinutes = lookbackMinutes || syncConfig.lookback_minutes || 10000;
+        console.log(`Loaded lookback from database: ${lookbackMinutes} minutes`);
+      }
+    }
+
+    // Ensure lookback has a sensible default if still not set
+    if (!lookbackMinutes) {
+      lookbackMinutes = 10000;
+      console.log('Using default lookback: 10000 minutes');
     }
 
     if (acumaticaUrl && !acumaticaUrl.startsWith("http://") && !acumaticaUrl.startsWith("https://")) {
