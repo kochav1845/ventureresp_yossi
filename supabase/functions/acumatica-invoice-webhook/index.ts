@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { AcumaticaSessionManager } from "../_shared/acumatica-session.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,15 +42,15 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Processing invoice webhook for: ${invoiceType}/${referenceNbr}`);
 
-    const acumaticaUrl = Deno.env.get("ACUMATICA_URL");
-    const username = Deno.env.get("ACUMATICA_USERNAME");
-    const password = Deno.env.get("ACUMATICA_PASSWORD");
-    const company = Deno.env.get("ACUMATICA_COMPANY");
-    const branch = Deno.env.get("ACUMATICA_BRANCH");
+    const { data: config } = await supabase
+      .from('acumatica_sync_credentials')
+      .select('*')
+      .limit(1)
+      .maybeSingle();
 
-    if (!acumaticaUrl || !username || !password) {
+    if (!config || !config.acumatica_url || !config.username || !config.password) {
       console.log('Acumatica credentials not configured, storing webhook data only');
-      
+
       await supabase.from('webhook_logs').insert({
         webhook_type: 'invoice',
         entity_id: referenceNbr,
@@ -59,10 +60,10 @@ Deno.serve(async (req: Request) => {
       });
 
       return new Response(
-        JSON.stringify({ 
-          success: true, 
+        JSON.stringify({
+          success: true,
           message: 'Webhook received, awaiting Acumatica credentials configuration',
-          referenceNbr 
+          referenceNbr
         }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -70,53 +71,28 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const loginBody: any = {
-      name: username,
-      password: password,
+    const acumaticaUrl = config.acumatica_url.startsWith('http')
+      ? config.acumatica_url
+      : `https://${config.acumatica_url}`;
+
+    const sessionManager = new AcumaticaSessionManager(supabaseUrl, supabaseKey);
+
+    const credentials = {
+      acumaticaUrl,
+      username: config.username,
+      password: config.password,
+      company: config.company || '',
+      branch: config.branch || ''
     };
 
-    if (company) loginBody.company = company;
-    if (branch) loginBody.branch = branch;
-
-    const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(loginBody),
-    });
-
-    if (!loginResponse.ok) {
-      throw new Error('Acumatica authentication failed');
-    }
-
-    const setCookieHeader = loginResponse.headers.get("set-cookie");
-    if (!setCookieHeader) {
-      throw new Error('No authentication cookies received');
-    }
-
-    const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
-
     const invoiceUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice/${encodeURIComponent(invoiceType)}/${encodeURIComponent(referenceNbr)}`;
-    
-    const invoiceResponse = await fetch(invoiceUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Cookie": cookies,
-      },
-    });
+    const invoiceResponse = await sessionManager.makeAuthenticatedRequest(credentials, invoiceUrl);
 
     if (!invoiceResponse.ok) {
       throw new Error(`Failed to fetch invoice data: ${invoiceResponse.statusText}`);
     }
 
     const invoiceData = await invoiceResponse.json();
-
-    await fetch(`${acumaticaUrl}/entity/auth/logout`, {
-      method: "POST",
-      headers: { "Cookie": cookies },
-    });
 
     const invoiceFieldMapping: any = {
       'Type': 'type',

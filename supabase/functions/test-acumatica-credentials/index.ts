@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { AcumaticaSessionManager } from "../_shared/acumatica-session.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,100 +27,68 @@ Deno.serve(async (req: Request) => {
 
     const acumaticaUrl = url.startsWith('http') ? url : `https://${url}`;
 
-    const loginBody: any = { name: username, password: password };
-    if (company) loginBody.company = company;
-    if (branch) loginBody.branch = branch;
+    console.log(`Testing credentials for ${acumaticaUrl} using session manager`);
 
-    console.log(`Testing credentials for ${acumaticaUrl}`);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sessionManager = new AcumaticaSessionManager(supabaseUrl, supabaseKey);
 
-    const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(loginBody),
-    });
+    const credentials = {
+      acumaticaUrl,
+      username,
+      password,
+      company: company || '',
+      branch: branch || ''
+    };
 
-    if (!loginResponse.ok) {
-      const errorText = await loginResponse.text();
-      let errorMessage = errorText;
+    try {
+      const sessionCookie = await sessionManager.getSession(credentials);
+      console.log('Session obtained successfully');
 
-      try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.exceptionMessage || errorJson.message || errorText;
-      } catch (e) {
-        // Keep original error text
+      const testUrl = `${acumaticaUrl}/entity/Default/24.200.001/Customer?$top=1`;
+      const testResponse = await sessionManager.makeAuthenticatedRequest(credentials, testUrl);
+
+      if (!testResponse.ok) {
+        const errorText = await testResponse.text();
+        console.error('API test failed:', errorText);
+
+        return new Response(
+          JSON.stringify({
+            success: false,
+            message: `API test failed: ${errorText}`,
+            details: errorText,
+            statusCode: testResponse.status
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
-      console.error('Login failed:', errorMessage);
+      const data = await testResponse.json();
+      const customerCount = Array.isArray(data) ? data.length : 0;
+
+      console.log(`Test successful! Retrieved ${customerCount} customer(s)`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Successfully authenticated and tested API access!',
+          details: `Retrieved ${customerCount} customer(s) in test query`,
+          customerCount
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    } catch (authError: any) {
+      console.error('Authentication failed:', authError.message);
 
       return new Response(
         JSON.stringify({
           success: false,
-          message: `Authentication failed: ${errorMessage}`,
-          details: errorText,
-          statusCode: loginResponse.status
+          message: `Authentication failed: ${authError.message}`,
+          details: authError.message
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const setCookieHeader = loginResponse.headers.get('set-cookie');
-    if (!setCookieHeader) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: 'No authentication cookies received from Acumatica'
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
-
-    console.log('Login successful, testing API access...');
-
-    const testUrl = `${acumaticaUrl}/entity/Default/24.200.001/Customer?$top=1`;
-    const testResponse = await fetch(testUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cookie': cookies,
-      },
-    });
-
-    await fetch(`${acumaticaUrl}/entity/auth/logout`, {
-      method: 'POST',
-      headers: { 'Cookie': cookies },
-    });
-
-    if (!testResponse.ok) {
-      const errorText = await testResponse.text();
-      console.error('API test failed:', errorText);
-
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: `API test failed: ${errorText}`,
-          details: errorText,
-          statusCode: testResponse.status
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const data = await testResponse.json();
-    const customerCount = Array.isArray(data) ? data.length : 0;
-
-    console.log(`Test successful! Retrieved ${customerCount} customer(s)`);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'Successfully authenticated and tested API access!',
-        details: `Retrieved ${customerCount} customer(s) in test query`,
-        customerCount
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
 
   } catch (error: any) {
     console.error('Error testing credentials:', error);
