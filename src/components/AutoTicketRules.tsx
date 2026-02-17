@@ -93,24 +93,34 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
 
       if (rulesError) throw rulesError;
 
-      const { data: collectorsData, error: collectorsError } = await supabase
-        .from('user_profiles')
-        .select('id, full_name, email');
+      if (!rulesData || rulesData.length === 0) {
+        setRules([]);
+        return;
+      }
 
-      if (collectorsError) throw collectorsError;
+      const customerIds = [...new Set(rulesData.map(r => r.customer_id?.trim()))].filter(Boolean);
+      const collectorIds = [...new Set(rulesData.map(r => r.assigned_collector_id))];
 
-      const { data: customersData, error: customersError } = await supabase
-        .from('acumatica_customers')
-        .select('customer_id, customer_name');
+      const [customersResult, collectorsResult] = await Promise.all([
+        supabase
+          .from('acumatica_customers')
+          .select('customer_id, customer_name')
+          .in('customer_id', customerIds),
+        supabase
+          .from('user_profiles')
+          .select('id, full_name, email')
+          .in('id', collectorIds)
+      ]);
 
-      if (customersError) throw customersError;
+      if (customersResult.error) throw customersResult.error;
+      if (collectorsResult.error) throw collectorsResult.error;
 
-      const collectorsMap = new Map(collectorsData?.map(c => [c.id, c]) || []);
-      const customersMap = new Map(customersData?.map(c => [c.customer_id, c]) || []);
+      const collectorsMap = new Map(collectorsResult.data?.map(c => [c.id, c]) || []);
+      const customersMap = new Map(customersResult.data?.map(c => [c.customer_id, c]) || []);
 
-      const enrichedRules = rulesData?.map((rule: any) => {
+      const enrichedRules = rulesData.map((rule: any) => {
         const collector = collectorsMap.get(rule.assigned_collector_id);
-        const customer = customersMap.get(rule.customer_id);
+        const customer = customersMap.get(rule.customer_id?.trim());
 
         return {
           ...rule,
@@ -118,7 +128,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
           collector_name: collector?.full_name || 'Unknown',
           collector_email: collector?.email || '',
         };
-      }) || [];
+      });
 
       setRules(enrichedRules);
     } catch (error: any) {
