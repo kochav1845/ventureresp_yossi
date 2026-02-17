@@ -176,6 +176,14 @@ export function DeveloperTools() {
       category: 'invoice'
     },
     {
+      id: 'invoice-date-comparison',
+      name: 'Invoice Date Comparison',
+      description: 'Compare invoice dates between Acumatica and database to diagnose discrepancies',
+      icon: Calendar,
+      path: '/invoice-date-comparison',
+      category: 'invoice'
+    },
+    {
       id: 'orphaned-invoice-fixer',
       name: 'Orphaned Invoice Fixer',
       description: 'Find and fix orphaned invoices',

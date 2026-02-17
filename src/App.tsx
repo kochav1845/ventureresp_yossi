@@ -44,6 +44,7 @@ import ApplicationDateDiagnostic from './components/ApplicationDateDiagnostic';
 import InvoiceFormatChecker from './components/InvoiceFormatChecker';
 import AcumaticaInvoiceVariationChecker from './components/AcumaticaInvoiceVariationChecker';
 import OrphanedApplicationDiagnostic from './components/OrphanedApplicationDiagnostic';
+import InvoiceDateComparison from './components/InvoiceDateComparison';
 import CollectionTicketing from './components/CollectionTicketing';
 import MyAssignments from './components/MyAssignments';
 import CollectorPerformanceAnalytics from './components/CollectorPerformanceAnalytics';
@@ -168,6 +169,7 @@ function AppContent() {
         <Route path="application-date-diagnostic" element={<ApplicationDateDiagnostic />} />
         <Route path="invoice-format-checker" element={<InvoiceFormatChecker />} />
         <Route path="invoice-variation-checker" element={<AcumaticaInvoiceVariationChecker />} />
+        <Route path="invoice-date-comparison" element={<InvoiceDateComparison onBack={() => window.history.back()} />} />
         <Route path="orphaned-application-diagnostic" element={<OrphanedApplicationDiagnostic />} />
         <Route path="collection-ticketing" element={<CollectionTicketing />} />
         <Route path="my-assignments" element={<MyAssignments />} />
