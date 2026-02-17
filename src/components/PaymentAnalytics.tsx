@@ -681,9 +681,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const loadMonthlyAggregates = async (year: number) => {
     setLoading(true);
-    setLoadingBatchInfo('Loading monthly data from cache...');
+    setLoadingBatchInfo('');
     try {
-      // First, try to load from cache
       const { data: cachedData, error: cacheError } = await supabase
         .from('cached_payment_analytics')
         .select('*')
@@ -800,11 +799,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const loadYearlyAggregates = async () => {
     setLoading(true);
-    setLoadingBatchInfo('Loading yearly data from cache...');
+    setLoadingBatchInfo('');
     try {
       const currentYear = new Date().getFullYear();
 
-      // First, try to load from cache
       const { data: cachedData, error: cacheError } = await supabase
         .from('cached_payment_analytics')
         .select('*')
@@ -912,128 +910,82 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const loadMonthlyData = async () => {
     setLoading(true);
     setLoadingBatchInfo('');
-    setPayments([]); // Clear previous payments
+    setPayments([]);
 
     try {
       let startStr: string;
       let endStr: string;
-      let useInclusiveEnd = false; // Flag to determine if we should include the end date
 
-      // Use custom date range if provided, otherwise use selected month
       if (dateFrom && dateTo) {
         startStr = dateFrom;
-        endStr = dateTo;
-        useInclusiveEnd = true; // User-specified dates should be inclusive
+        const endDate = new Date(dateTo);
+        endDate.setDate(endDate.getDate() + 1);
+        endStr = endDate.toISOString().split('T')[0];
         console.log(`Using custom date range: ${startStr} to ${endStr} (inclusive)`);
       } else if (dateFrom) {
-        // If only start date provided, use it to current date
         startStr = dateFrom;
-        endStr = new Date().toISOString().split('T')[0];
-        useInclusiveEnd = true; // Include today
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        endStr = tomorrow.toISOString().split('T')[0];
         console.log(`Using from date to today: ${startStr} to ${endStr} (inclusive)`);
       } else {
-        // Default to selected month
         const year = selectedMonth.getFullYear();
         const month = selectedMonth.getMonth();
         const startDate = new Date(year, month, 1);
         const endDate = new Date(year, month + 1, 1);
         startStr = startDate.toISOString().split('T')[0];
         endStr = endDate.toISOString().split('T')[0];
-        useInclusiveEnd = false; // Exclude the first day of next month
-        console.log(`Using selected month: ${startStr} to ${endStr} (exclusive)`);
+        console.log(`Using selected month: ${startStr} to ${endStr}`);
       }
 
-      // Fetch all payments in batches to avoid 1000-row limit
-      let allPaymentRows: PaymentRow[] = [];
-      let offset = 0;
-      const batchSize = 1000;
-      let hasMore = true;
-      let batchCount = 0;
+      const { data: paymentsData, error } = await supabase
+        .rpc('get_payments_with_applications', {
+          p_start_date: startStr,
+          p_end_date: endStr
+        });
 
-      const customerMap = await ensureCustomerMap();
+      if (error) throw error;
 
-      while (hasMore) {
-        batchCount++;
-        setLoadingBatchInfo(`Loading batch ${batchCount}...`);
+      const paymentRows: PaymentRow[] = (paymentsData || []).map((payment: any) => {
+        const apps = payment.invoice_applications || [];
+        const invoiceList = apps.length > 0
+          ? apps.map((app: any) => `${app.doc_type}: ${app.invoice_reference_number}`).join(', ')
+          : 'None';
 
-        let query = supabase
-          .from('acumatica_payments')
-          .select('*')
-          .gte('application_date', startStr);
+        return {
+          id: payment.id,
+          date: payment.application_date || '',
+          reference_number: payment.reference_number || '',
+          customer_id: payment.customer_id || '',
+          customer_name: payment.customer_name || 'N/A',
+          payment_method: payment.payment_method || '',
+          type: payment.type || 'Payment',
+          payment_amount: parseFloat(payment.payment_amount) || 0,
+          status: payment.status || '',
+          invoice_applications: invoiceList,
+          total_applied: parseFloat(payment.total_applied) || 0,
+          available_balance: parseFloat(payment.available_balance) || 0,
+          description: payment.description || ''
+        };
+      });
 
-        if (useInclusiveEnd) {
-          query = query.lte('application_date', endStr);
-        } else {
-          query = query.lt('application_date', endStr);
-        }
+      setPayments(paymentRows);
 
-        const { data: batch, error } = await query
-          .order('application_date', { ascending: false })
-          .range(offset, offset + batchSize - 1);
+      const excludedCustomerArray = Array.from(excludedCustomerIds);
+      const { data: statsData, error: statsError } = await supabase
+        .rpc('get_payment_summary_stats', {
+          p_start_date: startStr,
+          p_end_date: endStr,
+          p_excluded_customers: excludedCustomerArray
+        });
 
-        if (error) throw error;
-
-        if (batch && batch.length > 0) {
-          const paymentIds = batch.map(p => p.id);
-
-          const applications = await batchedInQuery(
-            supabase,
-            'payment_invoice_applications',
-            'payment_id, doc_type, amount_paid, invoice_reference_number',
-            'payment_id',
-            paymentIds
-          );
-
-          const applicationsByPayment = new Map<string, any[]>();
-          applications?.forEach(app => {
-            if (!applicationsByPayment.has(app.payment_id)) {
-              applicationsByPayment.set(app.payment_id, []);
-            }
-            applicationsByPayment.get(app.payment_id)!.push(app);
-          });
-
-          const batchPaymentRows: PaymentRow[] = batch.map((payment: any) => {
-            const apps = applicationsByPayment.get(payment.id) || [];
-            const totalApplied = apps
-              .filter(app => app.doc_type === 'Invoice')
-              .reduce((sum, app) => sum + (parseFloat(app.amount_paid) || 0), 0);
-            const invoiceList = apps.map(app => `${app.doc_type}: ${app.invoice_reference_number}`).join(', ');
-
-            return {
-              id: payment.id,
-              date: payment.application_date || '',
-              reference_number: payment.reference_number || '',
-              customer_id: payment.customer_id || '',
-              customer_name: customerMap.get(payment.customer_id) || payment.customer_id || 'N/A',
-              payment_method: payment.payment_method || '',
-              type: payment.type || 'Payment',
-              payment_amount: parseFloat(payment.payment_amount) || 0,
-              status: payment.status || '',
-              invoice_applications: invoiceList || 'None',
-              total_applied: totalApplied,
-              available_balance: parseFloat(payment.available_balance) || 0,
-              description: payment.description || ''
-            };
-          });
-
-          allPaymentRows = [...allPaymentRows, ...batchPaymentRows];
-
-          setPayments([...allPaymentRows]);
-          setLoadingBatchInfo(`Loaded ${allPaymentRows.length} payments...`);
-
-          const nonExcludedPayments = allPaymentRows.filter(p => !excludedCustomerIds.has(p.customer_id));
-          const runningTotal = nonExcludedPayments.reduce((sum, p) => sum + p.payment_amount, 0);
-          const runningUniqueCustomers = new Set(nonExcludedPayments.map(p => p.customer_id).filter(Boolean));
-
-          setMonthlyTotal(runningTotal);
-          setMonthlyPaymentCount(nonExcludedPayments.length);
-          setMonthlyCustomerCount(runningUniqueCustomers.size);
-
-          offset += batchSize;
-          hasMore = batch.length === batchSize;
-        } else {
-          hasMore = false;
-        }
+      if (statsError) {
+        console.error('Error loading stats:', statsError);
+      } else if (statsData && statsData.length > 0) {
+        const stats = statsData[0];
+        setMonthlyTotal(parseFloat(stats.total_amount) || 0);
+        setMonthlyPaymentCount(parseInt(stats.payment_count) || 0);
+        setMonthlyCustomerCount(parseInt(stats.unique_customer_count) || 0);
       }
     } catch (error) {
       console.error('Error loading monthly data:', error);
@@ -3183,19 +3135,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
             </div>
           )}
 
-        {/* Loading Batch Info Banner */}
-        {loadingBatchInfo && (
-          <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-            <div className="flex items-center gap-3">
-              <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
-              <div>
-                <p className="text-blue-400 font-semibold">{loadingBatchInfo}</p>
-                <p className="text-blue-300 text-sm">Displaying results as they load...</p>
-              </div>
-            </div>
-          </div>
-        )}
-
         <div className="bg-white border border-gray-200 shadow-lg rounded-xl overflow-hidden max-w-full">
           <div
             className="max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto"
@@ -3270,7 +3209,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                     <div>
                       <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 text-blue-400" />
                       <p>Loading payments...</p>
-                      {loadingBatchInfo && <p className="text-sm text-blue-400 mt-2">{loadingBatchInfo}</p>}
                     </div>
                   ) : 'No payments found for this month.'
                 )}
