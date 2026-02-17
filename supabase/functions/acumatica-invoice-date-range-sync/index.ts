@@ -7,24 +7,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
-  }
+async function processSync(jobId: string, startDate: string, endDate: string) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    const { startDate, endDate } = await req.json();
-
-    if (!startDate || !endDate) {
-      return new Response(
-        JSON.stringify({ error: "Start date and end date are required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    await supabase
+      .from('async_sync_jobs')
+      .update({ status: 'running', started_at: new Date().toISOString() })
+      .eq('id', jobId);
 
     const { data: credentials, error: credsError } = await supabase
       .from('acumatica_sync_credentials')
@@ -35,10 +27,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (credsError || !credentials) {
-      return new Response(
-        JSON.stringify({ error: "Missing Acumatica credentials" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      throw new Error("Missing Acumatica credentials");
     }
 
     let acumaticaUrl = credentials.acumatica_url;
@@ -60,18 +49,12 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!loginResponse.ok) {
-      return new Response(
-        JSON.stringify({ error: "Acumatica authentication failed" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      throw new Error("Acumatica authentication failed");
     }
 
     const setCookieHeader = loginResponse.headers.get("set-cookie");
     if (!setCookieHeader) {
-      return new Response(
-        JSON.stringify({ error: "No authentication cookies received" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      throw new Error("No authentication cookies received");
     }
 
     const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
@@ -97,10 +80,7 @@ Deno.serve(async (req: Request) => {
         method: "POST",
         headers: { "Cookie": cookies },
       });
-      return new Response(
-        JSON.stringify({ error: `Failed to fetch invoices: ${errorText}` }),
-        { status: invoicesResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      throw new Error(`Failed to fetch invoices: ${errorText}`);
     }
 
     const responseText = await invoicesResponse.text();
@@ -109,10 +89,7 @@ Deno.serve(async (req: Request) => {
         method: "POST",
         headers: { "Cookie": cookies },
       });
-      return new Response(
-        JSON.stringify({ error: "Received HTML response from Acumatica - this usually indicates an error or session timeout" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      throw new Error("Received HTML response from Acumatica");
     }
 
     const invoicesData = JSON.parse(responseText);
@@ -192,16 +169,82 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    await supabase
+      .from('async_sync_jobs')
+      .update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        progress: { created, updated, total: invoices.length, errors: errors.slice(0, 10) }
+      })
+      .eq('id', jobId);
+
+  } catch (error: any) {
+    console.error('Invoice date range sync error:', error);
+    await supabase
+      .from('async_sync_jobs')
+      .update({
+        status: 'failed',
+        completed_at: new Date().toISOString(),
+        error_message: error.message
+      })
+      .eq('id', jobId);
+  }
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 200, headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const authHeader = req.headers.get("Authorization");
+    let userId = null;
+
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await supabase.auth.getUser(token);
+      userId = user?.id;
+    }
+
+    const { startDate, endDate } = await req.json();
+
+    if (!startDate || !endDate) {
+      return new Response(
+        JSON.stringify({ error: "Start date and end date are required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { data: job, error: jobError } = await supabase
+      .from('async_sync_jobs')
+      .insert({
+        entity_type: 'invoice',
+        start_date: startDate,
+        end_date: endDate,
+        status: 'pending',
+        created_by: userId
+      })
+      .select()
+      .single();
+
+    if (jobError || !job) {
+      return new Response(
+        JSON.stringify({ error: "Failed to create sync job" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    processSync(job.id, startDate, endDate);
+
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Invoice date range sync completed. Created ${created}, updated ${updated}, total fetched ${invoices.length}`,
-        created,
-        updated,
-        totalFetched: invoices.length,
-        errors: errors.slice(0, 10),
-        totalErrors: errors.length,
-        dateRange: { startDate: filterStartDate, endDate: filterEndDate }
+        jobId: job.id,
+        message: "Sync job started in background. Check the job status for progress."
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

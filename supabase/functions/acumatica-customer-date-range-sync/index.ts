@@ -7,26 +7,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
-  }
+async function processSync(jobId: string, startDate: string, endDate: string) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    await supabase
+      .from('async_sync_jobs')
+      .update({ status: 'running', started_at: new Date().toISOString() })
+      .eq('id', jobId);
 
-    const { startDate, endDate } = await req.json();
-
-    if (!startDate || !endDate) {
-      return new Response(
-        JSON.stringify({ error: "Start date and end date are required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const { data: credentials, error: credsError } = await supabase
+    const { data: credentials } = await supabase
       .from('acumatica_sync_credentials')
       .select('*')
       .eq('is_active', true)
@@ -34,22 +26,14 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .maybeSingle();
 
-    if (credsError || !credentials) {
-      return new Response(
-        JSON.stringify({ error: "Missing Acumatica credentials" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (!credentials) throw new Error("Missing Acumatica credentials");
 
     let acumaticaUrl = credentials.acumatica_url;
     if (!acumaticaUrl.startsWith("http://") && !acumaticaUrl.startsWith("https://")) {
       acumaticaUrl = `https://${acumaticaUrl}`;
     }
 
-    const loginBody: any = {
-      name: credentials.username,
-      password: credentials.password
-    };
+    const loginBody: any = { name: credentials.username, password: credentials.password };
     if (credentials.company) loginBody.company = credentials.company;
     if (credentials.branch) loginBody.branch = credentials.branch;
 
@@ -59,20 +43,10 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify(loginBody),
     });
 
-    if (!loginResponse.ok) {
-      return new Response(
-        JSON.stringify({ error: "Acumatica authentication failed" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (!loginResponse.ok) throw new Error("Acumatica authentication failed");
 
     const setCookieHeader = loginResponse.headers.get("set-cookie");
-    if (!setCookieHeader) {
-      return new Response(
-        JSON.stringify({ error: "No authentication cookies received" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (!setCookieHeader) throw new Error("No authentication cookies received");
 
     const cookies = setCookieHeader.split(',').map(cookie => cookie.split(';')[0]).join('; ');
 
@@ -81,47 +55,28 @@ Deno.serve(async (req: Request) => {
 
     const customersUrl = `${acumaticaUrl}/entity/Default/24.200.001/Customer?$filter=LastModifiedDateTime ge datetimeoffset'${filterStartDate}' and LastModifiedDateTime le datetimeoffset'${filterEndDate}'`;
 
-    console.log(`Fetching customers from ${filterStartDate} to ${filterEndDate}`);
-
     const customersResponse = await fetch(customersUrl, {
       method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Cookie": cookies,
-      },
+      headers: { "Content-Type": "application/json", "Cookie": cookies },
     });
 
     if (!customersResponse.ok) {
-      const errorText = await customersResponse.text();
-      await fetch(`${acumaticaUrl}/entity/auth/logout`, {
-        method: "POST",
-        headers: { "Cookie": cookies },
-      });
-      return new Response(
-        JSON.stringify({ error: `Failed to fetch customers: ${errorText}` }),
-        { status: customersResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      await fetch(`${acumaticaUrl}/entity/auth/logout`, { method: "POST", headers: { "Cookie": cookies }});
+      throw new Error(`Failed to fetch customers: ${await customersResponse.text()}`);
     }
 
     const customersData = await customersResponse.json();
     const customers = Array.isArray(customersData) ? customersData : [];
 
-    await fetch(`${acumaticaUrl}/entity/auth/logout`, {
-      method: "POST",
-      headers: { "Cookie": cookies },
-    });
+    await fetch(`${acumaticaUrl}/entity/auth/logout`, { method: "POST", headers: { "Cookie": cookies }});
 
-    let created = 0;
-    let updated = 0;
+    let created = 0, updated = 0;
     const errors: string[] = [];
 
     for (const customer of customers) {
       try {
         const customerId = customer.CustomerID?.value;
-
-        if (!customerId) {
-          continue;
-        }
+        if (!customerId) continue;
 
         const customerData: any = {
           customer_id: customerId,
@@ -146,47 +101,92 @@ Deno.serve(async (req: Request) => {
           .maybeSingle();
 
         if (existing) {
-          const { error } = await supabase
-            .from('acumatica_customers')
-            .update(customerData)
-            .eq('customer_id', customerId);
-
-          if (error) {
-            errors.push(`Update failed for ${customerId}: ${error.message}`);
-          } else {
-            updated++;
-          }
+          const { error } = await supabase.from('acumatica_customers').update(customerData).eq('customer_id', customerId);
+          if (error) errors.push(`Update failed for ${customerId}: ${error.message}`);
+          else updated++;
         } else {
-          const { error } = await supabase
-            .from('acumatica_customers')
-            .insert(customerData);
-
-          if (error) {
-            errors.push(`Insert failed for ${customerId}: ${error.message}`);
-          } else {
-            created++;
-          }
+          const { error } = await supabase.from('acumatica_customers').insert(customerData);
+          if (error) errors.push(`Insert failed for ${customerId}: ${error.message}`);
+          else created++;
         }
       } catch (error: any) {
         errors.push(`Error processing customer: ${error.message}`);
       }
     }
 
+    await supabase.from('async_sync_jobs').update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      progress: { created, updated, total: customers.length, errors: errors.slice(0, 10) }
+    }).eq('id', jobId);
+
+  } catch (error: any) {
+    await supabase.from('async_sync_jobs').update({
+      status: 'failed',
+      completed_at: new Date().toISOString(),
+      error_message: error.message
+    }).eq('id', jobId);
+  }
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 200, headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const authHeader = req.headers.get("Authorization");
+    let userId = null;
+
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await supabase.auth.getUser(token);
+      userId = user?.id;
+    }
+
+    const { startDate, endDate } = await req.json();
+
+    if (!startDate || !endDate) {
+      return new Response(
+        JSON.stringify({ error: "Start date and end date are required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { data: job, error: jobError } = await supabase
+      .from('async_sync_jobs')
+      .insert({
+        entity_type: 'customer',
+        start_date: startDate,
+        end_date: endDate,
+        status: 'pending',
+        created_by: userId
+      })
+      .select()
+      .single();
+
+    if (jobError || !job) {
+      return new Response(
+        JSON.stringify({ error: "Failed to create sync job" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    processSync(job.id, startDate, endDate);
+
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Customer date range sync completed. Created ${created}, updated ${updated}, total fetched ${customers.length}`,
-        created,
-        updated,
-        totalFetched: customers.length,
-        errors: errors.slice(0, 10),
-        totalErrors: errors.length,
-        dateRange: { startDate: filterStartDate, endDate: filterEndDate }
+        jobId: job.id,
+        message: "Sync job started in background. Check the job status for progress."
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
-    console.error('Customer date range sync error:', error);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

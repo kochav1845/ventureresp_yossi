@@ -296,20 +296,50 @@ export default function SyncConfiguration({ onBack }: SyncConfigurationProps) {
       const result = await response.json();
 
       if (response.ok && result.success) {
+        const jobId = result.jobId;
+
         setDateRangeSync(prev => ({
           ...prev,
-          message: `✓ Sync completed! Created: ${result.created || 0}, Updated: ${result.updated || 0}, Total: ${result.totalFetched || 0}`
+          message: '🔄 Sync job started. Checking progress...'
         }));
+
+        const checkJobStatus = async () => {
+          const { data: job } = await supabase
+            .from('async_sync_jobs')
+            .select('*')
+            .eq('id', jobId)
+            .single();
+
+          if (!job) return;
+
+          if (job.status === 'completed') {
+            const progress = job.progress as any;
+            setDateRangeSync(prev => ({
+              ...prev,
+              syncing: false,
+              message: `✓ Sync completed! Created: ${progress.created || 0}, Updated: ${progress.updated || 0}, Total: ${progress.total || 0}`
+            }));
+          } else if (job.status === 'failed') {
+            setDateRangeSync(prev => ({
+              ...prev,
+              syncing: false,
+              message: `❌ Sync failed: ${job.error_message || 'Unknown error'}`
+            }));
+          } else {
+            setTimeout(checkJobStatus, 2000);
+          }
+        };
+
+        setTimeout(checkJobStatus, 2000);
       } else {
         throw new Error(result.error || 'Sync failed');
       }
     } catch (err: any) {
       setDateRangeSync(prev => ({
         ...prev,
+        syncing: false,
         message: `Error: ${err.message}`
       }));
-    } finally {
-      setDateRangeSync(prev => ({ ...prev, syncing: false }));
     }
   };
 
