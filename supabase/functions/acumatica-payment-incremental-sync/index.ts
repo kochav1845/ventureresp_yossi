@@ -89,7 +89,7 @@ Deno.serve(async (req: Request) => {
 
     const requestBody = await req.json().catch(() => ({}));
     const {
-      lookbackMinutes = 2,
+      lookbackMinutes,
       acumaticaUrl: urlFromRequest,
       username: usernameFromRequest,
       password: passwordFromRequest,
