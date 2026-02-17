@@ -689,13 +689,25 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         .select('*')
         .eq('period_type', 'monthly')
         .eq('year', year)
-        .order('month', { ascending: true });
+        .order('calculated_at', { ascending: false });
 
       if (!cacheError && cachedData && cachedData.length > 0) {
         console.log(`Loaded ${cachedData.length} months from cache`);
+
+        // Deduplicate by month, keeping the most recent entry (first in sorted array)
+        const seenMonths = new Set<number>();
+        const uniqueData = cachedData.filter(cache => {
+          if (cache.month === null) return false;
+          if (seenMonths.has(cache.month)) {
+            return false;
+          }
+          seenMonths.add(cache.month);
+          return true;
+        });
+
         const aggregates = Array.from({ length: 12 }, (_, month) => ({ month, total: 0, count: 0 }));
 
-        cachedData.forEach(cache => {
+        uniqueData.forEach(cache => {
           if (cache.month !== null && cache.month >= 1 && cache.month <= 12) {
             aggregates[cache.month - 1] = {
               month: cache.month - 1,
@@ -744,12 +756,23 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           .select('*')
           .eq('period_type', 'monthly')
           .eq('year', year)
-          .order('month', { ascending: true });
+          .order('calculated_at', { ascending: false });
 
         if (newCachedData && newCachedData.length > 0) {
+          // Deduplicate by month, keeping the most recent entry
+          const seenMonths = new Set<number>();
+          const uniqueData = newCachedData.filter(cache => {
+            if (cache.month === null) return false;
+            if (seenMonths.has(cache.month)) {
+              return false;
+            }
+            seenMonths.add(cache.month);
+            return true;
+          });
+
           const aggregates = Array.from({ length: 12 }, (_, month) => ({ month, total: 0, count: 0 }));
 
-          newCachedData.forEach(cache => {
+          uniqueData.forEach(cache => {
             if (cache.month !== null && cache.month >= 1 && cache.month <= 12) {
               aggregates[cache.month - 1] = {
                 month: cache.month - 1,
@@ -788,15 +811,27 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         .eq('period_type', 'yearly')
         .gte('year', currentYear - 5)
         .lte('year', currentYear)
+        .order('calculated_at', { ascending: false })
         .order('year', { ascending: false });
 
       if (!cacheError && cachedData && cachedData.length > 0) {
         console.log(`Loaded ${cachedData.length} years from cache`);
-        const aggregates = cachedData.map(cache => ({
+
+        // Deduplicate by year, keeping the most recent entry (first in sorted array)
+        const seenYears = new Set<number>();
+        const uniqueData = cachedData.filter(cache => {
+          if (seenYears.has(cache.year)) {
+            return false;
+          }
+          seenYears.add(cache.year);
+          return true;
+        });
+
+        const aggregates = uniqueData.map(cache => ({
           year: cache.year,
           total: parseFloat(cache.total_amount) || 0,
           count: cache.payment_count || 0
-        }));
+        })).sort((a, b) => b.year - a.year); // Sort by year descending
 
         setYearlyAggregates(aggregates);
         setLastRefreshTime(new Date(cachedData[0].calculated_at));
@@ -838,14 +873,25 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           .eq('period_type', 'yearly')
           .gte('year', currentYear - 5)
           .lte('year', currentYear)
+          .order('calculated_at', { ascending: false })
           .order('year', { ascending: false });
 
         if (newCachedData && newCachedData.length > 0) {
-          const aggregates = newCachedData.map(cache => ({
+          // Deduplicate by year, keeping the most recent entry
+          const seenYears = new Set<number>();
+          const uniqueData = newCachedData.filter(cache => {
+            if (seenYears.has(cache.year)) {
+              return false;
+            }
+            seenYears.add(cache.year);
+            return true;
+          });
+
+          const aggregates = uniqueData.map(cache => ({
             year: cache.year,
             total: parseFloat(cache.total_amount) || 0,
             count: cache.payment_count || 0
-          }));
+          })).sort((a, b) => b.year - a.year);
 
           setYearlyAggregates(aggregates);
           setLastRefreshTime(new Date(newCachedData[0].calculated_at));
