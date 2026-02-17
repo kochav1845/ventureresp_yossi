@@ -218,6 +218,22 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
       } else {
         const { data: { user } } = await supabase.auth.getUser();
 
+        const { data: existingRule, error: checkError } = await supabase
+          .from('auto_ticket_rules')
+          .select('*')
+          .eq('customer_id', formData.customer_id)
+          .eq('rule_type', formData.rule_type)
+          .maybeSingle();
+
+        if (checkError) throw checkError;
+
+        if (existingRule) {
+          const customerName = customers.find(c => c.customer_id === formData.customer_id)?.customer_name || formData.customer_id;
+          const ruleTypeLabel = formData.rule_type === 'invoice_age' ? 'Invoice Age' : 'Payment Recency';
+          showToast(`A ${ruleTypeLabel} rule already exists for ${customerName}. Please edit the existing rule instead.`, 'error');
+          return;
+        }
+
         const insertData: any = {
           customer_id: formData.customer_id,
           rule_type: formData.rule_type,
@@ -246,7 +262,11 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
       resetForm();
       fetchRules();
     } catch (error: any) {
-      showToast(error.message, 'error');
+      if (error.message?.includes('duplicate key') || error.message?.includes('23505')) {
+        showToast('A rule with this combination already exists. Please edit the existing rule instead.', 'error');
+      } else {
+        showToast(error.message, 'error');
+      }
     }
   };
 
@@ -569,21 +589,42 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
                     </div>
                     {filteredCustomers.length > 0 && (
                       <div className="mt-2 border border-gray-300 rounded-lg max-h-60 overflow-y-auto">
-                        {filteredCustomers.map((customer) => (
-                          <button
-                            key={customer.customer_id}
-                            type="button"
-                            onClick={() => {
-                              setFormData({ ...formData, customer_id: customer.customer_id });
-                              setSearchTerm(customer.customer_name);
-                              setFilteredCustomers([]);
-                            }}
-                            className="w-full text-left px-4 py-2 hover:bg-gray-100 border-b border-gray-200 last:border-b-0"
-                          >
-                            <div className="font-medium text-gray-900">{customer.customer_name}</div>
-                            <div className="text-sm text-gray-500">{customer.customer_id}</div>
-                          </button>
-                        ))}
+                        {filteredCustomers.map((customer) => {
+                          const hasRule = rules.some(
+                            r => r.customer_id === customer.customer_id && r.rule_type === formData.rule_type
+                          );
+                          return (
+                            <button
+                              key={customer.customer_id}
+                              type="button"
+                              onClick={() => {
+                                if (!hasRule) {
+                                  setFormData({ ...formData, customer_id: customer.customer_id });
+                                  setSearchTerm(customer.customer_name);
+                                  setFilteredCustomers([]);
+                                } else {
+                                  showToast('This customer already has this rule type. Please edit the existing rule.', 'error');
+                                }
+                              }}
+                              className={`w-full text-left px-4 py-2 border-b border-gray-200 last:border-b-0 ${
+                                hasRule ? 'bg-red-50 cursor-not-allowed' : 'hover:bg-gray-100'
+                              }`}
+                              disabled={hasRule}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="font-medium text-gray-900">{customer.customer_name}</div>
+                                  <div className="text-sm text-gray-500">{customer.customer_id}</div>
+                                </div>
+                                {hasRule && (
+                                  <span className="px-2 py-1 text-xs font-semibold text-red-700 bg-red-100 rounded">
+                                    Rule Exists
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                     {formData.customer_id && (
