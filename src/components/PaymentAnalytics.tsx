@@ -311,11 +311,20 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   useEffect(() => {
     const loadViewData = async () => {
       if (calendarView === 'monthly') {
+        // Clear yearly data when switching to monthly
+        setYearlyAggregates([]);
+        setPayments([]);
         await loadMonthlyAggregates(selectedYear);
       } else if (calendarView === 'yearly') {
+        // Clear monthly data when switching to yearly
+        setMonthlyAggregates([]);
+        setPayments([]);
         await loadYearlyAggregates();
       } else {
         // Daily view - load detailed payments for the month
+        // Clear aggregates when in daily view
+        setMonthlyAggregates([]);
+        setYearlyAggregates([]);
         await loadMonthlyData();
       }
     };
@@ -1178,6 +1187,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   };
 
   const getMonthlyData = () => {
+    if (calendarView !== 'monthly') return [];
     return monthlyAggregates.map(agg => ({
       month: agg.month,
       name: new Date(selectedYear, agg.month, 1).toLocaleDateString('en-US', { month: 'long' }),
@@ -1187,6 +1197,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   };
 
   const getYearlyData = () => {
+    if (calendarView !== 'yearly') return [];
     return yearlyAggregates;
   };
 
