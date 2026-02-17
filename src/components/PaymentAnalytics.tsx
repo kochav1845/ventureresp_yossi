@@ -703,58 +703,63 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         return;
       }
 
-      // If no cache, calculate live (fallback)
-      console.log('No cached data found, calculating live...');
-      setLoadingBatchInfo('Calculating monthly data...');
+      // If no cache, populate it using the edge function
+      console.log('No cached monthly data found, building cache...');
+      setLoadingBatchInfo('Building analytics cache. This may take a minute...');
 
-      const startDate = new Date(year, 0, 1);
-      const endDate = new Date(year, 11, 31);
-      const startStr = startDate.toISOString().split('T')[0];
-      const endStr = endDate.toISOString().split('T')[0];
-
-      const aggregates = Array.from({ length: 12 }, (_, month) => ({ month, total: 0, count: 0 }));
-
-      let offset = 0;
-      const batchSize = 1000;
-      let hasMore = true;
-      let batchCount = 0;
-
-      while (hasMore) {
-        batchCount++;
-        setLoadingBatchInfo(`Calculating batch ${batchCount}...`);
-
-        const { data, error } = await supabase
-          .from('acumatica_payments')
-          .select('application_date, payment_amount')
-          .neq('type', 'Credit Memo')
-          .gte('application_date', startStr)
-          .lte('application_date', endStr)
-          .range(offset, offset + batchSize - 1);
-
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-          hasMore = false;
-          break;
-        }
-
-        data.forEach(payment => {
-          const paymentDate = new Date(payment.application_date);
-          const month = paymentDate.getMonth();
-          aggregates[month].total += payment.payment_amount || 0;
-          aggregates[month].count += 1;
-        });
-
-        if (data.length < batchSize) {
-          hasMore = false;
-        }
-
-        offset += batchSize;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
       }
 
-      setMonthlyAggregates(aggregates);
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/calculate-payment-analytics`;
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ periodType: 'monthly', year })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log(`Cache populated: ${result.monthsCalculated} months, ${result.totalPayments} payments`);
+        setLoadingBatchInfo('Cache built successfully! Loading data...');
+
+        // Now reload from cache
+        const { data: newCachedData } = await supabase
+          .from('cached_payment_analytics')
+          .select('*')
+          .eq('period_type', 'monthly')
+          .eq('year', year)
+          .order('month', { ascending: true });
+
+        if (newCachedData && newCachedData.length > 0) {
+          const aggregates = Array.from({ length: 12 }, (_, month) => ({ month, total: 0, count: 0 }));
+
+          newCachedData.forEach(cache => {
+            if (cache.month !== null && cache.month >= 1 && cache.month <= 12) {
+              aggregates[cache.month - 1] = {
+                month: cache.month - 1,
+                total: parseFloat(cache.total_amount) || 0,
+                count: cache.payment_count || 0
+              };
+            }
+          });
+
+          setMonthlyAggregates(aggregates);
+          setLastRefreshTime(new Date(newCachedData[0].calculated_at));
+        }
+      } else {
+        throw new Error(result.error || 'Failed to build analytics cache');
+      }
     } catch (error) {
       console.error('Error loading monthly aggregates:', error);
+      setLoadingBatchInfo('');
+      alert('Error loading monthly data. Please try refreshing the page.');
     } finally {
       setLoading(false);
       setLoadingBatchInfo('');
@@ -791,72 +796,58 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         return;
       }
 
-      // If no cache, calculate live (fallback)
-      console.log('No cached yearly data found, calculating live...');
-      setLoadingBatchInfo('Calculating yearly data...');
+      // If no cache, populate it using the edge function
+      console.log('No cached yearly data found, building cache...');
+      setLoadingBatchInfo('Building analytics cache. This may take a minute...');
 
-      const startDate = new Date(currentYear - 5, 0, 1);
-      const endDate = new Date(currentYear, 11, 31);
-      const startStr = startDate.toISOString().split('T')[0];
-      const endStr = endDate.toISOString().split('T')[0];
-
-      const yearMap = new Map<number, { total: number, count: number }>();
-
-      let offset = 0;
-      const batchSize = 1000;
-      let hasMore = true;
-      let batchCount = 0;
-
-      while (hasMore) {
-        batchCount++;
-        setLoadingBatchInfo(`Calculating batch ${batchCount}...`);
-
-        const { data, error } = await supabase
-          .from('acumatica_payments')
-          .select('application_date, payment_amount')
-          .neq('type', 'Credit Memo')
-          .gte('application_date', startStr)
-          .lte('application_date', endStr)
-          .range(offset, offset + batchSize - 1);
-
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-          hasMore = false;
-          break;
-        }
-
-        data.forEach(payment => {
-          const paymentDate = new Date(payment.application_date);
-          const year = paymentDate.getFullYear();
-
-          if (!yearMap.has(year)) {
-            yearMap.set(year, { total: 0, count: 0 });
-          }
-
-          const yearData = yearMap.get(year)!;
-          yearData.total += payment.payment_amount || 0;
-          yearData.count += 1;
-        });
-
-        if (data.length < batchSize) {
-          hasMore = false;
-        }
-
-        offset += batchSize;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
       }
 
-      const aggregates = [];
-      for (let year = currentYear; year >= currentYear - 5; year--) {
-        const data = yearMap.get(year) || { total: 0, count: 0 };
-        if (data.total > 0 || year === currentYear) {
-          aggregates.push({ year, total: data.total, count: data.count });
-        }
-      }
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/calculate-payment-analytics`;
 
-      setYearlyAggregates(aggregates);
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ periodType: 'yearly' })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log(`Cache populated: ${result.yearsCalculated} years, ${result.totalPayments} payments`);
+        setLoadingBatchInfo('Cache built successfully! Loading data...');
+
+        // Now reload from cache
+        const { data: newCachedData } = await supabase
+          .from('cached_payment_analytics')
+          .select('*')
+          .eq('period_type', 'yearly')
+          .gte('year', currentYear - 5)
+          .lte('year', currentYear)
+          .order('year', { ascending: false });
+
+        if (newCachedData && newCachedData.length > 0) {
+          const aggregates = newCachedData.map(cache => ({
+            year: cache.year,
+            total: parseFloat(cache.total_amount) || 0,
+            count: cache.payment_count || 0
+          }));
+
+          setYearlyAggregates(aggregates);
+          setLastRefreshTime(new Date(newCachedData[0].calculated_at));
+        }
+      } else {
+        throw new Error(result.error || 'Failed to build analytics cache');
+      }
     } catch (error) {
       console.error('Error loading yearly aggregates:', error);
+      setLoadingBatchInfo('');
+      alert('Error loading yearly data. Please try refreshing the page.');
     } finally {
       setLoading(false);
       setLoadingBatchInfo('');
