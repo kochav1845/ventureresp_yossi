@@ -173,11 +173,26 @@ export default function UnifiedTicketingSystem({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Handle URL parameters for creating new ticket
+  // Handle URL parameters for creating new ticket or navigating to specific ticket
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const customerId = params.get('customerId');
     const invoiceRef = params.get('invoiceRef');
+    const targetTicketId = params.get('ticket');
+
+    if (targetTicketId && !loading) {
+      setActiveTab('tickets');
+      setTimeout(() => {
+        const element = document.getElementById(`ticket-${targetTicketId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-4', 'ring-blue-400');
+          setTimeout(() => {
+            element.classList.remove('ring-4', 'ring-blue-400');
+          }, 3000);
+        }
+      }, 500);
+    }
 
     if ((customerId || invoiceRef) && user && profile) {
       setActiveTab('create');
@@ -198,7 +213,7 @@ export default function UnifiedTicketingSystem({
         setPendingInvoiceRef(invoiceRef);
       }
     }
-  }, [location.search, user, profile]);
+  }, [location.search, user, profile, loading]);
 
   // Auto-select pending invoice once invoices finish loading
   useEffect(() => {

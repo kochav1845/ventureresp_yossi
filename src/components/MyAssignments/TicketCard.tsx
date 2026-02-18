@@ -351,22 +351,15 @@ export default function TicketCard({
                             {relatedTicket.invoice_count} invoice{relatedTicket.invoice_count !== 1 ? 's' : ''}
                           </span>
                         </div>
-                        <button
-                          onClick={() => {
-                            const element = document.getElementById(`ticket-${relatedTicket.id}`);
-                            if (element) {
-                              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                              element.classList.add('ring-4', 'ring-amber-400');
-                              setTimeout(() => {
-                                element.classList.remove('ring-4', 'ring-amber-400');
-                              }, 2000);
-                            }
-                          }}
-                          className="px-2 py-1 text-xs bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors flex items-center gap-1 whitespace-nowrap"
+                        <a
+                          href={`/collection-ticketing?ticket=${relatedTicket.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 text-xs bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors flex items-center gap-1 whitespace-nowrap no-underline"
                         >
                           <ExternalLink className="w-3 h-3" />
                           View
-                        </button>
+                        </a>
                       </div>
                     );
                   })}
