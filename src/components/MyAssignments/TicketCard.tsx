@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle } from 'lucide-react';
 import { formatDistanceToNow, isPast, parseISO, format as formatDate } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
@@ -87,6 +87,10 @@ export default function TicketCard({
   const [addingInvoices, setAddingInvoices] = useState(false);
   const [removingInvoice, setRemovingInvoice] = useState<string | null>(null);
   const [showAllInvoices, setShowAllInvoices] = useState(false);
+  const [showPaidInvoices, setShowPaidInvoices] = useState(false);
+
+  const openInvoices = ticket.invoices.filter(inv => inv.balance > 0 && inv.invoice_status !== 'Closed');
+  const paidInvoices = ticket.invoices.filter(inv => inv.balance <= 0 || inv.invoice_status === 'Closed');
 
   const loadAvailableInvoices = async () => {
     setLoadingAvailable(true);
@@ -619,10 +623,10 @@ export default function TicketCard({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <h4 className="font-semibold text-gray-700">
-              Invoices ({ticket.invoices.length})
+              Invoices ({openInvoices.length} open{paidInvoices.length > 0 ? `, ${paidInvoices.length} paid` : ''})
             </h4>
-            {onSelectAllInTicket && ticket.invoices.length > 0 && (() => {
-              const ticketInvoiceRefs = ticket.invoices.map(inv => inv.invoice_reference_number);
+            {onSelectAllInTicket && openInvoices.length > 0 && (() => {
+              const ticketInvoiceRefs = openInvoices.map(inv => inv.invoice_reference_number);
               const allSelected = ticketInvoiceRefs.every(ref => selectedInvoices.has(ref));
               const someSelected = ticketInvoiceRefs.some(ref => selectedInvoices.has(ref));
               return (
@@ -765,40 +769,50 @@ export default function TicketCard({
           </div>
         )}
 
-        <div className="space-y-2">
-          {(showAllInvoices ? ticket.invoices : ticket.invoices.slice(0, 2)).map(invoice => (
-            <div key={invoice.invoice_reference_number} className="relative group">
-              <InvoiceItem
-                invoice={invoice}
-                isSelected={selectedInvoices.has(invoice.invoice_reference_number)}
-                showColorPicker={changingColorForInvoice === invoice.invoice_reference_number}
-                colorOptions={colorOptions}
-                onToggleSelection={() => onToggleInvoiceSelection(invoice.invoice_reference_number)}
-                onColorChange={(color) => onColorChange(invoice.invoice_reference_number, color)}
-                onToggleColorPicker={() => onToggleColorPicker(
-                  changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number
-                )}
-                onOpenMemo={() => onOpenMemo(invoice)}
-                onOpenReminder={() => onOpenInvoiceReminder(invoice)}
-              />
-              {onRemoveInvoice && (
-                <button
-                  onClick={() => handleRemoveInvoice(invoice.invoice_reference_number)}
-                  disabled={removingInvoice === invoice.invoice_reference_number}
-                  className="absolute top-2 right-2 p-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 hover:text-red-800 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                  title="Remove from ticket"
-                >
-                  {removingInvoice === invoice.invoice_reference_number ? (
-                    <div className="w-4 h-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
-                  ) : (
-                    <Trash2 className="w-4 h-4" />
+        {openInvoices.length === 0 && paidInvoices.length > 0 && (
+          <div className="flex items-center justify-center gap-2 py-4 text-green-700 bg-green-50 rounded-lg border border-green-200">
+            <CheckCircle className="w-5 h-5" />
+            <span className="font-medium">All invoices are paid</span>
+          </div>
+        )}
+
+        {openInvoices.length > 0 && (
+          <div className="space-y-2">
+            {(showAllInvoices ? openInvoices : openInvoices.slice(0, 2)).map(invoice => (
+              <div key={invoice.invoice_reference_number} className="relative group">
+                <InvoiceItem
+                  invoice={invoice}
+                  isSelected={selectedInvoices.has(invoice.invoice_reference_number)}
+                  showColorPicker={changingColorForInvoice === invoice.invoice_reference_number}
+                  colorOptions={colorOptions}
+                  onToggleSelection={() => onToggleInvoiceSelection(invoice.invoice_reference_number)}
+                  onColorChange={(color) => onColorChange(invoice.invoice_reference_number, color)}
+                  onToggleColorPicker={() => onToggleColorPicker(
+                    changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number
                   )}
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-        {ticket.invoices.length > 2 && (
+                  onOpenMemo={() => onOpenMemo(invoice)}
+                  onOpenReminder={() => onOpenInvoiceReminder(invoice)}
+                />
+                {onRemoveInvoice && (
+                  <button
+                    onClick={() => handleRemoveInvoice(invoice.invoice_reference_number)}
+                    disabled={removingInvoice === invoice.invoice_reference_number}
+                    className="absolute top-2 right-2 p-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 hover:text-red-800 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                    title="Remove from ticket"
+                  >
+                    {removingInvoice === invoice.invoice_reference_number ? (
+                      <div className="w-4 h-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {openInvoices.length > 2 && (
           <button
             onClick={() => setShowAllInvoices(!showAllInvoices)}
             className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors"
@@ -811,10 +825,44 @@ export default function TicketCard({
             ) : (
               <>
                 <ChevronDown className="w-4 h-4" />
-                Show {ticket.invoices.length - 2} More Invoice{ticket.invoices.length - 2 !== 1 ? 's' : ''}
+                Show {openInvoices.length - 2} More Open Invoice{openInvoices.length - 2 !== 1 ? 's' : ''}
               </>
             )}
           </button>
+        )}
+
+        {paidInvoices.length > 0 && (
+          <div className={`${openInvoices.length > 0 ? 'mt-4 pt-4 border-t border-gray-200' : 'mt-2'}`}>
+            <button
+              onClick={() => setShowPaidInvoices(!showPaidInvoices)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-medium rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:border-green-300 transition-colors"
+            >
+              <CheckCircle className="w-4 h-4" />
+              {showPaidInvoices ? 'Hide' : 'Show'} {paidInvoices.length} Paid Invoice{paidInvoices.length !== 1 ? 's' : ''}
+              {showPaidInvoices ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+            {showPaidInvoices && (
+              <div className="mt-3 space-y-2">
+                {paidInvoices.map(invoice => (
+                  <div key={invoice.invoice_reference_number} className="relative group opacity-60">
+                    <InvoiceItem
+                      invoice={invoice}
+                      isSelected={selectedInvoices.has(invoice.invoice_reference_number)}
+                      showColorPicker={changingColorForInvoice === invoice.invoice_reference_number}
+                      colorOptions={colorOptions}
+                      onToggleSelection={() => onToggleInvoiceSelection(invoice.invoice_reference_number)}
+                      onColorChange={(color) => onColorChange(invoice.invoice_reference_number, color)}
+                      onToggleColorPicker={() => onToggleColorPicker(
+                        changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number
+                      )}
+                      onOpenMemo={() => onOpenMemo(invoice)}
+                      onOpenReminder={() => onOpenInvoiceReminder(invoice)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
