@@ -135,7 +135,8 @@ export default function UnifiedTicketingSystem({
     ticketType: '',
     dateFrom: '',
     dateTo: '',
-    assignedTo: ''
+    assignedTo: '',
+    brokenPromise: false
   });
 
   // Separate closed tickets from active tickets

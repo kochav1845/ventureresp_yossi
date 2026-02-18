@@ -1,4 +1,4 @@
-import { Search, X, Filter, Calendar } from 'lucide-react';
+import { Search, X, Filter, Calendar, AlertTriangle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
@@ -18,6 +18,7 @@ export interface TicketFilters {
   dateFrom: string;
   dateTo: string;
   assignedTo: string;
+  brokenPromise: boolean;
 }
 
 export default function TicketSearchFilter({
@@ -34,7 +35,8 @@ export default function TicketSearchFilter({
     ticketType: '',
     dateFrom: '',
     dateTo: '',
-    assignedTo: ''
+    assignedTo: '',
+    brokenPromise: false
   });
 
   const filters = controlledFilters || internalFilters;
@@ -119,7 +121,8 @@ export default function TicketSearchFilter({
       ticketType: '',
       dateFrom: '',
       dateTo: '',
-      assignedTo: ''
+      assignedTo: '',
+      brokenPromise: false
     };
 
     if (!controlledFilters) {
@@ -134,7 +137,7 @@ export default function TicketSearchFilter({
     }
   };
 
-  const hasActiveFilters = Object.values(filters).some(v => v !== '');
+  const hasActiveFilters = Object.entries(filters).some(([k, v]) => k === 'brokenPromise' ? v === true : v !== '');
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4 shadow-sm">
@@ -266,6 +269,25 @@ export default function TicketSearchFilter({
                 </select>
               </div>
             )}
+
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  const newFilters = { ...filters, brokenPromise: !filters.brokenPromise };
+                  if (!controlledFilters) setInternalFilters(newFilters);
+                  if (onFilterChange) onFilterChange(newFilters);
+                  if (onFiltersChange) onFiltersChange(newFilters);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                  filters.brokenPromise
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-red-50 hover:border-red-300 hover:text-red-700'
+                }`}
+              >
+                <AlertTriangle className="w-4 h-4" />
+                Broken Promise
+              </button>
+            </div>
           </div>
         )}
 
@@ -324,6 +346,20 @@ export default function TicketSearchFilter({
                 </button>
               </span>
             )}
+            {filters.brokenPromise && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-800 rounded text-xs">
+                <AlertTriangle className="w-3 h-3" />
+                Broken Promise
+                <button onClick={() => {
+                  const newFilters = { ...filters, brokenPromise: false };
+                  if (!controlledFilters) setInternalFilters(newFilters);
+                  if (onFilterChange) onFilterChange(newFilters);
+                  if (onFiltersChange) onFiltersChange(newFilters);
+                }} className="hover:text-red-900">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -341,12 +377,14 @@ export function filterTickets<T extends {
   status?: string;
   priority?: string;
   ticket_type?: string;
+  ticket_status?: string;
   created_at?: string;
   notes?: string;
-  invoices?: Array<{ invoice_reference_number?: string }>;
+  invoices?: Array<{ invoice_reference_number?: string; color_status?: string | null; promise_date?: string | null }>;
   invoice_reference_number?: string;
   last_note?: { note_text: string };
   last_memo?: { memo_text: string };
+  promise_date?: string | null;
 }>(tickets: T[], filters: TicketFilters): T[] {
   return tickets.filter(ticket => {
     // Search term - check multiple fields
@@ -384,6 +422,24 @@ export function filterTickets<T extends {
     // Ticket type filter
     if (filters.ticketType && ticket.ticket_type !== filters.ticketType) {
       return false;
+    }
+
+    // Broken promise filter
+    if (filters.brokenPromise) {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+
+      const ticketStatus = ticket.ticket_status || ticket.status;
+      const ticketPromiseBroken = ticketStatus === 'promised' &&
+        ticket.promise_date &&
+        new Date(ticket.promise_date) < now;
+
+      const hasInvoiceBrokenPromise = ticket.invoices?.some(inv => {
+        if (inv.color_status !== 'green' || !inv.promise_date) return false;
+        return new Date(inv.promise_date) < now;
+      });
+
+      if (!ticketPromiseBroken && !hasInvoiceBrokenPromise) return false;
     }
 
     // Date range filter
