@@ -59,6 +59,8 @@ export interface TicketGroup {
   customer_balance?: number;
   open_invoice_count?: number;
   oldest_invoice_date?: string | null;
+  last_payment_amount?: number | null;
+  last_payment_date?: string | null;
 }
 
 export interface CustomerAssignment {

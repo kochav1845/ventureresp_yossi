@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote } from 'lucide-react';
 import { formatDistanceToNow, isPast, parseISO, format as formatDate } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
@@ -400,9 +400,9 @@ export default function TicketCard({
         </p>
 
         {/* Real-time Balance Tracking */}
-        {(ticket.customer_balance !== undefined || ticket.open_invoice_count !== undefined || ticket.oldest_invoice_date) && (
+        {(ticket.customer_balance !== undefined || ticket.open_invoice_count !== undefined || ticket.oldest_invoice_date || ticket.last_payment_date) && (
           <div className="mb-3 p-3 bg-slate-50 border border-slate-300 rounded-lg">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
               {ticket.customer_balance !== undefined && (
                 <div className="flex items-start gap-2">
                   <DollarSign className="w-4 h-4 text-green-700 flex-shrink-0 mt-0.5" />
@@ -432,6 +432,28 @@ export default function TicketCard({
                     <p className="text-xs font-medium text-gray-600">Oldest Invoice</p>
                     <p className="text-sm font-bold text-gray-900">
                       {formatDate(new Date(ticket.oldest_invoice_date), 'MMM d, yyyy')}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {ticket.last_payment_amount != null && (
+                <div className="flex items-start gap-2">
+                  <Banknote className="w-4 h-4 text-teal-700 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-medium text-gray-600">Last Payment</p>
+                    <p className="text-sm font-bold text-teal-700">
+                      ${ticket.last_payment_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {ticket.last_payment_date && (
+                <div className="flex items-start gap-2">
+                  <Calendar className="w-4 h-4 text-teal-700 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-medium text-gray-600">Last Payment Date</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      {formatDate(new Date(ticket.last_payment_date), 'MMM d, yyyy')}
                     </p>
                   </div>
                 </div>

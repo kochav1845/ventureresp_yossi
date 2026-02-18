@@ -509,6 +509,35 @@ export default function UnifiedTicketingSystem({
           }
         }
 
+        if (uniqueCustomerIds.length > 0) {
+          const { data: lastPayments, error: paymentError } = await supabase
+            .from('acumatica_payments')
+            .select('customer_id, payment_amount, application_date')
+            .in('customer_id', uniqueCustomerIds)
+            .in('type', ['Payment', 'Prepayment'])
+            .order('application_date', { ascending: false });
+
+          if (!paymentError && lastPayments) {
+            const customerLastPayment = new Map<string, { amount: number; date: string }>();
+            lastPayments.forEach(p => {
+              if (!customerLastPayment.has(p.customer_id)) {
+                customerLastPayment.set(p.customer_id, {
+                  amount: p.payment_amount,
+                  date: p.application_date
+                });
+              }
+            });
+
+            ticketGroupsArray.forEach(ticket => {
+              const lp = customerLastPayment.get(ticket.customer_id);
+              if (lp) {
+                ticket.last_payment_amount = lp.amount;
+                ticket.last_payment_date = lp.date;
+              }
+            });
+          }
+        }
+
         const sortedTickets = sortTicketsByPriority(ticketGroupsArray);
         setTickets(sortedTickets);
         setIndividualAssignments(individualList);
