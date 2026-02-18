@@ -86,6 +86,7 @@ export default function TicketCard({
   const [loadingAvailable, setLoadingAvailable] = useState(false);
   const [addingInvoices, setAddingInvoices] = useState(false);
   const [removingInvoice, setRemovingInvoice] = useState<string | null>(null);
+  const [showAllInvoices, setShowAllInvoices] = useState(false);
 
   const loadAvailableInvoices = async () => {
     setLoadingAvailable(true);
@@ -765,7 +766,7 @@ export default function TicketCard({
         )}
 
         <div className="space-y-2">
-          {ticket.invoices.map(invoice => (
+          {(showAllInvoices ? ticket.invoices : ticket.invoices.slice(0, 2)).map(invoice => (
             <div key={invoice.invoice_reference_number} className="relative group">
               <InvoiceItem
                 invoice={invoice}
@@ -797,6 +798,24 @@ export default function TicketCard({
             </div>
           ))}
         </div>
+        {ticket.invoices.length > 2 && (
+          <button
+            onClick={() => setShowAllInvoices(!showAllInvoices)}
+            className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors"
+          >
+            {showAllInvoices ? (
+              <>
+                <ChevronUp className="w-4 h-4" />
+                Show Less
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-4 h-4" />
+                Show {ticket.invoices.length - 2} More Invoice{ticket.invoices.length - 2 !== 1 ? 's' : ''}
+              </>
+            )}
+          </button>
+        )}
       </div>
     </div>
     </>
