@@ -665,7 +665,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   };
 
   const handleTicketClick = (ticketId: string) => {
-    navigate(`/collection-ticketing?ticketId=${ticketId}`);
+    navigate(`/collection-ticketing?ticket=${ticketId}`);
   };
 
   const handleQuickFilter = (type: string) => {
