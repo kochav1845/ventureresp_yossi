@@ -374,6 +374,7 @@ export function filterTickets<T extends {
   customer_name?: string;
   collector_name?: string;
   collector_email?: string;
+  assigned_collector_id?: string | null;
   status?: string;
   priority?: string;
   ticket_type?: string;
@@ -421,6 +422,11 @@ export function filterTickets<T extends {
 
     // Ticket type filter
     if (filters.ticketType && ticket.ticket_type !== filters.ticketType) {
+      return false;
+    }
+
+    // Assigned collector filter
+    if (filters.assignedTo && ticket.assigned_collector_id !== filters.assignedTo) {
       return false;
     }
 
