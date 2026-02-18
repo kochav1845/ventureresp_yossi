@@ -130,7 +130,13 @@ export default function InvoiceItem({
               )}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 text-sm text-gray-600">
+          <div className="grid grid-cols-3 gap-3 text-sm text-gray-600">
+            {invoice.date && (
+              <div className="flex items-center gap-1">
+                <Calendar className="w-4 h-4" />
+                <span>Inv: {new Date(invoice.date).toLocaleDateString()}</span>
+              </div>
+            )}
             <div className="flex items-center gap-1">
               <Calendar className="w-4 h-4" />
               <span>Due: {new Date(invoice.due_date).toLocaleDateString()}</span>
