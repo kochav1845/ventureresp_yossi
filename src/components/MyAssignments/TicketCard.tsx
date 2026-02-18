@@ -33,6 +33,7 @@ interface TicketCardProps {
   onPromiseDateSet: () => void;
   onOpenTicketReminder: (ticket: TicketGroup) => void;
   onOpenInvoiceReminder: (invoice: Assignment) => void;
+  onSelectAllInTicket?: (invoiceRefs: string[]) => void;
   onAddInvoices?: (ticketId: string, invoiceRefs: string[], collectorId: string) => Promise<void>;
   onRemoveInvoice?: (ticketId: string, invoiceRef: string) => Promise<void>;
 }
@@ -54,6 +55,7 @@ export default function TicketCard({
   onPromiseDateSet,
   onOpenTicketReminder,
   onOpenInvoiceReminder,
+  onSelectAllInTicket,
   onAddInvoices,
   onRemoveInvoice
 }: TicketCardProps) {
@@ -614,9 +616,35 @@ export default function TicketCard({
 
       <div className="p-4 bg-gray-50">
         <div className="flex items-center justify-between mb-4">
-          <h4 className="font-semibold text-gray-700">
-            Invoices ({ticket.invoices.length})
-          </h4>
+          <div className="flex items-center gap-3">
+            <h4 className="font-semibold text-gray-700">
+              Invoices ({ticket.invoices.length})
+            </h4>
+            {onSelectAllInTicket && ticket.invoices.length > 0 && (() => {
+              const ticketInvoiceRefs = ticket.invoices.map(inv => inv.invoice_reference_number);
+              const allSelected = ticketInvoiceRefs.every(ref => selectedInvoices.has(ref));
+              const someSelected = ticketInvoiceRefs.some(ref => selectedInvoices.has(ref));
+              return (
+                <button
+                  onClick={() => onSelectAllInTicket(ticketInvoiceRefs)}
+                  className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors flex items-center gap-1.5 ${
+                    allSelected
+                      ? 'bg-blue-100 border-blue-300 text-blue-700 hover:bg-blue-200'
+                      : someSelected
+                        ? 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                        : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400'
+                  }`}
+                >
+                  {allSelected ? (
+                    <CheckIcon className="w-3.5 h-3.5" />
+                  ) : (
+                    <SquareIcon className="w-3.5 h-3.5" />
+                  )}
+                  {allSelected ? 'Deselect All' : 'Select All'}
+                </button>
+              );
+            })()}
+          </div>
           <div className="flex items-center gap-4">
             {onAddInvoices && (
               <button

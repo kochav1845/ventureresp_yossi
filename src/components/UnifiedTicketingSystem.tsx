@@ -856,6 +856,17 @@ export default function UnifiedTicketingSystem({
     }
   };
 
+  const handleSelectAllInTicket = (invoiceRefs: string[]) => {
+    const allSelected = invoiceRefs.every(ref => selectedInvoices.has(ref));
+    const newSelection = new Set(selectedInvoices);
+    if (allSelected) {
+      invoiceRefs.forEach(ref => newSelection.delete(ref));
+    } else {
+      invoiceRefs.forEach(ref => newSelection.add(ref));
+    }
+    setSelectedInvoices(newSelection);
+  };
+
   const handleBatchColorChange = async (newColor: string | null) => {
     if (!profile?.id || selectedInvoices.size === 0) return;
 
@@ -1537,6 +1548,7 @@ export default function UnifiedTicketingSystem({
                         statusOptions={statusOptions}
                         colorOptions={colorOptions}
                         onToggleInvoiceSelection={toggleInvoiceSelection}
+                        onSelectAllInTicket={handleSelectAllInTicket}
                         onColorChange={handleColorChange}
                         onToggleColorPicker={setChangingColorForInvoice}
                         onOpenMemo={handleOpenMemo}
