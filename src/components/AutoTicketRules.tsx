@@ -38,8 +38,8 @@ interface AutoTicketRulesProps {
 
 export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
   const [rules, setRules] = useState<AutoTicketRule[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [collectors, setCollectors] = useState<Collector[]>([]);
+  const [selectedCustomerName, setSelectedCustomerName] = useState('');
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<AutoTicketRule | null>(null);
@@ -47,6 +47,8 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimeoutRef = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const [formData, setFormData] = useState({
     customer_id: '',
@@ -66,23 +68,24 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
   }, []);
 
   useEffect(() => {
-    if (isModalOpen) {
-      fetchCustomers();
+    if (searchTimeoutRef[0]) {
+      clearTimeout(searchTimeoutRef[0]);
     }
-  }, [isModalOpen, formData.rule_type]);
 
-  useEffect(() => {
-    if (searchTerm) {
-      const filtered = customers.filter(
-        (c) =>
-          c.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          c.customer_id.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setFilteredCustomers(filtered.slice(0, 50));
+    if (searchTerm.length >= 2) {
+      searchTimeoutRef[0] = setTimeout(() => {
+        searchCustomers(searchTerm);
+      }, 300);
     } else {
       setFilteredCustomers([]);
     }
-  }, [searchTerm, customers]);
+
+    return () => {
+      if (searchTimeoutRef[0]) {
+        clearTimeout(searchTimeoutRef[0]);
+      }
+    };
+  }, [searchTerm, formData.rule_type]);
 
   const fetchRules = async () => {
     try {
@@ -138,39 +141,55 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
     }
   };
 
-  const fetchCustomers = async () => {
+  const searchCustomers = async (term: string) => {
+    setSearchLoading(true);
     try {
+      const searchPattern = `%${term}%`;
+
       if (formData.rule_type === 'payment_recency') {
-        const { data: openInvoices, error } = await supabase
-          .from('acumatica_invoices')
-          .select('customer')
-          .eq('type', 'Invoice')
-          .gt('balance', 0)
-          .in('status', ['Open', 'open']);
+        const { data: customersData, error } = await supabase
+          .from('acumatica_customers')
+          .select('customer_id, customer_name')
+          .or(`customer_name.ilike.${searchPattern},customer_id.ilike.${searchPattern}`)
+          .order('customer_name')
+          .limit(100);
 
         if (error) throw error;
 
-        const uniqueCustomerIds = [...new Set(openInvoices?.map(inv => inv.customer) || [])];
+        const customerIds = customersData?.map(c => c.customer_id) || [];
 
-        const { data: customersData, error: customersError } = await supabase
-          .from('acumatica_customers')
-          .select('customer_id, customer_name')
-          .in('customer_id', uniqueCustomerIds)
-          .order('customer_name');
+        if (customerIds.length > 0) {
+          const { data: invoiceData, error: invError } = await supabase
+            .from('acumatica_invoices')
+            .select('customer')
+            .eq('type', 'Invoice')
+            .gt('balance', 0)
+            .in('status', ['Open', 'open'])
+            .in('customer', customerIds);
 
-        if (customersError) throw customersError;
-        setCustomers(customersData || []);
+          if (invError) throw invError;
+
+          const customersWithOpenInvoices = new Set(invoiceData?.map(inv => inv.customer) || []);
+          const filtered = customersData?.filter(c => customersWithOpenInvoices.has(c.customer_id)) || [];
+          setFilteredCustomers(filtered);
+        } else {
+          setFilteredCustomers([]);
+        }
       } else {
         const { data, error } = await supabase
           .from('acumatica_customers')
           .select('customer_id, customer_name')
-          .order('customer_name');
+          .or(`customer_name.ilike.${searchPattern},customer_id.ilike.${searchPattern}`)
+          .order('customer_name')
+          .limit(100);
 
         if (error) throw error;
-        setCustomers(data || []);
+        setFilteredCustomers(data || []);
       }
     } catch (error: any) {
       showToast(error.message, 'error');
+    } finally {
+      setSearchLoading(false);
     }
   };
 
@@ -238,7 +257,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
         if (checkError) throw checkError;
 
         if (existingRule) {
-          const customerName = customers.find(c => c.customer_id === formData.customer_id)?.customer_name || formData.customer_id;
+          const customerName = selectedCustomerName || formData.customer_id;
           const ruleTypeLabel = formData.rule_type === 'invoice_age' ? 'Invoice Age' : 'Payment Recency';
           showToast(`A ${ruleTypeLabel} rule already exists for ${customerName}. Please edit the existing rule instead.`, 'error');
           return;
@@ -374,6 +393,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
     });
     setSearchTerm('');
     setFilteredCustomers([]);
+    setSelectedCustomerName('');
   };
 
   const handleOpenModal = () => {
@@ -593,10 +613,16 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
                         type="text"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="Search customers..."
+                        placeholder="Type at least 2 characters to search customers..."
                         className="pl-10 w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
+                      {searchLoading && (
+                        <Loader2 className="absolute right-3 top-3 w-5 h-5 text-blue-500 animate-spin" />
+                      )}
                     </div>
+                    {searchTerm.length >= 2 && !searchLoading && filteredCustomers.length === 0 && (
+                      <p className="mt-2 text-sm text-gray-500">No customers found matching "{searchTerm}"</p>
+                    )}
                     {filteredCustomers.length > 0 && (
                       <div className="mt-2 border border-gray-300 rounded-lg max-h-60 overflow-y-auto">
                         {filteredCustomers.map((customer) => {
@@ -610,6 +636,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
                               onClick={() => {
                                 if (!hasRule) {
                                   setFormData({ ...formData, customer_id: customer.customer_id });
+                                  setSelectedCustomerName(customer.customer_name);
                                   setSearchTerm(customer.customer_name);
                                   setFilteredCustomers([]);
                                 } else {
@@ -640,7 +667,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
                     {formData.customer_id && (
                       <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
                         <div className="text-sm text-green-800">
-                          Selected: {customers.find(c => c.customer_id === formData.customer_id)?.customer_name}
+                          Selected: {selectedCustomerName || formData.customer_id}
                         </div>
                       </div>
                     )}
