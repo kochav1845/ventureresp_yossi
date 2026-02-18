@@ -18,6 +18,7 @@ export interface Assignment {
   description: string;
   assignment_notes: string;
   promise_date?: string | null;
+  collection_date?: string | null;
   memo_count?: number;
   has_attachments?: boolean;
   last_memo?: {
@@ -34,6 +35,7 @@ export interface TicketGroup {
   ticket_type: string;
   ticket_due_date?: string | null;
   ticket_created_at?: string | null;
+  ticket_closed_at?: string | null;
   customer_id: string;
   customer_name: string;
   promise_date?: string | null;

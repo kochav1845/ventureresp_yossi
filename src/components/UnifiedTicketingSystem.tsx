@@ -378,13 +378,14 @@ export default function UnifiedTicketingSystem({
         await Promise.all(ticketGroupsArray.map(async (ticket) => {
           const { data: ticketData } = await supabase
             .from('collection_tickets')
-            .select('promise_date, promise_by_user_id, created_at')
+            .select('promise_date, promise_by_user_id, created_at, resolved_at')
             .eq('id', ticket.ticket_id)
             .maybeSingle();
 
           if (ticketData) {
             ticket.promise_date = ticketData.promise_date;
             ticket.ticket_created_at = ticketData.created_at;
+            ticket.ticket_closed_at = ticketData.resolved_at;
 
             if (ticketData.promise_by_user_id) {
               const { data: userData } = await supabase
@@ -534,6 +535,34 @@ export default function UnifiedTicketingSystem({
                 ticket.last_payment_amount = lp.amount;
                 ticket.last_payment_date = lp.date;
               }
+            });
+          }
+        }
+
+        const allInvoiceRefs = ticketGroupsArray.flatMap(t => t.invoices.map(inv => inv.invoice_reference_number));
+        if (allInvoiceRefs.length > 0) {
+          const { data: appData } = await supabase
+            .from('payment_invoice_applications')
+            .select('invoice_reference_number, application_date, amount_paid')
+            .in('invoice_reference_number', allInvoiceRefs)
+            .gt('amount_paid', 0)
+            .order('application_date', { ascending: false });
+
+          if (appData) {
+            const invoiceCollectionDate = new Map<string, string>();
+            appData.forEach(a => {
+              if (!invoiceCollectionDate.has(a.invoice_reference_number) && a.application_date) {
+                invoiceCollectionDate.set(a.invoice_reference_number, a.application_date);
+              }
+            });
+
+            ticketGroupsArray.forEach(ticket => {
+              ticket.invoices.forEach(inv => {
+                const colDate = invoiceCollectionDate.get(inv.invoice_reference_number);
+                if (colDate) {
+                  inv.collection_date = colDate;
+                }
+              });
             });
           }
         }

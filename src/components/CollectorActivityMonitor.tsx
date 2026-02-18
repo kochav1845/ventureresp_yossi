@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Users, Activity, TrendingUp, Calendar, Clock, Eye, Filter, Download, Search } from 'lucide-react';
+import { ArrowLeft, Users, Activity, TrendingUp, Calendar, Clock, Eye, Filter, Download, Search, DollarSign } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
 
@@ -16,6 +16,7 @@ interface CollectorSummary {
   status_changes: number;
   invoice_color_changes: number;
   last_activity: string;
+  total_collected?: number;
 }
 
 interface ActivityLog {
@@ -63,7 +64,56 @@ export default function CollectorActivityMonitor({ onBack }: CollectorActivityMo
         });
 
       if (error) throw error;
-      setCollectors(data || []);
+
+      const collectorList: CollectorSummary[] = data || [];
+
+      if (collectorList.length > 0) {
+        const collectorIds = collectorList.map(c => c.user_id);
+
+        const { data: ticketData } = await supabase
+          .from('collection_tickets')
+          .select('assigned_collector_id, customer_id')
+          .in('assigned_collector_id', collectorIds);
+
+        if (ticketData && ticketData.length > 0) {
+          const collectorCustomerMap = new Map<string, Set<string>>();
+          ticketData.forEach(t => {
+            if (!t.assigned_collector_id) return;
+            if (!collectorCustomerMap.has(t.assigned_collector_id)) {
+              collectorCustomerMap.set(t.assigned_collector_id, new Set());
+            }
+            collectorCustomerMap.get(t.assigned_collector_id)!.add(t.customer_id);
+          });
+
+          const allCustomerIds = [...new Set(ticketData.map(t => t.customer_id))];
+
+          const { data: paymentSums } = await supabase
+            .from('payment_invoice_applications')
+            .select('customer_id, amount_paid')
+            .in('customer_id', allCustomerIds)
+            .gt('amount_paid', 0);
+
+          if (paymentSums) {
+            const customerTotals = new Map<string, number>();
+            paymentSums.forEach(p => {
+              customerTotals.set(p.customer_id, (customerTotals.get(p.customer_id) || 0) + Number(p.amount_paid));
+            });
+
+            collectorList.forEach(c => {
+              const custIds = collectorCustomerMap.get(c.user_id);
+              if (custIds) {
+                let total = 0;
+                custIds.forEach(cid => {
+                  total += customerTotals.get(cid) || 0;
+                });
+                c.total_collected = total;
+              }
+            });
+          }
+        }
+      }
+
+      setCollectors(collectorList);
     } catch (error) {
       console.error('Error loading collector summaries:', error);
     } finally {
@@ -239,7 +289,15 @@ export default function CollectorActivityMonitor({ onBack }: CollectorActivityMo
               </span>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+              {collector?.total_collected != null && collector.total_collected > 0 && (
+                <div className="bg-emerald-500/10 rounded-lg p-4 border border-emerald-500/20">
+                  <div className="text-emerald-400/70 text-xs mb-1">Total Collected</div>
+                  <div className="text-2xl font-bold text-emerald-400">
+                    ${collector.total_collected.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                  </div>
+                </div>
+              )}
               <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700">
                 <div className="text-slate-400 text-xs mb-1">Total Actions</div>
                 <div className="text-2xl font-bold text-white">{collector?.total_actions || 0}</div>
@@ -398,6 +456,20 @@ export default function CollectorActivityMonitor({ onBack }: CollectorActivityMo
                     {collector.role}
                   </span>
                 </div>
+
+                {collector.total_collected != null && collector.total_collected > 0 && (
+                  <div className="mb-4 p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-5 h-5 text-emerald-400" />
+                      <div>
+                        <div className="text-emerald-400/70 text-xs">Total Collected</div>
+                        <div className="text-xl font-bold text-emerald-400">
+                          ${collector.total_collected.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">

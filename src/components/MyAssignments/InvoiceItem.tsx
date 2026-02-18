@@ -1,4 +1,4 @@
-import { Calendar, DollarSign, MessageSquare, ExternalLink, CheckSquare, Square, Paperclip, Bell } from 'lucide-react';
+import { Calendar, DollarSign, MessageSquare, ExternalLink, CheckSquare, Square, Paperclip, Bell, ArrowRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Assignment } from './types';
 import { isPromiseBroken } from './utils';
@@ -130,17 +130,25 @@ export default function InvoiceItem({
               )}
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3 text-sm text-gray-600">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm text-gray-600">
             {invoice.date && (
               <div className="flex items-center gap-1">
-                <Calendar className="w-4 h-4" />
+                <Calendar className="w-4 h-4 text-gray-500" />
                 <span>Inv: {new Date(invoice.date).toLocaleDateString()}</span>
               </div>
             )}
             <div className="flex items-center gap-1">
-              <Calendar className="w-4 h-4" />
+              <Calendar className="w-4 h-4 text-gray-500" />
               <span>Due: {new Date(invoice.due_date).toLocaleDateString()}</span>
             </div>
+            {invoice.collection_date && (
+              <div className="flex items-center gap-1">
+                <Calendar className="w-4 h-4 text-green-600" />
+                <span className="text-green-700 font-medium">
+                  Collected: {new Date(invoice.collection_date).toLocaleDateString()}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-1">
               <DollarSign className="w-4 h-4" />
               {invoice.amount !== invoice.balance ? (
@@ -154,6 +162,16 @@ export default function InvoiceItem({
               )}
             </div>
           </div>
+          {invoice.date && invoice.collection_date && (
+            <div className="mt-2 flex items-center gap-2 text-xs bg-blue-50 border border-blue-200 rounded px-3 py-1.5">
+              <span className="text-gray-600">{new Date(invoice.date).toLocaleDateString()}</span>
+              <ArrowRight className="w-3 h-3 text-blue-500" />
+              <span className="text-green-700 font-medium">{new Date(invoice.collection_date).toLocaleDateString()}</span>
+              <span className="text-blue-600 font-medium ml-1">
+                ({Math.ceil((new Date(invoice.collection_date).getTime() - new Date(invoice.date).getTime()) / (1000 * 60 * 60 * 24))} days to collect)
+              </span>
+            </div>
+          )}
           {invoice.memo_count && invoice.memo_count > 0 && (
             <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs">
               <div className="flex items-center gap-2">

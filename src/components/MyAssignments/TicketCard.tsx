@@ -282,17 +282,40 @@ export default function TicketCard({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3 text-sm">
-            {ticket.ticket_created_at && (
-              <span className="text-gray-600 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5" />
-                {formatDate(new Date(ticket.ticket_created_at), 'MMM d, yyyy')}
-              </span>
-            )}
+          <div className="flex items-center gap-2 text-sm flex-wrap">
             <span className="font-semibold">
               Priority: {ticket.ticket_priority.toUpperCase()}
             </span>
           </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3 mb-3">
+          {ticket.ticket_created_at && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              <span className="text-blue-700 font-medium">Created:</span>
+              <span className="text-blue-900 font-semibold">{formatDate(new Date(ticket.ticket_created_at), 'MMM d, yyyy')}</span>
+            </div>
+          )}
+          {ticket.ticket_closed_at && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-lg text-sm">
+              <CalendarDays className="w-3.5 h-3.5 text-gray-600" />
+              <span className="text-gray-700 font-medium">Closed:</span>
+              <span className="text-gray-900 font-semibold">{formatDate(new Date(ticket.ticket_closed_at), 'MMM d, yyyy')}</span>
+            </div>
+          )}
+          {ticket.invoices.length > 0 && (() => {
+            const oldestDate = ticket.invoices
+              .filter(inv => inv.date)
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0]?.date;
+            return oldestDate ? (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+                <CalendarDays className="w-3.5 h-3.5 text-amber-600" />
+                <span className="text-amber-700 font-medium">Oldest Invoice:</span>
+                <span className="text-amber-900 font-semibold">{formatDate(new Date(oldestDate), 'MMM d, yyyy')}</span>
+              </div>
+            ) : null;
+          })()}
         </div>
 
         {isBrokenPromise && (
