@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatDistanceToNow, isPast, parseISO, format as formatDate } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
@@ -8,6 +8,7 @@ import { getAcumaticaCustomerUrl } from '../../lib/acumaticaLinks';
 import { supabase } from '../../lib/supabase';
 import InvoiceItem from './InvoiceItem';
 import TicketPromiseDateModal from './TicketPromiseDateModal';
+import TicketHistory from './TicketHistory';
 
 interface ColorStatusOption {
   status_name: string;
@@ -57,6 +58,7 @@ export default function TicketCard({
   const [localTicketPriority, setLocalTicketPriority] = useState(ticket.ticket_priority);
   const [showPromiseDateModal, setShowPromiseDateModal] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const [relatedTickets, setRelatedTickets] = useState<Array<{
     id: string;
     ticket_number: string;
@@ -454,34 +456,51 @@ export default function TicketCard({
         </div>
 
         <div className="mt-3 pt-3 border-t border-gray-200">
-          <div className="grid grid-cols-2 gap-4 text-xs">
-            {ticket.last_status_change && (
-              <div className="flex items-start gap-2">
-                <Clock className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-gray-700">Last Status Change</p>
-                  <p className="text-gray-600">{ticket.last_status_change.status}</p>
-                  <p className="text-gray-500">
-                    {formatDistanceToNow(new Date(ticket.last_status_change.changed_at), { addSuffix: true })}
-                  </p>
-                  <p className="text-gray-500">by {ticket.last_status_change.changed_by_name}</p>
+          {!showHistory && (
+            <div className="grid grid-cols-2 gap-4 text-xs mb-3">
+              {ticket.last_status_change && (
+                <div className="flex items-start gap-2">
+                  <Clock className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-gray-700">Last Status Change</p>
+                    <p className="text-gray-600">{ticket.last_status_change.status}</p>
+                    <p className="text-gray-500">
+                      {formatDistanceToNow(new Date(ticket.last_status_change.changed_at), { addSuffix: true })}
+                    </p>
+                    <p className="text-gray-500">by {ticket.last_status_change.changed_by_name}</p>
+                  </div>
                 </div>
-              </div>
-            )}
-            {ticket.last_activity && (
-              <div className="flex items-start gap-2">
-                <Clock className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-gray-700">Last Activity</p>
-                  <p className="text-gray-600">{ticket.last_activity.description}</p>
-                  <p className="text-gray-500">
-                    {formatDistanceToNow(new Date(ticket.last_activity.created_at), { addSuffix: true })}
-                  </p>
-                  <p className="text-gray-500">by {ticket.last_activity.created_by_name}</p>
+              )}
+              {ticket.last_activity && (
+                <div className="flex items-start gap-2">
+                  <Clock className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-gray-700">Last Activity</p>
+                    <p className="text-gray-600">{ticket.last_activity.description}</p>
+                    <p className="text-gray-500">
+                      {formatDistanceToNow(new Date(ticket.last_activity.created_at), { addSuffix: true })}
+                    </p>
+                    <p className="text-gray-500">by {ticket.last_activity.created_by_name}</p>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
+
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 text-sm font-medium rounded-lg border transition-all duration-200 hover:shadow-sm bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100 hover:border-gray-300"
+          >
+            <History className="w-4 h-4" />
+            {showHistory ? 'Hide Full History' : 'View Full History'}
+            {showHistory ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+
+          {showHistory && (
+            <div className="mt-3 pt-3 border-t border-gray-200">
+              <TicketHistory ticketId={ticket.ticket_id} />
+            </div>
+          )}
         </div>
       </div>
 
