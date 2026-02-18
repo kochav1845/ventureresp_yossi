@@ -388,12 +388,12 @@ export default function UnifiedTicketingSystem({
             if (ticketData.promise_by_user_id) {
               const { data: userData } = await supabase
                 .from('user_profiles')
-                .select('full_name')
+                .select('full_name, email')
                 .eq('id', ticketData.promise_by_user_id)
                 .maybeSingle();
 
               if (userData) {
-                ticket.promise_by_user_name = userData.full_name;
+                ticket.promise_by_user_name = userData.full_name || userData.email;
               }
             }
           }
@@ -403,7 +403,7 @@ export default function UnifiedTicketingSystem({
             .select(`
               description,
               created_at,
-              created_by:user_profiles!ticket_activity_log_created_by_fkey(full_name)
+              created_by:user_profiles!ticket_activity_log_created_by_fkey(full_name, email)
             `)
             .eq('ticket_id', ticket.ticket_id)
             .eq('activity_type', 'status_change')
@@ -416,7 +416,7 @@ export default function UnifiedTicketingSystem({
             ticket.last_status_change = {
               status: statusMatch ? statusMatch[1] : ticket.ticket_status,
               changed_at: statusChange.created_at,
-              changed_by_name: statusChange.created_by?.full_name || 'Unknown'
+              changed_by_name: statusChange.created_by?.full_name || statusChange.created_by?.email || 'Unknown'
             };
           }
 
@@ -425,7 +425,7 @@ export default function UnifiedTicketingSystem({
             .select(`
               description,
               created_at,
-              created_by:user_profiles!ticket_activity_log_created_by_fkey(full_name)
+              created_by:user_profiles!ticket_activity_log_created_by_fkey(full_name, email)
             `)
             .eq('ticket_id', ticket.ticket_id)
             .order('created_at', { ascending: false })
@@ -436,7 +436,7 @@ export default function UnifiedTicketingSystem({
             ticket.last_activity = {
               description: activity.description,
               created_at: activity.created_at,
-              created_by_name: activity.created_by?.full_name || 'Unknown'
+              created_by_name: activity.created_by?.full_name || activity.created_by?.email || 'Unknown'
             };
           }
 
