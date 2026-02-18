@@ -33,6 +33,7 @@ export interface TicketGroup {
   ticket_priority: string;
   ticket_type: string;
   ticket_due_date?: string | null;
+  ticket_created_at?: string | null;
   customer_id: string;
   customer_name: string;
   promise_date?: string | null;

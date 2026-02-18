@@ -175,9 +175,17 @@ export default function TicketCard({
               </span>
             )}
           </div>
-          <span className="text-sm font-semibold">
-            Priority: {ticket.ticket_priority.toUpperCase()}
-          </span>
+          <div className="flex items-center gap-3 text-sm">
+            {ticket.ticket_created_at && (
+              <span className="text-gray-600 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5" />
+                {formatDate(new Date(ticket.ticket_created_at), 'MMM d, yyyy')}
+              </span>
+            )}
+            <span className="font-semibold">
+              Priority: {ticket.ticket_priority.toUpperCase()}
+            </span>
+          </div>
         </div>
 
         {isBrokenPromise && (

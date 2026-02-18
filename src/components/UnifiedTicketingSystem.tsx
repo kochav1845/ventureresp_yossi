@@ -378,12 +378,13 @@ export default function UnifiedTicketingSystem({
         await Promise.all(ticketGroupsArray.map(async (ticket) => {
           const { data: ticketData } = await supabase
             .from('collection_tickets')
-            .select('promise_date, promise_by_user_id')
+            .select('promise_date, promise_by_user_id, created_at')
             .eq('id', ticket.ticket_id)
             .maybeSingle();
 
           if (ticketData) {
             ticket.promise_date = ticketData.promise_date;
+            ticket.ticket_created_at = ticketData.created_at;
 
             if (ticketData.promise_by_user_id) {
               const { data: userData } = await supabase
