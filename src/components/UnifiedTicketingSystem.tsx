@@ -11,7 +11,8 @@ import {
   Square,
   Plus,
   AlertTriangle,
-  Users
+  Users,
+  Archive
 } from 'lucide-react';
 import InvoiceMemoModal from './InvoiceMemoModal';
 import CreateReminderModal from './CreateReminderModal';
@@ -63,7 +64,7 @@ export default function UnifiedTicketingSystem({
   const location = useLocation();
 
   // View states
-  const [activeTab, setActiveTab] = useState<'create' | 'tickets' | 'individual' | 'overdue'>('tickets');
+  const [activeTab, setActiveTab] = useState<'create' | 'tickets' | 'individual' | 'overdue' | 'closed'>('tickets');
 
   // Ticket data
   const [tickets, setTickets] = useState<TicketGroup[]>([]);
@@ -137,12 +138,17 @@ export default function UnifiedTicketingSystem({
     assignedTo: ''
   });
 
+  // Separate closed tickets from active tickets
+  const activeTickets = tickets.filter(t => t.ticket_status !== 'closed');
+  const closedTickets = tickets.filter(t => t.ticket_status === 'closed');
+
   // Apply filters
-  const filteredTickets = filterTickets(tickets, filters);
+  const filteredTickets = filterTickets(activeTickets, filters);
+  const filteredClosedTickets = filterTickets(closedTickets, filters);
   const filteredIndividualAssignments = filterTickets(individualAssignments, filters);
 
-  // Filter overdue tickets
-  const overdueTickets = tickets.filter(ticket =>
+  // Filter overdue tickets (only from active tickets)
+  const overdueTickets = activeTickets.filter(ticket =>
     ticket.ticket_due_date && isPast(parseISO(ticket.ticket_due_date))
   );
 
@@ -326,6 +332,47 @@ export default function UnifiedTicketingSystem({
             individualList.push(assignment);
           }
         });
+
+        // Load tickets that have no invoice assignments (they won't appear in the view)
+        let emptyTicketsQuery = supabase
+          .from('collection_tickets')
+          .select(`
+            id,
+            ticket_number,
+            customer_id,
+            customer_name,
+            status,
+            priority,
+            ticket_type,
+            due_date,
+            assigned_collector_id,
+            active
+          `)
+          .eq('active', true);
+
+        if (showOnlyAssigned) {
+          emptyTicketsQuery = emptyTicketsQuery.eq('assigned_collector_id', profile.id);
+        }
+
+        const { data: allActiveTickets } = await emptyTicketsQuery;
+
+        if (allActiveTickets) {
+          allActiveTickets.forEach((t: any) => {
+            if (!ticketGroups.has(t.id)) {
+              ticketGroups.set(t.id, {
+                ticket_id: t.id,
+                ticket_number: t.ticket_number || '',
+                ticket_status: t.status || '',
+                ticket_priority: t.priority || '',
+                ticket_type: t.ticket_type || '',
+                ticket_due_date: t.due_date,
+                customer_id: t.customer_id,
+                customer_name: t.customer_name,
+                invoices: []
+              });
+            }
+          });
+        }
 
         const ticketGroupsArray = Array.from(ticketGroups.values());
         await Promise.all(ticketGroupsArray.map(async (ticket) => {
@@ -1123,6 +1170,17 @@ export default function UnifiedTicketingSystem({
                   <AlertTriangle className="w-5 h-5" />
                   Overdue Tickets ({overdueTickets.length})
                 </button>
+                <button
+                  onClick={() => setActiveTab('closed')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                    activeTab === 'closed'
+                      ? 'bg-gray-700 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <Archive className="w-5 h-5" />
+                  Closed ({closedTickets.length})
+                </button>
               </div>
             </div>
           )}
@@ -1348,7 +1406,7 @@ export default function UnifiedTicketingSystem({
             </div>
           )}
 
-          {(showOnlyAssigned || activeTab === 'tickets' || activeTab === 'overdue') && (
+          {(showOnlyAssigned || activeTab === 'tickets' || activeTab === 'overdue' || activeTab === 'closed') && (
             <div className="p-6">
               <TicketSearchFilter
                 filters={filters}
@@ -1371,43 +1429,56 @@ export default function UnifiedTicketingSystem({
               </div>
 
               <div className="mt-6 space-y-6">
-                {(showOnlyAssigned ? filteredTickets : activeTab === 'overdue' ? overdueTickets : filteredTickets).length === 0 ? (
-                  <div className="text-center py-12">
-                    <TicketIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500">
-                      {activeTab === 'overdue'
-                        ? 'No overdue tickets'
-                        : tickets.length === 0
-                          ? showOnlyAssigned
-                            ? 'No tickets assigned to you'
-                            : 'No tickets found'
-                          : 'No tickets match your search'
-                      }
-                    </p>
-                  </div>
-                ) : (
-                  (showOnlyAssigned ? filteredTickets : activeTab === 'overdue' ? overdueTickets : filteredTickets).map(ticket => (
-                    <TicketCard
-                      key={ticket.ticket_id}
-                      ticket={ticket}
-                      selectedInvoices={selectedInvoices}
-                      changingColorForInvoice={changingColorForInvoice}
-                      changingTicketStatus={changingTicketStatus}
-                      changingTicketPriority={changingTicketPriority}
-                      statusOptions={statusOptions}
-                      colorOptions={colorOptions}
-                      onToggleInvoiceSelection={toggleInvoiceSelection}
-                      onColorChange={handleColorChange}
-                      onToggleColorPicker={setChangingColorForInvoice}
-                      onOpenMemo={handleOpenMemo}
-                      onTicketStatusChange={handleTicketStatusChange}
-                      onTicketPriorityChange={handleTicketPriorityChange}
-                      onPromiseDateSet={loadTickets}
-                      onOpenTicketReminder={handleOpenTicketReminder}
-                      onOpenInvoiceReminder={handleOpenInvoiceReminder}
-                    />
-                  ))
-                )}
+                {(() => {
+                  const displayTickets = showOnlyAssigned
+                    ? filteredTickets
+                    : activeTab === 'overdue'
+                      ? overdueTickets
+                      : activeTab === 'closed'
+                        ? filteredClosedTickets
+                        : filteredTickets;
+
+                  const emptyMessage = activeTab === 'overdue'
+                    ? 'No overdue tickets'
+                    : activeTab === 'closed'
+                      ? closedTickets.length === 0
+                        ? 'No closed tickets'
+                        : 'No closed tickets match your search'
+                      : tickets.length === 0
+                        ? showOnlyAssigned
+                          ? 'No tickets assigned to you'
+                          : 'No tickets found'
+                        : 'No tickets match your search';
+
+                  return displayTickets.length === 0 ? (
+                    <div className="text-center py-12">
+                      <TicketIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-500">{emptyMessage}</p>
+                    </div>
+                  ) : (
+                    displayTickets.map(ticket => (
+                      <TicketCard
+                        key={ticket.ticket_id}
+                        ticket={ticket}
+                        selectedInvoices={selectedInvoices}
+                        changingColorForInvoice={changingColorForInvoice}
+                        changingTicketStatus={changingTicketStatus}
+                        changingTicketPriority={changingTicketPriority}
+                        statusOptions={statusOptions}
+                        colorOptions={colorOptions}
+                        onToggleInvoiceSelection={toggleInvoiceSelection}
+                        onColorChange={handleColorChange}
+                        onToggleColorPicker={setChangingColorForInvoice}
+                        onOpenMemo={handleOpenMemo}
+                        onTicketStatusChange={handleTicketStatusChange}
+                        onTicketPriorityChange={handleTicketPriorityChange}
+                        onPromiseDateSet={loadTickets}
+                        onOpenTicketReminder={handleOpenTicketReminder}
+                        onOpenInvoiceReminder={handleOpenInvoiceReminder}
+                      />
+                    ))
+                  );
+                })()}
               </div>
             </div>
           )}
