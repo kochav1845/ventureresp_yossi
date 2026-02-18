@@ -92,7 +92,7 @@ export default function TicketCard({
             const ticketsWithCounts = await Promise.all(
               otherTickets.map(async (t) => {
                 const { count } = await supabase
-                  .from('ticket_invoices')
+                  .from('invoice_assignments')
                   .select('*', { count: 'exact', head: true })
                   .eq('ticket_id', t.id);
 

@@ -345,7 +345,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             full_name,
             email
           ),
-          ticket_invoices (
+          invoice_assignments (
             invoice_reference_number
           )
         `)
@@ -364,7 +364,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         assigned_collector_id: ticket.assigned_collector_id,
         collector_name: ticket.user_profiles?.full_name || null,
         collector_email: ticket.user_profiles?.email || null,
-        invoice_count: ticket.ticket_invoices?.length || 0
+        invoice_count: ticket.invoice_assignments?.length || 0
       }));
 
       setTickets(ticketsWithCollector);
