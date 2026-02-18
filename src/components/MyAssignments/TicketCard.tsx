@@ -250,12 +250,14 @@ export default function TicketCard({
 
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate(`/customers?customer=${ticket.customer_id}`)}
+            <a
+              href={`/acumatica-customers?customer=${ticket.customer_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-xl font-bold text-blue-600 hover:text-blue-800 hover:underline"
             >
               {ticket.customer_name}
-            </button>
+            </a>
             <a
               href={getAcumaticaCustomerUrl(ticket.customer_id)}
               target="_blank"

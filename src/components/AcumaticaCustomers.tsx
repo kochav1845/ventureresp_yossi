@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare, Download, UserPlus, Settings, Info, HelpCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -52,6 +52,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const { profile } = useAuth();
   const { hasPermission } = useUserPermissions();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedCustomer = searchParams.get('customer');
   const handleBack = onBack || (() => navigate(-1));
   const hasAccess = hasPermission(PERMISSION_KEYS.ACUMATICA_CUSTOMERS, 'view');
   const canPerformFetch = profile?.role === 'admin' || (profile as any)?.can_perform_fetch;
@@ -59,7 +61,6 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
   const [showFetchPage, setShowFetchPage] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -1002,7 +1003,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   }
 
   if (selectedCustomer) {
-    return <CustomerDetailView customerId={selectedCustomer} onBack={() => setSelectedCustomer(null)} />;
+    return <CustomerDetailView customerId={selectedCustomer} onBack={() => setSearchParams({})} />;
   }
 
   return (
@@ -1761,19 +1762,19 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                     >
                       <td
                         className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 cursor-pointer"
-                        onClick={() => setSelectedCustomer(customer.customer_id)}
+                        onClick={() => setSearchParams({ customer: customer.customer_id })}
                       >
                         {customer.customer_id || 'N/A'}
                       </td>
                       <td
                         className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium cursor-pointer"
-                        onClick={() => setSelectedCustomer(customer.customer_id)}
+                        onClick={() => setSearchParams({ customer: customer.customer_id })}
                       >
                         {customer.customer_name || customer.account_name || 'Unnamed Customer'}
                       </td>
                       <td
                         className="px-6 py-4 whitespace-nowrap text-right cursor-pointer"
-                        onClick={() => setSelectedCustomer(customer.customer_id)}
+                        onClick={() => setSearchParams({ customer: customer.customer_id })}
                       >
                         <span className={`text-sm font-bold ${customer.calculated_balance > 0 ? 'text-red-500' : 'text-green-500'}`}>
                           {formatCurrency(customer.calculated_balance || 0)}
@@ -1781,7 +1782,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                       </td>
                       <td
                         className="px-6 py-4 whitespace-nowrap text-center cursor-pointer"
-                        onClick={() => setSelectedCustomer(customer.customer_id)}
+                        onClick={() => setSearchParams({ customer: customer.customer_id })}
                       >
                         <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
                           customer.open_invoice_count > 0
@@ -1793,7 +1794,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                       </td>
                       <td
                         className="px-6 py-4 whitespace-nowrap text-center cursor-pointer"
-                        onClick={() => setSelectedCustomer(customer.customer_id)}
+                        onClick={() => setSearchParams({ customer: customer.customer_id })}
                       >
                         <div className="flex items-center justify-center gap-2">
                           {customer.color_status_counts?.red > 0 && (
@@ -1821,7 +1822,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                       </td>
                       <td
                         className="px-6 py-4 relative cursor-pointer"
-                        onClick={() => setSelectedCustomer(customer.customer_id)}
+                        onClick={() => setSearchParams({ customer: customer.customer_id })}
                       >
                         {customer.payment_performance?.total > 0 ? (
                           <div
@@ -1941,7 +1942,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                       </td>
                       <td
                         className="px-6 py-4 whitespace-nowrap cursor-pointer"
-                        onClick={() => setSelectedCustomer(customer.customer_id)}
+                        onClick={() => setSearchParams({ customer: customer.customer_id })}
                       >
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                           customer.customer_status === 'Active'
@@ -1953,7 +1954,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                       </td>
                       <td
                         className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 cursor-pointer"
-                        onClick={() => setSelectedCustomer(customer.customer_id)}
+                        onClick={() => setSearchParams({ customer: customer.customer_id })}
                       >
                         {customer.city && customer.country
                           ? `${customer.city}, ${customer.country}`
@@ -1961,19 +1962,19 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
                       </td>
                       <td
                         className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 cursor-pointer"
-                        onClick={() => setSelectedCustomer(customer.customer_id)}
+                        onClick={() => setSearchParams({ customer: customer.customer_id })}
                       >
                         {customer.customer_class || 'N/A'}
                       </td>
                       <td
                         className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 cursor-pointer"
-                        onClick={() => setSelectedCustomer(customer.customer_id)}
+                        onClick={() => setSearchParams({ customer: customer.customer_id })}
                       >
                         {formatDateUtil(customer.synced_at)}
                       </td>
                       <td
                         className="px-3 py-4 text-sm text-gray-700 w-24 cursor-pointer"
-                        onClick={() => setSelectedCustomer(customer.customer_id)}
+                        onClick={() => setSearchParams({ customer: customer.customer_id })}
                       >
                         <div className="truncate" title={customer.email_address || 'N/A'}>
                           {customer.email_address || 'N/A'}
@@ -2026,64 +2027,6 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           </div>
         )}
 
-        {selectedCustomer && (
-          <div
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50"
-            onClick={() => setSelectedCustomer(null)}
-          >
-            <div
-              className="bg-gray-50 border border-gray-200 rounded-lg p-8 max-w-4xl w-full max-h-[80vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                    {selectedCustomer.customer_name || 'Customer Details'}
-                  </h2>
-                  <p className="text-gray-600">ID: {selectedCustomer.customer_id}</p>
-                </div>
-                <button
-                  onClick={() => setSelectedCustomer(null)}
-                  className="text-gray-600 hover:text-gray-700 transition-colors"
-                >
-                  <span className="sr-only">Close</span>
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-6">
-                {Object.entries(selectedCustomer).map(([key, value]) => {
-                  if (key === 'id' || key === 'raw_data') return null;
-
-                  const label = key
-                    .split('_')
-                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                    .join(' ');
-
-                  let displayValue = value;
-                  if (typeof value === 'boolean') {
-                    displayValue = value ? 'Yes' : 'No';
-                  } else if (value === null || value === undefined || value === '') {
-                    displayValue = 'N/A';
-                  } else if (key.includes('date') || key.includes('time')) {
-                    displayValue = formatDateUtil(value as string);
-                  } else if (typeof value === 'number' && (key.includes('balance') || key.includes('limit') || key.includes('amount'))) {
-                    displayValue = formatCurrency(value);
-                  }
-
-                  return (
-                    <div key={key}>
-                      <span className="text-gray-600 text-sm">{label}:</span>
-                      <p className="text-gray-900 font-medium">{String(displayValue)}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
 
         {showSaveFilterModal && (
           <div
