@@ -345,10 +345,8 @@ export default function UnifiedTicketingSystem({
             priority,
             ticket_type,
             due_date,
-            assigned_collector_id,
-            active
-          `)
-          .eq('active', true);
+            assigned_collector_id
+          `);
 
         if (showOnlyAssigned) {
           emptyTicketsQuery = emptyTicketsQuery.eq('assigned_collector_id', profile.id);
@@ -626,7 +624,6 @@ export default function UnifiedTicketingSystem({
         .select('*')
         .eq('customer_id', selectedCustomer)
         .eq('assigned_collector_id', selectedCollector)
-        .eq('active', true)
         .in('status', ['open', 'in_progress']);
 
       if (checkError) throw checkError;

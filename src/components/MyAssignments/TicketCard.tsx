@@ -178,7 +178,7 @@ export default function TicketCard({
           .from('collection_tickets')
           .select('id, ticket_number, status, priority')
           .eq('customer_id', ticket.customer_id)
-          .eq('active', true)
+          .neq('status', 'closed')
           .order('created_at', { ascending: false });
 
         if (error) throw error;

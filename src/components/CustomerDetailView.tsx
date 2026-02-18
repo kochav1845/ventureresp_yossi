@@ -95,7 +95,6 @@ interface TicketData {
   collector_name: string | null;
   collector_email: string | null;
   invoice_count: number;
-  active: boolean;
 }
 
 export default function CustomerDetailView({ customerId, onBack }: CustomerDetailViewProps) {
@@ -342,7 +341,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           notes,
           created_at,
           assigned_collector_id,
-          active,
           user_profiles!collection_tickets_assigned_collector_id_fkey (
             full_name,
             email
@@ -366,8 +364,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         assigned_collector_id: ticket.assigned_collector_id,
         collector_name: ticket.user_profiles?.full_name || null,
         collector_email: ticket.user_profiles?.email || null,
-        invoice_count: ticket.invoice_assignments?.length || 0,
-        active: ticket.active !== false
+        invoice_count: ticket.invoice_assignments?.length || 0
       }));
 
       setTickets(ticketsWithCollector);
@@ -960,114 +957,110 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             <div className="flex items-center">
               <Ticket className="w-6 h-6 text-blue-600 mr-2" />
               <h2 className="text-2xl font-bold text-gray-900">Collection Tickets</h2>
-              <span className="ml-3 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-                {tickets.filter(t => t.active).length} active
-              </span>
-              {tickets.some(t => !t.active) && (
+              {tickets.filter(t => t.status !== 'closed').length > 0 && (
+                <span className="ml-3 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                  {tickets.filter(t => t.status !== 'closed').length} open
+                </span>
+              )}
+              {tickets.filter(t => t.status === 'closed').length > 0 && (
                 <span className="ml-2 px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm font-medium">
-                  {tickets.filter(t => !t.active).length} deactivated
+                  {tickets.filter(t => t.status === 'closed').length} closed
                 </span>
               )}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {tickets.filter(t => t.active).map((ticket) => (
-              <div
-                key={ticket.id}
-                onClick={() => handleTicketClick(ticket.id)}
-                className="border border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-blue-400 transition-all cursor-pointer bg-gradient-to-br from-white to-gray-50"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center">
-                    <Ticket className="w-5 h-5 text-blue-600 mr-2" />
-                    <span className="font-bold text-gray-900">{ticket.ticket_number}</span>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
-                </div>
-
-                <div className="space-y-2 mb-3">
-                  <div className="flex items-center justify-between">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      ticket.status === 'open' ? 'bg-blue-100 text-blue-800' :
-                      ticket.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
-                      ticket.status === 'resolved' ? 'bg-green-100 text-green-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {ticket.status.replace('_', ' ')}
-                    </span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      ticket.priority === 'urgent' ? 'bg-red-100 text-red-800' :
-                      ticket.priority === 'high' ? 'bg-orange-100 text-orange-800' :
-                      ticket.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {ticket.priority}
-                    </span>
+          {tickets.filter(t => t.status !== 'closed').length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {tickets.filter(t => t.status !== 'closed').map((ticket) => (
+                <div
+                  key={ticket.id}
+                  onClick={() => handleTicketClick(ticket.id)}
+                  className="border border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-blue-400 transition-all cursor-pointer bg-gradient-to-br from-white to-gray-50"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center">
+                      <Ticket className="w-5 h-5 text-blue-600 mr-2" />
+                      <span className="font-bold text-gray-900">{ticket.ticket_number}</span>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-gray-400" />
                   </div>
 
-                  {ticket.assigned_collector_id && (
-                    <div className="flex items-center text-sm text-gray-600 bg-gray-50 rounded px-2 py-1">
-                      <User className="w-4 h-4 mr-1 text-blue-600" />
-                      <span className="font-medium">{ticket.collector_name || ticket.collector_email}</span>
+                  <div className="space-y-2 mb-3">
+                    <div className="flex items-center justify-between">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        ticket.status === 'open' ? 'bg-blue-100 text-blue-800' :
+                        ticket.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
+                        ticket.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {ticket.status.replace('_', ' ')}
+                      </span>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        ticket.priority === 'urgent' ? 'bg-red-100 text-red-800' :
+                        ticket.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                        ticket.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {ticket.priority}
+                      </span>
+                    </div>
+
+                    {ticket.assigned_collector_id && (
+                      <div className="flex items-center text-sm text-gray-600 bg-gray-50 rounded px-2 py-1">
+                        <User className="w-4 h-4 mr-1 text-blue-600" />
+                        <span className="font-medium">{ticket.collector_name || ticket.collector_email}</span>
+                      </div>
+                    )}
+
+                    {!ticket.assigned_collector_id && (
+                      <div className="flex items-center text-sm text-gray-400 bg-gray-50 rounded px-2 py-1">
+                        <User className="w-4 h-4 mr-1" />
+                        <span className="italic">Unassigned</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <div className="flex items-center">
+                        <FileText className="w-3 h-3 mr-1" />
+                        <span>{ticket.invoice_count} invoice{ticket.invoice_count !== 1 ? 's' : ''}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <Clock className="w-3 h-3 mr-1" />
+                        <span>{formatDateUtil(ticket.created_at)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {ticket.notes && (
+                    <div className="pt-2 border-t border-gray-200">
+                      <p className="text-xs text-gray-600 line-clamp-2">{ticket.notes}</p>
                     </div>
                   )}
-
-                  {!ticket.assigned_collector_id && (
-                    <div className="flex items-center text-sm text-gray-400 bg-gray-50 rounded px-2 py-1">
-                      <User className="w-4 h-4 mr-1" />
-                      <span className="italic">Unassigned</span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <div className="flex items-center">
-                      <FileText className="w-3 h-3 mr-1" />
-                      <span>{ticket.invoice_count} invoice{ticket.invoice_count !== 1 ? 's' : ''}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <Clock className="w-3 h-3 mr-1" />
-                      <span>{formatDateUtil(ticket.created_at)}</span>
-                    </div>
-                  </div>
                 </div>
+              ))}
+            </div>
+          )}
 
-                {ticket.notes && (
-                  <div className="pt-2 border-t border-gray-200">
-                    <p className="text-xs text-gray-600 line-clamp-2">{ticket.notes}</p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {tickets.some(t => !t.active) && (
-            <div className="mt-6 pt-4 border-t border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Deactivated Tickets</h3>
+          {tickets.filter(t => t.status === 'closed').length > 0 && (
+            <div className={tickets.filter(t => t.status !== 'closed').length > 0 ? 'mt-6 pt-4 border-t border-gray-200' : ''}>
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Closed Tickets</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {tickets.filter(t => !t.active).map((ticket) => (
+                {tickets.filter(t => t.status === 'closed').map((ticket) => (
                   <div
                     key={ticket.id}
-                    className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50 opacity-70"
+                    onClick={() => handleTicketClick(ticket.id)}
+                    className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50 opacity-70 cursor-pointer hover:opacity-100 transition-opacity"
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center">
                         <Ticket className="w-5 h-5 text-gray-400 mr-2" />
                         <span className="font-bold text-gray-500">{ticket.ticket_number}</span>
                       </div>
-                      <span className="px-2 py-0.5 bg-gray-200 text-gray-600 rounded text-xs font-medium">Deactivated</span>
+                      <span className="px-2 py-0.5 bg-gray-200 text-gray-600 rounded text-xs font-medium">Closed</span>
                     </div>
 
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                          {ticket.status.replace('_', ' ')}
-                        </span>
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                          {ticket.priority}
-                        </span>
-                      </div>
-
                       {ticket.assigned_collector_id && (
                         <div className="flex items-center text-sm text-gray-500 bg-gray-100 rounded px-2 py-1">
                           <User className="w-4 h-4 mr-1" />
