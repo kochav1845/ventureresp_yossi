@@ -1,4 +1,12 @@
+import { useState, useEffect } from 'react';
 import { Edit3, MessageSquare } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+
+interface ColorStatusOption {
+  status_name: string;
+  display_name: string;
+  color_class: string;
+}
 
 interface BatchActionToolbarProps {
   selectedCount: number;
@@ -19,6 +27,35 @@ export default function BatchActionToolbar({
   onBatchColorChange,
   onOpenBatchNoteModal
 }: BatchActionToolbarProps) {
+  const [colorOptions, setColorOptions] = useState<ColorStatusOption[]>([]);
+
+  useEffect(() => {
+    loadColorOptions();
+  }, []);
+
+  const loadColorOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('invoice_color_status_options')
+        .select('status_name, display_name, color_class')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+      setColorOptions(data || []);
+    } catch (error) {
+      console.error('Error loading color options:', error);
+    }
+  };
+
+  const getColorClasses = (colorClass: string) => {
+    const parts = colorClass.split(' ');
+    const bgColor = parts.find(p => p.startsWith('bg-')) || 'bg-gray-500';
+    const borderColor = parts.find(p => p.startsWith('border-')) || 'border-gray-700';
+    const hoverBg = bgColor.replace('bg-', 'hover:bg-').replace(/(-\d+)$/, '-50');
+    return { bgColor, borderColor, hoverBg };
+  };
+
   return (
     <div className="mb-6 bg-blue-50 border-2 border-blue-300 rounded-lg p-4">
       <div className="flex items-center justify-between">
@@ -47,30 +84,20 @@ export default function BatchActionToolbar({
 
             {showBatchColorMenu && (
               <div className="batch-color-menu absolute right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[180px] z-50">
-                <button
-                  onClick={() => onBatchColorChange('red')}
-                  disabled={processingBatch}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 rounded flex items-center gap-2 disabled:opacity-50"
-                >
-                  <span className="w-4 h-4 rounded-full bg-red-500 border-2 border-red-700"></span>
-                  Will Not Pay
-                </button>
-                <button
-                  onClick={() => onBatchColorChange('yellow')}
-                  disabled={processingBatch}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-yellow-50 rounded flex items-center gap-2 disabled:opacity-50"
-                >
-                  <span className="w-4 h-4 rounded-full bg-yellow-400 border-2 border-yellow-600"></span>
-                  Will Take Care
-                </button>
-                <button
-                  onClick={() => onBatchColorChange('green')}
-                  disabled={processingBatch}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 rounded flex items-center gap-2 disabled:opacity-50"
-                >
-                  <span className="w-4 h-4 rounded-full bg-green-500 border-2 border-green-700"></span>
-                  Will Pay
-                </button>
+                {colorOptions.map((option) => {
+                  const { bgColor, borderColor } = getColorClasses(option.color_class);
+                  return (
+                    <button
+                      key={option.status_name}
+                      onClick={() => onBatchColorChange(option.status_name)}
+                      disabled={processingBatch}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <span className={`w-4 h-4 rounded-full ${bgColor} border-2 ${borderColor}`}></span>
+                      {option.display_name}
+                    </button>
+                  );
+                })}
                 <div className="border-t border-gray-200 my-1"></div>
                 <button
                   onClick={() => onBatchColorChange(null)}
