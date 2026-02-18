@@ -664,8 +664,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     setAdvancedFilters(newFilters);
   };
 
-  const handleTicketClick = (ticketId: string) => {
-    navigate(`/collection-ticketing?ticket=${ticketId}`);
+  const handleTicketClick = (ticketId: string, isClosed?: boolean) => {
+    const params = new URLSearchParams({ ticket: ticketId });
+    if (isClosed) params.set('tab', 'closed');
+    navigate(`/collection-ticketing?${params.toString()}`);
   };
 
   const handleQuickFilter = (type: string) => {
@@ -1049,7 +1051,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                 {tickets.filter(t => t.status === 'closed').map((ticket) => (
                   <div
                     key={ticket.id}
-                    onClick={() => handleTicketClick(ticket.id)}
+                    onClick={() => handleTicketClick(ticket.id, true)}
                     className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50 opacity-70 cursor-pointer hover:opacity-100 transition-opacity"
                   >
                     <div className="flex items-start justify-between mb-3">

@@ -187,7 +187,8 @@ export default function UnifiedTicketingSystem({
     const targetTicketId = params.get('ticket');
 
     if (targetTicketId && !loading) {
-      setActiveTab('tickets');
+      const targetTab = params.get('tab');
+      setActiveTab(targetTab === 'closed' ? 'closed' : 'tickets');
       setTimeout(() => {
         const element = document.getElementById(`ticket-${targetTicketId}`);
         if (element) {
