@@ -1260,9 +1260,26 @@ export default function UnifiedTicketingSystem({
 
                 {customerInvoices.length > 0 && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Select Invoices ({selectedInvoicesForTicket.length} selected)
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Select Invoices ({selectedInvoicesForTicket.length} selected)
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer text-sm text-blue-600 hover:text-blue-800">
+                        <input
+                          type="checkbox"
+                          checked={customerInvoices.length > 0 && selectedInvoicesForTicket.length === customerInvoices.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedInvoicesForTicket(customerInvoices.map(inv => inv.reference_number));
+                            } else {
+                              setSelectedInvoicesForTicket([]);
+                            }
+                          }}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        Select All
+                      </label>
+                    </div>
                     <div className="border border-gray-300 rounded-lg max-h-64 overflow-y-auto">
                       {customerInvoices.map((invoice) => (
                         <label
