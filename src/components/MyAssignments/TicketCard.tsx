@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon } from 'lucide-react';
 import { formatDistanceToNow, isPast, parseISO, format as formatDate } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
@@ -33,6 +33,8 @@ interface TicketCardProps {
   onPromiseDateSet: () => void;
   onOpenTicketReminder: (ticket: TicketGroup) => void;
   onOpenInvoiceReminder: (invoice: Assignment) => void;
+  onAddInvoices?: (ticketId: string, invoiceRefs: string[], collectorId: string) => Promise<void>;
+  onRemoveInvoice?: (ticketId: string, invoiceRef: string) => Promise<void>;
 }
 
 export default function TicketCard({
@@ -51,7 +53,9 @@ export default function TicketCard({
   onTicketPriorityChange,
   onPromiseDateSet,
   onOpenTicketReminder,
-  onOpenInvoiceReminder
+  onOpenInvoiceReminder,
+  onAddInvoices,
+  onRemoveInvoice
 }: TicketCardProps) {
   const navigate = useNavigate();
   const [localTicketStatus, setLocalTicketStatus] = useState(ticket.ticket_status);
@@ -67,6 +71,102 @@ export default function TicketCard({
     invoice_count: number;
   }>>([]);
   const [loadingRelated, setLoadingRelated] = useState(false);
+  const [showAddInvoices, setShowAddInvoices] = useState(false);
+  const [availableInvoices, setAvailableInvoices] = useState<Array<{
+    reference_number: string;
+    date: string;
+    due_date: string;
+    amount: number;
+    balance: number;
+    description: string;
+  }>>([]);
+  const [selectedNewInvoices, setSelectedNewInvoices] = useState<Set<string>>(new Set());
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
+  const [addingInvoices, setAddingInvoices] = useState(false);
+  const [removingInvoice, setRemovingInvoice] = useState<string | null>(null);
+
+  const loadAvailableInvoices = async () => {
+    setLoadingAvailable(true);
+    try {
+      const currentRefs = ticket.invoices.map(inv => inv.invoice_reference_number);
+
+      const { data, error } = await supabase
+        .from('acumatica_invoices')
+        .select('reference_number, date, due_date, amount, balance, description')
+        .eq('customer', ticket.customer_id)
+        .eq('status', 'Open')
+        .gt('balance', 0)
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+
+      const filtered = (data || []).filter(inv => !currentRefs.includes(inv.reference_number));
+      setAvailableInvoices(filtered);
+    } catch (error) {
+      console.error('Error loading available invoices:', error);
+    } finally {
+      setLoadingAvailable(false);
+    }
+  };
+
+  const handleOpenAddInvoices = () => {
+    setShowAddInvoices(true);
+    setSelectedNewInvoices(new Set());
+    loadAvailableInvoices();
+  };
+
+  const handleConfirmAddInvoices = async () => {
+    if (!onAddInvoices || selectedNewInvoices.size === 0) return;
+    setAddingInvoices(true);
+    try {
+      const collectorId = ticket.invoices[0]?.assignment_id
+        ? (await supabase.from('invoice_assignments').select('assigned_collector_id').eq('ticket_id', ticket.ticket_id).limit(1).maybeSingle())?.data?.assigned_collector_id
+        : null;
+
+      const { data: ticketData } = await supabase
+        .from('collection_tickets')
+        .select('assigned_collector_id')
+        .eq('id', ticket.ticket_id)
+        .maybeSingle();
+
+      const finalCollectorId = collectorId || ticketData?.assigned_collector_id;
+      if (!finalCollectorId) throw new Error('Could not determine collector');
+
+      await onAddInvoices(ticket.ticket_id, Array.from(selectedNewInvoices), finalCollectorId);
+      setShowAddInvoices(false);
+      setSelectedNewInvoices(new Set());
+    } catch (error: any) {
+      alert('Failed to add invoices: ' + error.message);
+    } finally {
+      setAddingInvoices(false);
+    }
+  };
+
+  const handleRemoveInvoice = async (invoiceRef: string) => {
+    if (!onRemoveInvoice) return;
+    if (!window.confirm(`Remove invoice ${invoiceRef} from this ticket?`)) return;
+
+    setRemovingInvoice(invoiceRef);
+    try {
+      await onRemoveInvoice(ticket.ticket_id, invoiceRef);
+    } catch (error: any) {
+      alert('Failed to remove invoice: ' + error.message);
+    } finally {
+      setRemovingInvoice(null);
+    }
+  };
+
+  const toggleNewInvoice = (ref: string) => {
+    setSelectedNewInvoices(prev => {
+      const next = new Set(prev);
+      if (next.has(ref)) {
+        next.delete(ref);
+      } else {
+        next.add(ref);
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     const fetchRelatedTickets = async () => {
@@ -517,30 +617,156 @@ export default function TicketCard({
           <h4 className="font-semibold text-gray-700">
             Invoices ({ticket.invoices.length})
           </h4>
-          <div className="text-right">
-            <p className="text-sm text-gray-600">Total Outstanding</p>
-            <p className="text-xl font-bold text-red-600">
-              ${calculateTotalBalance(ticket.invoices).toFixed(2)}
-            </p>
+          <div className="flex items-center gap-4">
+            {onAddInvoices && (
+              <button
+                onClick={handleOpenAddInvoices}
+                className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1.5 text-sm font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                Add Invoices
+              </button>
+            )}
+            <div className="text-right">
+              <p className="text-sm text-gray-600">Total Outstanding</p>
+              <p className="text-xl font-bold text-red-600">
+                ${calculateTotalBalance(ticket.invoices).toFixed(2)}
+              </p>
+            </div>
           </div>
         </div>
 
+        {showAddInvoices && (
+          <div className="mb-4 border-2 border-green-300 rounded-lg bg-green-50 overflow-hidden">
+            <div className="flex items-center justify-between p-3 bg-green-100 border-b border-green-300">
+              <h5 className="font-semibold text-green-900 text-sm flex items-center gap-2">
+                <Plus className="w-4 h-4" />
+                Add Invoices to Ticket
+              </h5>
+              <button
+                onClick={() => setShowAddInvoices(false)}
+                className="p-1 text-green-700 hover:text-green-900 rounded hover:bg-green-200 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-3">
+              {loadingAvailable ? (
+                <div className="flex items-center justify-center py-6">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+                  <span className="ml-2 text-sm text-green-700">Loading available invoices...</span>
+                </div>
+              ) : availableInvoices.length === 0 ? (
+                <p className="text-sm text-gray-600 text-center py-4">No additional open invoices found for this customer.</p>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-green-800">
+                      {availableInvoices.length} available invoice{availableInvoices.length !== 1 ? 's' : ''}
+                    </span>
+                    <label className="flex items-center gap-2 cursor-pointer text-sm text-green-700 hover:text-green-900">
+                      <input
+                        type="checkbox"
+                        checked={availableInvoices.length > 0 && selectedNewInvoices.size === availableInvoices.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedNewInvoices(new Set(availableInvoices.map(inv => inv.reference_number)));
+                          } else {
+                            setSelectedNewInvoices(new Set());
+                          }
+                        }}
+                        className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                      />
+                      Select All
+                    </label>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {availableInvoices.map((inv) => (
+                      <label
+                        key={inv.reference_number}
+                        className={`flex items-center p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                          selectedNewInvoices.has(inv.reference_number)
+                            ? 'bg-green-100 border-green-400'
+                            : 'bg-white border-gray-200 hover:border-green-300'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedNewInvoices.has(inv.reference_number)}
+                          onChange={() => toggleNewInvoice(inv.reference_number)}
+                          className="mr-3 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <span className="font-mono font-medium text-sm text-gray-900">
+                            #{inv.reference_number}
+                          </span>
+                          {inv.description && (
+                            <span className="text-xs text-gray-500 ml-2 truncate">{inv.description}</span>
+                          )}
+                        </div>
+                        <div className="text-right ml-3 flex-shrink-0">
+                          <div className="text-xs text-gray-500">
+                            Due: {new Date(inv.due_date).toLocaleDateString()}
+                          </div>
+                          <div className="text-sm font-semibold text-red-600">
+                            ${inv.balance.toFixed(2)}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => setShowAddInvoices(false)}
+                      className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleConfirmAddInvoices}
+                      disabled={selectedNewInvoices.size === 0 || addingInvoices}
+                      className="px-4 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                    >
+                      {addingInvoices ? 'Adding...' : `Add ${selectedNewInvoices.size} Invoice${selectedNewInvoices.size !== 1 ? 's' : ''}`}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-2">
           {ticket.invoices.map(invoice => (
-            <InvoiceItem
-              key={invoice.invoice_reference_number}
-              invoice={invoice}
-              isSelected={selectedInvoices.has(invoice.invoice_reference_number)}
-              showColorPicker={changingColorForInvoice === invoice.invoice_reference_number}
-              colorOptions={colorOptions}
-              onToggleSelection={() => onToggleInvoiceSelection(invoice.invoice_reference_number)}
-              onColorChange={(color) => onColorChange(invoice.invoice_reference_number, color)}
-              onToggleColorPicker={() => onToggleColorPicker(
-                changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number
+            <div key={invoice.invoice_reference_number} className="relative group">
+              <InvoiceItem
+                invoice={invoice}
+                isSelected={selectedInvoices.has(invoice.invoice_reference_number)}
+                showColorPicker={changingColorForInvoice === invoice.invoice_reference_number}
+                colorOptions={colorOptions}
+                onToggleSelection={() => onToggleInvoiceSelection(invoice.invoice_reference_number)}
+                onColorChange={(color) => onColorChange(invoice.invoice_reference_number, color)}
+                onToggleColorPicker={() => onToggleColorPicker(
+                  changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number
+                )}
+                onOpenMemo={() => onOpenMemo(invoice)}
+                onOpenReminder={() => onOpenInvoiceReminder(invoice)}
+              />
+              {onRemoveInvoice && (
+                <button
+                  onClick={() => handleRemoveInvoice(invoice.invoice_reference_number)}
+                  disabled={removingInvoice === invoice.invoice_reference_number}
+                  className="absolute top-2 right-2 p-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 hover:text-red-800 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                  title="Remove from ticket"
+                >
+                  {removingInvoice === invoice.invoice_reference_number ? (
+                    <div className="w-4 h-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                </button>
               )}
-              onOpenMemo={() => onOpenMemo(invoice)}
-              onOpenReminder={() => onOpenInvoiceReminder(invoice)}
-            />
+            </div>
           ))}
         </div>
       </div>

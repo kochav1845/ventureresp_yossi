@@ -1087,6 +1087,59 @@ export default function UnifiedTicketingSystem({
     });
   };
 
+  const handleAddInvoicesToTicket = async (ticketId: string, invoiceRefs: string[], collectorId: string) => {
+    if (!user?.id) return;
+    try {
+      for (const refNumber of invoiceRefs) {
+        await supabase.from('invoice_assignments').upsert({
+          invoice_reference_number: refNumber,
+          assigned_collector_id: collectorId,
+          ticket_id: ticketId,
+          assigned_by: user.id,
+        }, { onConflict: 'invoice_reference_number' });
+      }
+
+      await supabase.from('ticket_activity_log').insert({
+        ticket_id: ticketId,
+        created_by: user.id,
+        activity_type: 'invoice_added',
+        description: `Added ${invoiceRefs.length} invoice(s) to ticket`,
+        metadata: { invoice_refs: invoiceRefs }
+      });
+
+      await loadTickets();
+    } catch (error: any) {
+      console.error('Error adding invoices to ticket:', error);
+      throw error;
+    }
+  };
+
+  const handleRemoveInvoiceFromTicket = async (ticketId: string, invoiceRef: string) => {
+    if (!user?.id) return;
+    try {
+      const { error } = await supabase
+        .from('invoice_assignments')
+        .delete()
+        .eq('ticket_id', ticketId)
+        .eq('invoice_reference_number', invoiceRef);
+
+      if (error) throw error;
+
+      await supabase.from('ticket_activity_log').insert({
+        ticket_id: ticketId,
+        created_by: user.id,
+        activity_type: 'invoice_removed',
+        description: `Removed invoice ${invoiceRef} from ticket`,
+        metadata: { invoice_ref: invoiceRef }
+      });
+
+      await loadTickets();
+    } catch (error: any) {
+      console.error('Error removing invoice from ticket:', error);
+      throw error;
+    }
+  };
+
   const totalInvoiceCount =
     activeTab === 'tickets'
       ? tickets.reduce((sum, ticket) => sum + ticket.invoices.length, 0)
@@ -1493,6 +1546,8 @@ export default function UnifiedTicketingSystem({
                         onPromiseDateSet={loadTickets}
                         onOpenTicketReminder={handleOpenTicketReminder}
                         onOpenInvoiceReminder={handleOpenInvoiceReminder}
+                        onAddInvoices={handleAddInvoicesToTicket}
+                        onRemoveInvoice={handleRemoveInvoiceFromTicket}
                       />
                     ))
                   );
