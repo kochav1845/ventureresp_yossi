@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User } from 'lucide-react';
 import { formatDistanceToNow, isPast, parseISO, format as formatDate } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
@@ -288,6 +288,16 @@ export default function TicketCard({
             </span>
           </div>
         </div>
+
+        {ticket.assigned_collector_name && (
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 border border-teal-200 rounded-lg text-sm">
+              <User className="w-3.5 h-3.5 text-teal-600" />
+              <span className="text-teal-700 font-medium">Assigned to:</span>
+              <span className="text-teal-900 font-semibold">{ticket.assigned_collector_name}</span>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-3 mb-3">
           {ticket.ticket_created_at && (

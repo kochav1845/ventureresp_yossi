@@ -314,7 +314,7 @@ export default function UnifiedTicketingSystem({
         const ticketGroups = new Map<string, TicketGroup>();
         const individualList: Assignment[] = [];
 
-        assignments.forEach((assignment: Assignment) => {
+        assignments.forEach((assignment: any) => {
           if (assignment.ticket_id) {
             if (!ticketGroups.has(assignment.ticket_id)) {
               ticketGroups.set(assignment.ticket_id, {
@@ -324,6 +324,7 @@ export default function UnifiedTicketingSystem({
                 ticket_priority: assignment.ticket_priority || '',
                 ticket_type: assignment.ticket_type || '',
                 ticket_due_date: assignment.ticket_due_date,
+                assigned_collector_name: assignment.collector_name || assignment.collector_email || null,
                 customer_id: assignment.customer,
                 customer_name: assignment.customer_name,
                 invoices: []
@@ -347,7 +348,8 @@ export default function UnifiedTicketingSystem({
             priority,
             ticket_type,
             due_date,
-            assigned_collector_id
+            assigned_collector_id,
+            collector:user_profiles!collection_tickets_assigned_collector_id_fkey(full_name, email)
           `);
 
         if (showOnlyAssigned) {
@@ -366,6 +368,7 @@ export default function UnifiedTicketingSystem({
                 ticket_priority: t.priority || '',
                 ticket_type: t.ticket_type || '',
                 ticket_due_date: t.due_date,
+                assigned_collector_name: t.collector?.full_name || t.collector?.email || null,
                 customer_id: t.customer_id,
                 customer_name: t.customer_name,
                 invoices: []
