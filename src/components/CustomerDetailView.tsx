@@ -184,31 +184,75 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const loadCustomerBasicInfo = async () => {
     setLoadingCustomer(true);
     try {
-      // Load customer with calculated balance
-      const { data: customerWithBalance, error: balanceError } = await supabase
-        .rpc('get_customers_with_balance', {
-          p_search: customerId,
-          p_status_filter: 'all',
-          p_country_filter: 'all',
-          p_sort_by: 'customer_name',
-          p_sort_order: 'asc',
-          p_limit: 1,
-          p_offset: 0,
-          p_date_from: null,
-          p_date_to: null,
-          p_balance_filter: 'all',
-          p_min_balance: null,
-          p_max_balance: null,
-          p_min_open_invoices: null,
-          p_max_open_invoices: null,
-          p_min_invoice_amount: null,
-          p_max_invoice_amount: null,
-          p_exclude_credit_memos: excludeCreditMemos
+      const { data: custRow, error: custError } = await supabase
+        .from('acumatica_customers')
+        .select('*')
+        .eq('customer_id', customerId)
+        .maybeSingle();
+
+      if (custError) throw custError;
+
+      if (!custRow) {
+        setCustomer(null);
+        setLoadingCustomer(false);
+        return;
+      }
+
+      const balanceQuery = supabase
+        .from('acumatica_invoices')
+        .select('balance, type')
+        .eq('customer', customerId)
+        .gt('balance', 0);
+
+      const { data: openInvoices, error: invError } = await balanceQuery;
+
+      let calculatedBalance = 0;
+      let grossBalance = 0;
+      let creditMemoBalance = 0;
+      let openInvoiceCount = 0;
+
+      if (!invError && openInvoices) {
+        openInvoices.forEach((inv: any) => {
+          if (inv.type === 'Credit Memo') {
+            creditMemoBalance += inv.balance;
+          } else {
+            grossBalance += inv.balance;
+            openInvoiceCount++;
+          }
         });
+        calculatedBalance = excludeCreditMemos ? grossBalance : grossBalance - creditMemoBalance;
+      }
 
-      if (balanceError) throw balanceError;
-
-      const customerData = customerWithBalance && customerWithBalance.length > 0 ? customerWithBalance[0] : null;
+      const customerData: CustomerData = {
+        id: custRow.id,
+        customer_id: custRow.customer_id,
+        customer_name: custRow.customer_name,
+        customer_status: custRow.customer_status,
+        email_address: custRow.email_address,
+        phone1: custRow.phone1,
+        address_line1: custRow.address_line1,
+        address_line2: custRow.address_line2,
+        city: custRow.city,
+        state: custRow.state,
+        postal_code: custRow.postal_code,
+        country: custRow.country,
+        customer_class: custRow.customer_class,
+        terms: custRow.terms,
+        credit_limit: custRow.credit_limit,
+        calculated_balance: calculatedBalance,
+        gross_balance: grossBalance,
+        credit_memo_balance: creditMemoBalance,
+        open_invoice_count: openInvoiceCount,
+        red_count: null,
+        yellow_count: null,
+        green_count: null,
+        max_days_overdue: null,
+        customer_type: custRow.customer_type,
+        contact_status: custRow.contact_status,
+        last_contact_date: custRow.last_contact_date,
+        last_order_date: custRow.last_order_date,
+        days_from_invoice_threshold: custRow.days_from_invoice_threshold
+      };
       setCustomer(customerData);
 
       await logActivity('customer_viewed', 'customer', customerId, {
