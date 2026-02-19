@@ -1,10 +1,12 @@
+import { useState } from 'react';
 import {
   Users, DollarSign, Banknote, TrendingUp, CheckCircle, AlertCircle,
   Ticket, Eye, ChevronUp, Calendar, FileText, Mail, BarChart3,
-  LogIn, MessageSquare, Palette, Clock, Timer
+  LogIn, MessageSquare, Palette, Clock, Timer, CheckSquare, Activity
 } from 'lucide-react';
 import { CollectorCombined } from './types';
 import CollectorExpandedDetails from './CollectorExpandedDetails';
+import CollectorClosedTickets from './CollectorClosedTickets';
 
 interface Props {
   collector: CollectorCombined;
@@ -15,6 +17,8 @@ interface Props {
 }
 
 export default function CollectorCard({ collector, isExpanded, onToggleExpand, onViewProgress, dateRange }: Props) {
+  const [activeTab, setActiveTab] = useState<'activity' | 'closed_tickets'>('activity');
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all overflow-hidden">
       <div className="p-6">
@@ -205,8 +209,43 @@ export default function CollectorCard({ collector, isExpanded, onToggleExpand, o
       </div>
 
       {isExpanded && (
-        <div className="px-6 pb-6 pt-2 border-t border-gray-100 bg-gray-50/50">
-          <CollectorExpandedDetails collectorId={collector.user_id} dateRange={dateRange} />
+        <div className="px-6 pb-6 pt-0 border-t border-gray-100 bg-gray-50/50">
+          <div className="flex gap-1 mb-4 pt-3 border-b border-gray-200">
+            <button
+              onClick={() => setActiveTab('activity')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors -mb-px ${
+                activeTab === 'activity'
+                  ? 'border-blue-600 text-blue-700 bg-white'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <Activity className="w-4 h-4" />
+              Activity Timeline
+            </button>
+            <button
+              onClick={() => setActiveTab('closed_tickets')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors -mb-px ${
+                activeTab === 'closed_tickets'
+                  ? 'border-blue-600 text-blue-700 bg-white'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <CheckSquare className="w-4 h-4" />
+              Closed Tickets
+              {collector.closed_ticket_count > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-700">
+                  {collector.closed_ticket_count}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {activeTab === 'activity' && (
+            <CollectorExpandedDetails collectorId={collector.user_id} dateRange={dateRange} />
+          )}
+          {activeTab === 'closed_tickets' && (
+            <CollectorClosedTickets collectorId={collector.user_id} />
+          )}
         </div>
       )}
     </div>
