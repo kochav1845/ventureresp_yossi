@@ -4,8 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import PaymentAnalytics from './PaymentAnalytics';
 import UserApprovalPanel from './UserApprovalPanel';
-import AdminCollectorMonitoring from './AdminCollectorMonitoring';
-import CollectorPerformanceAnalytics from './CollectorPerformanceAnalytics';
+import CollectorHub from './CollectorHub';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import CustomerAnalyticsPage from './CustomerAnalyticsPage';
 import UserActivityAnalytics from './UserActivityAnalytics';
@@ -149,9 +148,9 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
       case 'user-approval':
         return <UserApprovalPanel onBack={() => setCurrentView('user-approval')} />;
       case 'collector-monitoring':
-        return <AdminCollectorMonitoring onBack={() => setCurrentView('collector-monitoring')} />;
+        return <CollectorHub onBack={() => setCurrentView('collector-monitoring')} />;
       case 'collector-performance':
-        return <CollectorPerformanceAnalytics onBack={() => setCurrentView('collector-performance')} />;
+        return <CollectorHub onBack={() => setCurrentView('collector-performance')} />;
       case 'invoice-analytics':
         return <AnalyticsDashboard onBack={() => setCurrentView('invoice-analytics')} onNavigate={() => {}} />;
       case 'customer-analytics':

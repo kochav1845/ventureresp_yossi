@@ -47,13 +47,13 @@ import OrphanedApplicationDiagnostic from './components/OrphanedApplicationDiagn
 import InvoiceDateComparison from './components/InvoiceDateComparison';
 import CollectionTicketing from './components/CollectionTicketing';
 import MyAssignments from './components/MyAssignments';
-import CollectorPerformanceAnalytics from './components/CollectorPerformanceAnalytics';
+import CollectorHub from './components/CollectorHub';
 import RevenueAnalytics from './components/RevenueAnalytics';
 import CustomerAnalyticsPage from './components/CustomerAnalyticsPage';
 import UserActivityAnalytics from './components/UserActivityAnalytics';
 import EmailAnalytics from './components/EmailAnalytics';
 import CollectorControlPanel from './components/CollectorControlPanel';
-import AdminCollectorMonitoring from './components/AdminCollectorMonitoring';
+// AdminCollectorMonitoring merged into CollectorHub
 import CollectorActivityMonitor from './components/CollectorActivityMonitor';
 import UserApprovalPanel from './components/UserApprovalPanel';
 import PaymentApplicationDiagnostic from './components/PaymentApplicationDiagnostic';
@@ -173,7 +173,7 @@ function AppContent() {
         <Route path="orphaned-application-diagnostic" element={<OrphanedApplicationDiagnostic />} />
         <Route path="collection-ticketing" element={<CollectionTicketing />} />
         <Route path="my-assignments" element={<MyAssignments />} />
-        <Route path="collector-performance" element={<CollectorPerformanceAnalytics />} />
+        <Route path="collector-performance" element={<CollectorHub />} />
         <Route path="revenue-analytics" element={<RevenueAnalytics />} />
         <Route path="customer-analytics" element={<CustomerAnalyticsPage />} />
         <Route path="user-activity" element={<UserActivityAnalytics />} />

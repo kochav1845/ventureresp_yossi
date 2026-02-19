@@ -45,7 +45,7 @@ import OrphanedApplicationDiagnostic from './OrphanedApplicationDiagnostic';
 import CollectionTicketing from './CollectionTicketing';
 import InvoiceColorStatusManagement from './InvoiceColorStatusManagement';
 import MyAssignments from './MyAssignments';
-import CollectorPerformanceAnalytics from './CollectorPerformanceAnalytics';
+import CollectorHub from './CollectorHub';
 import RevenueAnalytics from './RevenueAnalytics';
 import CustomerAnalyticsPage from './CustomerAnalyticsPage';
 import UserActivityAnalytics from './UserActivityAnalytics';
@@ -53,7 +53,7 @@ import EmailAnalytics from './EmailAnalytics';
 import StripeAnalytics from './StripeAnalytics';
 import ComprehensiveAdminDashboard from './ComprehensiveAdminDashboard';
 import CollectorControlPanel from './CollectorControlPanel';
-import AdminCollectorMonitoring from './AdminCollectorMonitoring';
+// AdminCollectorMonitoring is now part of CollectorHub
 import UserApprovalPanel from './UserApprovalPanel';
 import AdminDashboardContainer from './AdminDashboardContainer';
 import { useAuth } from '../contexts/AuthContext';
@@ -161,7 +161,7 @@ export default function AdminDashboard() {
       case 'my-assignments':
         return <MyAssignments onBack={() => setCurrentView('admin-dashboard')} />;
       case 'collector-performance':
-        return <CollectorPerformanceAnalytics onBack={() => setCurrentView('admin-dashboard')} />;
+        return <CollectorHub onBack={() => setCurrentView('admin-dashboard')} />;
       case 'revenue-analytics':
         return <RevenueAnalytics onBack={() => setCurrentView('admin-dashboard')} onNavigate={(view) => setCurrentView(view as View)} />;
       case 'customer-analytics':
@@ -175,7 +175,7 @@ export default function AdminDashboard() {
       case 'collector-control-panel':
         return <CollectorControlPanel onBack={() => setCurrentView('admin-dashboard')} />;
       case 'collector-monitoring':
-        return <AdminCollectorMonitoring onBack={() => setCurrentView('admin-dashboard')} />;
+        return <CollectorHub onBack={() => setCurrentView('admin-dashboard')} />;
       case 'user-approval':
         return <UserApprovalPanel onBack={() => setCurrentView('admin-dashboard')} />;
       case 'recent-sync-app-check':
