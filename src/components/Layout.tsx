@@ -192,7 +192,6 @@ export default function Layout() {
   const hasAnyAdminPermission = isAdmin ||
     hasPermission(PERMISSION_KEYS.USER_APPROVAL, 'view') ||
     hasPermission(PERMISSION_KEYS.COLLECTOR_MONITORING, 'view') ||
-    hasPermission(PERMISSION_KEYS.COLLECTOR_PERFORMANCE, 'view') ||
     hasPermission(PERMISSION_KEYS.INVOICE_ANALYTICS, 'view') ||
     hasPermission(PERMISSION_KEYS.CUSTOMER_ANALYTICS, 'view') ||
     hasPermission(PERMISSION_KEYS.PAYMENT_ANALYTICS, 'view') ||
@@ -203,8 +202,7 @@ export default function Layout() {
   const adminDashboardItems = hasAnyAdminPermission ? [
     { id: 'user-approval', name: 'User Approval', icon: Shield },
     { id: 'create-user', name: 'Create New User', icon: Users },
-    { id: 'collector-monitoring', name: 'Collector Monitoring', icon: Activity },
-    { id: 'collector-performance', name: 'Collector Performance', icon: BarChart3 },
+    { id: 'collector-monitoring', name: 'Collector Dashboard', icon: Activity },
     { id: 'customer-reports', name: 'Customer Reports', icon: FileText },
     { id: 'customer-report-templates', name: 'Report Templates', icon: Mail },
     { id: 'customer-email-tracking', name: 'Email Tracking', icon: Eye },

@@ -80,7 +80,6 @@ export default function ComprehensiveAdminDashboard({ onNavigate }: Comprehensiv
       const routeMap: Record<string, string> = {
         'user-approval': '/user-approval',
         'collector-monitoring': '/collector-monitoring',
-        'collector-performance': '/collector-performance',
         'revenue-analytics': '/revenue-analytics',
         'customer-analytics': '/customer-analytics',
         'invoice-analytics': '/invoice-status-analytics',
@@ -153,30 +152,17 @@ export default function ComprehensiveAdminDashboard({ onNavigate }: Comprehensiv
       view: 'user-approval'
     },
     {
-      title: 'Collector Monitoring',
-      subtitle: 'Track collector activities',
+      title: 'Collector Dashboard',
+      subtitle: 'Performance, monitoring & activity',
       icon: Target,
       metrics: [
         { label: 'Total Collectors', value: formatNumber(metrics.collectorPerformance.totalCollectors), icon: Users },
         { label: 'Active This Week', value: formatNumber(metrics.collectorPerformance.activeCollectors), icon: Activity }
       ],
-      gradient: 'from-blue-500 via-blue-600 to-indigo-600',
+      gradient: 'from-blue-500 via-blue-600 to-cyan-600',
       iconBg: 'bg-blue-500/10',
       iconColor: 'text-blue-600',
       view: 'collector-monitoring'
-    },
-    {
-      title: 'Collector Performance',
-      subtitle: 'Performance metrics',
-      icon: TrendingUp,
-      metrics: [
-        { label: 'Total Collectors', value: formatNumber(metrics.collectorPerformance.totalCollectors), icon: Users },
-        { label: 'Total Tickets', value: formatNumber(metrics.collectorPerformance.totalTickets), icon: CheckCircle2 }
-      ],
-      gradient: 'from-cyan-500 via-sky-500 to-blue-500',
-      iconBg: 'bg-cyan-500/10',
-      iconColor: 'text-cyan-600',
-      view: 'collector-performance'
     },
     {
       title: 'Revenue Analytics',

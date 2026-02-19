@@ -53,8 +53,7 @@ import CustomerAnalyticsPage from './components/CustomerAnalyticsPage';
 import UserActivityAnalytics from './components/UserActivityAnalytics';
 import EmailAnalytics from './components/EmailAnalytics';
 import CollectorControlPanel from './components/CollectorControlPanel';
-// AdminCollectorMonitoring merged into CollectorHub
-import CollectorActivityMonitor from './components/CollectorActivityMonitor';
+// AdminCollectorMonitoring and CollectorActivityMonitor merged into CollectorHub
 import UserApprovalPanel from './components/UserApprovalPanel';
 import PaymentApplicationDiagnostic from './components/PaymentApplicationDiagnostic';
 import PasswordResetTester from './components/PasswordResetTester';
@@ -179,7 +178,7 @@ function AppContent() {
         <Route path="user-activity" element={<UserActivityAnalytics />} />
         <Route path="email-analytics" element={<EmailAnalytics />} />
         <Route path="collector-control-panel" element={<CollectorControlPanel />} />
-        <Route path="collector-monitoring" element={<CollectorActivityMonitor onBack={() => window.history.back()} />} />
+        <Route path="collector-monitoring" element={<CollectorHub onBack={() => window.history.back()} />} />
         <Route path="user-approval" element={<UserApprovalPanel />} />
         <Route path="create-user" element={<AdminCreateUser />} />
         <Route path="payment-app-diagnostic" element={<PaymentApplicationDiagnostic />} />

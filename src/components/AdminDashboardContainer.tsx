@@ -58,15 +58,9 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
     },
     {
       id: 'collector-monitoring' as AdminView,
-      label: 'Collector Monitoring',
+      label: 'Collector Dashboard',
       icon: <Activity size={20} />,
       permissionKey: PERMISSION_KEYS.COLLECTOR_MONITORING,
-    },
-    {
-      id: 'collector-performance' as AdminView,
-      label: 'Collector Performance',
-      icon: <TrendingUp size={20} />,
-      permissionKey: PERMISSION_KEYS.COLLECTOR_PERFORMANCE,
     },
     {
       id: 'invoice-analytics' as AdminView,
@@ -148,9 +142,8 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
       case 'user-approval':
         return <UserApprovalPanel onBack={() => setCurrentView('user-approval')} />;
       case 'collector-monitoring':
-        return <CollectorHub onBack={() => setCurrentView('collector-monitoring')} />;
       case 'collector-performance':
-        return <CollectorHub onBack={() => setCurrentView('collector-performance')} />;
+        return <CollectorHub onBack={() => setCurrentView('collector-monitoring')} />;
       case 'invoice-analytics':
         return <AnalyticsDashboard onBack={() => setCurrentView('invoice-analytics')} onNavigate={() => {}} />;
       case 'customer-analytics':

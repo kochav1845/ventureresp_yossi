@@ -1,6 +1,7 @@
 import {
   Users, DollarSign, Banknote, TrendingUp, CheckCircle, AlertCircle,
-  Ticket, Eye, ChevronDown, ChevronUp, Calendar, FileText, Mail, BarChart3
+  Ticket, Eye, ChevronUp, Calendar, FileText, Mail, BarChart3,
+  LogIn, MessageSquare, Palette
 } from 'lucide-react';
 import { CollectorCombined } from './types';
 import CollectorExpandedDetails from './CollectorExpandedDetails';
@@ -23,7 +24,12 @@ export default function CollectorCard({ collector, isExpanded, onToggleExpand, o
               {(collector.full_name || collector.email).charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <h2 className="text-xl font-bold text-gray-900 truncate">{collector.full_name}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-bold text-gray-900 truncate">{collector.full_name}</h2>
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200 flex-shrink-0">
+                  {collector.role}
+                </span>
+              </div>
               <p className="text-sm text-blue-600 font-medium truncate">{collector.email}</p>
               <div className="flex items-center gap-3 mt-0.5">
                 <span className="text-xs text-gray-500">{collector.assigned_customers} customers</span>
@@ -52,7 +58,7 @@ export default function CollectorCard({ collector, isExpanded, onToggleExpand, o
               className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
             >
               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              <span className="hidden sm:inline">{isExpanded ? 'Hide' : 'Details'}</span>
+              <span className="hidden sm:inline">{isExpanded ? 'Hide' : 'Activity'}</span>
             </button>
           </div>
         </div>
@@ -121,37 +127,62 @@ export default function CollectorCard({ collector, isExpanded, onToggleExpand, o
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 pt-4 border-t border-gray-100">
+        <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-10 gap-2 pt-4 border-t border-gray-100">
           <div className="text-center">
-            <p className="text-xs text-gray-500 mb-0.5">Marked Red</p>
-            <p className="text-lg font-bold text-gray-800">{collector.untouched_to_red}</p>
+            <p className="text-[10px] text-gray-500 mb-0.5 leading-tight">Total Actions</p>
+            <p className="text-lg font-bold text-gray-800">{collector.total_actions}</p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-gray-500 mb-0.5">Status Changes</p>
-            <p className="text-lg font-bold text-gray-800">{collector.total_changes}</p>
+            <div className="flex items-center justify-center gap-0.5">
+              <LogIn className="w-3 h-3 text-green-500" />
+              <p className="text-[10px] text-gray-500 leading-tight">Logins</p>
+            </div>
+            <p className="text-lg font-bold text-green-600">{collector.login_count}</p>
           </div>
           <div className="text-center">
-            <div className="flex items-center justify-center gap-1">
+            <p className="text-[10px] text-gray-500 mb-0.5 leading-tight">Tkt Created</p>
+            <p className="text-lg font-bold text-blue-600">{collector.tickets_created}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] text-gray-500 mb-0.5 leading-tight">Tkt Closed</p>
+            <p className="text-lg font-bold text-gray-600">{collector.tickets_closed}</p>
+          </div>
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-0.5">
+              <MessageSquare className="w-3 h-3 text-cyan-500" />
+              <p className="text-[10px] text-gray-500 leading-tight">Notes</p>
+            </div>
+            <p className="text-lg font-bold text-cyan-600">{collector.notes_added}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] text-gray-500 mb-0.5 leading-tight">Marked Red</p>
+            <p className="text-lg font-bold text-red-600">{collector.untouched_to_red}</p>
+          </div>
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-0.5">
+              <Palette className="w-3 h-3 text-orange-500" />
+              <p className="text-[10px] text-gray-500 leading-tight">Color Chg</p>
+            </div>
+            <p className="text-lg font-bold text-orange-600">{collector.invoice_color_changes}</p>
+          </div>
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-0.5">
               <Ticket className="w-3 h-3 text-gray-500" />
-              <p className="text-xs text-gray-500">Tickets</p>
+              <p className="text-[10px] text-gray-500 leading-tight">Tickets</p>
             </div>
             <p className="text-lg font-bold text-gray-800">{collector.tickets_assigned}</p>
           </div>
           <div className="text-center">
-            <div className="flex items-center justify-center gap-1">
+            <div className="flex items-center justify-center gap-0.5">
               <FileText className="w-3 h-3 text-gray-500" />
-              <p className="text-xs text-gray-500">Inv. Modified</p>
+              <p className="text-[10px] text-gray-500 leading-tight">Inv Mod</p>
             </div>
             <p className="text-lg font-bold text-gray-800">{collector.invoices_modified}</p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-gray-500 mb-0.5">Pay. Modified</p>
-            <p className="text-lg font-bold text-gray-800">{collector.payments_modified}</p>
-          </div>
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-1">
+            <div className="flex items-center justify-center gap-0.5">
               <Mail className="w-3 h-3 text-gray-500" />
-              <p className="text-xs text-gray-500">Emails</p>
+              <p className="text-[10px] text-gray-500 leading-tight">Emails</p>
             </div>
             <p className="text-lg font-bold text-gray-800">{collector.emails_sent}/{collector.emails_scheduled}</p>
           </div>

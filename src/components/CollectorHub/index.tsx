@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Search, Users, Activity, DollarSign, FileText, Mail, TrendingUp, Banknote
+  ArrowLeft, Search, Users, Activity, DollarSign, FileText, TrendingUp, Banknote, LogIn,
+  MessageSquare, Palette
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import CollectorDetailedProgress from '../CollectorDetailedProgress';
@@ -20,7 +21,7 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedCollector, setExpandedCollector] = useState<string | null>(null);
   const [selectedCollectorForProgress, setSelectedCollectorForProgress] = useState<{ id: string; name: string } | null>(null);
-  const [sortBy, setSortBy] = useState<'collected' | 'changes' | 'name'>('collected');
+  const [sortBy, setSortBy] = useState<'collected' | 'changes' | 'actions' | 'name'>('collected');
 
   const handleBack = () => {
     if (onBack) onBack();
@@ -41,15 +42,17 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
       const startDateStr = startStr.split('T')[0];
       const endDateStr = new Date().toISOString().split('T')[0];
 
-      const [profilesResult, monitoringResult, collectionResult] = await Promise.all([
+      const [profilesResult, monitoringResult, collectionResult, activityResult] = await Promise.all([
         supabase.from('user_profiles').select('id, full_name, email, role').in('role', ['collector', 'admin', 'manager']),
         supabase.from('collector_activity_summary').select('*').order('last_activity_at', { ascending: false }),
-        supabase.rpc('get_all_collectors_collection_summary', { p_start_date: startDateStr, p_end_date: endDateStr })
+        supabase.rpc('get_all_collectors_collection_summary', { p_start_date: startDateStr, p_end_date: endDateStr }),
+        supabase.rpc('get_collector_activity_summary', { p_user_id: null, p_days_back: daysAgo })
       ]);
 
       const profiles = profilesResult.data || [];
       const monitoring = monitoringResult.data || [];
       const collection = collectionResult.data || [];
+      const activityData = activityResult.data || [];
 
       const monitoringMap = new Map<string, any>();
       monitoring.forEach((m: any) => monitoringMap.set(m.collector_id, m));
@@ -57,11 +60,15 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
       const collectionMap = new Map<string, any>();
       collection.forEach((c: any) => collectionMap.set(c.collector_id, c));
 
+      const activityMap = new Map<string, any>();
+      activityData.forEach((a: any) => activityMap.set(a.user_id, a));
+
       const combined: CollectorCombined[] = [];
 
       for (const profile of profiles) {
         const mon = monitoringMap.get(profile.id);
         const col = collectionMap.get(profile.id);
+        const act = activityMap.get(profile.id);
 
         const { data: colorChanges } = await supabase
           .from('invoice_change_log')
@@ -132,10 +139,17 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
           payments_modified: mon?.payments_modified || 0,
           emails_scheduled: mon?.emails_scheduled || 0,
           emails_sent: mon?.emails_sent || 0,
-          last_activity_at: mon?.last_activity_at || null,
+          last_activity_at: mon?.last_activity_at || act?.last_activity || null,
           total_collected: parseFloat(col?.total_collected) || 0,
           invoices_paid: col?.invoices_paid_count || 0,
-          payment_count: col?.payment_count || 0
+          payment_count: col?.payment_count || 0,
+          total_actions: act?.total_actions || 0,
+          login_count: act?.login_count || 0,
+          tickets_created: act?.tickets_created || 0,
+          tickets_closed: act?.tickets_closed || 0,
+          notes_added: act?.notes_added || 0,
+          status_changes: act?.status_changes || 0,
+          invoice_color_changes: act?.invoice_color_changes || 0
         });
       }
 
@@ -165,6 +179,7 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
     .sort((a, b) => {
       if (sortBy === 'collected') return b.total_collected - a.total_collected;
       if (sortBy === 'changes') return b.total_changes - a.total_changes;
+      if (sortBy === 'actions') return b.total_actions - a.total_actions;
       return a.full_name.localeCompare(b.full_name);
     });
 
@@ -172,13 +187,14 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
     totalCollectors: acc.totalCollectors + 1,
     totalCollected: acc.totalCollected + c.total_collected,
     totalInvoicesPaid: acc.totalInvoicesPaid + c.invoices_paid,
-    totalInvoicesModified: acc.totalInvoicesModified + c.invoices_modified,
-    totalPaymentsModified: acc.totalPaymentsModified + c.payments_modified,
-    totalEmailsSent: acc.totalEmailsSent + c.emails_sent,
+    totalActions: acc.totalActions + c.total_actions,
+    totalLogins: acc.totalLogins + c.login_count,
+    totalNotes: acc.totalNotes + c.notes_added,
+    totalColorChanges: acc.totalColorChanges + c.invoice_color_changes,
     activeToday: acc.activeToday + (c.last_activity_at && new Date(c.last_activity_at).toDateString() === new Date().toDateString() ? 1 : 0)
   }), {
     totalCollectors: 0, totalCollected: 0, totalInvoicesPaid: 0,
-    totalInvoicesModified: 0, totalPaymentsModified: 0, totalEmailsSent: 0, activeToday: 0
+    totalActions: 0, totalLogins: 0, totalNotes: 0, totalColorChanges: 0, activeToday: 0
   });
 
   return (
@@ -198,7 +214,7 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mt-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mt-6">
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
               <div className="flex items-center gap-2 mb-1">
                 <Users className="w-4 h-4 text-slate-300" />
@@ -216,7 +232,7 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
             <div className="bg-emerald-600/30 backdrop-blur-sm rounded-xl p-4 col-span-2 sm:col-span-1">
               <div className="flex items-center gap-2 mb-1">
                 <DollarSign className="w-4 h-4 text-emerald-300" />
-                <p className="text-xs text-emerald-200">Total Collected</p>
+                <p className="text-xs text-emerald-200">Collected</p>
               </div>
               <p className="text-2xl font-bold text-emerald-300">
                 ${totals.totalCollected.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -225,23 +241,37 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
               <div className="flex items-center gap-2 mb-1">
                 <Banknote className="w-4 h-4 text-teal-300" />
-                <p className="text-xs text-slate-300">Invoices Paid</p>
+                <p className="text-xs text-slate-300">Inv. Paid</p>
               </div>
               <p className="text-2xl font-bold text-teal-300">{totals.totalInvoicesPaid}</p>
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
               <div className="flex items-center gap-2 mb-1">
-                <FileText className="w-4 h-4 text-slate-300" />
-                <p className="text-xs text-slate-300">Inv. Modified</p>
+                <TrendingUp className="w-4 h-4 text-slate-300" />
+                <p className="text-xs text-slate-300">Actions</p>
               </div>
-              <p className="text-2xl font-bold">{totals.totalInvoicesModified}</p>
+              <p className="text-2xl font-bold">{totals.totalActions}</p>
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
               <div className="flex items-center gap-2 mb-1">
-                <TrendingUp className="w-4 h-4 text-slate-300" />
-                <p className="text-xs text-slate-300">Pay. Modified</p>
+                <LogIn className="w-4 h-4 text-green-300" />
+                <p className="text-xs text-slate-300">Logins</p>
               </div>
-              <p className="text-2xl font-bold">{totals.totalPaymentsModified}</p>
+              <p className="text-2xl font-bold text-green-300">{totals.totalLogins}</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <MessageSquare className="w-4 h-4 text-cyan-300" />
+                <p className="text-xs text-slate-300">Notes</p>
+              </div>
+              <p className="text-2xl font-bold text-cyan-300">{totals.totalNotes}</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Palette className="w-4 h-4 text-orange-300" />
+                <p className="text-xs text-slate-300">Color Chg</p>
+              </div>
+              <p className="text-2xl font-bold text-orange-300">{totals.totalColorChanges}</p>
             </div>
           </div>
         </div>
@@ -265,6 +295,7 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
             className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white font-medium"
           >
             <option value={7}>Last 7 Days</option>
+            <option value={14}>Last 14 Days</option>
             <option value={30}>Last 30 Days</option>
             <option value={60}>Last 60 Days</option>
             <option value={90}>Last 90 Days</option>
@@ -276,9 +307,10 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
             onChange={(e) => setSortBy(e.target.value as any)}
             className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white font-medium"
           >
-            <option value="collected">Sort by: Total Collected</option>
-            <option value="changes">Sort by: Status Changes</option>
-            <option value="name">Sort by: Name</option>
+            <option value="collected">Sort: Total Collected</option>
+            <option value="changes">Sort: Status Changes</option>
+            <option value="actions">Sort: Total Actions</option>
+            <option value="name">Sort: Name</option>
           </select>
         </div>
 

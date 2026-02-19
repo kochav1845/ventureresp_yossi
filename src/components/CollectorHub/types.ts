@@ -21,23 +21,22 @@ export interface CollectorCombined {
   total_collected: number;
   invoices_paid: number;
   payment_count: number;
+  total_actions: number;
+  login_count: number;
+  tickets_created: number;
+  tickets_closed: number;
+  notes_added: number;
+  status_changes: number;
+  invoice_color_changes: number;
 }
 
-export interface CollectorActivity {
-  activity_date: string;
-  invoices_modified: number;
-  payments_modified: number;
-  emails_sent: number;
-  customers_contacted: number;
-}
-
-export interface ChangeLog {
-  changed_at: string;
-  changed_by_email: string;
-  change_type: string;
-  field_name: string;
-  old_value: string;
-  new_value: string;
-  invoice_reference_number?: string;
-  payment_reference_number?: string;
+export interface ActivityLog {
+  id: string;
+  user_id: string;
+  action_type: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  details: any;
+  created_at: string;
+  user_name?: string;
 }
