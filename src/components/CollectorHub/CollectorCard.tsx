@@ -7,6 +7,7 @@ import {
 import { CollectorCombined } from './types';
 import CollectorExpandedDetails from './CollectorExpandedDetails';
 import CollectorClosedTickets from './CollectorClosedTickets';
+import CollectorCollectedInvoices from './CollectorCollectedInvoices';
 
 interface Props {
   collector: CollectorCombined;
@@ -17,7 +18,7 @@ interface Props {
 }
 
 export default function CollectorCard({ collector, isExpanded, onToggleExpand, onViewProgress, dateRange }: Props) {
-  const [activeTab, setActiveTab] = useState<'activity' | 'closed_tickets'>('activity');
+  const [activeTab, setActiveTab] = useState<'activity' | 'closed_tickets' | 'collected_invoices'>('activity');
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all overflow-hidden">
@@ -238,6 +239,22 @@ export default function CollectorCard({ collector, isExpanded, onToggleExpand, o
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setActiveTab('collected_invoices')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors -mb-px ${
+                activeTab === 'collected_invoices'
+                  ? 'border-blue-600 text-blue-700 bg-white'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <DollarSign className="w-4 h-4" />
+              Collected Invoices
+              {collector.invoices_paid > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">
+                  {collector.invoices_paid}
+                </span>
+              )}
+            </button>
           </div>
 
           {activeTab === 'activity' && (
@@ -245,6 +262,9 @@ export default function CollectorCard({ collector, isExpanded, onToggleExpand, o
           )}
           {activeTab === 'closed_tickets' && (
             <CollectorClosedTickets collectorId={collector.user_id} />
+          )}
+          {activeTab === 'collected_invoices' && (
+            <CollectorCollectedInvoices collectorId={collector.user_id} />
           )}
         </div>
       )}
