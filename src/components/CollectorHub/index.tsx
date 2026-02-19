@@ -45,7 +45,7 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
       const [profilesResult, monitoringResult, collectionResult, activityResult] = await Promise.all([
         supabase.from('user_profiles').select('id, full_name, email, role').in('role', ['collector', 'admin', 'manager']),
         supabase.from('collector_activity_summary').select('*').order('last_activity_at', { ascending: false }),
-        supabase.rpc('get_all_collectors_collection_summary', { p_start_date: startDateStr, p_end_date: endDateStr }),
+        supabase.rpc('get_all_collectors_collection_summary'),
         supabase.rpc('get_collector_activity_summary', { p_user_id: null, p_days_back: daysAgo })
       ]);
 
