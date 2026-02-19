@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Plus, Calendar, Clock, AlertCircle, CheckCircle, Edit2, Trash2, Mail, Phone, Video, DollarSign, MessageSquare, FileText, Filter, X, Save, Ticket } from 'lucide-react';
+import { ArrowLeft, Plus, Calendar, Clock, AlertCircle, CheckCircle, Edit2, Trash2, Mail, Phone, Video, DollarSign, MessageSquare, FileText, Filter, X, Save, Ticket, Users, Send, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDate as formatDateUtil, formatDateTime as formatDateTimeUtil } from '../lib/dateUtils';
@@ -41,6 +41,7 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
   const [sendingEmails, setSendingEmails] = useState(false);
+  const [showCollectorModal, setShowCollectorModal] = useState(false);
   const [prefilledInvoiceData, setPrefilledInvoiceData] = useState<any>(null);
 
   useEffect(() => {
@@ -248,7 +249,7 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
     return new Date(dateString) < new Date() && filter !== 'completed';
   };
 
-  const triggerReminderEmails = async () => {
+  const triggerReminderEmails = async (recipientEmails: string[]) => {
     setSendingEmails(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -265,22 +266,25 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
+          body: JSON.stringify({ recipient_emails: recipientEmails }),
         }
       );
 
       const result = await response.json();
 
       if (response.ok) {
-        alert(`✅ ${result.message}\n\nTotal processed: ${result.total || 0}\nEmails sent: ${result.results?.filter((r: any) => r.status === 'sent').length || 0}`);
+        const sentCount = result.results?.filter((r: any) => r.status === 'sent').length || 0;
+        alert(`Email reminders processed.\n\nTotal processed: ${result.total || 0}\nEmails sent: ${sentCount}`);
         loadReminders();
       } else {
-        alert(`❌ Error: ${result.error || 'Failed to send emails'}`);
+        alert(`Error: ${result.error || 'Failed to send emails'}`);
       }
     } catch (error) {
       console.error('Error triggering emails:', error);
       alert('Failed to trigger reminder emails');
     } finally {
       setSendingEmails(false);
+      setShowCollectorModal(false);
     }
   };
 
@@ -300,10 +304,10 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={triggerReminderEmails}
+              onClick={() => setShowCollectorModal(true)}
               disabled={sendingEmails}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Manually send email notifications for due reminders"
+              className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Send email reminders to selected collectors"
             >
               <Mail className="w-4 h-4" />
               {sendingEmails ? 'Sending...' : 'Send Email Reminders'}
@@ -549,6 +553,204 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
           }}
         />
       )}
+
+      {showCollectorModal && (
+        <CollectorEmailModal
+          sending={sendingEmails}
+          onClose={() => setShowCollectorModal(false)}
+          onSend={(emails) => triggerReminderEmails(emails)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface CollectorEmailModalProps {
+  sending: boolean;
+  onClose: () => void;
+  onSend: (emails: string[]) => void;
+}
+
+interface Collector {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+}
+
+function CollectorEmailModal({ sending, onClose, onSend }: CollectorEmailModalProps) {
+  const [collectors, setCollectors] = useState<Collector[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    loadCollectors();
+  }, []);
+
+  const loadCollectors = async () => {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('id, full_name, email, role')
+      .in('role', ['collector', 'admin', 'manager'])
+      .order('full_name');
+
+    if (!error && data) {
+      setCollectors(data);
+      setSelectedIds(new Set(data.map(c => c.id)));
+    }
+    setLoading(false);
+  };
+
+  const toggleCollector = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(c => c.id)));
+    }
+  };
+
+  const filtered = collectors.filter(c =>
+    c.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+    c.email?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const selectedEmails = collectors
+    .filter(c => selectedIds.has(c.id))
+    .map(c => c.email);
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50"
+      onClick={onClose}
+    >
+      <div
+        className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-lg max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-5 border-b border-slate-700">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <Users className="w-5 h-5 text-teal-400" />
+              Send Reminders to Collectors
+            </h2>
+            <p className="text-slate-400 text-sm mt-1">
+              Select which collectors should receive the email reminders
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 border-b border-slate-700">
+          <input
+            type="text"
+            placeholder="Search collectors..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-slate-900 text-white rounded-lg px-4 py-2.5 border border-slate-600 focus:outline-none focus:border-teal-500 text-sm"
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-500"></div>
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={toggleAll}
+                className="flex items-center gap-2 text-sm text-slate-300 hover:text-white mb-3 transition-colors"
+              >
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                  selectedIds.size === filtered.length
+                    ? 'bg-teal-600 border-teal-600'
+                    : 'border-slate-500'
+                }`}>
+                  {selectedIds.size === filtered.length && <Check className="w-3 h-3 text-white" />}
+                </div>
+                {selectedIds.size === filtered.length ? 'Deselect All' : 'Select All'}
+                <span className="text-slate-500">({filtered.length} collectors)</span>
+              </button>
+
+              <div className="space-y-1">
+                {filtered.map((collector) => (
+                  <button
+                    key={collector.id}
+                    onClick={() => toggleCollector(collector.id)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left ${
+                      selectedIds.has(collector.id)
+                        ? 'bg-teal-600/10 border border-teal-600/30'
+                        : 'bg-slate-900/50 border border-transparent hover:bg-slate-700/50'
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                      selectedIds.has(collector.id)
+                        ? 'bg-teal-600 border-teal-600'
+                        : 'border-slate-500'
+                    }`}>
+                      {selectedIds.has(collector.id) && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-medium text-sm truncate">
+                        {collector.full_name || collector.email.split('@')[0]}
+                      </p>
+                      <p className="text-slate-400 text-xs truncate">{collector.email}</p>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
+                      collector.role === 'admin' ? 'bg-red-500/10 text-red-400' :
+                      collector.role === 'manager' ? 'bg-blue-500/10 text-blue-400' :
+                      'bg-slate-500/10 text-slate-400'
+                    }`}>
+                      {collector.role}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {filtered.length === 0 && (
+                <p className="text-slate-500 text-center py-8">No collectors found</p>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between p-5 border-t border-slate-700 bg-slate-800/80">
+          <p className="text-sm text-slate-400">
+            {selectedIds.size} collector{selectedIds.size !== 1 ? 's' : ''} selected
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onSend(selectedEmails)}
+              disabled={sending || selectedIds.size === 0}
+              className="flex items-center gap-2 px-5 py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <Send className="w-4 h-4" />
+              {sending ? 'Sending...' : `Send to ${selectedIds.size} Collector${selectedIds.size !== 1 ? 's' : ''}`}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
