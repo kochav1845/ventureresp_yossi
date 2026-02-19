@@ -469,6 +469,10 @@ export default function UnifiedTicketingSystem({
               note.has_voice_note ||
               note.has_image
             );
+            ticket.has_images = noteData.some(note => note.has_image);
+            ticket.has_documents = noteData.some(note =>
+              (note.document_urls && note.document_urls.length > 0)
+            );
             ticket.last_note = {
               note_text: noteData[0].note_text,
               created_at: noteData[0].created_at
@@ -487,6 +491,10 @@ export default function UnifiedTicketingSystem({
               (m.document_urls && m.document_urls.length > 0) ||
               m.has_voice_note ||
               m.has_image
+            );
+            ticket.has_memo_images = memoData.some(m => m.has_image);
+            ticket.has_memo_documents = memoData.some(m =>
+              (m.document_urls && m.document_urls.length > 0)
             );
             ticket.last_memo = {
               memo_text: memoData[0].memo_text,

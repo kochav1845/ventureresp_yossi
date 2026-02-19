@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Image, File } from 'lucide-react';
 import { formatDistanceToNow, isPast, parseISO, format as formatDate } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
@@ -282,6 +282,20 @@ export default function TicketCard({
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-300">
                 {ticket.ticket_type.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
               </span>
+            )}
+            {(ticket.has_attachments || ticket.has_memo_attachments || ticket.has_images || ticket.has_memo_images || ticket.has_documents || ticket.has_memo_documents) && (
+              <div className="flex items-center gap-1.5 ml-1">
+                {(ticket.has_images || ticket.has_memo_images) && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-700" title="Contains images">
+                    <Image className="w-3.5 h-3.5" />
+                  </span>
+                )}
+                {(ticket.has_documents || ticket.has_memo_documents || ticket.has_attachments || ticket.has_memo_attachments) && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-100 border border-sky-300 text-sky-700" title="Contains attachments">
+                    <Paperclip className="w-3.5 h-3.5" />
+                  </span>
+                )}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-2 text-sm flex-wrap">

@@ -55,12 +55,16 @@ export interface TicketGroup {
   };
   note_count?: number;
   has_attachments?: boolean;
+  has_images?: boolean;
+  has_documents?: boolean;
   last_note?: {
     note_text: string;
     created_at: string;
   };
   memo_count?: number;
   has_memo_attachments?: boolean;
+  has_memo_images?: boolean;
+  has_memo_documents?: boolean;
   last_memo?: {
     memo_text: string;
     created_at: string;
