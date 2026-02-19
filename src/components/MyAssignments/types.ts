@@ -59,6 +59,12 @@ export interface TicketGroup {
     note_text: string;
     created_at: string;
   };
+  memo_count?: number;
+  has_memo_attachments?: boolean;
+  last_memo?: {
+    memo_text: string;
+    created_at: string;
+  };
   // Real-time customer balance tracking
   customer_balance?: number;
   open_invoice_count?: number;

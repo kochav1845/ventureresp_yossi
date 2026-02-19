@@ -15,6 +15,7 @@ import {
   Archive
 } from 'lucide-react';
 import InvoiceMemoModal from './InvoiceMemoModal';
+import TicketMemoModal from './TicketMemoModal';
 import CreateReminderModal from './CreateReminderModal';
 import TicketStatusChangeModal from './TicketStatusChangeModal';
 import { Assignment, TicketGroup, TicketStatusOption } from './MyAssignments/types';
@@ -107,6 +108,14 @@ export default function UnifiedTicketingSystem({
   const [statusOptions, setStatusOptions] = useState<TicketStatusOption[]>([]);
   const [colorOptions, setColorOptions] = useState<Array<{ status_name: string; display_name: string; color_class: string }>>([]);
   const [ticketTypeOptions, setTicketTypeOptions] = useState<Array<{ value: string; label: string }>>([]);
+
+  // Ticket memo modal
+  const [ticketMemoModal, setTicketMemoModal] = useState<{
+    id: string;
+    ticket_number: string;
+    customer_name: string;
+    customer_id: string;
+  } | null>(null);
 
   // Reminder modal
   const [reminderModal, setReminderModal] = useState<{
@@ -463,6 +472,25 @@ export default function UnifiedTicketingSystem({
             ticket.last_note = {
               note_text: noteData[0].note_text,
               created_at: noteData[0].created_at
+            };
+          }
+
+          const { data: memoData } = await supabase
+            .from('ticket_memos')
+            .select('memo_text, created_at, document_urls, has_voice_note, has_image')
+            .eq('ticket_id', ticket.ticket_id)
+            .order('created_at', { ascending: false });
+
+          if (memoData && memoData.length > 0) {
+            ticket.memo_count = memoData.length;
+            ticket.has_memo_attachments = memoData.some(m =>
+              (m.document_urls && m.document_urls.length > 0) ||
+              m.has_voice_note ||
+              m.has_image
+            );
+            ticket.last_memo = {
+              memo_text: memoData[0].memo_text,
+              created_at: memoData[0].created_at
             };
           }
         }));
@@ -1141,6 +1169,15 @@ export default function UnifiedTicketingSystem({
     }
   };
 
+  const handleOpenTicketMemo = (ticket: TicketGroup) => {
+    setTicketMemoModal({
+      id: ticket.ticket_id,
+      ticket_number: ticket.ticket_number,
+      customer_name: ticket.customer_name,
+      customer_id: ticket.customer_id
+    });
+  };
+
   const handleOpenTicketReminder = (ticket: TicketGroup) => {
     setReminderModal({
       type: 'ticket',
@@ -1618,6 +1655,7 @@ export default function UnifiedTicketingSystem({
                         onTicketStatusChange={handleTicketStatusChange}
                         onTicketPriorityChange={handleTicketPriorityChange}
                         onPromiseDateSet={loadTickets}
+                        onOpenTicketMemo={handleOpenTicketMemo}
                         onOpenTicketReminder={handleOpenTicketReminder}
                         onOpenInvoiceReminder={handleOpenInvoiceReminder}
                         onAddInvoices={handleAddInvoicesToTicket}
@@ -1697,6 +1735,13 @@ export default function UnifiedTicketingSystem({
             setMemoModalInvoice(null);
             loadTickets();
           }}
+        />
+      )}
+
+      {ticketMemoModal && (
+        <TicketMemoModal
+          ticket={ticketMemoModal}
+          onClose={() => setTicketMemoModal(null)}
         />
       )}
 

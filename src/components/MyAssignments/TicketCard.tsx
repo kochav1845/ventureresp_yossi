@@ -31,6 +31,7 @@ interface TicketCardProps {
   onTicketStatusChange: (ticketId: string, newStatus: string) => void;
   onTicketPriorityChange: (ticketId: string, newPriority: string) => void;
   onPromiseDateSet: () => void;
+  onOpenTicketMemo: (ticket: TicketGroup) => void;
   onOpenTicketReminder: (ticket: TicketGroup) => void;
   onOpenInvoiceReminder: (invoice: Assignment) => void;
   onSelectAllInTicket?: (invoiceRefs: string[]) => void;
@@ -53,6 +54,7 @@ export default function TicketCard({
   onTicketStatusChange,
   onTicketPriorityChange,
   onPromiseDateSet,
+  onOpenTicketMemo,
   onOpenTicketReminder,
   onOpenInvoiceReminder,
   onSelectAllInTicket,
@@ -419,14 +421,29 @@ export default function TicketCard({
               View in Acumatica
             </a>
           </div>
-          <button
-            onClick={() => onOpenTicketReminder(ticket)}
-            className="px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 text-sm"
-            title="Set Reminder for this Ticket"
-          >
-            <Bell className="w-4 h-4" />
-            Set Reminder
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onOpenTicketMemo(ticket)}
+              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm"
+              title="Ticket Memos & Activity"
+            >
+              <FileText className="w-4 h-4" />
+              Memos
+              {ticket.memo_count && ticket.memo_count > 0 && (
+                <span className="bg-white/20 text-white text-xs px-1.5 py-0.5 rounded-full">
+                  {ticket.memo_count}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => onOpenTicketReminder(ticket)}
+              className="px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-2 text-sm"
+              title="Set Reminder for this Ticket"
+            >
+              <Bell className="w-4 h-4" />
+              Reminder
+            </button>
+          </div>
         </div>
         <p className="text-sm text-gray-600 mb-2">
           Customer ID: {ticket.customer_id}
@@ -564,6 +581,38 @@ export default function TicketCard({
                     </p>
                     <p className="text-xs text-blue-600 mt-1">
                       {formatDistanceToNow(new Date(ticket.last_note.created_at), { addSuffix: true })}
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {ticket.memo_count && ticket.memo_count > 0 && (
+          <div
+            className="mt-3 p-3 bg-slate-50 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors"
+            onClick={() => onOpenTicketMemo(ticket)}
+          >
+            <div className="flex items-start gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <FileText className="w-4 h-4 text-slate-600" />
+                {ticket.has_memo_attachments && (
+                  <Paperclip className="w-4 h-4 text-slate-600" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-slate-900">
+                  {ticket.memo_count} Memo{ticket.memo_count !== 1 ? 's' : ''}
+                  {ticket.has_memo_attachments && ' (with attachment)'}
+                </p>
+                {ticket.last_memo && (
+                  <>
+                    <p className="text-xs text-slate-700 mt-1 line-clamp-2">
+                      {ticket.last_memo.memo_text}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {formatDistanceToNow(new Date(ticket.last_memo.created_at), { addSuffix: true })}
                     </p>
                   </>
                 )}
