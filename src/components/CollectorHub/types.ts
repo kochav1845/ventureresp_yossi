@@ -21,6 +21,8 @@ export interface CollectorCombined {
   total_collected: number;
   invoices_paid: number;
   payment_count: number;
+  avg_days_to_close: number;
+  closed_ticket_count: number;
   total_actions: number;
   login_count: number;
   tickets_created: number;

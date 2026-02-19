@@ -1,7 +1,7 @@
 import {
   Users, DollarSign, Banknote, TrendingUp, CheckCircle, AlertCircle,
   Ticket, Eye, ChevronUp, Calendar, FileText, Mail, BarChart3,
-  LogIn, MessageSquare, Palette
+  LogIn, MessageSquare, Palette, Clock, Timer
 } from 'lucide-react';
 import { CollectorCombined } from './types';
 import CollectorExpandedDetails from './CollectorExpandedDetails';
@@ -63,7 +63,7 @@ export default function CollectorCard({ collector, isExpanded, onToggleExpand, o
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 mb-5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
           <div className="bg-gradient-to-br from-emerald-50 to-green-50 p-4 rounded-xl border border-emerald-200">
             <div className="flex items-center gap-2 mb-1.5">
               <DollarSign className="w-5 h-5 text-emerald-600" />
@@ -92,6 +92,21 @@ export default function CollectorCard({ collector, isExpanded, onToggleExpand, o
               ${collector.invoices_paid > 0
                 ? (collector.total_collected / collector.invoices_paid).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                 : '0.00'}
+            </p>
+          </div>
+
+          <div className="bg-gradient-to-br from-slate-50 to-gray-50 p-4 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Timer className="w-5 h-5 text-slate-600" />
+              <span className="text-xs font-semibold text-slate-800">Avg Days to Close</span>
+            </div>
+            <p className="text-2xl font-bold text-slate-700">
+              {collector.avg_days_to_close > 0
+                ? Math.round(collector.avg_days_to_close)
+                : '--'}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {collector.closed_ticket_count} closed ticket{collector.closed_ticket_count !== 1 ? 's' : ''}
             </p>
           </div>
         </div>

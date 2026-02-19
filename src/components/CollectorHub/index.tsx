@@ -143,6 +143,8 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
           total_collected: parseFloat(col?.total_collected) || 0,
           invoices_paid: col?.invoices_paid_count || 0,
           payment_count: col?.payment_count || 0,
+          avg_days_to_close: parseFloat(col?.avg_days_to_close) || 0,
+          closed_ticket_count: col?.closed_ticket_count || 0,
           total_actions: act?.total_actions || 0,
           login_count: act?.login_count || 0,
           tickets_created: act?.tickets_created || 0,
