@@ -576,6 +576,7 @@ interface Collector {
   full_name: string;
   email: string;
   role: string;
+  reminder_count: number;
 }
 
 function CollectorEmailModal({ sending, onClose, onSend }: CollectorEmailModalProps) {
@@ -585,19 +586,44 @@ function CollectorEmailModal({ sending, onClose, onSend }: CollectorEmailModalPr
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    loadCollectors();
+    loadCollectorsWithReminders();
   }, []);
 
-  const loadCollectors = async () => {
-    const { data, error } = await supabase
+  const loadCollectorsWithReminders = async () => {
+    const now = new Date().toISOString();
+    const { data: dueReminders, error: remErr } = await supabase
+      .from('invoice_reminders')
+      .select('user_id')
+      .eq('send_email_notification', true)
+      .eq('email_sent', false)
+      .is('completed_at', null)
+      .lte('reminder_date', now);
+
+    if (remErr || !dueReminders || dueReminders.length === 0) {
+      setCollectors([]);
+      setLoading(false);
+      return;
+    }
+
+    const countMap = new Map<string, number>();
+    for (const r of dueReminders) {
+      countMap.set(r.user_id, (countMap.get(r.user_id) || 0) + 1);
+    }
+    const userIds = [...countMap.keys()];
+
+    const { data: profiles, error: profErr } = await supabase
       .from('user_profiles')
       .select('id, full_name, email, role')
-      .in('role', ['collector', 'admin', 'manager'])
+      .in('id', userIds)
       .order('full_name');
 
-    if (!error && data) {
-      setCollectors(data);
-      setSelectedIds(new Set(data.map(c => c.id)));
+    if (!profErr && profiles) {
+      const enriched = profiles.map(p => ({
+        ...p,
+        reminder_count: countMap.get(p.id) || 0,
+      }));
+      setCollectors(enriched);
+      setSelectedIds(new Set(enriched.map(c => c.id)));
     }
     setLoading(false);
   };
@@ -644,7 +670,7 @@ function CollectorEmailModal({ sending, onClose, onSend }: CollectorEmailModalPr
               Send Reminders to Collectors
             </h2>
             <p className="text-slate-400 text-sm mt-1">
-              Select which collectors should receive the email reminders
+              Collectors with due reminders ready to send
             </p>
           </div>
           <button
@@ -711,19 +737,19 @@ function CollectorEmailModal({ sending, onClose, onSend }: CollectorEmailModalPr
                       </p>
                       <p className="text-slate-400 text-xs truncate">{collector.email}</p>
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
-                      collector.role === 'admin' ? 'bg-red-500/10 text-red-400' :
-                      collector.role === 'manager' ? 'bg-blue-500/10 text-blue-400' :
-                      'bg-slate-500/10 text-slate-400'
-                    }`}>
-                      {collector.role}
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0 bg-teal-500/10 text-teal-400">
+                      {collector.reminder_count} reminder{collector.reminder_count !== 1 ? 's' : ''}
                     </span>
                   </button>
                 ))}
               </div>
 
               {filtered.length === 0 && (
-                <p className="text-slate-500 text-center py-8">No collectors found</p>
+                <div className="text-center py-8">
+                  <Mail className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+                  <p className="text-slate-400 font-medium">No collectors with due reminders</p>
+                  <p className="text-slate-500 text-sm mt-1">Only collectors who have pending email reminders will appear here</p>
+                </div>
               )}
             </>
           )}
