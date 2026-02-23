@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Edit2, Trash2, Power, PowerOff, Play, Loader2, Search } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Power, PowerOff, Play, Loader2, Search, Clock, Save, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../contexts/ToastContext';
 
@@ -134,9 +134,15 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
   const showInvoiceFields = formData.condition_logic === 'invoice_only' || formData.condition_logic === 'both_and' || formData.condition_logic === 'both_or';
   const showPaymentFields = formData.condition_logic === 'payment_only' || formData.condition_logic === 'both_and' || formData.condition_logic === 'both_or';
 
+  const [scheduleHour, setScheduleHour] = useState(6);
+  const [scheduleMinute, setScheduleMinute] = useState(0);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSaved, setScheduleSaved] = useState(false);
+
   useEffect(() => {
     fetchRules();
     fetchCollectors();
+    fetchSchedule();
   }, []);
 
   useEffect(() => {
@@ -278,6 +284,38 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
       setCollectors(data || []);
     } catch (error: any) {
       showToast(error.message, 'error');
+    }
+  };
+
+  const fetchSchedule = async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_auto_ticket_cron_schedule');
+      if (error) throw error;
+      if (data && data.length > 0) {
+        const parts = data[0].schedule.split(' ');
+        setScheduleMinute(parseInt(parts[0]) || 0);
+        setScheduleHour(parseInt(parts[1]) || 0);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch schedule:', err);
+    }
+  };
+
+  const saveSchedule = async () => {
+    setScheduleLoading(true);
+    try {
+      const { error } = await supabase.rpc('update_auto_ticket_cron_schedule', {
+        p_hour: scheduleHour,
+        p_minute: scheduleMinute,
+      });
+      if (error) throw error;
+      showToast(`Schedule updated to ${String(scheduleHour).padStart(2, '0')}:${String(scheduleMinute).padStart(2, '0')} UTC daily`, 'success');
+      setScheduleSaved(true);
+      setTimeout(() => setScheduleSaved(false), 2000);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setScheduleLoading(false);
     }
   };
 
@@ -538,9 +576,65 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
         </div>
       </div>
 
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-50">
+              <Clock className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800">Daily Schedule</h3>
+              <p className="text-xs text-gray-500">Rules are processed automatically at this time every day (UTC)</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <select
+                value={scheduleHour}
+                onChange={(e) => setScheduleHour(parseInt(e.target.value))}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {Array.from({ length: 24 }, (_, i) => (
+                  <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+                ))}
+              </select>
+              <span className="text-gray-500 font-bold">:</span>
+              <select
+                value={scheduleMinute}
+                onChange={(e) => setScheduleMinute(parseInt(e.target.value))}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => (
+                  <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                ))}
+              </select>
+              <span className="text-xs text-gray-400 ml-1">UTC</span>
+            </div>
+            <button
+              onClick={saveSchedule}
+              disabled={scheduleLoading}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                scheduleSaved
+                  ? 'bg-green-100 text-green-700 border border-green-300'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              } disabled:opacity-50`}
+            >
+              {scheduleLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : scheduleSaved ? (
+                <Check className="w-4 h-4" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              {scheduleSaved ? 'Saved' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
         <p className="text-blue-800 text-sm">
-          <strong>How it works:</strong> Every day at 6:00 AM, the system checks each active rule:
+          <strong>How it works:</strong> Every day at {String(scheduleHour).padStart(2, '0')}:{String(scheduleMinute).padStart(2, '0')} UTC, the system checks each active rule:
         </p>
         <ul className="text-blue-800 text-sm list-disc list-inside space-y-1">
           <li><strong>Invoice Age Only:</strong> Finds unpaid invoices dated within the specified age range.</li>
