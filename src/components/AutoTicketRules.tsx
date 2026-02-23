@@ -139,6 +139,48 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleSaved, setScheduleSaved] = useState(false);
 
+  const EST_OFFSET = -5;
+
+  const utcToEst = (utcHour: number) => {
+    let estHour = utcHour + EST_OFFSET;
+    if (estHour < 0) estHour += 24;
+    if (estHour >= 24) estHour -= 24;
+    return estHour;
+  };
+
+  const estToUtc = (estHour: number) => {
+    let utcHour = estHour - EST_OFFSET;
+    if (utcHour < 0) utcHour += 24;
+    if (utcHour >= 24) utcHour -= 24;
+    return utcHour;
+  };
+
+  const estHour = utcToEst(scheduleHour);
+  const estHour12 = estHour === 0 ? 12 : estHour > 12 ? estHour - 12 : estHour;
+  const estAmPm = estHour < 12 ? 'AM' : 'PM';
+
+  const handleEstHourChange = (hour12: number, amPm: string) => {
+    let hour24 = hour12;
+    if (amPm === 'AM') {
+      hour24 = hour12 === 12 ? 0 : hour12;
+    } else {
+      hour24 = hour12 === 12 ? 12 : hour12 + 12;
+    }
+    setScheduleHour(estToUtc(hour24));
+  };
+
+  const handleAmPmChange = (newAmPm: string) => {
+    handleEstHourChange(estHour12, newAmPm);
+  };
+
+  const handleHour12Change = (newHour12: number) => {
+    handleEstHourChange(newHour12, estAmPm);
+  };
+
+  const formatEstTime = () => {
+    return `${estHour12}:${String(scheduleMinute).padStart(2, '0')} ${estAmPm} EST`;
+  };
+
   useEffect(() => {
     fetchRules();
     fetchCollectors();
@@ -309,7 +351,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
         p_minute: scheduleMinute,
       });
       if (error) throw error;
-      showToast(`Schedule updated to ${String(scheduleHour).padStart(2, '0')}:${String(scheduleMinute).padStart(2, '0')} UTC daily`, 'success');
+      showToast(`Schedule updated to ${formatEstTime()} daily`, 'success');
       setScheduleSaved(true);
       setTimeout(() => setScheduleSaved(false), 2000);
     } catch (err: any) {
@@ -584,18 +626,18 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-gray-800">Daily Schedule</h3>
-              <p className="text-xs text-gray-500">Rules are processed automatically at this time every day (UTC)</p>
+              <p className="text-xs text-gray-500">Rules are processed automatically at this time every day (EST)</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
               <select
-                value={scheduleHour}
-                onChange={(e) => setScheduleHour(parseInt(e.target.value))}
+                value={estHour12}
+                onChange={(e) => handleHour12Change(parseInt(e.target.value))}
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                {Array.from({ length: 24 }, (_, i) => (
-                  <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+                {[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(h => (
+                  <option key={h} value={h}>{h}</option>
                 ))}
               </select>
               <span className="text-gray-500 font-bold">:</span>
@@ -608,7 +650,15 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
                   <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
                 ))}
               </select>
-              <span className="text-xs text-gray-400 ml-1">UTC</span>
+              <select
+                value={estAmPm}
+                onChange={(e) => handleAmPmChange(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="AM">AM</option>
+                <option value="PM">PM</option>
+              </select>
+              <span className="text-xs text-gray-400 ml-1">EST</span>
             </div>
             <button
               onClick={saveSchedule}
@@ -634,7 +684,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
         <p className="text-blue-800 text-sm">
-          <strong>How it works:</strong> Every day at {String(scheduleHour).padStart(2, '0')}:{String(scheduleMinute).padStart(2, '0')} UTC, the system checks each active rule:
+          <strong>How it works:</strong> Every day at {formatEstTime()}, the system checks each active rule:
         </p>
         <ul className="text-blue-800 text-sm list-disc list-inside space-y-1">
           <li><strong>Invoice Age Only:</strong> Finds unpaid invoices dated within the specified age range.</li>
