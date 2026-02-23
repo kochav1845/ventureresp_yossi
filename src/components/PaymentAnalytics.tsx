@@ -1201,17 +1201,22 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const previousPeriod = () => {
     if (calendarView === 'daily') {
+      setPayments([]);
+      setFilteredPayments([]);
+      setLoading(true);
       setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1));
     } else if (calendarView === 'monthly') {
       setSelectedYear(selectedYear - 1);
     } else if (calendarView === 'yearly') {
-      // For yearly view, we could shift the range, but let's keep it simple for now
       setSelectedYear(selectedYear - 6);
     }
   };
 
   const nextPeriod = () => {
     if (calendarView === 'daily') {
+      setPayments([]);
+      setFilteredPayments([]);
+      setLoading(true);
       setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1));
     } else if (calendarView === 'monthly') {
       setSelectedYear(selectedYear + 1);
@@ -2927,6 +2932,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                     <button
                       key={monthData.month}
                       onClick={() => {
+                        setPayments([]);
+                        setFilteredPayments([]);
+                        setLoading(true);
                         setSelectedMonth(new Date(selectedYear, monthData.month, 1));
                         setCalendarView('daily');
                       }}
