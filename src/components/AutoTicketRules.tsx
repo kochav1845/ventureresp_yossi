@@ -3,10 +3,13 @@ import { ArrowLeft, Plus, Edit2, Trash2, Power, PowerOff, Play, Loader2, Search 
 import { supabase } from '../lib/supabase';
 import { useToast } from '../contexts/ToastContext';
 
+type ConditionLogic = 'invoice_only' | 'payment_only' | 'both_and' | 'both_or';
+
 interface AutoTicketRule {
   id: string;
   customer_id: string;
-  rule_type: 'invoice_age' | 'payment_recency';
+  rule_type: string;
+  condition_logic: ConditionLogic;
   min_days_old: number | null;
   max_days_old: number | null;
   check_payment_within_days_min: number | null;
@@ -36,6 +39,72 @@ interface AutoTicketRulesProps {
   onBack: () => void;
 }
 
+const CONDITION_LABELS: Record<ConditionLogic, string> = {
+  invoice_only: 'Invoice Age Only',
+  payment_only: 'Payment Recency Only',
+  both_and: 'Invoice Age AND Payment Recency',
+  both_or: 'Invoice Age OR Payment Recency',
+};
+
+const CONDITION_DESCRIPTIONS: Record<ConditionLogic, string> = {
+  invoice_only: 'Creates tickets when invoices reach a certain age',
+  payment_only: 'Creates tickets when customers with open invoices haven\'t paid within a timeframe',
+  both_and: 'Both conditions must be true: invoice age matches AND payment is overdue',
+  both_or: 'Either condition can trigger: invoice age matches OR payment is overdue',
+};
+
+function getConditionBadges(rule: AutoTicketRule) {
+  switch (rule.condition_logic) {
+    case 'invoice_only':
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          Invoice Age
+        </span>
+      );
+    case 'payment_only':
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+          Payment Recency
+        </span>
+      );
+    case 'both_and':
+      return (
+        <div className="flex items-center gap-1 flex-wrap">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-800">
+            Invoice Age
+          </span>
+          <span className="text-[10px] font-bold text-gray-500">AND</span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800">
+            Payment
+          </span>
+        </div>
+      );
+    case 'both_or':
+      return (
+        <div className="flex items-center gap-1 flex-wrap">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-800">
+            Invoice Age
+          </span>
+          <span className="text-[10px] font-bold text-gray-500">OR</span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800">
+            Payment
+          </span>
+        </div>
+      );
+  }
+}
+
+function getCriteriaText(rule: AutoTicketRule) {
+  const parts: string[] = [];
+  if (rule.condition_logic === 'invoice_only' || rule.condition_logic === 'both_and' || rule.condition_logic === 'both_or') {
+    parts.push(`Invoices ${rule.min_days_old}-${rule.max_days_old} days old`);
+  }
+  if (rule.condition_logic === 'payment_only' || rule.condition_logic === 'both_and' || rule.condition_logic === 'both_or') {
+    parts.push(`No payment in ${rule.check_payment_within_days_min}-${rule.check_payment_within_days_max} days`);
+  }
+  return parts;
+}
+
 export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
   const [rules, setRules] = useState<AutoTicketRule[]>([]);
   const [collectors, setCollectors] = useState<Collector[]>([]);
@@ -52,7 +121,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
 
   const [formData, setFormData] = useState({
     customer_id: '',
-    rule_type: 'invoice_age' as 'invoice_age' | 'payment_recency',
+    condition_logic: 'invoice_only' as ConditionLogic,
     min_days_old: 120,
     max_days_old: 150,
     check_payment_within_days_min: 28,
@@ -61,6 +130,9 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
   });
 
   const { showToast } = useToast();
+
+  const showInvoiceFields = formData.condition_logic === 'invoice_only' || formData.condition_logic === 'both_and' || formData.condition_logic === 'both_or';
+  const showPaymentFields = formData.condition_logic === 'payment_only' || formData.condition_logic === 'both_and' || formData.condition_logic === 'both_or';
 
   useEffect(() => {
     fetchRules();
@@ -85,7 +157,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
         clearTimeout(searchTimeoutRef[0]);
       }
     };
-  }, [searchTerm, formData.rule_type]);
+  }, [searchTerm, formData.condition_logic]);
 
   const fetchRules = async () => {
     try {
@@ -127,6 +199,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
 
         return {
           ...rule,
+          condition_logic: rule.condition_logic || (rule.rule_type === 'payment_recency' ? 'payment_only' : 'invoice_only'),
           customer_name: customer?.customer_name || rule.customer_id,
           collector_name: collector?.full_name || 'Unknown',
           collector_email: collector?.email || '',
@@ -146,7 +219,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
     try {
       const searchPattern = `%${term}%`;
 
-      if (formData.rule_type === 'payment_recency') {
+      if (showPaymentFields) {
         const { data: customersData, error } = await supabase
           .from('acumatica_customers')
           .select('customer_id, customer_name')
@@ -211,30 +284,43 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (formData.rule_type === 'invoice_age') {
+    if (showInvoiceFields) {
       if (formData.min_days_old >= formData.max_days_old) {
-        showToast('Maximum days must be greater than minimum days', 'error');
+        showToast('Invoice: Maximum days must be greater than minimum days', 'error');
         return;
       }
-    } else if (formData.rule_type === 'payment_recency') {
+    }
+    if (showPaymentFields) {
       if (formData.check_payment_within_days_min >= formData.check_payment_within_days_max) {
-        showToast('Maximum days must be greater than minimum days', 'error');
+        showToast('Payment: Maximum days must be greater than minimum days', 'error');
         return;
       }
     }
 
     try {
+      const ruleType = formData.condition_logic === 'payment_only' ? 'payment_recency' : 'invoice_age';
+
       if (editingRule) {
         const updateData: any = {
           assigned_collector_id: formData.assigned_collector_id,
+          condition_logic: formData.condition_logic,
+          rule_type: ruleType,
         };
 
-        if (formData.rule_type === 'invoice_age') {
+        if (showInvoiceFields) {
           updateData.min_days_old = formData.min_days_old;
           updateData.max_days_old = formData.max_days_old;
         } else {
+          updateData.min_days_old = null;
+          updateData.max_days_old = null;
+        }
+
+        if (showPaymentFields) {
           updateData.check_payment_within_days_min = formData.check_payment_within_days_min;
           updateData.check_payment_within_days_max = formData.check_payment_within_days_max;
+        } else {
+          updateData.check_payment_within_days_min = null;
+          updateData.check_payment_within_days_max = null;
         }
 
         const { error } = await supabase
@@ -251,29 +337,31 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
           .from('auto_ticket_rules')
           .select('*')
           .eq('customer_id', formData.customer_id)
-          .eq('rule_type', formData.rule_type)
+          .eq('condition_logic', formData.condition_logic)
           .maybeSingle();
 
         if (checkError) throw checkError;
 
         if (existingRule) {
           const customerName = selectedCustomerName || formData.customer_id;
-          const ruleTypeLabel = formData.rule_type === 'invoice_age' ? 'Invoice Age' : 'Payment Recency';
-          showToast(`A ${ruleTypeLabel} rule already exists for ${customerName}. Please edit the existing rule instead.`, 'error');
+          showToast(`A "${CONDITION_LABELS[formData.condition_logic]}" rule already exists for ${customerName}. Please edit the existing rule instead.`, 'error');
           return;
         }
 
         const insertData: any = {
           customer_id: formData.customer_id,
-          rule_type: formData.rule_type,
+          rule_type: ruleType,
+          condition_logic: formData.condition_logic,
           assigned_collector_id: formData.assigned_collector_id,
           created_by: user?.id,
         };
 
-        if (formData.rule_type === 'invoice_age') {
+        if (showInvoiceFields) {
           insertData.min_days_old = formData.min_days_old;
           insertData.max_days_old = formData.max_days_old;
-        } else {
+        }
+
+        if (showPaymentFields) {
           insertData.check_payment_within_days_min = formData.check_payment_within_days_min;
           insertData.check_payment_within_days_max = formData.check_payment_within_days_max;
         }
@@ -303,7 +391,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
     setEditingRule(rule);
     setFormData({
       customer_id: rule.customer_id,
-      rule_type: rule.rule_type,
+      condition_logic: rule.condition_logic,
       min_days_old: rule.min_days_old || 120,
       max_days_old: rule.max_days_old || 150,
       check_payment_within_days_min: rule.check_payment_within_days_min || 28,
@@ -384,7 +472,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
   const resetForm = () => {
     setFormData({
       customer_id: '',
-      rule_type: 'invoice_age',
+      condition_logic: 'invoice_only',
       min_days_old: 120,
       max_days_old: 150,
       check_payment_within_days_min: 28,
@@ -423,7 +511,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Auto-Ticket Rules</h1>
             <p className="text-gray-600 mt-1">
-              Automatically create tickets based on invoice age or payment recency
+              Automatically create tickets based on invoice age, payment recency, or both
             </p>
           </div>
         </div>
@@ -455,12 +543,11 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
           <strong>How it works:</strong> Every day at 6:00 AM, the system checks each active rule:
         </p>
         <ul className="text-blue-800 text-sm list-disc list-inside space-y-1">
-          <li><strong>Invoice Age:</strong> Finds unpaid invoices dated within the specified range and creates tickets.</li>
-          <li><strong>Payment Recency:</strong> Checks if a customer with open invoices hasn't made a payment within the specified timeframe and creates tickets.</li>
+          <li><strong>Invoice Age Only:</strong> Finds unpaid invoices dated within the specified age range.</li>
+          <li><strong>Payment Recency Only:</strong> Checks if a customer hasn't paid within the specified timeframe.</li>
+          <li><strong>Both (AND):</strong> Creates tickets only when BOTH invoice age AND payment conditions are met.</li>
+          <li><strong>Both (OR):</strong> Creates tickets when EITHER invoice age OR payment conditions are met.</li>
         </ul>
-        <p className="text-blue-800 text-sm">
-          If conditions are met, the system creates a new ticket or adds invoices to an existing ticket for that customer and collector.
-        </p>
       </div>
 
       {rules.length === 0 ? (
@@ -479,7 +566,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rule Type</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Condition</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Criteria</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned To</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -494,26 +581,12 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
                     <div className="text-xs text-gray-500">{rule.customer_id}</div>
                   </td>
                   <td className="px-6 py-4">
-                    {rule.rule_type === 'invoice_age' ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        Invoice Age
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                        Payment Recency
-                      </span>
-                    )}
+                    {getConditionBadges(rule)}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900">
-                    {rule.rule_type === 'invoice_age' ? (
-                      <div>
-                        <div>Invoices {rule.min_days_old} - {rule.max_days_old} days old</div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div>No payment in {rule.check_payment_within_days_min} - {rule.check_payment_within_days_max} days</div>
-                      </div>
-                    )}
+                    {getCriteriaText(rule).map((text, i) => (
+                      <div key={i}>{text}</div>
+                    ))}
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-gray-900">{rule.collector_name}</div>
@@ -570,35 +643,34 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {!editingRule && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Rule Type
-                  </label>
-                  <select
-                    value={formData.rule_type}
-                    onChange={(e) => {
-                      setFormData({ ...formData, rule_type: e.target.value as 'invoice_age' | 'payment_recency', customer_id: '' });
-                      setSearchTerm('');
-                      setFilteredCustomers([]);
-                    }}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="invoice_age">Invoice Age (find old unpaid invoices)</option>
-                    <option value="payment_recency">Payment Recency (check for missing payments)</option>
-                  </select>
-                  <p className="mt-2 text-xs text-gray-500">
-                    {formData.rule_type === 'invoice_age'
-                      ? 'Creates tickets when invoices reach a certain age'
-                      : 'Creates tickets when customers with open invoices haven\'t paid within a timeframe'}
-                  </p>
-                </div>
-              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Condition Type
+                </label>
+                <select
+                  value={formData.condition_logic}
+                  onChange={(e) => {
+                    const newLogic = e.target.value as ConditionLogic;
+                    setFormData({ ...formData, condition_logic: newLogic, customer_id: '' });
+                    setSearchTerm('');
+                    setFilteredCustomers([]);
+                  }}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="invoice_only">Invoice Age Only</option>
+                  <option value="payment_only">Payment Recency Only</option>
+                  <option value="both_and">Invoice Age AND Payment Recency (both must match)</option>
+                  <option value="both_or">Invoice Age OR Payment Recency (either can match)</option>
+                </select>
+                <p className="mt-2 text-xs text-gray-500">
+                  {CONDITION_DESCRIPTIONS[formData.condition_logic]}
+                </p>
+              </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Customer {editingRule && '(cannot be changed)'}
-                  {!editingRule && formData.rule_type === 'payment_recency' && ' (only customers with open invoices)'}
+                  {!editingRule && showPaymentFields && ' (only customers with open invoices)'}
                 </label>
                 {editingRule ? (
                   <div className="p-3 bg-gray-100 rounded-lg">
@@ -627,7 +699,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
                       <div className="mt-2 border border-gray-300 rounded-lg max-h-60 overflow-y-auto">
                         {filteredCustomers.map((customer) => {
                           const hasRule = rules.some(
-                            r => r.customer_id === customer.customer_id && r.rule_type === formData.rule_type
+                            r => r.customer_id === customer.customer_id && r.condition_logic === formData.condition_logic
                           );
                           return (
                             <button
@@ -675,8 +747,9 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
                 )}
               </div>
 
-              {formData.rule_type === 'invoice_age' ? (
-                <>
+              {showInvoiceFields && (
+                <div className="border border-blue-200 rounded-lg p-4 bg-blue-50/30">
+                  <h3 className="text-sm font-semibold text-blue-800 mb-3">Invoice Age Condition</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -708,16 +781,29 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
                       <p className="mt-1 text-xs text-gray-500">Invoices must be at most this old</p>
                     </div>
                   </div>
-
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-sm text-blue-800">
-                      This rule will find invoices dated between <strong>{formData.max_days_old} and {formData.min_days_old} days ago</strong> from today.
-                      The date range updates daily.
+                      Finds invoices dated between <strong>{formData.max_days_old} and {formData.min_days_old} days ago</strong> from today.
                     </p>
                   </div>
-                </>
-              ) : (
-                <>
+                </div>
+              )}
+
+              {showInvoiceFields && showPaymentFields && (
+                <div className="flex items-center justify-center">
+                  <span className={`px-4 py-1.5 rounded-full text-sm font-bold ${
+                    formData.condition_logic === 'both_and'
+                      ? 'bg-orange-100 text-orange-700 border border-orange-300'
+                      : 'bg-teal-100 text-teal-700 border border-teal-300'
+                  }`}>
+                    {formData.condition_logic === 'both_and' ? 'AND' : 'OR'}
+                  </span>
+                </div>
+              )}
+
+              {showPaymentFields && (
+                <div className="border border-amber-200 rounded-lg p-4 bg-amber-50/30">
+                  <h3 className="text-sm font-semibold text-amber-800 mb-3">Payment Recency Condition</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -749,14 +835,36 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
                       <p className="mt-1 text-xs text-gray-500">At most this many days since last payment</p>
                     </div>
                   </div>
-
-                  <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                    <p className="text-sm text-purple-800">
-                      This rule will create tickets if the customer hasn't made a payment in <strong>{formData.check_payment_within_days_min} to {formData.check_payment_within_days_max} days</strong>.
-                      Useful for monitoring customers on payment plans.
+                  <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-800">
+                      Triggers when last payment was <strong>{formData.check_payment_within_days_min} to {formData.check_payment_within_days_max} days ago</strong>.
                     </p>
                   </div>
-                </>
+                </div>
+              )}
+
+              {(formData.condition_logic === 'both_and' || formData.condition_logic === 'both_or') && (
+                <div className={`p-4 rounded-lg border ${
+                  formData.condition_logic === 'both_and'
+                    ? 'bg-orange-50 border-orange-200'
+                    : 'bg-teal-50 border-teal-200'
+                }`}>
+                  <p className={`text-sm ${formData.condition_logic === 'both_and' ? 'text-orange-800' : 'text-teal-800'}`}>
+                    {formData.condition_logic === 'both_and' ? (
+                      <>
+                        <strong>AND Logic:</strong> A ticket will be created only if the customer has invoices between {formData.max_days_old} and {formData.min_days_old} days old
+                        <strong> AND </strong>their last payment was {formData.check_payment_within_days_min} to {formData.check_payment_within_days_max} days ago.
+                        Both conditions must be true.
+                      </>
+                    ) : (
+                      <>
+                        <strong>OR Logic:</strong> A ticket will be created if the customer has invoices between {formData.max_days_old} and {formData.min_days_old} days old
+                        <strong> OR </strong>their last payment was {formData.check_payment_within_days_min} to {formData.check_payment_within_days_max} days ago.
+                        Either condition can trigger ticket creation.
+                      </>
+                    )}
+                  </p>
+                </div>
               )}
 
               <div>
