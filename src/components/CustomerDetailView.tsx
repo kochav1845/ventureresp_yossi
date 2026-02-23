@@ -202,6 +202,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         .from('acumatica_invoices')
         .select('balance, type')
         .eq('customer', customerId)
+        .eq('status', 'Open')
         .gt('balance', 0);
 
       const { data: openInvoices, error: invError } = await balanceQuery;
