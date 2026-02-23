@@ -99,53 +99,77 @@ export default function DateRangeSync({ hasCredentials }: DateRangeSyncProps) {
         endDate = range.endDate;
       }
 
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/acumatica-${config.entityType}-date-range-sync`;
+      if (config.entityType === 'prepayment') {
+        const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-all-prepayments`;
+        const response = await fetch(functionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({})
+        });
 
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({ startDate, endDate })
-      });
+        const result = await response.json();
 
-      const result = await response.json();
-
-      if (response.ok && result.success) {
-        const jobId = result.jobId;
-        setConfig(prev => ({ ...prev, message: 'Sync job started. Checking progress...' }));
-
-        const checkJobStatus = async () => {
-          const { data: job } = await supabase
-            .from('async_sync_jobs')
-            .select('*')
-            .eq('id', jobId)
-            .single();
-
-          if (!job) return;
-
-          if (job.status === 'completed') {
-            const progress = job.progress as any;
-            setConfig(prev => ({
-              ...prev,
-              syncing: false,
-              message: `Sync completed! Created: ${progress.created || 0}, Updated: ${progress.updated || 0}, Total: ${progress.total || 0}`
-            }));
-          } else if (job.status === 'failed') {
-            setConfig(prev => ({
-              ...prev,
-              syncing: false,
-              message: `Sync failed: ${job.error_message || 'Unknown error'}`
-            }));
-          } else {
-            setTimeout(checkJobStatus, 2000);
-          }
-        };
-
-        setTimeout(checkJobStatus, 2000);
+        if (response.ok && result.success) {
+          setConfig(prev => ({
+            ...prev,
+            syncing: false,
+            message: `Prepayment sync completed! Created: ${result.created || 0}, Updated: ${result.updated || 0}, Total fetched: ${result.totalFetched || 0}`
+          }));
+        } else {
+          throw new Error(result.error || 'Prepayment sync failed');
+        }
       } else {
-        throw new Error(result.error || 'Sync failed');
+        const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/acumatica-${config.entityType}-date-range-sync`;
+
+        const response = await fetch(functionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({ startDate, endDate })
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+          const jobId = result.jobId;
+          setConfig(prev => ({ ...prev, message: 'Sync job started. Checking progress...' }));
+
+          const checkJobStatus = async () => {
+            const { data: job } = await supabase
+              .from('async_sync_jobs')
+              .select('*')
+              .eq('id', jobId)
+              .single();
+
+            if (!job) return;
+
+            if (job.status === 'completed') {
+              const progress = job.progress as any;
+              setConfig(prev => ({
+                ...prev,
+                syncing: false,
+                message: `Sync completed! Created: ${progress.created || 0}, Updated: ${progress.updated || 0}, Total: ${progress.total || 0}`
+              }));
+            } else if (job.status === 'failed') {
+              setConfig(prev => ({
+                ...prev,
+                syncing: false,
+                message: `Sync failed: ${job.error_message || 'Unknown error'}`
+              }));
+            } else {
+              setTimeout(checkJobStatus, 2000);
+            }
+          };
+
+          setTimeout(checkJobStatus, 2000);
+        } else {
+          throw new Error(result.error || 'Sync failed');
+        }
       }
     } catch (err: any) {
       setConfig(prev => ({
@@ -201,26 +225,34 @@ export default function DateRangeSync({ hasCredentials }: DateRangeSyncProps) {
               <option value="customer">Customers</option>
               <option value="invoice">Invoices</option>
               <option value="payment">Payments</option>
+              <option value="prepayment">Prepaid Payments</option>
             </select>
           </div>
 
-          <div>
-            <label className="text-sm font-medium text-slate-700 mb-2 block">Date Range</label>
-            <select
-              value={config.rangeType}
-              onChange={(e) => setConfig(prev => ({ ...prev, rangeType: e.target.value }))}
-              disabled={config.syncing}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
-            >
-              <option value="last_week">Last Week</option>
-              <option value="this_week">This Week</option>
-              <option value="last_month">Last Month</option>
-              <option value="this_month">This Month</option>
-              <option value="last_30_days">Last 30 Days</option>
-              <option value="last_90_days">Last 90 Days</option>
-              <option value="custom">Custom Range</option>
-            </select>
-          </div>
+          {config.entityType !== 'prepayment' && (
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-2 block">Date Range</label>
+              <select
+                value={config.rangeType}
+                onChange={(e) => setConfig(prev => ({ ...prev, rangeType: e.target.value }))}
+                disabled={config.syncing}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+              >
+                <option value="last_week">Last Week</option>
+                <option value="this_week">This Week</option>
+                <option value="last_month">Last Month</option>
+                <option value="this_month">This Month</option>
+                <option value="last_30_days">Last 30 Days</option>
+                <option value="last_90_days">Last 90 Days</option>
+                <option value="custom">Custom Range</option>
+              </select>
+            </div>
+          )}
+          {config.entityType === 'prepayment' && (
+            <div className="flex items-center">
+              <p className="text-sm text-slate-500 mt-6">Fetches all prepaid payments from Acumatica</p>
+            </div>
+          )}
         </div>
 
         {config.rangeType === 'custom' && (
