@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, Lock, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Ticket, ChevronRight } from 'lucide-react';
+import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, Lock, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Ticket, ChevronRight, PauseCircle } from 'lucide-react';
 import { supabase, logActivity } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
@@ -114,11 +114,11 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [loadingTickets, setLoadingTickets] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [activeTab, setActiveTab] = useState<'open-invoices' | 'paid-invoices' | 'payments'>('open-invoices');
+  const [activeTab, setActiveTab] = useState<'open-invoices' | 'balanced-invoices' | 'paid-invoices' | 'payments'>('open-invoices');
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('general');
   const [savingNote, setSavingNote] = useState(false);
-  const [invoiceCounts, setInvoiceCounts] = useState({ total: 0, open: 0, paid: 0 });
+  const [invoiceCounts, setInvoiceCounts] = useState({ total: 0, open: 0, paid: 0, balanced: 0 });
   const [invoiceColorCounts, setInvoiceColorCounts] = useState({ red: 0, yellow: 0, green: 0, total: 0 });
   const [sortBy, setSortBy] = useState<string>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -269,7 +269,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         setInvoiceCounts({
           total: counts[0].total_count || 0,
           open: counts[0].open_count || 0,
-          paid: counts[0].paid_count || 0
+          paid: counts[0].paid_count || 0,
+          balanced: counts[0].balanced_count || 0
         });
       }
 
@@ -434,7 +435,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
   const loadFilteredStats = async () => {
     try {
-      const filterType = activeTab === 'open-invoices' ? 'open' : activeTab === 'paid-invoices' ? 'paid' : 'all';
+      const filterType = activeTab === 'open-invoices' ? 'open' : activeTab === 'balanced-invoices' ? 'balanced' : activeTab === 'paid-invoices' ? 'paid' : 'all';
 
       const { data, error } = await supabase
         .rpc('get_customer_invoices_advanced_count', {
@@ -460,7 +461,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const loadInvoices = async (offset = 0, append = false) => {
     if (!append) setLoadingInvoices(true);
     try {
-      const filterType = activeTab === 'open-invoices' ? 'open' : activeTab === 'paid-invoices' ? 'paid' : 'all';
+      const filterType = activeTab === 'open-invoices' ? 'open' : activeTab === 'balanced-invoices' ? 'balanced' : activeTab === 'paid-invoices' ? 'paid' : 'all';
 
       const { data, error } = await supabase
         .rpc('get_customer_invoices_advanced', {
@@ -1125,6 +1126,19 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               </div>
             </button>
             <button
+              onClick={() => setActiveTab('balanced-invoices')}
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'balanced-invoices'
+                  ? 'border-amber-600 text-amber-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center">
+                <PauseCircle className="w-4 h-4 mr-2" />
+                Balanced / Draft ({invoiceCounts.balanced})
+              </div>
+            </button>
+            <button
               onClick={() => setActiveTab('paid-invoices')}
               className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'paid-invoices'
@@ -1383,6 +1397,99 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                   {!hasMore && displayedInvoices.length > 0 && (
                     <div className="text-center py-8">
                       <p className="text-gray-500 text-sm">All invoices loaded ({displayedInvoices.length} total)</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'balanced-invoices' && (
+            <div className="max-h-[calc(100vh-450px)] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#64748b #e2e8f0' }}>
+              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-center">
+                  <PauseCircle className="w-5 h-5 text-amber-600 mr-2" />
+                  <p className="text-sm text-amber-800">
+                    These invoices are drafts (Balanced, On Hold, or Scheduled) and have not been released in Acumatica. They are <strong>not</strong> included in the customer's balance.
+                  </p>
+                </div>
+              </div>
+              {loadingInvoices ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600 mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Loading invoices...</p>
+                </div>
+              ) : displayedInvoices.length === 0 ? (
+                <div className="text-center py-12">
+                  <PauseCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500 font-medium">No draft invoices</p>
+                  <p className="text-sm text-gray-400 mt-2">All invoices have been released</p>
+                </div>
+              ) : (
+                <>
+                  {filteredStats && (
+                    <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                      <p className="text-sm text-amber-900 font-medium">
+                        Total Draft Amount: {formatCurrency(filteredStats.total_balance)}
+                      </p>
+                    </div>
+                  )}
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50 sticky top-0 z-10">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Reference</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Date</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Due Date</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Status</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Amount</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Balance</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Description</th>
+                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {displayedInvoices.map((invoice, index) => (
+                        <tr
+                          key={invoice.id}
+                          ref={index === displayedInvoices.length - 1 ? lastInvoiceRef : undefined}
+                          className="bg-amber-50/30 hover:bg-amber-50"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{invoice.reference_number}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDateUtil(invoice.date)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDateUtil(invoice.due_date)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-amber-100 text-amber-800">
+                              {invoice.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">{formatCurrency(invoice.amount)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">{formatCurrency(invoice.balance)}</td>
+                          <td className="px-6 py-4 text-sm text-gray-500">{invoice.description || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <a
+                              href={getAcumaticaInvoiceUrl(invoice.reference_number)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                              title="Open in Acumatica"
+                            >
+                              <ExternalLink className="w-4 h-4 mr-1" />
+                              View
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {loadingMore && (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500 mx-auto mb-2"></div>
+                      <p className="text-gray-500 text-sm">Loading more invoices...</p>
+                    </div>
+                  )}
+                  {!hasMore && displayedInvoices.length > 0 && (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500 text-sm">All draft invoices loaded ({displayedInvoices.length} total)</p>
                     </div>
                   )}
                 </>
