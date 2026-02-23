@@ -636,55 +636,54 @@ export default function TicketCard({
         )}
 
         <div className="mt-4 pt-4 border-t border-gray-300">
-          <h4 className="text-sm font-semibold text-gray-700 mb-2">Change Ticket Status</h4>
-          <div className="flex gap-2 items-center">
-            <select
-              value={localTicketStatus}
-              onChange={(e) => setLocalTicketStatus(e.target.value)}
-              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              {statusOptions.map(status => (
-                <option key={status.id} value={status.status_name}>
-                  {status.display_name}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={handleStatusUpdate}
-              disabled={
-                changingTicketStatus === ticket.ticket_id ||
-                localTicketStatus === ticket.ticket_status
-              }
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-            >
-              {changingTicketStatus === ticket.ticket_id ? 'Updating...' : 'Update'}
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-4 pt-4 border-t border-gray-300">
-          <h4 className="text-sm font-semibold text-gray-700 mb-2">Change Priority</h4>
-          <div className="flex gap-2 items-center">
-            <select
-              value={localTicketPriority}
-              onChange={(e) => setLocalTicketPriority(e.target.value)}
-              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="urgent">Urgent</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-            <button
-              onClick={() => onTicketPriorityChange(ticket.ticket_id, localTicketPriority)}
-              disabled={
-                changingTicketPriority === ticket.ticket_id ||
-                localTicketPriority === ticket.ticket_priority
-              }
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-            >
-              {changingTicketPriority === ticket.ticket_id ? 'Updating...' : 'Update'}
-            </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Status</label>
+              <select
+                value={localTicketStatus}
+                onChange={(e) => setLocalTicketStatus(e.target.value)}
+                className="flex-1 min-w-0 px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              >
+                {statusOptions.map(status => (
+                  <option key={status.id} value={status.status_name}>
+                    {status.display_name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleStatusUpdate}
+                disabled={
+                  changingTicketStatus === ticket.ticket_id ||
+                  localTicketStatus === ticket.ticket_status
+                }
+                className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap transition-colors"
+              >
+                {changingTicketStatus === ticket.ticket_id ? '...' : 'Save'}
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Priority</label>
+              <select
+                value={localTicketPriority}
+                onChange={(e) => setLocalTicketPriority(e.target.value)}
+                className="flex-1 min-w-0 px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              >
+                <option value="urgent">Urgent</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+              <button
+                onClick={() => onTicketPriorityChange(ticket.ticket_id, localTicketPriority)}
+                disabled={
+                  changingTicketPriority === ticket.ticket_id ||
+                  localTicketPriority === ticket.ticket_priority
+                }
+                className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap transition-colors"
+              >
+                {changingTicketPriority === ticket.ticket_id ? '...' : 'Save'}
+              </button>
+            </div>
           </div>
         </div>
 
