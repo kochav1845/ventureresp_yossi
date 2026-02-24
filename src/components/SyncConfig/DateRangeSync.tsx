@@ -90,6 +90,10 @@ export default function DateRangeSync({ hasCredentials }: DateRangeSyncProps) {
     console.log(`[DateRangeSync] Timestamp: ${new Date().toISOString()}`);
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+      console.log(`[DateRangeSync] Using ${session?.access_token ? 'user session token' : 'anon key'} for auth`);
+
       let startDate: string;
       let endDate: string;
 
@@ -118,7 +122,7 @@ export default function DateRangeSync({ hasCredentials }: DateRangeSyncProps) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            'Authorization': `Bearer ${authToken}`
           },
           body: JSON.stringify({})
         });
@@ -157,7 +161,7 @@ export default function DateRangeSync({ hasCredentials }: DateRangeSyncProps) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            'Authorization': `Bearer ${authToken}`
           },
           body: JSON.stringify({ startDate, endDate })
         });
