@@ -176,7 +176,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    processSync(job.id, startDate, endDate);
+    EdgeRuntime.waitUntil(processSync(job.id, startDate, endDate));
 
     return new Response(
       JSON.stringify({
