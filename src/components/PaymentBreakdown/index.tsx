@@ -14,6 +14,7 @@ import { MonthSummary, DateBreakdownRow, DaySummary } from './types';
 import MonthComparisonTable from './MonthComparisonTable';
 import DateDrillDown from './DateDrillDown';
 import MonthSummaryCards from './MonthSummaryCards';
+import { usePaymentComparison } from './usePaymentComparison';
 
 export default function PaymentBreakdown() {
   const navigate = useNavigate();
@@ -40,6 +41,12 @@ export default function PaymentBreakdown() {
       setLoading(false);
     }
   }, []);
+
+  const {
+    comparisons, fetches,
+    compareMonth, compareDay,
+    fetchMonth, fetchDay,
+  } = usePaymentComparison(loadMonthSummaries);
 
   useEffect(() => {
     loadMonthSummaries();
@@ -279,6 +286,10 @@ export default function PaymentBreakdown() {
                   days={dateDrillDown}
                   monthLabel={selectedMonthData?.month_label || selectedMonth}
                   onBack={() => { setSelectedMonth(null); setDateDrillDown(null); }}
+                  comparisons={comparisons}
+                  fetches={fetches}
+                  onCompare={compareDay}
+                  onFetch={fetchDay}
                 />
               </div>
             )}
@@ -301,6 +312,10 @@ export default function PaymentBreakdown() {
                 months={filteredMonths}
                 onMonthClick={handleMonthClick}
                 selectedMonth={selectedMonth}
+                comparisons={comparisons}
+                fetches={fetches}
+                onCompare={compareMonth}
+                onFetch={fetchMonth}
               />
             </div>
           </>

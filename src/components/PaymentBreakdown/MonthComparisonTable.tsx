@@ -1,17 +1,25 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { MonthSummary, PAYMENT_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import { MonthSummary, ComparisonState, FetchState, PAYMENT_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import SyncCheckCell from './SyncCheckCell';
 
 interface MonthComparisonTableProps {
   months: MonthSummary[];
   onMonthClick: (monthKey: string) => void;
   selectedMonth: string | null;
+  comparisons: Record<string, ComparisonState>;
+  fetches: Record<string, FetchState>;
+  onCompare: (monthKey: string) => void;
+  onFetch: (monthKey: string) => void;
 }
 
 type SortField = 'month' | 'total' | 'payments' | 'prepayments' | 'voided' | 'refunds' | 'balance_wo';
 type SortDir = 'asc' | 'desc';
 
-export default function MonthComparisonTable({ months, onMonthClick, selectedMonth }: MonthComparisonTableProps) {
+export default function MonthComparisonTable({
+  months, onMonthClick, selectedMonth,
+  comparisons, fetches, onCompare, onFetch,
+}: MonthComparisonTableProps) {
   const [sortField, setSortField] = useState<SortField>('month');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
@@ -72,6 +80,9 @@ export default function MonthComparisonTable({ months, onMonthClick, selectedMon
             <SortHeader field="voided" className="text-right text-red-600">Voided</SortHeader>
             <SortHeader field="refunds" className="text-right text-amber-600">Refunds</SortHeader>
             <SortHeader field="balance_wo" className="text-right text-gray-500">Balance W/O</SortHeader>
+            <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-center text-gray-600">
+              Sync Check
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -104,6 +115,12 @@ export default function MonthComparisonTable({ months, onMonthClick, selectedMon
                 <TypeCell count={month.voided_count} amount={month.voided_amount} type="Voided Payment" prevAmount={prevMonth?.voided_amount} getTrend={getTrend} />
                 <TypeCell count={month.refund_count} amount={month.refund_amount} type="Refund" prevAmount={prevMonth?.refund_amount} getTrend={getTrend} />
                 <TypeCell count={month.balance_wo_count} amount={month.balance_wo_amount} type="Balance WO" prevAmount={prevMonth?.balance_wo_amount} getTrend={getTrend} />
+                <SyncCheckCell
+                  comparison={comparisons[month.month_key]}
+                  fetchState={fetches[month.month_key]}
+                  onCompare={() => onCompare(month.month_key)}
+                  onFetch={() => onFetch(month.month_key)}
+                />
               </tr>
             );
           })}

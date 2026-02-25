@@ -1,16 +1,24 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Calendar } from 'lucide-react';
-import { DaySummary, PAYMENT_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import { DaySummary, ComparisonState, FetchState, PAYMENT_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import SyncCheckCell from './SyncCheckCell';
 
 interface DateDrillDownProps {
   days: DaySummary[];
   monthLabel: string;
   onBack: () => void;
+  comparisons: Record<string, ComparisonState>;
+  fetches: Record<string, FetchState>;
+  onCompare: (dateKey: string) => void;
+  onFetch: (dateKey: string) => void;
 }
 
 type SortField = 'date' | 'total' | 'payment' | 'prepayment' | 'voided' | 'refund' | 'balance_wo';
 
-export default function DateDrillDown({ days, monthLabel, onBack }: DateDrillDownProps) {
+export default function DateDrillDown({
+  days, monthLabel, onBack,
+  comparisons, fetches, onCompare, onFetch,
+}: DateDrillDownProps) {
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -119,6 +127,9 @@ export default function DateDrillDown({ days, monthLabel, onBack }: DateDrillDow
               <SortHeader field="voided" className="text-right text-red-600">Voided</SortHeader>
               <SortHeader field="refund" className="text-right text-amber-600">Refunds</SortHeader>
               <SortHeader field="balance_wo" className="text-right text-gray-500">Balance W/O</SortHeader>
+              <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-center text-gray-600">
+                Sync Check
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -132,6 +143,10 @@ export default function DateDrillDown({ days, monthLabel, onBack }: DateDrillDow
                   dayOfWeek={dayOfWeek}
                   isExpanded={isExpanded}
                   onToggle={() => setExpandedDate(isExpanded ? null : day.date)}
+                  comparison={comparisons[day.date]}
+                  fetchState={fetches[day.date]}
+                  onCompare={() => onCompare(day.date)}
+                  onFetch={() => onFetch(day.date)}
                 />
               );
             })}
@@ -142,11 +157,15 @@ export default function DateDrillDown({ days, monthLabel, onBack }: DateDrillDow
   );
 }
 
-function DateRow({ day, dayOfWeek, isExpanded, onToggle }: {
+function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState, onCompare, onFetch }: {
   day: DaySummary;
   dayOfWeek: string;
   isExpanded: boolean;
   onToggle: () => void;
+  comparison: ComparisonState | undefined;
+  fetchState: FetchState | undefined;
+  onCompare: () => void;
+  onFetch: () => void;
 }) {
   const allTypes = ['Payment', 'Prepayment', 'Voided Payment', 'Voided Check', 'Refund', 'Balance WO'];
 
@@ -189,10 +208,16 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle }: {
         </td>
         <TypeCell types={day.types} typeKey="Refund" />
         <TypeCell types={day.types} typeKey="Balance WO" />
+        <SyncCheckCell
+          comparison={comparison}
+          fetchState={fetchState}
+          onCompare={onCompare}
+          onFetch={onFetch}
+        />
       </tr>
       {isExpanded && (
         <tr className="bg-blue-50/50">
-          <td colSpan={7} className="px-6 py-3">
+          <td colSpan={8} className="px-6 py-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {allTypes.filter(t => day.types[t]).map(type => {
                 const data = day.types[type];

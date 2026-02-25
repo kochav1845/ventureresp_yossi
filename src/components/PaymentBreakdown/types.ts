@@ -51,3 +51,21 @@ export function formatCurrency(amount: number): string {
 export function formatNumber(num: number): string {
   return new Intl.NumberFormat('en-US').format(num);
 }
+
+export interface ComparisonResult {
+  acumaticaCount: number;
+  dbCount: number;
+  difference: number;
+}
+
+export interface ComparisonState {
+  loading: boolean;
+  error: string | null;
+  result: ComparisonResult | null;
+}
+
+export interface FetchState {
+  loading: boolean;
+  error: string | null;
+  result: { created: number; updated: number } | null;
+}
