@@ -76,6 +76,61 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
     return runComparison(dateKey, dateKey, dateKey);
   }, [runComparison]);
 
+  const pollJobStatus = useCallback(async (jobId: string, key: string, startDate: string, endDate: string) => {
+    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/acumatica-payment-date-range-sync`;
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = {
+      'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+    };
+
+    const maxAttempts = 180;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      try {
+        const pollResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ jobId, pollStatus: true }),
+        });
+        const pollData = await pollResponse.json();
+        const job = pollData.job;
+
+        if (!job) continue;
+
+        if (job.status === 'completed') {
+          const progress = job.progress || {};
+          setFetches(prev => ({
+            ...prev,
+            [key]: { loading: false, error: null, result: { created: progress.created || 0, updated: progress.updated || 0 } }
+          }));
+          await runComparison(key, startDate, endDate);
+          onDataRefresh?.();
+          return;
+        }
+
+        if (job.status === 'failed') {
+          throw new Error(job.error_message || 'Sync failed');
+        }
+      } catch (err: any) {
+        if (err.message && err.message !== 'Failed to fetch') {
+          setFetches(prev => ({
+            ...prev,
+            [key]: { loading: false, error: err.message, result: null }
+          }));
+          return;
+        }
+      }
+    }
+
+    setFetches(prev => ({
+      ...prev,
+      [key]: { loading: false, error: 'Sync timed out after 9 minutes', result: null }
+    }));
+  }, [runComparison, onDataRefresh]);
+
   const runFetch = useCallback(async (key: string, startDate: string, endDate: string) => {
     setFetches(prev => ({
       ...prev,
@@ -99,6 +154,11 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
       const data = await response.json();
       if (!data.success) throw new Error(data.error || 'Sync failed');
 
+      if (data.async && data.jobId) {
+        pollJobStatus(data.jobId, key, startDate, endDate);
+        return;
+      }
+
       setFetches(prev => ({
         ...prev,
         [key]: { loading: false, error: null, result: { created: data.created || 0, updated: data.updated || 0 } }
@@ -112,7 +172,7 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
         [key]: { loading: false, error: err.message, result: null }
       }));
     }
-  }, [runComparison, onDataRefresh]);
+  }, [runComparison, onDataRefresh, pollJobStatus]);
 
   const fetchMonth = useCallback((monthKey: string) => {
     const { startDate, endDate } = getMonthRange(monthKey);

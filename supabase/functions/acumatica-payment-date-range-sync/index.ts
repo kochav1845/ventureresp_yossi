@@ -445,7 +445,20 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { startDate, endDate, jobId: existingJobId } = body;
+    const { startDate, endDate, jobId: existingJobId, pollStatus } = body;
+
+    if (pollStatus && existingJobId) {
+      const { data: job } = await supabase
+        .from('async_sync_jobs')
+        .select('id, status, progress, error_message, completed_at')
+        .eq('id', existingJobId)
+        .maybeSingle();
+
+      return new Response(
+        JSON.stringify({ success: true, job }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (!startDate || !endDate) {
       return new Response(
@@ -485,13 +498,26 @@ Deno.serve(async (req: Request) => {
       jobId = job.id;
     }
 
-    console.log(`[payment-sync] Processing job ${jobId} synchronously`);
+    console.log(`[payment-sync] Created job ${jobId}, processing in background`);
 
-    const result = await processSync(supabase, sessionManager, jobId, startDate, endDate);
+    const backgroundTask = (async () => {
+      try {
+        await processSync(supabase, sessionManager, jobId, startDate, endDate);
+      } catch (error: any) {
+        console.error('[payment-sync] Background task failed:', error.message);
+        await supabase.from('async_sync_jobs').update({
+          status: 'failed',
+          error_message: error.message,
+          completed_at: new Date().toISOString()
+        }).eq('id', jobId);
+      }
+    })();
+
+    EdgeRuntime.waitUntil(backgroundTask);
 
     return new Response(
-      JSON.stringify({ success: true, jobId, ...result }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ success: true, jobId, async: true }),
+      { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
     console.error('[payment-sync] Fatal error:', error.message);
