@@ -208,6 +208,7 @@ export default function Layout() {
     { id: 'customer-email-tracking', name: 'Email Tracking', icon: Eye },
     { id: 'customer-analytics', name: 'Customer Analytics', icon: Users },
     { id: 'payment-analytics', name: 'Payment Analytics', icon: DollarSign },
+    { id: 'payment-breakdown', name: 'Payment Breakdown', icon: CreditCard },
     { id: 'user-activity', name: 'User Activity', icon: Activity },
     { id: 'email-analytics', name: 'Email Analytics', icon: Mail },
     { id: 'sync-status', name: 'Synchronization Status', icon: RefreshCw },

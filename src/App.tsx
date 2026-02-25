@@ -78,6 +78,7 @@ import VoidedPaymentAnalysis from './components/VoidedPaymentAnalysis';
 import VoidedPaymentsByDate from './components/VoidedPaymentsByDate';
 import Last15DaysPaymentFetch from './components/Last15DaysPaymentFetch';
 import ConnectionDiagnostic from './components/ConnectionDiagnostic';
+import PaymentBreakdown from './components/PaymentBreakdown';
 
 function LoadingScreen() {
   return (
@@ -140,6 +141,7 @@ function AppContent() {
         <Route path="acumatica-payments" element={<AcumaticaPayments />} />
         <Route path="invoice-analytics" element={<AnalyticsDashboard />} />
         <Route path="payment-analytics" element={<PaymentAnalytics />} />
+        <Route path="payment-breakdown" element={<PaymentBreakdown />} />
         <Route path="voided-payment-analysis" element={<VoidedPaymentAnalysis />} />
         <Route path="voided-payments-by-date" element={<VoidedPaymentsByDate />} />
         <Route path="webhooks" element={<WebhookConfiguration />} />
