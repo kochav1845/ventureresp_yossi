@@ -176,18 +176,20 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
         } else {
           updated++;
           paymentDbId = existing.id;
-          await supabase.rpc('log_sync_change', {
-            p_sync_type: 'payment',
-            p_action_type: oldStatus !== paymentData.status ? 'status_changed' : 'updated',
-            p_entity_id: existing.id,
-            p_entity_reference: refNbr,
-            p_entity_name: `Payment ${refNbr} - $${paymentData.payment_amount || 0}`,
-            p_change_summary: oldStatus !== paymentData.status
-              ? `Payment ${refNbr} status changed from ${oldStatus} to ${paymentData.status}`
-              : `Payment ${refNbr} was updated`,
-            p_change_details: { old_status: oldStatus, new_status: paymentData.status, payment_amount: paymentData.payment_amount, available_balance: paymentData.available_balance },
-            p_sync_source: 'date_range_sync'
-          }).catch(() => {});
+          try {
+            await supabase.rpc('log_sync_change', {
+              p_sync_type: 'payment',
+              p_action_type: oldStatus !== paymentData.status ? 'status_changed' : 'updated',
+              p_entity_id: existing.id,
+              p_entity_reference: refNbr,
+              p_entity_name: `Payment ${refNbr} - $${paymentData.payment_amount || 0}`,
+              p_change_summary: oldStatus !== paymentData.status
+                ? `Payment ${refNbr} status changed from ${oldStatus} to ${paymentData.status}`
+                : `Payment ${refNbr} was updated`,
+              p_change_details: { old_status: oldStatus, new_status: paymentData.status, payment_amount: paymentData.payment_amount, available_balance: paymentData.available_balance },
+              p_sync_source: 'date_range_sync'
+            });
+          } catch (_) {}
         }
       } else {
         const { data: inserted, error } = await supabase.from('acumatica_payments').insert(paymentData).select('id').single();
@@ -197,16 +199,18 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
           created++;
           if (inserted) {
             paymentDbId = inserted.id;
-            await supabase.rpc('log_sync_change', {
-              p_sync_type: 'payment',
-              p_action_type: 'created',
-              p_entity_id: inserted.id,
-              p_entity_reference: refNbr,
-              p_entity_name: `Payment ${refNbr} - $${paymentData.payment_amount || 0}`,
-              p_change_summary: `New payment ${refNbr} was created`,
-              p_change_details: { status: paymentData.status, payment_amount: paymentData.payment_amount, available_balance: paymentData.available_balance },
-              p_sync_source: 'date_range_sync'
-            }).catch(() => {});
+            try {
+              await supabase.rpc('log_sync_change', {
+                p_sync_type: 'payment',
+                p_action_type: 'created',
+                p_entity_id: inserted.id,
+                p_entity_reference: refNbr,
+                p_entity_name: `Payment ${refNbr} - $${paymentData.payment_amount || 0}`,
+                p_change_summary: `New payment ${refNbr} was created`,
+                p_change_details: { status: paymentData.status, payment_amount: paymentData.payment_amount, available_balance: paymentData.available_balance },
+                p_sync_source: 'date_range_sync'
+              });
+            } catch (_) {}
           }
         }
       }
@@ -306,16 +310,18 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
 
                       filesSynced++;
 
-                      await supabase.rpc('log_sync_change', {
-                        p_sync_type: 'payment_attachment',
-                        p_action_type: 'attachment_fetched',
-                        p_entity_id: paymentDbId,
-                        p_entity_reference: refNbr,
-                        p_entity_name: `Attachment: ${cleanFileName}`,
-                        p_change_summary: `Fetched attachment ${cleanFileName} for payment ${refNbr}`,
-                        p_change_details: { payment_ref: refNbr, file_name: cleanFileName, file_size: fileBlob.byteLength },
-                        p_sync_source: 'date_range_sync'
-                      }).catch(() => {});
+                      try {
+                        await supabase.rpc('log_sync_change', {
+                          p_sync_type: 'payment_attachment',
+                          p_action_type: 'attachment_fetched',
+                          p_entity_id: paymentDbId,
+                          p_entity_reference: refNbr,
+                          p_entity_name: `Attachment: ${cleanFileName}`,
+                          p_change_summary: `Fetched attachment ${cleanFileName} for payment ${refNbr}`,
+                          p_change_details: { payment_ref: refNbr, file_name: cleanFileName, file_size: fileBlob.byteLength },
+                          p_sync_source: 'date_range_sync'
+                        });
+                      } catch (_) {}
                     }
                   }
                 } catch (fileError: any) {
@@ -374,16 +380,18 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
 
               applicationsSynced++;
 
-              await supabase.rpc('log_sync_change', {
-                p_sync_type: 'payment_application',
-                p_action_type: 'application_fetched',
-                p_entity_id: paymentDbId,
-                p_entity_reference: `${refNbr} -> ${invoiceRefNbr}`,
-                p_entity_name: `Application: Payment ${refNbr} to Invoice ${invoiceRefNbr}`,
-                p_change_summary: `Synced application of $${amountPaid || 0} from payment ${refNbr} to invoice ${invoiceRefNbr}`,
-                p_change_details: { payment_ref: refNbr, invoice_ref: invoiceRefNbr, amount_applied: amountPaid, doc_type: docType },
-                p_sync_source: 'date_range_sync'
-              }).catch(() => {});
+              try {
+                await supabase.rpc('log_sync_change', {
+                  p_sync_type: 'payment_application',
+                  p_action_type: 'application_fetched',
+                  p_entity_id: paymentDbId,
+                  p_entity_reference: `${refNbr} -> ${invoiceRefNbr}`,
+                  p_entity_name: `Application: Payment ${refNbr} to Invoice ${invoiceRefNbr}`,
+                  p_change_summary: `Synced application of $${amountPaid || 0} from payment ${refNbr} to invoice ${invoiceRefNbr}`,
+                  p_change_details: { payment_ref: refNbr, invoice_ref: invoiceRefNbr, amount_applied: amountPaid, doc_type: docType },
+                  p_sync_source: 'date_range_sync'
+                });
+              } catch (_) {}
             } catch (appError: any) {
               errors.push(`Application sync error ${refNbr} -> ${invoiceRefNbr}: ${appError.message}`);
             }
