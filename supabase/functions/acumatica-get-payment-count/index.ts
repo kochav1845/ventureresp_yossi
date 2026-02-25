@@ -67,34 +67,38 @@ Deno.serve(async (req: Request) => {
     }
 
     if (dateFrom) {
-      filters.push(`ApplicationDate ge datetime'${dateFrom}'`);
+      filters.push(`ApplicationDate ge datetimeoffset'${dateFrom}'`);
     }
 
     if (dateTo) {
-      filters.push(`ApplicationDate le datetime'${dateTo}'`);
+      filters.push(`ApplicationDate le datetimeoffset'${dateTo}'`);
     }
 
     if (customerId) {
       filters.push(`CustomerID eq '${customerId}'`);
     }
 
-    const filterString = filters.length > 0 ? `?$filter=${filters.join(' and ')}` : '';
-    const countUrl = `${acumaticaUrl}/odata/Company/Payment/$count${filterString}`;
+    const filterParam = filters.length > 0 ? `$filter=${filters.join(' and ')}` : '';
+    const restUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?${filterParam}&$select=ReferenceNbr`;
 
-    console.log(`Fetching payment count from: ${countUrl}`);
+    console.log(`Fetching payment count via REST API: ${restUrl}`);
 
-    const countResponse = await sessionManager.makeAuthenticatedRequest(
+    const response = await sessionManager.makeAuthenticatedRequest(
       credentials,
-      countUrl
+      restUrl,
+      {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      }
     );
 
-    if (!countResponse.ok) {
-      const errorText = await countResponse.text();
-      throw new Error(`Failed to fetch payment count: ${countResponse.status} - ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch payments: ${response.status} - ${errorText}`);
     }
 
-    const countText = await countResponse.text();
-    const count = parseInt(countText, 10);
+    const data = await response.json();
+    const count = Array.isArray(data) ? data.length : 0;
 
     console.log(`Payment count result: ${count}`);
 
