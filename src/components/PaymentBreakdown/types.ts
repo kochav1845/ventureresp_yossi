@@ -69,3 +69,28 @@ export interface FetchState {
   error: string | null;
   result: { created: number; updated: number } | null;
 }
+
+export interface StalePayment {
+  reference_number: string;
+  type: string;
+  customer_name: string;
+  db_date: string;
+  acumatica_date: string | null;
+  acumatica_status: string;
+  amount: number;
+}
+
+export interface VerifyResult {
+  acumaticaCount: number;
+  dbCount: number;
+  inAcumaticaNotDb: number;
+  inDbNotAcumatica: number;
+  stalePayments: StalePayment[];
+  fixedPayments: { reference_number: string; old_date: string; new_date: string }[];
+}
+
+export interface VerifyState {
+  loading: boolean;
+  error: string | null;
+  result: VerifyResult | null;
+}

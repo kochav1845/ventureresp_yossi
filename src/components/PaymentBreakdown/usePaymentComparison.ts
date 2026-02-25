@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ComparisonState, FetchState, ComparisonResult } from './types';
+import { ComparisonState, FetchState, ComparisonResult, VerifyState } from './types';
 
 function getMonthRange(monthKey: string): { startDate: string; endDate: string } {
   const [year, month] = monthKey.split('-').map(Number);
@@ -30,6 +30,7 @@ function jobDateToKey(startDate: string, endDate: string): string | null {
 export function usePaymentComparison(onDataRefresh?: () => void) {
   const [comparisons, setComparisons] = useState<Record<string, ComparisonState>>({});
   const [fetches, setFetches] = useState<Record<string, FetchState>>({});
+  const [verifications, setVerifications] = useState<Record<string, VerifyState>>({});
   const pollingJobsRef = useRef<Set<string>>(new Set());
 
   const runComparison = useCallback(async (key: string, startDate: string, endDate: string) => {
@@ -246,12 +247,75 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
     return runFetch(dateKey, dateKey, dateKey);
   }, [runFetch]);
 
+  const runVerify = useCallback(async (key: string, startDate: string, endDate: string, fix: boolean) => {
+    setVerifications(prev => ({
+      ...prev,
+      [key]: { loading: true, error: null, result: null }
+    }));
+
+    try {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-payment-dates`;
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ startDate, endDate, fix }),
+      });
+
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Verification failed');
+
+      setVerifications(prev => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          error: null,
+          result: {
+            acumaticaCount: data.acumaticaCount,
+            dbCount: data.dbCount,
+            inAcumaticaNotDb: data.inAcumaticaNotDb,
+            inDbNotAcumatica: data.inDbNotAcumatica,
+            stalePayments: data.stalePayments || [],
+            fixedPayments: data.fixedPayments || [],
+          }
+        }
+      }));
+
+      if (fix && data.fixedPayments?.length > 0) {
+        await runComparison(key, startDate, endDate);
+        onDataRefresh?.();
+      }
+    } catch (err: any) {
+      setVerifications(prev => ({
+        ...prev,
+        [key]: { loading: false, error: err.message, result: null }
+      }));
+    }
+  }, [runComparison, onDataRefresh]);
+
+  const verifyMonth = useCallback((monthKey: string, fix = false) => {
+    const { startDate, endDate } = getMonthRange(monthKey);
+    return runVerify(monthKey, startDate, endDate, fix);
+  }, [runVerify]);
+
+  const verifyDay = useCallback((dateKey: string, fix = false) => {
+    return runVerify(dateKey, dateKey, dateKey, fix);
+  }, [runVerify]);
+
   return {
     comparisons,
     fetches,
+    verifications,
     compareMonth,
     compareDay,
     fetchMonth,
     fetchDay,
+    verifyMonth,
+    verifyDay,
   };
 }

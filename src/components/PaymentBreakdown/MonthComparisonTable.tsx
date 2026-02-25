@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { MonthSummary, ComparisonState, FetchState, PAYMENT_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import { MonthSummary, ComparisonState, FetchState, VerifyState, PAYMENT_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
 import SyncCheckCell from './SyncCheckCell';
 
 interface MonthComparisonTableProps {
@@ -9,8 +9,10 @@ interface MonthComparisonTableProps {
   selectedMonth: string | null;
   comparisons: Record<string, ComparisonState>;
   fetches: Record<string, FetchState>;
+  verifications: Record<string, VerifyState>;
   onCompare: (monthKey: string) => void;
   onFetch: (monthKey: string) => void;
+  onVerify: (monthKey: string, fix: boolean) => void;
 }
 
 type SortField = 'month' | 'total' | 'payments' | 'prepayments' | 'voided' | 'refunds' | 'balance_wo';
@@ -18,7 +20,7 @@ type SortDir = 'asc' | 'desc';
 
 export default function MonthComparisonTable({
   months, onMonthClick, selectedMonth,
-  comparisons, fetches, onCompare, onFetch,
+  comparisons, fetches, verifications, onCompare, onFetch, onVerify,
 }: MonthComparisonTableProps) {
   const [sortField, setSortField] = useState<SortField>('month');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -118,8 +120,10 @@ export default function MonthComparisonTable({
                 <SyncCheckCell
                   comparison={comparisons[month.month_key]}
                   fetchState={fetches[month.month_key]}
+                  verification={verifications[month.month_key]}
                   onCompare={() => onCompare(month.month_key)}
                   onFetch={() => onFetch(month.month_key)}
+                  onVerify={(fix) => onVerify(month.month_key, fix)}
                 />
               </tr>
             );

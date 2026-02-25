@@ -1,14 +1,19 @@
-import { RefreshCw, Check, AlertTriangle, Download, XCircle } from 'lucide-react';
-import { ComparisonState, FetchState } from './types';
+import { useState } from 'react';
+import { RefreshCw, Check, AlertTriangle, Download, XCircle, Search, Wrench, X } from 'lucide-react';
+import { ComparisonState, FetchState, VerifyState, formatCurrency } from './types';
 
 interface SyncCheckCellProps {
   comparison: ComparisonState | undefined;
   fetchState: FetchState | undefined;
+  verification: VerifyState | undefined;
   onCompare: () => void;
   onFetch: () => void;
+  onVerify: (fix: boolean) => void;
 }
 
-export default function SyncCheckCell({ comparison, fetchState, onCompare, onFetch }: SyncCheckCellProps) {
+export default function SyncCheckCell({ comparison, fetchState, verification, onCompare, onFetch, onVerify }: SyncCheckCellProps) {
+  const [showVerifyDetail, setShowVerifyDetail] = useState(false);
+
   const handleCompare = (e: React.MouseEvent) => {
     e.stopPropagation();
     onCompare();
@@ -19,12 +24,33 @@ export default function SyncCheckCell({ comparison, fetchState, onCompare, onFet
     onFetch();
   };
 
+  const handleVerify = (e: React.MouseEvent, fix: boolean) => {
+    e.stopPropagation();
+    onVerify(fix);
+  };
+
+  const handleToggleDetail = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowVerifyDetail(!showVerifyDetail);
+  };
+
   if (fetchState?.loading) {
     return (
       <td className="px-3 py-3">
         <div className="flex flex-col items-center gap-1">
           <RefreshCw size={14} className="animate-spin text-blue-500" />
           <span className="text-xs text-blue-600 font-medium">Syncing...</span>
+        </div>
+      </td>
+    );
+  }
+
+  if (verification?.loading) {
+    return (
+      <td className="px-3 py-3">
+        <div className="flex flex-col items-center gap-1">
+          <Search size={14} className="animate-pulse text-teal-500" />
+          <span className="text-xs text-teal-600 font-medium">Verifying...</span>
         </div>
       </td>
     );
@@ -64,13 +90,21 @@ export default function SyncCheckCell({ comparison, fetchState, onCompare, onFet
     const { acumaticaCount, dbCount, difference } = comparison.result;
     const inSync = difference === 0;
     const missing = difference > 0;
+    const hasExtra = difference < 0;
+    const verifyResult = verification?.result;
 
     return (
-      <td className="px-3 py-3">
+      <td className="px-3 py-3 relative">
         <div className="flex flex-col items-center gap-1.5 min-w-[130px]">
           {fetchState?.result && (
             <div className="text-[10px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
               +{fetchState.result.created} new, ~{fetchState.result.updated} upd
+            </div>
+          )}
+
+          {verifyResult && verifyResult.fixedPayments.length > 0 && (
+            <div className="text-[10px] text-teal-700 font-medium bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
+              Fixed {verifyResult.fixedPayments.length} stale dates
             </div>
           )}
 
@@ -101,7 +135,22 @@ export default function SyncCheckCell({ comparison, fetchState, onCompare, onFet
             Acumatica: {acumaticaCount} | DB: {dbCount}
           </div>
 
-          <div className="flex items-center gap-1.5">
+          {verifyResult && verifyResult.stalePayments.length > 0 && (
+            <button
+              onClick={handleToggleDetail}
+              className="text-[10px] text-teal-600 hover:text-teal-800 font-medium underline"
+            >
+              {showVerifyDetail ? 'Hide' : 'Show'} {verifyResult.stalePayments.length} stale
+            </button>
+          )}
+
+          {verifyResult && verifyResult.stalePayments.length === 0 && verifyResult.inDbNotAcumatica === 0 && (
+            <div className="text-[10px] text-emerald-600 font-medium">
+              Dates verified
+            </div>
+          )}
+
+          <div className="flex items-center gap-1.5 flex-wrap justify-center">
             {missing && (
               <button
                 onClick={handleFetch}
@@ -109,6 +158,26 @@ export default function SyncCheckCell({ comparison, fetchState, onCompare, onFet
               >
                 <Download size={10} />
                 Fetch
+              </button>
+            )}
+            {(hasExtra || !inSync) && (
+              <button
+                onClick={(e) => handleVerify(e, false)}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-md hover:bg-teal-100 transition-colors"
+                title="Check for stale/moved payment dates"
+              >
+                <Search size={10} />
+                Verify
+              </button>
+            )}
+            {verifyResult && verifyResult.stalePayments.length > 0 && (
+              <button
+                onClick={(e) => handleVerify(e, true)}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-white bg-teal-600 rounded-md hover:bg-teal-700 transition-colors shadow-sm"
+                title="Fix stale dates using Acumatica data"
+              >
+                <Wrench size={10} />
+                Fix Dates
               </button>
             )}
             <button
@@ -119,6 +188,42 @@ export default function SyncCheckCell({ comparison, fetchState, onCompare, onFet
             </button>
           </div>
         </div>
+
+        {showVerifyDetail && verifyResult && verifyResult.stalePayments.length > 0 && (
+          <div
+            className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-3 min-w-[340px] max-h-[300px] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-xs font-bold text-gray-800">
+                Stale Payments ({verifyResult.stalePayments.length})
+              </h4>
+              <button onClick={handleToggleDetail} className="text-gray-400 hover:text-gray-600">
+                <X size={14} />
+              </button>
+            </div>
+            <div className="text-[10px] text-gray-500 mb-2">
+              These payments are in your DB for this date range but no longer in Acumatica for this range.
+            </div>
+            <div className="space-y-1.5">
+              {verifyResult.stalePayments.map((p, i) => (
+                <div key={i} className="flex items-start gap-2 text-[11px] p-1.5 bg-gray-50 rounded border border-gray-100">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-800">#{p.reference_number} ({p.type})</div>
+                    <div className="text-gray-500 truncate">{p.customer_name}</div>
+                    <div className="text-gray-400">{formatCurrency(p.amount)}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-red-500 line-through">{p.db_date?.split('T')[0]}</div>
+                    <div className="text-emerald-600 font-medium">
+                      {p.acumatica_date ? p.acumatica_date.split('T')[0] : p.acumatica_status}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </td>
     );
   }

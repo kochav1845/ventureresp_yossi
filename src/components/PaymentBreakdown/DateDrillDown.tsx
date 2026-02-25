@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Calendar } from 'lucide-react';
-import { DaySummary, ComparisonState, FetchState, PAYMENT_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import { DaySummary, ComparisonState, FetchState, VerifyState, PAYMENT_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
 import SyncCheckCell from './SyncCheckCell';
 
 interface DateDrillDownProps {
@@ -9,15 +9,17 @@ interface DateDrillDownProps {
   onBack: () => void;
   comparisons: Record<string, ComparisonState>;
   fetches: Record<string, FetchState>;
+  verifications: Record<string, VerifyState>;
   onCompare: (dateKey: string) => void;
   onFetch: (dateKey: string) => void;
+  onVerify: (dateKey: string, fix: boolean) => void;
 }
 
 type SortField = 'date' | 'total' | 'payment' | 'prepayment' | 'voided' | 'refund' | 'balance_wo';
 
 export default function DateDrillDown({
   days, monthLabel, onBack,
-  comparisons, fetches, onCompare, onFetch,
+  comparisons, fetches, verifications, onCompare, onFetch, onVerify,
 }: DateDrillDownProps) {
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('date');
@@ -145,8 +147,10 @@ export default function DateDrillDown({
                   onToggle={() => setExpandedDate(isExpanded ? null : day.date)}
                   comparison={comparisons[day.date]}
                   fetchState={fetches[day.date]}
+                  verification={verifications[day.date]}
                   onCompare={() => onCompare(day.date)}
                   onFetch={() => onFetch(day.date)}
+                  onVerify={(fix) => onVerify(day.date, fix)}
                 />
               );
             })}
@@ -157,15 +161,17 @@ export default function DateDrillDown({
   );
 }
 
-function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState, onCompare, onFetch }: {
+function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState, verification, onCompare, onFetch, onVerify }: {
   day: DaySummary;
   dayOfWeek: string;
   isExpanded: boolean;
   onToggle: () => void;
   comparison: ComparisonState | undefined;
   fetchState: FetchState | undefined;
+  verification: VerifyState | undefined;
   onCompare: () => void;
   onFetch: () => void;
+  onVerify: (fix: boolean) => void;
 }) {
   const allTypes = ['Payment', 'Prepayment', 'Voided Payment', 'Voided Check', 'Refund', 'Balance WO'];
 
@@ -211,8 +217,10 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState,
         <SyncCheckCell
           comparison={comparison}
           fetchState={fetchState}
+          verification={verification}
           onCompare={onCompare}
           onFetch={onFetch}
+          onVerify={onVerify}
         />
       </tr>
       {isExpanded && (
