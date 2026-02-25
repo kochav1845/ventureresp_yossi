@@ -45,7 +45,7 @@ async function fetchAndUpsertMissingInvoice(
       customer_order: invoice.CustomerOrder?.value || null,
       terms: invoice.Terms?.value || null,
       location_id: invoice.LocationID?.value || null,
-      currency_id: invoice.CurrencyID?.value || null,
+      currency: invoice.CurrencyID?.value || null,
       post_period: invoice.PostPeriod?.value || null,
       last_modified_date_time: invoice.LastModifiedDateTime?.value || new Date().toISOString(),
       created_date_time: invoice.CreatedDateTime?.value || null,

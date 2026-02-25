@@ -125,7 +125,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
         amount: invoice.Amount?.value || 0,
         balance: invoice.Balance?.value || 0,
         description: invoice.Description?.value || null,
-        currency_id: invoice.CurrencyID?.value || null,
+        currency: invoice.CurrencyID?.value || null,
         last_modified_datetime: invoice.LastModifiedDateTime?.value || null,
         raw_data: invoice,
         last_sync_timestamp: new Date().toISOString()
