@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { ComparisonState, FetchState, ComparisonResult } from './types';
 
@@ -10,9 +10,27 @@ function getMonthRange(monthKey: string): { startDate: string; endDate: string }
   return { startDate, endDate };
 }
 
+function jobDateToKey(startDate: string, endDate: string): string | null {
+  const start = startDate.split('T')[0].split(' ')[0];
+  const end = endDate.split('T')[0].split(' ')[0];
+
+  if (start === end) return start;
+
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const [ey, em] = end.split('-').map(Number);
+  if (sy === ey && sd === 1) {
+    const lastDay = new Date(ey, em, 0).getDate();
+    if (end.endsWith(`-${String(lastDay).padStart(2, '0')}`)) {
+      return `${sy}-${sm}`;
+    }
+  }
+  return null;
+}
+
 export function usePaymentComparison(onDataRefresh?: () => void) {
   const [comparisons, setComparisons] = useState<Record<string, ComparisonState>>({});
   const [fetches, setFetches] = useState<Record<string, FetchState>>({});
+  const pollingJobsRef = useRef<Set<string>>(new Set());
 
   const runComparison = useCallback(async (key: string, startDate: string, endDate: string) => {
     setComparisons(prev => ({
@@ -77,26 +95,24 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
   }, [runComparison]);
 
   const pollJobStatus = useCallback(async (jobId: string, key: string, startDate: string, endDate: string) => {
-    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/acumatica-payment-date-range-sync`;
-    const { data: { session } } = await supabase.auth.getSession();
-    const headers = {
-      'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-    };
+    if (pollingJobsRef.current.has(jobId)) return;
+    pollingJobsRef.current.add(jobId);
+
+    setFetches(prev => ({
+      ...prev,
+      [key]: { loading: true, error: null, result: prev[key]?.result || null }
+    }));
 
     const maxAttempts = 180;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 3000));
 
       try {
-        const pollResponse = await fetch(apiUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ jobId, pollStatus: true }),
-        });
-        const pollData = await pollResponse.json();
-        const job = pollData.job;
+        const { data: job } = await supabase
+          .from('async_sync_jobs')
+          .select('id, status, progress, error_message')
+          .eq('id', jobId)
+          .maybeSingle();
 
         if (!job) continue;
 
@@ -108,11 +124,17 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
           }));
           await runComparison(key, startDate, endDate);
           onDataRefresh?.();
+          pollingJobsRef.current.delete(jobId);
           return;
         }
 
         if (job.status === 'failed') {
-          throw new Error(job.error_message || 'Sync failed');
+          setFetches(prev => ({
+            ...prev,
+            [key]: { loading: false, error: job.error_message || 'Sync failed', result: null }
+          }));
+          pollingJobsRef.current.delete(jobId);
+          return;
         }
       } catch (err: any) {
         if (err.message && err.message !== 'Failed to fetch') {
@@ -120,6 +142,7 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
             ...prev,
             [key]: { loading: false, error: err.message, result: null }
           }));
+          pollingJobsRef.current.delete(jobId);
           return;
         }
       }
@@ -129,7 +152,47 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
       ...prev,
       [key]: { loading: false, error: 'Sync timed out after 9 minutes', result: null }
     }));
+    pollingJobsRef.current.delete(jobId);
   }, [runComparison, onDataRefresh]);
+
+  useEffect(() => {
+    const checkRunningJobs = async () => {
+      try {
+        const { data: runningJobs } = await supabase
+          .from('async_sync_jobs')
+          .select('id, start_date, end_date, started_at')
+          .eq('entity_type', 'payment')
+          .in('status', ['running', 'pending'])
+          .order('created_at', { ascending: false });
+
+        if (!runningJobs || runningJobs.length === 0) return;
+
+        for (const job of runningJobs) {
+          const startedAt = new Date(job.started_at || job.created_at);
+          const minutesAgo = (Date.now() - startedAt.getTime()) / 60000;
+
+          if (minutesAgo > 10) {
+            await supabase.from('async_sync_jobs').update({
+              status: 'failed',
+              error_message: 'Auto-expired: job ran too long',
+              completed_at: new Date().toISOString()
+            }).eq('id', job.id);
+            continue;
+          }
+
+          const key = jobDateToKey(job.start_date, job.end_date);
+          if (!key) continue;
+
+          const sd = job.start_date.split('T')[0].split(' ')[0];
+          const ed = job.end_date.split('T')[0].split(' ')[0];
+          pollJobStatus(job.id, key, sd, ed);
+        }
+      } catch {
+      }
+    };
+
+    checkRunningJobs();
+  }, [pollJobStatus]);
 
   const runFetch = useCallback(async (key: string, startDate: string, endDate: string) => {
     setFetches(prev => ({
