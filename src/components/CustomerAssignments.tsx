@@ -57,8 +57,6 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
     customer_id: '',
     formula_id: '',
     template_id: '',
-    start_day_of_month: 1,
-    timezone: 'America/New_York',
   });
 
   const handleBack = () => {
@@ -126,8 +124,6 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
       customer_id: assignment.customer_id,
       formula_id: assignment.formula_id,
       template_id: assignment.template_id,
-      start_day_of_month: assignment.start_day_of_month,
-      timezone: assignment.timezone || 'America/New_York',
     });
     setShowForm(true);
   };
@@ -207,18 +203,13 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
       return;
     }
 
-    if (formData.start_day_of_month < 1 || formData.start_day_of_month > 31) {
-      alert('Start day must be between 1 and 31');
-      return;
-    }
-
     try {
       const assignmentData = {
         customer_id: formData.customer_id,
         formula_id: formData.formula_id,
         template_id: formData.template_id,
-        start_day_of_month: formData.start_day_of_month,
-        timezone: formData.timezone,
+        start_day_of_month: 1,
+        timezone: 'America/New_York',
       };
 
       if (editingAssignment) {
@@ -341,46 +332,6 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
                     </option>
                   ))}
                 </select>
-              </div>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Start Day of Month *
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="31"
-                      value={formData.start_day_of_month}
-                      onChange={(e) => setFormData({ ...formData, start_day_of_month: parseInt(e.target.value) || 1 })}
-                      className="w-full px-4 py-3 bg-slate-700 border border-slate-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    <p className="text-xs text-slate-400 mt-1">Day 1-31</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Timezone *
-                    </label>
-                    <select
-                      value={formData.timezone}
-                      onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-700 border border-slate-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="America/New_York">Eastern Time (New York)</option>
-                      <option value="America/Chicago">Central Time (Chicago)</option>
-                      <option value="America/Denver">Mountain Time (Denver)</option>
-                      <option value="America/Los_Angeles">Pacific Time (Los Angeles)</option>
-                      <option value="America/Phoenix">Arizona Time (Phoenix)</option>
-                      <option value="America/Anchorage">Alaska Time (Anchorage)</option>
-                      <option value="Pacific/Honolulu">Hawaii Time (Honolulu)</option>
-                      <option value="UTC">UTC</option>
-                    </select>
-                    <p className="text-xs text-slate-400 mt-1">Send times defined in the email formula will use this timezone</p>
-                  </div>
-                </div>
               </div>
 
               <div className="flex gap-4">
