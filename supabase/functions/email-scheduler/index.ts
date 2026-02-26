@@ -52,27 +52,54 @@ interface SendEmailResult {
   scheduled_time?: string;
 }
 
-const calculateNextScheduledTime = (
+const getTimeInTimezone = (timezone: string): { day: number; hour: number; minute: number; year: number; month: number } => {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(now);
+  const get = (type: string) => parseInt(parts.find(p => p.type === type)?.value || '0', 10);
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour: get('hour') === 24 ? 0 : get('hour'),
+    minute: get('minute'),
+  };
+};
+
+const isTimeToSend = (
   startDayOfMonth: number,
   scheduleDay: number,
   sendTime: string,
   timezone: string
-): Date => {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth();
-  
-  let targetDate = new Date(currentYear, currentMonth, startDayOfMonth);
-  if (targetDate < now) {
-    targetDate = new Date(currentYear, currentMonth + 1, startDayOfMonth);
+): boolean => {
+  const tz = getTimeInTimezone(timezone);
+
+  const targetDayOfMonth = startDayOfMonth + (scheduleDay - 1);
+  const daysInMonth = new Date(tz.year, tz.month, 0).getDate();
+
+  let effectiveTargetDay = targetDayOfMonth;
+  if (effectiveTargetDay > daysInMonth) {
+    effectiveTargetDay = daysInMonth;
   }
-  
-  targetDate.setDate(targetDate.getDate() + (scheduleDay - 1));
-  
-  const [hours, minutes] = sendTime.split(':').map(Number);
-  targetDate.setHours(hours, minutes, 0, 0);
-  
-  return targetDate;
+
+  if (tz.day !== effectiveTargetDay) {
+    return false;
+  }
+
+  const [schedHour, schedMin] = sendTime.split(':').map(Number);
+  const currentMinutes = tz.hour * 60 + tz.minute;
+  const scheduledMinutes = schedHour * 60 + schedMin;
+  const diffMinutes = Math.abs(currentMinutes - scheduledMinutes);
+
+  return diffMinutes <= 2;
 };
 
 const sendEmail = async (
@@ -214,17 +241,14 @@ const processEmailSchedule = async (
     const schedule = formula.schedule || [];
     for (const scheduleItem of schedule) {
       for (const sendTime of scheduleItem.times || []) {
-        const scheduledTime = calculateNextScheduledTime(
+        const shouldSend = isTimeToSend(
           assignment.start_day_of_month,
           scheduleItem.day,
           sendTime,
-          assignment.timezone
+          assignment.timezone || 'America/New_York'
         );
 
-        const timeDiff = Math.abs(scheduledTime.getTime() - now.getTime());
-        const fiveMinutes = 5 * 60 * 1000;
-
-        if (timeDiff <= fiveMinutes) {
+        if (shouldSend) {
           const { data: recentLogs } = await supabase
             .from('email_logs')
             .select('id')
@@ -240,7 +264,7 @@ const processEmailSchedule = async (
               customer_name: customer.name,
               status: 'skipped',
               reason: 'Email already sent within the last hour',
-              scheduled_time: scheduledTime.toISOString(),
+              scheduled_time: sendTime,
             });
             continue;
           }
@@ -267,12 +291,11 @@ const processEmailSchedule = async (
             customer_id: customer.id,
             assignment_id: assignment.id,
             template_id: template.id,
-            formula_id: formula.id,
             sent_at: now.toISOString(),
             subject: template.subject,
             body: template.body,
             status: emailStatus,
-            scheduled_time: scheduledTime.toISOString(),
+            scheduled_for: now.toISOString(),
             error_message: emailError,
           });
 
@@ -281,7 +304,7 @@ const processEmailSchedule = async (
             customer_id: customer.id,
             customer_name: customer.name,
             status: emailStatus,
-            scheduled_time: scheduledTime.toISOString(),
+            scheduled_time: sendTime,
             reason: emailError,
           });
         }
@@ -315,14 +338,6 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    await supabase.from('scheduler_logs').insert({
-      execution_id: executionId,
-      function_name: 'email-scheduler',
-      status: 'started',
-      execution_time_ms: 0,
-      message: testMode ? 'Starting email scheduler (TEST MODE - no emails will be sent)' : 'Starting email scheduler',
-    });
-
     const results = await processEmailSchedule(supabase, sendgridApiKey, fromEmail);
 
     const executionTime = Date.now() - startTime;
@@ -330,13 +345,18 @@ Deno.serve(async (req: Request) => {
     const failedCount = results.filter(r => r.status === 'failed').length;
     const skippedCount = results.filter(r => r.status === 'skipped').length;
 
-    await supabase.from('scheduler_logs').insert({
+    await supabase.from('scheduler_execution_logs').insert({
       execution_id: executionId,
-      function_name: 'email-scheduler',
-      status: 'completed',
+      executed_at: new Date().toISOString(),
       execution_time_ms: executionTime,
-      message: `Processed ${results.length} assignments: ${sentCount} sent, ${failedCount} failed, ${skippedCount} skipped`,
-      details: { results },
+      total_assignments_checked: (results || []).length,
+      emails_queued: 0,
+      emails_sent: sentCount,
+      emails_failed: failedCount,
+      test_mode: testMode,
+      detailed_recipients: results.filter(r => r.status === 'sent'),
+      skipped_customers: results.filter(r => r.status === 'skipped'),
+      error_summary: failedCount > 0 ? `${failedCount} emails failed` : null,
     });
 
     return new Response(
