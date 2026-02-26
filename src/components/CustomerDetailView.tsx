@@ -8,6 +8,7 @@ import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl } from '../lib/acumaticaLinks';
 import InvoiceFilterPanel from './InvoiceFilterPanel';
 import CustomerTimelineChart from './CustomerTimelineChart';
+import CustomerMonthlySheet from './CustomerMonthlySheet';
 
 interface CustomerDetailViewProps {
   customerId: string;
@@ -114,7 +115,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [loadingTickets, setLoadingTickets] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [activeTab, setActiveTab] = useState<'open-invoices' | 'balanced-invoices' | 'paid-invoices' | 'payments'>('open-invoices');
+  const [activeTab, setActiveTab] = useState<'open-invoices' | 'balanced-invoices' | 'paid-invoices' | 'payments' | 'email-tracking'>('open-invoices');
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('general');
   const [savingNote, setSavingNote] = useState(false);
@@ -1167,6 +1168,19 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                 Payment History ({paymentCount})
               </div>
             </button>
+            <button
+              onClick={() => setActiveTab('email-tracking')}
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'email-tracking'
+                  ? 'border-teal-600 text-teal-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center">
+                <Calendar className="w-4 h-4 mr-2" />
+                Email Tracking
+              </div>
+            </button>
           </nav>
         </div>
 
@@ -1692,6 +1706,13 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                 </>
               )}
             </div>
+          )}
+
+          {activeTab === 'email-tracking' && customer && (
+            <CustomerMonthlySheet
+              customerId={customer.customer_id}
+              customerName={customer.customer_name}
+            />
           )}
         </div>
       </div>
