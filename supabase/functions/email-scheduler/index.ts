@@ -63,7 +63,7 @@ const isTimeToSend = (
   const scheduledMinutes = schedHour * 60 + schedMin;
   const diffMinutes = Math.abs(currentMinutes - scheduledMinutes);
 
-  return diffMinutes <= 5;
+  return diffMinutes <= 2;
 };
 
 const sendEmail = async (
