@@ -136,6 +136,10 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
       [key]: { loading: true, error: null, result: prev[key]?.result || null, progress: null, jobId }
     }));
 
+    let lastProgressJson = '';
+    let lastProgressChangeTime = Date.now();
+    const STALE_TIMEOUT_MS = 90_000;
+
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
       await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
 
@@ -171,6 +175,43 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
         }
 
         const progress = job.progress || {};
+        const currentProgressJson = JSON.stringify(progress);
+
+        if (currentProgressJson !== lastProgressJson) {
+          lastProgressJson = currentProgressJson;
+          lastProgressChangeTime = Date.now();
+        } else if (job.status === 'running' && Date.now() - lastProgressChangeTime > STALE_TIMEOUT_MS) {
+          await supabase.from('async_sync_jobs').update({
+            status: 'failed',
+            error_message: 'Sync appears stuck (no progress for 90s). Click Fetch to retry.',
+            completed_at: new Date().toISOString()
+          }).eq('id', jobId);
+
+          setFetches(prev => ({
+            ...prev,
+            [key]: { loading: false, error: 'Sync got stuck. Click Fetch to retry.', result: null, progress: null, jobId: null }
+          }));
+          pollingJobsRef.current.delete(jobId);
+          fetchingKeysRef.current.delete(key);
+          return;
+        }
+
+        if (job.status === 'pending' && minutesAgo > 2) {
+          await supabase.from('async_sync_jobs').update({
+            status: 'failed',
+            error_message: 'Job never started. Click Fetch to retry.',
+            completed_at: new Date().toISOString()
+          }).eq('id', jobId);
+
+          setFetches(prev => ({
+            ...prev,
+            [key]: { loading: false, error: 'Sync never started. Click Fetch to retry.', result: null, progress: null, jobId: null }
+          }));
+          pollingJobsRef.current.delete(jobId);
+          fetchingKeysRef.current.delete(key);
+          return;
+        }
+
         if (progress.total !== undefined) {
           const current = progress.processed || ((progress.created || 0) + (progress.updated || 0));
           setFetches(prev => ({
@@ -277,7 +318,14 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
   }, [pollJobStatus]);
 
   const runFetch = useCallback(async (key: string, startDate: string, endDate: string) => {
-    if (fetchingKeysRef.current.has(key)) return;
+    if (fetchingKeysRef.current.has(key)) {
+      const currentState = fetches[key];
+      if (currentState?.jobId) {
+        cancelledJobsRef.current.add(currentState.jobId);
+        pollingJobsRef.current.delete(currentState.jobId);
+      }
+      fetchingKeysRef.current.delete(key);
+    }
     fetchingKeysRef.current.add(key);
 
     setFetches(prev => ({
@@ -288,28 +336,22 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
     try {
       const { data: existingJobs } = await supabase
         .from('async_sync_jobs')
-        .select('id, status, created_at')
+        .select('id')
         .eq('entity_type', 'payment')
         .in('status', ['running', 'pending'])
         .gte('start_date', `${startDate}T00:00:00+00`)
-        .lte('end_date', `${endDate}T23:59:59+00`)
-        .order('created_at', { ascending: false })
-        .limit(1);
+        .lte('end_date', `${endDate}T23:59:59+00`);
 
       if (existingJobs && existingJobs.length > 0) {
-        const existingJob = existingJobs[0];
-        const minutesAgo = (Date.now() - new Date(existingJob.created_at).getTime()) / 60000;
-
-        if (minutesAgo < AUTO_EXPIRE_MINUTES) {
-          pollJobStatus(existingJob.id, key, startDate, endDate);
-          return;
+        for (const old of existingJobs) {
+          cancelledJobsRef.current.add(old.id);
+          pollingJobsRef.current.delete(old.id);
+          await supabase.from('async_sync_jobs').update({
+            status: 'failed',
+            error_message: 'Replaced by new sync request',
+            completed_at: new Date().toISOString()
+          }).eq('id', old.id);
         }
-
-        await supabase.from('async_sync_jobs').update({
-          status: 'failed',
-          error_message: 'Auto-expired: replaced by new job',
-          completed_at: new Date().toISOString()
-        }).eq('id', existingJob.id);
       }
 
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/acumatica-payment-date-range-sync`;
@@ -348,7 +390,7 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
       }));
       fetchingKeysRef.current.delete(key);
     }
-  }, [runComparison, onDataRefresh, pollJobStatus]);
+  }, [runComparison, onDataRefresh, pollJobStatus, fetches]);
 
   const fetchMonth = useCallback((monthKey: string) => {
     const { startDate, endDate } = getMonthRange(monthKey);

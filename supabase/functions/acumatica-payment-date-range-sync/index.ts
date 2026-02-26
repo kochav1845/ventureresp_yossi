@@ -523,30 +523,20 @@ Deno.serve(async (req: Request) => {
     if (!jobId) {
       const { data: existingRunning } = await supabase
         .from('async_sync_jobs')
-        .select('id, status, created_at')
+        .select('id')
         .eq('entity_type', 'payment')
         .in('status', ['running', 'pending'])
         .eq('start_date', startDate)
-        .eq('end_date', endDate)
-        .order('created_at', { ascending: false })
-        .limit(1);
+        .eq('end_date', endDate);
 
       if (existingRunning && existingRunning.length > 0) {
-        const existing = existingRunning[0];
-        const minutesAgo = (Date.now() - new Date(existing.created_at).getTime()) / 60000;
-
-        if (minutesAgo < 30) {
-          return new Response(
-            JSON.stringify({ success: true, jobId: existing.id, async: true, reused: true }),
-            { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
+        for (const old of existingRunning) {
+          await supabase.from('async_sync_jobs').update({
+            status: 'failed',
+            error_message: 'Replaced by new sync request',
+            completed_at: new Date().toISOString()
+          }).eq('id', old.id);
         }
-
-        await supabase.from('async_sync_jobs').update({
-          status: 'failed',
-          error_message: 'Auto-expired: replaced by new job',
-          completed_at: new Date().toISOString()
-        }).eq('id', existing.id);
       }
 
       let userId = null;
