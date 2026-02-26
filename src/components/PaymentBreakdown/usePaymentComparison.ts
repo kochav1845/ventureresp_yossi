@@ -196,12 +196,40 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
   }, [pollJobStatus]);
 
   const runFetch = useCallback(async (key: string, startDate: string, endDate: string) => {
+    if (fetches[key]?.loading) return;
+
     setFetches(prev => ({
       ...prev,
       [key]: { loading: true, error: null, result: null }
     }));
 
     try {
+      const { data: existingJobs } = await supabase
+        .from('async_sync_jobs')
+        .select('id, status, created_at')
+        .eq('entity_type', 'payment')
+        .in('status', ['running', 'pending'])
+        .gte('start_date', `${startDate}T00:00:00+00`)
+        .lte('end_date', `${endDate}T23:59:59+00`)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (existingJobs && existingJobs.length > 0) {
+        const existingJob = existingJobs[0];
+        const minutesAgo = (Date.now() - new Date(existingJob.created_at).getTime()) / 60000;
+
+        if (minutesAgo < 10) {
+          pollJobStatus(existingJob.id, key, startDate, endDate);
+          return;
+        }
+
+        await supabase.from('async_sync_jobs').update({
+          status: 'failed',
+          error_message: 'Auto-expired: job ran too long',
+          completed_at: new Date().toISOString()
+        }).eq('id', existingJob.id);
+      }
+
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/acumatica-payment-date-range-sync`;
       const { data: { session } } = await supabase.auth.getSession();
 
@@ -236,7 +264,7 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
         [key]: { loading: false, error: err.message, result: null }
       }));
     }
-  }, [runComparison, onDataRefresh, pollJobStatus]);
+  }, [runComparison, onDataRefresh, pollJobStatus, fetches]);
 
   const fetchMonth = useCallback((monthKey: string) => {
     const { startDate, endDate } = getMonthRange(monthKey);
