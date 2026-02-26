@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Plus, Edit2, Trash2, Link as LinkIcon, RefreshCw, Calendar, Mail, User, Clock, PauseCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Link as LinkIcon, RefreshCw, Calendar, Mail, User, Clock, PauseCircle, Users } from 'lucide-react';
+import ManageCustomersModal from './ManageCustomersModal';
 
 type Customer = {
   id: string;
@@ -49,6 +50,8 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
   const [showForm, setShowForm] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+
+  const [showManageCustomers, setShowManageCustomers] = useState(false);
 
   const [formData, setFormData] = useState({
     customer_id: '',
@@ -244,6 +247,12 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
   if (showForm) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
+        <ManageCustomersModal
+          isOpen={showManageCustomers}
+          onClose={() => setShowManageCustomers(false)}
+          onCustomersChanged={loadData}
+        />
+
         <div className="max-w-4xl mx-auto">
           <button
             onClick={() => setShowForm(false)}
@@ -268,9 +277,19 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Customer *
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-slate-300">
+                    Customer *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowManageCustomers(true)}
+                    className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    <Users size={14} />
+                    Manage Customers
+                  </button>
+                </div>
                 <select
                   value={formData.customer_id}
                   onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
@@ -389,6 +408,12 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
+      <ManageCustomersModal
+        isOpen={showManageCustomers}
+        onClose={() => setShowManageCustomers(false)}
+        onCustomersChanged={loadData}
+      />
+
       <div className="max-w-7xl mx-auto">
         <button
           onClick={handleBack}
@@ -406,6 +431,13 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
                 <h2 className="text-xl font-semibold text-white">Customer Assignments</h2>
               </div>
               <div className="flex gap-3">
+                <button
+                  onClick={() => setShowManageCustomers(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors border border-slate-600"
+                >
+                  <Users size={18} />
+                  Manage Customers
+                </button>
                 <button
                   onClick={loadData}
                   disabled={loading}
