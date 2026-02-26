@@ -129,6 +129,7 @@ export default function Customers({ onBack }: CustomersProps) {
   const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showTestCustomers, setShowTestCustomers] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -183,7 +184,6 @@ export default function Customers({ onBack }: CustomersProps) {
     loadCustomersWithAnalytics();
     loadCustomersWithOpenTickets();
 
-    // Subscribe to ticket changes to update the open ticket indicator
     const ticketSubscription = supabase
       .channel('ticket_status_changes')
       .on('postgres_changes',
@@ -201,7 +201,7 @@ export default function Customers({ onBack }: CustomersProps) {
     return () => {
       ticketSubscription.unsubscribe();
     };
-  }, []);
+  }, [showTestCustomers]);
 
   useEffect(() => {
     applyFilters();
@@ -227,22 +227,15 @@ export default function Customers({ onBack }: CustomersProps) {
     setLoading(true);
     setIsSearching(false);
     try {
-      const [countResult, customerResult, analyticsResult] = await Promise.all([
-        supabase
-          .from('acumatica_customers')
-          .select('*', { count: 'exact', head: true }),
-        supabase
-          .from('customers')
-          .select('*')
-          .order('created_at', { ascending: false }),
-        supabase
+      if (showTestCustomers) {
+        const { data: testData, error: testError } = await supabase
           .rpc('get_customers_with_balance', {
             p_search: null,
             p_status_filter: 'all',
             p_country_filter: 'all',
             p_sort_by: 'customer_name',
             p_sort_order: 'asc',
-            p_limit: 10000,
+            p_limit: 100,
             p_offset: 0,
             p_date_from: null,
             p_date_to: null,
@@ -254,29 +247,23 @@ export default function Customers({ onBack }: CustomersProps) {
             p_min_invoice_amount: null,
             p_max_invoice_amount: null,
             p_exclude_credit_memos: excludeCreditMemos,
-            p_calculate_avg_days: false
-          })
-      ]);
+            p_calculate_avg_days: false,
+            p_test_customers: true
+          });
 
-      if (countResult.error) {
-        console.error('Error getting total count:', countResult.error);
-      } else {
-        setGrandTotalCustomers(countResult.count || 0);
-      }
+        if (testError) throw testError;
 
-      if (customerResult.error) throw customerResult.error;
-
-      const customerData = customerResult.data;
-      const analyticsData = analyticsResult.data;
-
-      if (analyticsResult.error) {
-        console.error('Analytics error:', analyticsResult.error);
-      }
-
-      // Create a map of analytics data by customer_id
-      const analyticsMap = new Map();
-      (analyticsData || []).forEach((item: CustomerAnalyticsData) => {
-        analyticsMap.set(item.customer_id, {
+        const mergedData = (testData || []).map((item: any) => ({
+          id: item.id,
+          name: item.customer_name || '',
+          email: item.email_address || '',
+          is_active: true,
+          responded_this_month: false,
+          postpone_until: null,
+          postpone_reason: null,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+          customer_id: item.customer_id,
           balance: item.calculated_balance || 0,
           invoice_count: item.open_invoice_count || 0,
           max_days_overdue: item.max_days_overdue || 0,
@@ -286,32 +273,97 @@ export default function Customers({ onBack }: CustomersProps) {
           green_count: item.green_count || 0,
           exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
           exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
+        }));
+
+        setGrandTotalCustomers(mergedData.length);
+        setAllCustomers(mergedData);
+        setTotalCount(mergedData.length);
+        loadAnalytics(mergedData);
+      } else {
+        const [countResult, customerResult, analyticsResult] = await Promise.all([
+          supabase
+            .from('acumatica_customers')
+            .select('*', { count: 'exact', head: true })
+            .eq('is_test_customer', false),
+          supabase
+            .from('customers')
+            .select('*')
+            .order('created_at', { ascending: false }),
+          supabase
+            .rpc('get_customers_with_balance', {
+              p_search: null,
+              p_status_filter: 'all',
+              p_country_filter: 'all',
+              p_sort_by: 'customer_name',
+              p_sort_order: 'asc',
+              p_limit: 10000,
+              p_offset: 0,
+              p_date_from: null,
+              p_date_to: null,
+              p_balance_filter: 'all',
+              p_min_balance: null,
+              p_max_balance: null,
+              p_min_open_invoices: null,
+              p_max_open_invoices: null,
+              p_min_invoice_amount: null,
+              p_max_invoice_amount: null,
+              p_exclude_credit_memos: excludeCreditMemos,
+              p_calculate_avg_days: false,
+              p_test_customers: false
+            })
+        ]);
+
+        if (countResult.error) {
+          console.error('Error getting total count:', countResult.error);
+        } else {
+          setGrandTotalCustomers(countResult.count || 0);
+        }
+
+        if (customerResult.error) throw customerResult.error;
+
+        const customerData = customerResult.data;
+        const analyticsData = analyticsResult.data;
+
+        if (analyticsResult.error) {
+          console.error('Analytics error:', analyticsResult.error);
+        }
+
+        const analyticsMap = new Map();
+        (analyticsData || []).forEach((item: CustomerAnalyticsData) => {
+          analyticsMap.set(item.customer_id, {
+            balance: item.calculated_balance || 0,
+            invoice_count: item.open_invoice_count || 0,
+            max_days_overdue: item.max_days_overdue || 0,
+            red_threshold_days: item.red_threshold_days || 30,
+            red_count: item.red_count || 0,
+            yellow_count: item.yellow_count || 0,
+            green_count: item.green_count || 0,
+            exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
+            exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
+          });
         });
-      });
 
-      // Merge customer data with analytics
-      const mergedData = (customerData || []).map(customer => {
-        const analytics = analyticsMap.get(customer.id);
-        return {
-          ...customer,
-          customer_id: customer.id,
-          balance: analytics?.balance || 0,
-          invoice_count: analytics?.invoice_count || 0,
-          max_days_overdue: analytics?.max_days_overdue || 0,
-          red_threshold_days: analytics?.red_threshold_days || 30,
-          red_count: analytics?.red_count || 0,
-          yellow_count: analytics?.yellow_count || 0,
-          green_count: analytics?.green_count || 0,
-          exclude_from_payment_analytics: analytics?.exclude_from_payment_analytics || false,
-          exclude_from_customer_analytics: analytics?.exclude_from_customer_analytics || false
-        };
-      });
+        const mergedData = (customerData || []).map(customer => {
+          const analytics = analyticsMap.get(customer.id);
+          return {
+            ...customer,
+            customer_id: customer.id,
+            balance: analytics?.balance || 0,
+            invoice_count: analytics?.invoice_count || 0,
+            max_days_overdue: analytics?.max_days_overdue || 0,
+            red_threshold_days: analytics?.red_threshold_days || 30,
+            red_count: analytics?.red_count || 0,
+            yellow_count: analytics?.yellow_count || 0,
+            green_count: analytics?.green_count || 0,
+            exclude_from_payment_analytics: analytics?.exclude_from_payment_analytics || false,
+            exclude_from_customer_analytics: analytics?.exclude_from_customer_analytics || false
+          };
+        });
 
-      setAllCustomers(mergedData);
-      setTotalCount(mergedData.length);
-
-      // Calculate analytics from loaded data (NO FILTERS on initial load)
-      loadAnalytics(mergedData);
+        setAllCustomers(mergedData);
+        setTotalCount(mergedData.length);
+        loadAnalytics(mergedData);
+      }
     } catch (error) {
       console.error('Error loading customers:', error);
     } finally {
@@ -1129,8 +1181,12 @@ export default function Customers({ onBack }: CustomersProps) {
               <ArrowLeft className="w-5 h-5 text-blue-600" />
             </button>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Customers & Analytics</h1>
-              <p className="text-gray-600">Manage customers with real-time analytics and filtering</p>
+              <h1 className="text-3xl font-bold text-gray-900">
+                {showTestCustomers ? 'Test Customers' : 'Customers & Analytics'}
+              </h1>
+              <p className="text-gray-600">
+                {showTestCustomers ? 'Email system test customers for testing email tracking' : 'Manage customers with real-time analytics and filtering'}
+              </p>
             </div>
           </div>
           <div className="flex gap-3">
@@ -1176,6 +1232,30 @@ export default function Customers({ onBack }: CustomersProps) {
               Add Customer
             </button>
           </div>
+        </div>
+
+        {/* Customer Type Toggle */}
+        <div className="bg-white rounded-xl shadow-sm p-2 mb-4 border border-gray-200 inline-flex">
+          <button
+            onClick={() => { setShowTestCustomers(false); setCurrentPage(0); setSearchQuery(''); }}
+            className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+              !showTestCustomers
+                ? 'bg-slate-800 text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            All Customers
+          </button>
+          <button
+            onClick={() => { setShowTestCustomers(true); setCurrentPage(0); setSearchQuery(''); }}
+            className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+              showTestCustomers
+                ? 'bg-teal-600 text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            Test Customers
+          </button>
         </div>
 
         {/* Credit Memo Toggle */}
@@ -1663,7 +1743,14 @@ export default function Customers({ onBack }: CustomersProps) {
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="text-gray-900 font-semibold">{customer.name}</span>
+                              <span
+                                className={`text-gray-900 font-semibold ${showTestCustomers ? 'cursor-pointer hover:text-blue-600 hover:underline' : ''}`}
+                                onClick={() => {
+                                  if (showTestCustomers && customer.customer_id) {
+                                    navigate(`/customers?customer=${customer.customer_id}`);
+                                  }
+                                }}
+                              >{customer.name}</span>
                               {customersWithOpenTickets.has(customer.id) && (
                                 <button
                                   onClick={() => navigate(`/collection-ticketing?customerId=${customer.id}`)}
