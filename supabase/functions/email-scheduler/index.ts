@@ -230,7 +230,7 @@ const processEmailSchedule = async (
             .select('id')
             .eq('customer_id', customer.id)
             .eq('assignment_id', assignment.id)
-            .gte('sent_at', new Date(now.getTime() - 60 * 60 * 1000).toISOString())
+            .gte('sent_at', new Date(now.getTime() - 10 * 60 * 1000).toISOString())
             .limit(1);
 
           if (recentLogs && recentLogs.length > 0) {
@@ -239,7 +239,7 @@ const processEmailSchedule = async (
               customer_id: customer.id,
               customer_name: customer.name,
               status: 'skipped',
-              reason: 'Email already sent within the last hour',
+              reason: 'Email already sent within the last 10 minutes',
               scheduled_time: sendTime,
             });
             continue;
