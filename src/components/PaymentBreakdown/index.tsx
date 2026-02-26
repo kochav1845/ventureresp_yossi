@@ -47,6 +47,7 @@ export default function PaymentBreakdown() {
     compareMonth, compareDay,
     fetchMonth, fetchDay,
     verifyMonth, verifyDay,
+    cancelFetch,
   } = usePaymentComparison(loadMonthSummaries);
 
   useEffect(() => {
@@ -293,6 +294,7 @@ export default function PaymentBreakdown() {
                   onCompare={compareDay}
                   onFetch={fetchDay}
                   onVerify={(dateKey, fix) => verifyDay(dateKey, fix)}
+                  onCancel={cancelFetch}
                 />
               </div>
             )}
@@ -321,6 +323,7 @@ export default function PaymentBreakdown() {
                 onCompare={compareMonth}
                 onFetch={fetchMonth}
                 onVerify={(monthKey, fix) => verifyMonth(monthKey, fix)}
+                onCancel={cancelFetch}
               />
             </div>
           </>

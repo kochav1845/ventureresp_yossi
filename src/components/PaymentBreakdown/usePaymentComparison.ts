@@ -2,6 +2,10 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { ComparisonState, FetchState, ComparisonResult, VerifyState } from './types';
 
+const AUTO_EXPIRE_MINUTES = 30;
+const POLL_INTERVAL_MS = 4000;
+const MAX_POLL_ATTEMPTS = 500;
+
 function getMonthRange(monthKey: string): { startDate: string; endDate: string } {
   const [year, month] = monthKey.split('-').map(Number);
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -32,6 +36,14 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
   const [fetches, setFetches] = useState<Record<string, FetchState>>({});
   const [verifications, setVerifications] = useState<Record<string, VerifyState>>({});
   const pollingJobsRef = useRef<Set<string>>(new Set());
+  const cancelledJobsRef = useRef<Set<string>>(new Set());
+  const fetchingKeysRef = useRef<Set<string>>(new Set());
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const runComparison = useCallback(async (key: string, startDate: string, endDate: string) => {
     setComparisons(prev => ({
@@ -95,55 +107,120 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
     return runComparison(dateKey, dateKey, dateKey);
   }, [runComparison]);
 
+  const cancelFetch = useCallback(async (key: string) => {
+    const currentState = fetches[key];
+    if (!currentState?.loading || !currentState?.jobId) return;
+
+    cancelledJobsRef.current.add(currentState.jobId);
+    pollingJobsRef.current.delete(currentState.jobId);
+    fetchingKeysRef.current.delete(key);
+
+    await supabase.from('async_sync_jobs').update({
+      status: 'failed',
+      error_message: 'Cancelled by user',
+      completed_at: new Date().toISOString()
+    }).eq('id', currentState.jobId);
+
+    setFetches(prev => ({
+      ...prev,
+      [key]: { loading: false, error: 'Cancelled', result: null, progress: null, jobId: null }
+    }));
+  }, [fetches]);
+
   const pollJobStatus = useCallback(async (jobId: string, key: string, startDate: string, endDate: string) => {
     if (pollingJobsRef.current.has(jobId)) return;
     pollingJobsRef.current.add(jobId);
 
     setFetches(prev => ({
       ...prev,
-      [key]: { loading: true, error: null, result: prev[key]?.result || null }
+      [key]: { loading: true, error: null, result: prev[key]?.result || null, progress: null, jobId }
     }));
 
-    const maxAttempts = 180;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 3000));
+    for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+
+      if (!mountedRef.current || cancelledJobsRef.current.has(jobId)) {
+        pollingJobsRef.current.delete(jobId);
+        return;
+      }
 
       try {
         const { data: job } = await supabase
           .from('async_sync_jobs')
-          .select('id, status, progress, error_message')
+          .select('id, status, progress, error_message, created_at')
           .eq('id', jobId)
           .maybeSingle();
 
         if (!job) continue;
 
-        if (job.status === 'completed') {
-          const progress = job.progress || {};
+        const minutesAgo = (Date.now() - new Date(job.created_at).getTime()) / 60000;
+        if (minutesAgo > AUTO_EXPIRE_MINUTES) {
+          await supabase.from('async_sync_jobs').update({
+            status: 'failed',
+            error_message: `Auto-expired after ${AUTO_EXPIRE_MINUTES} minutes`,
+            completed_at: new Date().toISOString()
+          }).eq('id', jobId);
+
           setFetches(prev => ({
             ...prev,
-            [key]: { loading: false, error: null, result: { created: progress.created || 0, updated: progress.updated || 0 } }
+            [key]: { loading: false, error: `Sync took too long (>${AUTO_EXPIRE_MINUTES}min)`, result: null, progress: null, jobId: null }
+          }));
+          pollingJobsRef.current.delete(jobId);
+          fetchingKeysRef.current.delete(key);
+          return;
+        }
+
+        const progress = job.progress || {};
+        if (progress.total) {
+          const current = (progress.created || 0) + (progress.updated || 0);
+          setFetches(prev => ({
+            ...prev,
+            [key]: {
+              loading: true,
+              error: null,
+              result: prev[key]?.result || null,
+              progress: {
+                current,
+                total: progress.total,
+                created: progress.created || 0,
+                updated: progress.updated || 0,
+                applicationsSynced: progress.applicationsSynced || 0,
+                filesSynced: progress.filesSynced || 0,
+              },
+              jobId
+            }
+          }));
+        }
+
+        if (job.status === 'completed') {
+          setFetches(prev => ({
+            ...prev,
+            [key]: { loading: false, error: null, result: { created: progress.created || 0, updated: progress.updated || 0 }, progress: null, jobId: null }
           }));
           await runComparison(key, startDate, endDate);
           onDataRefresh?.();
           pollingJobsRef.current.delete(jobId);
+          fetchingKeysRef.current.delete(key);
           return;
         }
 
         if (job.status === 'failed') {
           setFetches(prev => ({
             ...prev,
-            [key]: { loading: false, error: job.error_message || 'Sync failed', result: null }
+            [key]: { loading: false, error: job.error_message || 'Sync failed', result: null, progress: null, jobId: null }
           }));
           pollingJobsRef.current.delete(jobId);
+          fetchingKeysRef.current.delete(key);
           return;
         }
       } catch (err: any) {
         if (err.message && err.message !== 'Failed to fetch') {
           setFetches(prev => ({
             ...prev,
-            [key]: { loading: false, error: err.message, result: null }
+            [key]: { loading: false, error: err.message, result: null, progress: null, jobId: null }
           }));
           pollingJobsRef.current.delete(jobId);
+          fetchingKeysRef.current.delete(key);
           return;
         }
       }
@@ -151,9 +228,10 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
 
     setFetches(prev => ({
       ...prev,
-      [key]: { loading: false, error: 'Sync timed out after 9 minutes', result: null }
+      [key]: { loading: false, error: 'Polling stopped - sync may still be running in background', result: null, progress: null, jobId: null }
     }));
     pollingJobsRef.current.delete(jobId);
+    fetchingKeysRef.current.delete(key);
   }, [runComparison, onDataRefresh]);
 
   useEffect(() => {
@@ -161,7 +239,7 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
       try {
         const { data: runningJobs } = await supabase
           .from('async_sync_jobs')
-          .select('id, start_date, end_date, started_at')
+          .select('id, start_date, end_date, started_at, created_at')
           .eq('entity_type', 'payment')
           .in('status', ['running', 'pending'])
           .order('created_at', { ascending: false });
@@ -169,13 +247,13 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
         if (!runningJobs || runningJobs.length === 0) return;
 
         for (const job of runningJobs) {
-          const startedAt = new Date(job.started_at || job.created_at);
-          const minutesAgo = (Date.now() - startedAt.getTime()) / 60000;
+          const createdAt = new Date(job.created_at);
+          const minutesAgo = (Date.now() - createdAt.getTime()) / 60000;
 
-          if (minutesAgo > 10) {
+          if (minutesAgo > AUTO_EXPIRE_MINUTES) {
             await supabase.from('async_sync_jobs').update({
               status: 'failed',
-              error_message: 'Auto-expired: job ran too long',
+              error_message: `Auto-expired after ${AUTO_EXPIRE_MINUTES} minutes`,
               completed_at: new Date().toISOString()
             }).eq('id', job.id);
             continue;
@@ -196,11 +274,12 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
   }, [pollJobStatus]);
 
   const runFetch = useCallback(async (key: string, startDate: string, endDate: string) => {
-    if (fetches[key]?.loading) return;
+    if (fetchingKeysRef.current.has(key)) return;
+    fetchingKeysRef.current.add(key);
 
     setFetches(prev => ({
       ...prev,
-      [key]: { loading: true, error: null, result: null }
+      [key]: { loading: true, error: null, result: null, progress: null, jobId: null }
     }));
 
     try {
@@ -218,14 +297,14 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
         const existingJob = existingJobs[0];
         const minutesAgo = (Date.now() - new Date(existingJob.created_at).getTime()) / 60000;
 
-        if (minutesAgo < 10) {
+        if (minutesAgo < AUTO_EXPIRE_MINUTES) {
           pollJobStatus(existingJob.id, key, startDate, endDate);
           return;
         }
 
         await supabase.from('async_sync_jobs').update({
           status: 'failed',
-          error_message: 'Auto-expired: job ran too long',
+          error_message: 'Auto-expired: replaced by new job',
           completed_at: new Date().toISOString()
         }).eq('id', existingJob.id);
       }
@@ -253,18 +332,20 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
 
       setFetches(prev => ({
         ...prev,
-        [key]: { loading: false, error: null, result: { created: data.created || 0, updated: data.updated || 0 } }
+        [key]: { loading: false, error: null, result: { created: data.created || 0, updated: data.updated || 0 }, progress: null, jobId: null }
       }));
+      fetchingKeysRef.current.delete(key);
 
       await runComparison(key, startDate, endDate);
       onDataRefresh?.();
     } catch (err: any) {
       setFetches(prev => ({
         ...prev,
-        [key]: { loading: false, error: err.message, result: null }
+        [key]: { loading: false, error: err.message, result: null, progress: null, jobId: null }
       }));
+      fetchingKeysRef.current.delete(key);
     }
-  }, [runComparison, onDataRefresh, pollJobStatus, fetches]);
+  }, [runComparison, onDataRefresh, pollJobStatus]);
 
   const fetchMonth = useCallback((monthKey: string) => {
     const { startDate, endDate } = getMonthRange(monthKey);
@@ -345,5 +426,6 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
     fetchDay,
     verifyMonth,
     verifyDay,
+    cancelFetch,
   };
 }

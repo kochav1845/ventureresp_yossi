@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RefreshCw, Check, AlertTriangle, Download, XCircle, Search, Wrench, X } from 'lucide-react';
+import { RefreshCw, Check, AlertTriangle, Download, XCircle, Search, Wrench, X, StopCircle } from 'lucide-react';
 import { ComparisonState, FetchState, VerifyState, formatCurrency } from './types';
 
 interface SyncCheckCellProps {
@@ -9,9 +9,11 @@ interface SyncCheckCellProps {
   onCompare: () => void;
   onFetch: () => void;
   onVerify: (fix: boolean) => void;
+  onCancel?: () => void;
+  cellKey: string;
 }
 
-export default function SyncCheckCell({ comparison, fetchState, verification, onCompare, onFetch, onVerify }: SyncCheckCellProps) {
+export default function SyncCheckCell({ comparison, fetchState, verification, onCompare, onFetch, onVerify, onCancel }: SyncCheckCellProps) {
   const [showVerifyDetail, setShowVerifyDetail] = useState(false);
 
   const handleCompare = (e: React.MouseEvent) => {
@@ -34,12 +36,46 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
     setShowVerifyDetail(!showVerifyDetail);
   };
 
+  const handleCancel = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onCancel?.();
+  };
+
   if (fetchState?.loading) {
+    const progress = fetchState.progress;
+    const pct = progress && progress.total > 0
+      ? Math.round((progress.current / progress.total) * 100)
+      : null;
+
     return (
       <td className="px-3 py-3">
-        <div className="flex flex-col items-center gap-1">
+        <div className="flex flex-col items-center gap-1.5 min-w-[120px]">
           <RefreshCw size={14} className="animate-spin text-blue-500" />
           <span className="text-xs text-blue-600 font-medium">Syncing...</span>
+
+          {progress && progress.total > 0 && (
+            <>
+              <div className="w-full max-w-[100px] bg-gray-200 rounded-full h-1.5">
+                <div
+                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-gray-500 tabular-nums">
+                {progress.current}/{progress.total} ({pct}%)
+              </span>
+            </>
+          )}
+
+          {onCancel && (
+            <button
+              onClick={handleCancel}
+              className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
+            >
+              <StopCircle size={10} />
+              Cancel
+            </button>
+          )}
         </div>
       </td>
     );
@@ -62,6 +98,25 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
         <div className="flex flex-col items-center gap-1">
           <RefreshCw size={14} className="animate-spin text-gray-400" />
           <span className="text-xs text-gray-500">Checking...</span>
+        </div>
+      </td>
+    );
+  }
+
+  if (fetchState?.error) {
+    return (
+      <td className="px-3 py-3">
+        <div className="flex flex-col items-center gap-1">
+          <XCircle size={14} className="text-red-400" />
+          <span className="text-xs text-red-500 max-w-[120px] text-center" title={fetchState.error}>
+            {fetchState.error === 'Cancelled' ? 'Cancelled' : 'Sync error'}
+          </span>
+          <button
+            onClick={handleFetch}
+            className="text-[10px] text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Retry
+          </button>
         </div>
       </td>
     );

@@ -64,10 +64,21 @@ export interface ComparisonState {
   result: ComparisonResult | null;
 }
 
+export interface FetchProgress {
+  current: number;
+  total: number;
+  created: number;
+  updated: number;
+  applicationsSynced: number;
+  filesSynced: number;
+}
+
 export interface FetchState {
   loading: boolean;
   error: string | null;
   result: { created: number; updated: number } | null;
+  progress?: FetchProgress | null;
+  jobId?: string | null;
 }
 
 export interface StalePayment {

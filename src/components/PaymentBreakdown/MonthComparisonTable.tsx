@@ -13,6 +13,7 @@ interface MonthComparisonTableProps {
   onCompare: (monthKey: string) => void;
   onFetch: (monthKey: string) => void;
   onVerify: (monthKey: string, fix: boolean) => void;
+  onCancel?: (monthKey: string) => void;
 }
 
 type SortField = 'month' | 'total' | 'payments' | 'prepayments' | 'voided' | 'refunds' | 'balance_wo';
@@ -20,7 +21,7 @@ type SortDir = 'asc' | 'desc';
 
 export default function MonthComparisonTable({
   months, onMonthClick, selectedMonth,
-  comparisons, fetches, verifications, onCompare, onFetch, onVerify,
+  comparisons, fetches, verifications, onCompare, onFetch, onVerify, onCancel,
 }: MonthComparisonTableProps) {
   const [sortField, setSortField] = useState<SortField>('month');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -118,12 +119,14 @@ export default function MonthComparisonTable({
                 <TypeCell count={month.refund_count} amount={month.refund_amount} type="Refund" prevAmount={prevMonth?.refund_amount} getTrend={getTrend} />
                 <TypeCell count={month.balance_wo_count} amount={month.balance_wo_amount} type="Balance WO" prevAmount={prevMonth?.balance_wo_amount} getTrend={getTrend} />
                 <SyncCheckCell
+                  cellKey={month.month_key}
                   comparison={comparisons[month.month_key]}
                   fetchState={fetches[month.month_key]}
                   verification={verifications[month.month_key]}
                   onCompare={() => onCompare(month.month_key)}
                   onFetch={() => onFetch(month.month_key)}
                   onVerify={(fix) => onVerify(month.month_key, fix)}
+                  onCancel={onCancel ? () => onCancel(month.month_key) : undefined}
                 />
               </tr>
             );

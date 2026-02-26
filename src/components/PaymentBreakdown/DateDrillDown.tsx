@@ -13,13 +13,14 @@ interface DateDrillDownProps {
   onCompare: (dateKey: string) => void;
   onFetch: (dateKey: string) => void;
   onVerify: (dateKey: string, fix: boolean) => void;
+  onCancel?: (dateKey: string) => void;
 }
 
 type SortField = 'date' | 'total' | 'payment' | 'prepayment' | 'voided' | 'refund' | 'balance_wo';
 
 export default function DateDrillDown({
   days, monthLabel, onBack,
-  comparisons, fetches, verifications, onCompare, onFetch, onVerify,
+  comparisons, fetches, verifications, onCompare, onFetch, onVerify, onCancel,
 }: DateDrillDownProps) {
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('date');
@@ -151,6 +152,7 @@ export default function DateDrillDown({
                   onCompare={() => onCompare(day.date)}
                   onFetch={() => onFetch(day.date)}
                   onVerify={(fix) => onVerify(day.date, fix)}
+                  onCancel={onCancel ? () => onCancel(day.date) : undefined}
                 />
               );
             })}
@@ -161,7 +163,7 @@ export default function DateDrillDown({
   );
 }
 
-function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState, verification, onCompare, onFetch, onVerify }: {
+function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState, verification, onCompare, onFetch, onVerify, onCancel }: {
   day: DaySummary;
   dayOfWeek: string;
   isExpanded: boolean;
@@ -172,6 +174,7 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState,
   onCompare: () => void;
   onFetch: () => void;
   onVerify: (fix: boolean) => void;
+  onCancel?: () => void;
 }) {
   const allTypes = ['Payment', 'Prepayment', 'Voided Payment', 'Voided Check', 'Refund', 'Balance WO'];
 
@@ -215,12 +218,14 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState,
         <TypeCell types={day.types} typeKey="Refund" />
         <TypeCell types={day.types} typeKey="Balance WO" />
         <SyncCheckCell
+          cellKey={day.date}
           comparison={comparison}
           fetchState={fetchState}
           verification={verification}
           onCompare={onCompare}
           onFetch={onFetch}
           onVerify={onVerify}
+          onCancel={onCancel}
         />
       </tr>
       {isExpanded && (
