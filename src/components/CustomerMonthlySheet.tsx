@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 interface CustomerMonthlySheetProps {
   customerId: string;
   customerName: string;
+  customerEmail?: string;
 }
 
 interface MonthData {
@@ -69,7 +70,7 @@ function formatFileSize(bytes: number): string {
   return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
-export default function CustomerMonthlySheet({ customerId, customerName }: CustomerMonthlySheetProps) {
+export default function CustomerMonthlySheet({ customerId, customerName, customerEmail }: CustomerMonthlySheetProps) {
   const { profile } = useAuth();
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [monthlyData, setMonthlyData] = useState<MonthData[]>([]);
@@ -85,8 +86,14 @@ export default function CustomerMonthlySheet({ customerId, customerName }: Custo
   const loadMonthlyData = useCallback(async () => {
     setLoading(true);
     try {
+      const emailToUse = customerEmail || '';
+      if (!emailToUse) {
+        setMonthlyData([]);
+        setLoading(false);
+        return;
+      }
       const { data, error } = await supabase.rpc('get_customer_monthly_overview', {
-        p_customer_id: customerId,
+        p_customer_email: emailToUse,
         p_year: selectedYear,
       });
 
@@ -97,7 +104,7 @@ export default function CustomerMonthlySheet({ customerId, customerName }: Custo
     } finally {
       setLoading(false);
     }
-  }, [customerId, selectedYear]);
+  }, [customerEmail, selectedYear]);
 
   useEffect(() => {
     loadMonthlyData();

@@ -1712,6 +1712,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             <CustomerMonthlySheet
               customerId={customer.customer_id}
               customerName={customer.customer_name}
+              customerEmail={customer.email_address || ''}
             />
           )}
         </div>
