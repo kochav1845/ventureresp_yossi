@@ -225,21 +225,33 @@ const processEmailSchedule = async (
         );
 
         if (shouldSend) {
-          const { data: recentLogs } = await supabase
-            .from('email_logs')
-            .select('id')
-            .eq('customer_id', customer.id)
-            .eq('assignment_id', assignment.id)
-            .gte('sent_at', new Date(now.getTime() - 10 * 60 * 1000).toISOString())
-            .limit(1);
+          const tz = getTimeInTimezone(assignment.timezone || 'America/New_York');
+          const todayStr = `${tz.year}-${String(tz.month).padStart(2, '0')}-${String(tz.day).padStart(2, '0')}`;
+          const dedupKey = `${assignment.id}_${todayStr}_${sendTime}`;
 
-          if (recentLogs && recentLogs.length > 0) {
+          const { data: claimed, error: claimError } = await supabase
+            .from('email_logs')
+            .insert({
+              customer_id: customer.id,
+              assignment_id: assignment.id,
+              template_id: template.id,
+              sent_at: now.toISOString(),
+              subject: template.subject,
+              body: template.body,
+              status: 'pending',
+              scheduled_for: now.toISOString(),
+              dedup_key: dedupKey,
+            })
+            .select('id')
+            .maybeSingle();
+
+          if (claimError) {
             results.push({
               assignment_id: assignment.id,
               customer_id: customer.id,
               customer_name: customer.name,
               status: 'skipped',
-              reason: 'Email already sent within the last 10 minutes',
+              reason: 'Duplicate prevented by dedup key',
               scheduled_time: sendTime,
             });
             continue;
@@ -263,17 +275,15 @@ const processEmailSchedule = async (
             }
           }
 
-          await supabase.from('email_logs').insert({
-            customer_id: customer.id,
-            assignment_id: assignment.id,
-            template_id: template.id,
-            sent_at: now.toISOString(),
-            subject: template.subject,
-            body: template.body,
-            status: emailStatus,
-            scheduled_for: now.toISOString(),
-            error_message: emailError,
-          });
+          if (claimed?.id) {
+            await supabase
+              .from('email_logs')
+              .update({
+                status: emailStatus,
+                error_message: emailError,
+              })
+              .eq('id', claimed.id);
+          }
 
           results.push({
             assignment_id: assignment.id,
