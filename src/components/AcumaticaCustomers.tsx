@@ -1030,6 +1030,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             <button
               onClick={() => {
                 setShowTestCustomers(false);
+                setBalanceFilter('positive');
                 setPage(0);
                 setDisplayedCustomers([]);
                 setSearchTerm('');
@@ -1048,6 +1049,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             <button
               onClick={() => {
                 setShowTestCustomers(true);
+                setBalanceFilter('all');
                 setPage(0);
                 setDisplayedCustomers([]);
                 setSearchTerm('');
