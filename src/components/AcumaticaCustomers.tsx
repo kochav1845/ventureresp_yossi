@@ -57,6 +57,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
   const handleBack = onBack || (() => navigate(-1));
   const hasAccess = hasPermission(PERMISSION_KEYS.ACUMATICA_CUSTOMERS, 'view');
   const canPerformFetch = profile?.role === 'admin' || (profile as any)?.can_perform_fetch;
+  const [showTestCustomers, setShowTestCustomers] = useState(false);
   const [displayedCustomers, setDisplayedCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -123,8 +124,6 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     loadExcludedCustomers();
     loadSavedFilters();
     loadCustomQuickFilters();
-    loadCustomers();
-    // Load banner dismissal states from localStorage
     const bannerDismissed = localStorage.getItem('customers_exclusionBannerDismissed');
     if (bannerDismissed === 'true') {
       setExclusionBannerDismissed(true);
@@ -134,6 +133,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       setShowAllExcludedButtonDismissed(true);
     }
   }, []);
+
+  useEffect(() => {
+    loadGrandTotal();
+  }, [showTestCustomers]);
 
   useEffect(() => {
     if (page > 0) {
@@ -172,7 +175,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     setPage(0);
     setDisplayedCustomers([]);
     loadCustomers();
-  }, [searchTerm, statusFilter, countryFilter, balanceFilter, sortBy, sortOrder, dateFrom, dateTo, minOpenInvoices, maxOpenInvoices, minBalance, maxBalance, minDaysOverdue, maxDaysOverdue, excludeCreditMemos, dateRangeContext]);
+  }, [searchTerm, statusFilter, countryFilter, balanceFilter, sortBy, sortOrder, dateFrom, dateTo, minOpenInvoices, maxOpenInvoices, minBalance, maxBalance, minDaysOverdue, maxDaysOverdue, excludeCreditMemos, dateRangeContext, showTestCustomers]);
 
   // Load analytics from ALL filtered customers (not just displayed page)
   const loadAnalytics = useCallback(async () => {
@@ -473,10 +476,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
   const loadGrandTotal = async () => {
     try {
-      // Get TOTAL customers count from acumatica_customers (NO FILTERS)
       const { count, error } = await supabase
         .from('acumatica_customers')
-        .select('*', { count: 'exact', head: true });
+        .select('*', { count: 'exact', head: true })
+        .eq('is_test_customer', showTestCustomers);
 
       if (error) throw error;
       setGrandTotalCustomers(count || 0);
@@ -504,7 +507,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_max_invoice_amount: null,
           p_date_context: dateRangeContext,
           p_min_days_overdue: minDaysOverdue ? parseInt(minDaysOverdue) : null,
-          p_max_days_overdue: maxDaysOverdue ? parseInt(maxDaysOverdue) : null
+          p_max_days_overdue: maxDaysOverdue ? parseInt(maxDaysOverdue) : null,
+          p_test_customers: showTestCustomers
         });
 
       if (countError) throw countError;
@@ -532,7 +536,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_max_invoice_amount: null,
           p_exclude_credit_memos: excludeCreditMemos,
           p_date_context: dateRangeContext,
-          p_calculate_avg_days: sortBy === 'avg_days_to_collect'
+          p_calculate_avg_days: sortBy === 'avg_days_to_collect',
+          p_test_customers: showTestCustomers
         });
 
       if (error) throw error;
@@ -763,7 +768,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_max_invoice_amount: null,
           p_date_context: dateRangeContext,
           p_min_days_overdue: minDaysOverdue ? parseInt(minDaysOverdue) : null,
-          p_max_days_overdue: maxDaysOverdue ? parseInt(maxDaysOverdue) : null
+          p_max_days_overdue: maxDaysOverdue ? parseInt(maxDaysOverdue) : null,
+          p_test_customers: showTestCustomers
         });
 
       if (countError) throw countError;
@@ -788,7 +794,8 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_min_invoice_amount: null,
           p_max_invoice_amount: null,
           p_exclude_credit_memos: excludeCreditMemos,
-          p_calculate_avg_days: false
+          p_calculate_avg_days: false,
+          p_test_customers: showTestCustomers
         });
 
       if (error) throw error;
@@ -1018,11 +1025,56 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             Back to Main Menu
           </button>
 
+          {/* Customer Type Toggle */}
+          <div className="inline-flex bg-white rounded-xl shadow-sm border border-gray-200 p-1 mb-4">
+            <button
+              onClick={() => {
+                setShowTestCustomers(false);
+                setPage(0);
+                setDisplayedCustomers([]);
+                setSearchTerm('');
+              }}
+              className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                !showTestCustomers
+                  ? 'bg-slate-800 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                All Customers
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                setShowTestCustomers(true);
+                setPage(0);
+                setDisplayedCustomers([]);
+                setSearchTerm('');
+              }}
+              className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                showTestCustomers
+                  ? 'bg-teal-600 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <Zap className="w-4 h-4" />
+                Test Customers
+              </span>
+            </button>
+          </div>
+
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Acumatica Customers</h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                {showTestCustomers ? 'Test Customers' : 'Acumatica Customers'}
+              </h1>
               <p className="text-gray-600">
-                Showing {displayedCustomers.length} of {grandTotalCustomers.toLocaleString()} customer{grandTotalCustomers !== 1 ? 's' : ''}
+                {showTestCustomers
+                  ? `${displayedCustomers.length} test customer${displayedCustomers.length !== 1 ? 's' : ''} from the email system`
+                  : `Showing ${displayedCustomers.length} of ${grandTotalCustomers.toLocaleString()} customer${grandTotalCustomers !== 1 ? 's' : ''}`
+                }
               </p>
             </div>
 
