@@ -22,7 +22,6 @@ async function fetchAndUpsertMissingInvoice(
   invoiceRefNbr: string
 ): Promise<{ success: boolean; invoiceId?: string; error?: string }> {
   try {
-    console.log(`[payment-sync] Fetching missing invoice ${invoiceRefNbr} from Acumatica...`);
     const invoiceUrl = `${credentials.acumaticaUrl}/entity/Default/24.200.001/Invoice/${invoiceRefNbr}`;
     const response = await sessionManager.makeAuthenticatedRequest(credentials, invoiceUrl);
 
@@ -71,6 +70,159 @@ async function fetchAndUpsertMissingInvoice(
   }
 }
 
+function normalizeRefNbr(refNbr: string): string {
+  if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) {
+    return refNbr.padStart(6, '0');
+  }
+  return refNbr;
+}
+
+function extractPaymentData(payment: any) {
+  const refNbr = normalizeRefNbr(payment.ReferenceNbr?.value || '');
+  const type = payment.Type?.value;
+  return {
+    refNbr,
+    type,
+    data: {
+      reference_number: refNbr,
+      type,
+      status: payment.Status?.value || null,
+      hold: payment.Hold?.value || false,
+      application_date: payment.ApplicationDate?.value || payment.PaymentDate?.value || null,
+      payment_amount: payment.PaymentAmount?.value || 0,
+      available_balance: payment.UnappliedBalance?.value || 0,
+      customer_id: payment.CustomerID?.value || null,
+      customer_name: payment.CustomerName?.value || null,
+      payment_method: payment.PaymentMethod?.value || null,
+      cash_account: payment.CashAccount?.value || null,
+      payment_ref: payment.PaymentRef?.value || null,
+      description: payment.Description?.value || null,
+      currency_id: payment.CurrencyID?.value || null,
+      last_modified_datetime: payment.LastModifiedDateTime?.value || null,
+      raw_data: payment,
+      last_sync_timestamp: new Date().toISOString()
+    }
+  };
+}
+
+async function fetchPaymentDetails(
+  supabase: any,
+  sessionManager: AcumaticaSessionManager,
+  credentials: any,
+  paymentDbId: number,
+  refNbr: string,
+  type: string,
+  customerIdVal: string | null,
+  stats: { applicationsSynced: number; filesSynced: number; errors: string[] }
+) {
+  try {
+    const directUrl = `${credentials.acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(type)}/${encodeURIComponent(refNbr)}?$expand=ApplicationHistory,files`;
+    const detailResponse = await sessionManager.makeAuthenticatedRequest(credentials, directUrl);
+
+    if (!detailResponse.ok) return;
+
+    const detailData = await detailResponse.json();
+
+    if (detailData.files && Array.isArray(detailData.files) && detailData.files.length > 0) {
+      for (const file of detailData.files) {
+        const fileId = file.id?.value || file.id;
+        const fileName = file.filename?.value || file.filename || file.name?.value || file.name;
+        if (!fileId || !fileName) continue;
+
+        try {
+          const fileUrl = `${credentials.acumaticaUrl}/(W(2))/Frames/GetFile.ashx?fileID=${fileId}`;
+          const fileResponse = await sessionManager.makeAuthenticatedRequest(credentials, fileUrl);
+          if (fileResponse.ok) {
+            const fileBlob = await fileResponse.arrayBuffer();
+            const cleanFileName = (fileName.split('\\').pop() || fileName).replace(/[#?&]/g, '_');
+            const storagePath = `payments/${refNbr}/${new Date().toISOString().replace(/[:.]/g, '-')}-${cleanFileName}`;
+
+            const { error: uploadError } = await supabase.storage
+              .from('payment-check-images')
+              .upload(storagePath, new Uint8Array(fileBlob), {
+                contentType: fileResponse.headers.get('content-type') || 'application/octet-stream',
+                upsert: true
+              });
+
+            if (!uploadError) {
+              const isCheckImage = cleanFileName.toLowerCase().includes('check') ||
+                cleanFileName.toLowerCase().includes('.jpg') ||
+                cleanFileName.toLowerCase().includes('.jpeg') ||
+                cleanFileName.toLowerCase().includes('.png');
+
+              await supabase
+                .from('payment_attachments')
+                .upsert({
+                  payment_reference_number: refNbr,
+                  file_name: cleanFileName,
+                  file_type: fileResponse.headers.get('content-type') || 'application/octet-stream',
+                  file_size: fileBlob.byteLength,
+                  storage_path: storagePath,
+                  file_id: fileId,
+                  is_check_image: isCheckImage,
+                }, { onConflict: 'payment_reference_number,file_id' });
+
+              stats.filesSynced++;
+            }
+          }
+        } catch (fileError: any) {
+          console.error(`[payment-sync] File sync error for ${fileName}:`, fileError.message);
+        }
+      }
+    }
+
+    if (detailData.ApplicationHistory && Array.isArray(detailData.ApplicationHistory)) {
+      for (const app of detailData.ApplicationHistory) {
+        let invoiceRefNbr = app.DisplayRefNbr?.value || app.ReferenceNbr?.value || app.AdjustedRefNbr?.value;
+        const amountPaid = app.AmountPaid?.value;
+        const appDate = app.ApplicationDate?.value || app.Date?.value;
+        const docType = app.DisplayDocType?.value || app.DocType?.value || app.AdjustedDocType?.value || 'Invoice';
+
+        if (!invoiceRefNbr) continue;
+        invoiceRefNbr = normalizeRefNbr(invoiceRefNbr);
+
+        const { data: invoiceExists } = await supabase
+          .from('acumatica_invoices')
+          .select('id')
+          .eq('reference_number', invoiceRefNbr)
+          .maybeSingle();
+
+        if (!invoiceExists && docType === 'Invoice') {
+          await fetchAndUpsertMissingInvoice(supabase, sessionManager, credentials, invoiceRefNbr);
+        }
+
+        try {
+          await supabase
+            .from('payment_invoice_applications')
+            .upsert({
+              payment_id: paymentDbId,
+              payment_reference_number: refNbr,
+              invoice_reference_number: invoiceRefNbr,
+              customer_id: customerIdVal || '',
+              amount_paid: amountPaid || 0,
+              application_date: appDate || null,
+              doc_type: docType,
+              balance: app.Balance?.value || 0,
+              cash_discount_taken: app.CashDiscountTaken?.value || 0,
+              post_period: app.PostPeriod?.value || null,
+              application_period: app.ApplicationPeriod?.value || null,
+              due_date: app.DueDate?.value || null,
+              customer_order: app.CustomerOrder?.value || null,
+              description: app.Description?.value || null,
+              invoice_date: app.Date?.value || null
+            }, { onConflict: 'payment_id,invoice_reference_number' });
+
+          stats.applicationsSynced++;
+        } catch (appError: any) {
+          stats.errors.push(`Application sync error ${refNbr} -> ${invoiceRefNbr}: ${appError.message}`);
+        }
+      }
+    }
+  } catch (historyError: any) {
+    console.error(`[payment-sync] Detail fetch error for ${refNbr}:`, historyError.message);
+  }
+}
+
 async function processSync(supabase: any, sessionManager: AcumaticaSessionManager, jobId: string, startDate: string, endDate: string) {
   await supabase
     .from('async_sync_jobs')
@@ -100,16 +252,14 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
     branch: credentials.branch
   };
 
-  console.log('[payment-sync] Getting Acumatica session...');
   await sessionManager.getSession(credentialsObj);
-  console.log('[payment-sync] Session obtained');
 
   const filterStartDate = new Date(startDate).toISOString().split('.')[0];
   const filterEndDate = new Date(endDate).toISOString().split('.')[0];
 
   const paymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=ApplicationDate ge datetimeoffset'${filterStartDate}' and ApplicationDate le datetimeoffset'${filterEndDate}' and Type ne 'Credit Memo'`;
 
-  console.log(`[payment-sync] Fetching payments from ${filterStartDate} to ${filterEndDate}`);
+  console.log(`[payment-sync] Fetching payment list from ${filterStartDate} to ${filterEndDate}`);
 
   const paymentsResponse = await sessionManager.makeAuthenticatedRequest(credentialsObj, paymentsUrl);
 
@@ -121,292 +271,184 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
   const paymentsData = await paymentsResponse.json();
   const payments = Array.isArray(paymentsData) ? paymentsData : [];
 
-  console.log(`[payment-sync] Found ${payments.length} payments in date range`);
+  console.log(`[payment-sync] Found ${payments.length} payments in Acumatica`);
 
-  let created = 0, updated = 0, applicationsSynced = 0, filesSynced = 0;
-  const errors: string[] = [];
+  const acumaticaPayments = payments
+    .map((p: any) => extractPaymentData(p))
+    .filter((p: any) => p.refNbr && p.type);
 
-  await updateProgress(supabase, jobId, { created: 0, updated: 0, applicationsSynced: 0, filesSynced: 0, total: payments.length, errors: [] });
+  const acumaticaKeys = new Set(acumaticaPayments.map((p: any) => `${p.type}::${p.refNbr}`));
 
-  for (let i = 0; i < payments.length; i++) {
-    const payment = payments[i];
-    try {
-      let refNbr = payment.ReferenceNbr?.value;
-      const type = payment.Type?.value;
-      if (!refNbr || !type) continue;
+  const { data: dbPayments } = await supabase
+    .from('acumatica_payments')
+    .select('id, reference_number, type, status, last_modified_datetime')
+    .gte('application_date', `${startDate}T00:00:00`)
+    .lte('application_date', `${endDate}T23:59:59`)
+    .neq('type', 'Credit Memo');
 
-      if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) {
-        refNbr = refNbr.padStart(6, '0');
+  const dbKeyMap = new Map<string, { id: number; status: string; last_modified_datetime: string }>();
+  if (dbPayments) {
+    for (const p of dbPayments) {
+      dbKeyMap.set(`${p.type}::${p.reference_number}`, {
+        id: p.id,
+        status: p.status,
+        last_modified_datetime: p.last_modified_datetime
+      });
+    }
+  }
+
+  const missingPayments: typeof acumaticaPayments = [];
+  const existingPayments: typeof acumaticaPayments = [];
+
+  for (const payment of acumaticaPayments) {
+    const key = `${payment.type}::${payment.refNbr}`;
+    if (dbKeyMap.has(key)) {
+      existingPayments.push(payment);
+    } else {
+      missingPayments.push(payment);
+    }
+  }
+
+  console.log(`[payment-sync] ${missingPayments.length} missing, ${existingPayments.length} already in DB`);
+
+  let created = 0, updated = 0;
+  const stats = { applicationsSynced: 0, filesSynced: 0, errors: [] as string[] };
+  const totalToProcess = missingPayments.length;
+
+  await updateProgress(supabase, jobId, {
+    created: 0, updated: 0,
+    applicationsSynced: 0, filesSynced: 0,
+    total: totalToProcess,
+    totalInAcumatica: payments.length,
+    alreadyInDb: existingPayments.length,
+    missing: missingPayments.length,
+    errors: []
+  });
+
+  if (existingPayments.length > 0) {
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < existingPayments.length; i += BATCH_SIZE) {
+      const batch = existingPayments.slice(i, i + BATCH_SIZE);
+      for (const payment of batch) {
+        const dbEntry = dbKeyMap.get(`${payment.type}::${payment.refNbr}`);
+        if (!dbEntry) continue;
+
+        const acumaticaModified = payment.data.last_modified_datetime;
+        const dbModified = dbEntry.last_modified_datetime;
+
+        if (acumaticaModified && dbModified && acumaticaModified === dbModified) continue;
+
+        const { error } = await supabase
+          .from('acumatica_payments')
+          .update(payment.data)
+          .eq('reference_number', payment.refNbr)
+          .eq('type', payment.type);
+
+        if (!error) updated++;
       }
+    }
+    console.log(`[payment-sync] Quick-updated ${updated} existing payments`);
+  }
 
-      const paymentData: any = {
-        reference_number: refNbr,
-        type: type,
-        status: payment.Status?.value || null,
-        hold: payment.Hold?.value || false,
-        application_date: payment.ApplicationDate?.value || payment.PaymentDate?.value || null,
-        payment_amount: payment.PaymentAmount?.value || 0,
-        available_balance: payment.UnappliedBalance?.value || 0,
-        customer_id: payment.CustomerID?.value || null,
-        customer_name: payment.CustomerName?.value || null,
-        payment_method: payment.PaymentMethod?.value || null,
-        cash_account: payment.CashAccount?.value || null,
-        payment_ref: payment.PaymentRef?.value || null,
-        description: payment.Description?.value || null,
-        currency_id: payment.CurrencyID?.value || null,
-        last_modified_datetime: payment.LastModifiedDateTime?.value || null,
-        raw_data: payment,
-        last_sync_timestamp: new Date().toISOString()
-      };
-
-      const { data: existing } = await supabase
-        .from('acumatica_payments')
-        .select('id, status')
-        .eq('reference_number', refNbr)
-        .eq('type', type)
+  for (let i = 0; i < missingPayments.length; i++) {
+    const payment = missingPayments[i];
+    try {
+      const { data: job } = await supabase
+        .from('async_sync_jobs')
+        .select('status')
+        .eq('id', jobId)
         .maybeSingle();
 
-      let paymentDbId: number | null = null;
+      if (job?.status === 'failed') {
+        console.log('[payment-sync] Job was cancelled, stopping');
+        return { created, updated, applicationsSynced: stats.applicationsSynced, filesSynced: stats.filesSynced, total: totalToProcess, cancelled: true };
+      }
 
-      if (existing) {
-        const oldStatus = existing.status;
-        const { error } = await supabase.from('acumatica_payments').update(paymentData).eq('reference_number', refNbr).eq('type', type);
-        if (error) {
-          errors.push(`Update failed for ${refNbr}: ${error.message}`);
+      const { data: inserted, error } = await supabase
+        .from('acumatica_payments')
+        .insert(payment.data)
+        .select('id')
+        .single();
+
+      if (error) {
+        if (error.code === '23505') {
+          const { data: existing } = await supabase
+            .from('acumatica_payments')
+            .select('id')
+            .eq('reference_number', payment.refNbr)
+            .eq('type', payment.type)
+            .maybeSingle();
+
+          if (existing) {
+            await supabase.from('acumatica_payments').update(payment.data).eq('id', existing.id);
+            updated++;
+            await fetchPaymentDetails(supabase, sessionManager, credentialsObj, existing.id, payment.refNbr, payment.type, payment.data.customer_id, stats);
+          }
         } else {
-          updated++;
-          paymentDbId = existing.id;
-          try {
-            await supabase.rpc('log_sync_change', {
-              p_sync_type: 'payment',
-              p_action_type: oldStatus !== paymentData.status ? 'status_changed' : 'updated',
-              p_entity_id: existing.id,
-              p_entity_reference: refNbr,
-              p_entity_name: `Payment ${refNbr} - $${paymentData.payment_amount || 0}`,
-              p_change_summary: oldStatus !== paymentData.status
-                ? `Payment ${refNbr} status changed from ${oldStatus} to ${paymentData.status}`
-                : `Payment ${refNbr} was updated`,
-              p_change_details: { old_status: oldStatus, new_status: paymentData.status, payment_amount: paymentData.payment_amount, available_balance: paymentData.available_balance },
-              p_sync_source: 'date_range_sync'
-            });
-          } catch (_) {}
+          stats.errors.push(`Insert failed for ${payment.refNbr}: ${error.message}`);
         }
-      } else {
-        const { data: inserted, error } = await supabase.from('acumatica_payments').insert(paymentData).select('id').single();
-        if (error) {
-          errors.push(`Insert failed for ${refNbr}: ${error.message}`);
-        } else {
-          created++;
-          if (inserted) {
-            paymentDbId = inserted.id;
+      } else if (inserted) {
+        created++;
+
+        await fetchPaymentDetails(supabase, sessionManager, credentialsObj, inserted.id, payment.refNbr, payment.type, payment.data.customer_id, stats);
+
+        if (payment.data.status === 'Voided' && payment.type === 'Payment') {
+          const { data: voidedExists } = await supabase
+            .from('acumatica_payments')
+            .select('id')
+            .eq('reference_number', payment.refNbr)
+            .eq('type', 'Voided Payment')
+            .maybeSingle();
+
+          if (!voidedExists) {
             try {
-              await supabase.rpc('log_sync_change', {
-                p_sync_type: 'payment',
-                p_action_type: 'created',
-                p_entity_id: inserted.id,
-                p_entity_reference: refNbr,
-                p_entity_name: `Payment ${refNbr} - $${paymentData.payment_amount || 0}`,
-                p_change_summary: `New payment ${refNbr} was created`,
-                p_change_details: { status: paymentData.status, payment_amount: paymentData.payment_amount, available_balance: paymentData.available_balance },
-                p_sync_source: 'date_range_sync'
-              });
-            } catch (_) {}
-          }
-        }
-      }
-
-      if (paymentData.status === 'Voided' && type === 'Payment' && paymentDbId) {
-        const { data: voidedExists } = await supabase
-          .from('acumatica_payments')
-          .select('id')
-          .eq('reference_number', refNbr)
-          .eq('type', 'Voided Payment')
-          .maybeSingle();
-
-        if (!voidedExists) {
-          try {
-            const voidedPaymentUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/Voided Payment/${encodeURIComponent(refNbr)}?$expand=ApplicationHistory,files`;
-            const voidedResponse = await sessionManager.makeAuthenticatedRequest(credentialsObj, voidedPaymentUrl);
-            if (voidedResponse.ok) {
-              const voidedPayment = await voidedResponse.json();
-              const voidedPaymentData: any = {
-                reference_number: refNbr,
-                type: 'Voided Payment',
-                status: voidedPayment.Status?.value || null,
-                hold: voidedPayment.Hold?.value || false,
-                application_date: voidedPayment.ApplicationDate?.value || voidedPayment.PaymentDate?.value || null,
-                payment_amount: voidedPayment.PaymentAmount?.value || 0,
-                available_balance: voidedPayment.UnappliedBalance?.value || 0,
-                customer_id: voidedPayment.CustomerID?.value || null,
-                customer_name: voidedPayment.CustomerName?.value || null,
-                payment_method: voidedPayment.PaymentMethod?.value || null,
-                cash_account: voidedPayment.CashAccount?.value || null,
-                payment_ref: voidedPayment.PaymentRef?.value || null,
-                description: voidedPayment.Description?.value || null,
-                currency_id: voidedPayment.CurrencyID?.value || null,
-                last_modified_datetime: voidedPayment.LastModifiedDateTime?.value || null,
-                raw_data: voidedPayment,
-                last_sync_timestamp: new Date().toISOString()
-              };
-              const { error: voidedError } = await supabase.from('acumatica_payments').insert(voidedPaymentData).select('id').single();
-              if (!voidedError) created++;
-            }
-          } catch (voidedError: any) {
-            console.error(`[payment-sync] Error fetching voided payment for ${refNbr}:`, voidedError.message);
-          }
-        }
-      }
-
-      if (paymentDbId) {
-        let applicationHistory: any[] = [];
-        try {
-          const directUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(type)}/${encodeURIComponent(refNbr)}?$expand=ApplicationHistory,files`;
-          const detailResponse = await sessionManager.makeAuthenticatedRequest(credentialsObj, directUrl);
-
-          if (detailResponse.ok) {
-            const detailData = await detailResponse.json();
-            if (detailData.ApplicationHistory && Array.isArray(detailData.ApplicationHistory)) {
-              applicationHistory = detailData.ApplicationHistory;
-            }
-
-            if (detailData.files && Array.isArray(detailData.files) && detailData.files.length > 0) {
-              for (const file of detailData.files) {
-                const fileId = file.id?.value || file.id;
-                const fileName = file.filename?.value || file.filename || file.name?.value || file.name;
-                if (!fileId || !fileName) continue;
-
-                try {
-                  const fileUrl = `${acumaticaUrl}/(W(2))/Frames/GetFile.ashx?fileID=${fileId}`;
-                  const fileResponse = await sessionManager.makeAuthenticatedRequest(credentialsObj, fileUrl);
-                  if (fileResponse.ok) {
-                    const fileBlob = await fileResponse.arrayBuffer();
-                    const cleanFileName = (fileName.split('\\').pop() || fileName).replace(/[#?&]/g, '_');
-                    const storagePath = `payments/${refNbr}/${new Date().toISOString().replace(/[:.]/g, '-')}-${cleanFileName}`;
-
-                    const { error: uploadError } = await supabase.storage
-                      .from('payment-check-images')
-                      .upload(storagePath, new Uint8Array(fileBlob), {
-                        contentType: fileResponse.headers.get('content-type') || 'application/octet-stream',
-                        upsert: true
-                      });
-
-                    if (!uploadError) {
-                      const isCheckImage = cleanFileName.toLowerCase().includes('check') ||
-                        cleanFileName.toLowerCase().includes('.jpg') ||
-                        cleanFileName.toLowerCase().includes('.jpeg') ||
-                        cleanFileName.toLowerCase().includes('.png');
-
-                      await supabase
-                        .from('payment_attachments')
-                        .upsert({
-                          payment_reference_number: refNbr,
-                          file_name: cleanFileName,
-                          file_type: fileResponse.headers.get('content-type') || 'application/octet-stream',
-                          file_size: fileBlob.byteLength,
-                          storage_path: storagePath,
-                          file_id: fileId,
-                          is_check_image: isCheckImage,
-                        }, { onConflict: 'payment_reference_number,file_id' });
-
-                      filesSynced++;
-
-                      try {
-                        await supabase.rpc('log_sync_change', {
-                          p_sync_type: 'payment_attachment',
-                          p_action_type: 'attachment_fetched',
-                          p_entity_id: paymentDbId,
-                          p_entity_reference: refNbr,
-                          p_entity_name: `Attachment: ${cleanFileName}`,
-                          p_change_summary: `Fetched attachment ${cleanFileName} for payment ${refNbr}`,
-                          p_change_details: { payment_ref: refNbr, file_name: cleanFileName, file_size: fileBlob.byteLength },
-                          p_sync_source: 'date_range_sync'
-                        });
-                      } catch (_) {}
-                    }
-                  }
-                } catch (fileError: any) {
-                  console.error(`[payment-sync] File sync error for ${fileName}:`, fileError.message);
-                }
+              const voidedPaymentUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/Voided Payment/${encodeURIComponent(payment.refNbr)}?$expand=ApplicationHistory,files`;
+              const voidedResponse = await sessionManager.makeAuthenticatedRequest(credentialsObj, voidedPaymentUrl);
+              if (voidedResponse.ok) {
+                const voidedPayment = await voidedResponse.json();
+                const voidedData = {
+                  reference_number: payment.refNbr,
+                  type: 'Voided Payment',
+                  status: voidedPayment.Status?.value || null,
+                  hold: voidedPayment.Hold?.value || false,
+                  application_date: voidedPayment.ApplicationDate?.value || voidedPayment.PaymentDate?.value || null,
+                  payment_amount: voidedPayment.PaymentAmount?.value || 0,
+                  available_balance: voidedPayment.UnappliedBalance?.value || 0,
+                  customer_id: voidedPayment.CustomerID?.value || null,
+                  customer_name: voidedPayment.CustomerName?.value || null,
+                  payment_method: voidedPayment.PaymentMethod?.value || null,
+                  cash_account: voidedPayment.CashAccount?.value || null,
+                  payment_ref: voidedPayment.PaymentRef?.value || null,
+                  description: voidedPayment.Description?.value || null,
+                  currency_id: voidedPayment.CurrencyID?.value || null,
+                  last_modified_datetime: voidedPayment.LastModifiedDateTime?.value || null,
+                  raw_data: voidedPayment,
+                  last_sync_timestamp: new Date().toISOString()
+                };
+                const { error: voidedError } = await supabase.from('acumatica_payments').insert(voidedData);
+                if (!voidedError) created++;
               }
-            }
-          }
-        } catch (historyError: any) {
-          console.error(`[payment-sync] ApplicationHistory error for ${refNbr}:`, historyError.message);
-        }
-
-        if (applicationHistory.length > 0) {
-          for (const app of applicationHistory) {
-            let invoiceRefNbr = app.DisplayRefNbr?.value || app.ReferenceNbr?.value || app.AdjustedRefNbr?.value;
-            const amountPaid = app.AmountPaid?.value;
-            const appDate = app.ApplicationDate?.value || app.Date?.value;
-            const docType = app.DisplayDocType?.value || app.DocType?.value || app.AdjustedDocType?.value || 'Invoice';
-
-            if (!invoiceRefNbr) continue;
-
-            if (/^[0-9]+$/.test(invoiceRefNbr) && invoiceRefNbr.length < 6) {
-              invoiceRefNbr = invoiceRefNbr.padStart(6, '0');
-            }
-
-            const { data: invoiceExists } = await supabase
-              .from('acumatica_invoices')
-              .select('id')
-              .eq('reference_number', invoiceRefNbr)
-              .maybeSingle();
-
-            if (!invoiceExists && docType === 'Invoice') {
-              await fetchAndUpsertMissingInvoice(supabase, sessionManager, credentialsObj, invoiceRefNbr);
-            }
-
-            try {
-              await supabase
-                .from('payment_invoice_applications')
-                .upsert({
-                  payment_id: paymentDbId,
-                  payment_reference_number: refNbr,
-                  invoice_reference_number: invoiceRefNbr,
-                  customer_id: paymentData.customer_id || '',
-                  amount_paid: amountPaid || 0,
-                  application_date: appDate || null,
-                  doc_type: docType,
-                  balance: app.Balance?.value || 0,
-                  cash_discount_taken: app.CashDiscountTaken?.value || 0,
-                  post_period: app.PostPeriod?.value || null,
-                  application_period: app.ApplicationPeriod?.value || null,
-                  due_date: app.DueDate?.value || null,
-                  customer_order: app.CustomerOrder?.value || null,
-                  description: app.Description?.value || null,
-                  invoice_date: app.Date?.value || null
-                }, { onConflict: 'payment_id,invoice_reference_number' });
-
-              applicationsSynced++;
-
-              try {
-                await supabase.rpc('log_sync_change', {
-                  p_sync_type: 'payment_application',
-                  p_action_type: 'application_fetched',
-                  p_entity_id: paymentDbId,
-                  p_entity_reference: `${refNbr} -> ${invoiceRefNbr}`,
-                  p_entity_name: `Application: Payment ${refNbr} to Invoice ${invoiceRefNbr}`,
-                  p_change_summary: `Synced application of $${amountPaid || 0} from payment ${refNbr} to invoice ${invoiceRefNbr}`,
-                  p_change_details: { payment_ref: refNbr, invoice_ref: invoiceRefNbr, amount_applied: amountPaid, doc_type: docType },
-                  p_sync_source: 'date_range_sync'
-                });
-              } catch (_) {}
-            } catch (appError: any) {
-              errors.push(`Application sync error ${refNbr} -> ${invoiceRefNbr}: ${appError.message}`);
+            } catch (voidedError: any) {
+              console.error(`[payment-sync] Error fetching voided payment for ${payment.refNbr}:`, voidedError.message);
             }
           }
         }
       }
     } catch (error: any) {
-      errors.push(`Error processing payment: ${error.message}`);
+      stats.errors.push(`Error processing ${payment.refNbr}: ${error.message}`);
     }
 
-    if ((i + 1) % 5 === 0 || i === payments.length - 1) {
+    if ((i + 1) % 3 === 0 || i === missingPayments.length - 1) {
       await updateProgress(supabase, jobId, {
-        created, updated, applicationsSynced, filesSynced,
-        total: payments.length,
-        errors: errors.slice(0, 10)
+        created, updated,
+        applicationsSynced: stats.applicationsSynced,
+        filesSynced: stats.filesSynced,
+        total: totalToProcess,
+        totalInAcumatica: payments.length,
+        alreadyInDb: existingPayments.length,
+        missing: missingPayments.length,
+        processed: i + 1,
+        errors: stats.errors.slice(0, 10)
       });
     }
   }
@@ -414,11 +456,20 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
   await supabase.from('async_sync_jobs').update({
     status: 'completed',
     completed_at: new Date().toISOString(),
-    progress: { created, updated, applicationsSynced, filesSynced, total: payments.length, errors: errors.slice(0, 10) }
+    progress: {
+      created, updated,
+      applicationsSynced: stats.applicationsSynced,
+      filesSynced: stats.filesSynced,
+      total: totalToProcess,
+      totalInAcumatica: payments.length,
+      alreadyInDb: existingPayments.length,
+      missing: missingPayments.length,
+      errors: stats.errors.slice(0, 10)
+    }
   }).eq('id', jobId);
 
-  console.log(`[payment-sync] Completed: ${created} created, ${updated} updated, ${applicationsSynced} apps, ${filesSynced} files, ${errors.length} errors`);
-  return { created, updated, applicationsSynced, filesSynced, total: payments.length, errors: errors.length };
+  console.log(`[payment-sync] Done: ${created} created, ${updated} updated, ${stats.applicationsSynced} apps, ${stats.filesSynced} files`);
+  return { created, updated, applicationsSynced: stats.applicationsSynced, filesSynced: stats.filesSynced, total: totalToProcess };
 }
 
 Deno.serve(async (req: Request) => {
@@ -484,8 +535,7 @@ Deno.serve(async (req: Request) => {
         const existing = existingRunning[0];
         const minutesAgo = (Date.now() - new Date(existing.created_at).getTime()) / 60000;
 
-        if (minutesAgo < 10) {
-          console.log(`[payment-sync] Reusing existing job ${existing.id} for ${startDate} to ${endDate}`);
+        if (minutesAgo < 30) {
           return new Response(
             JSON.stringify({ success: true, jobId: existing.id, async: true, reused: true }),
             { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -526,8 +576,6 @@ Deno.serve(async (req: Request) => {
       }
       jobId = job.id;
     }
-
-    console.log(`[payment-sync] Created job ${jobId}, processing in background`);
 
     const backgroundTask = (async () => {
       try {

@@ -43,15 +43,32 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
 
   if (fetchState?.loading) {
     const progress = fetchState.progress;
+    const hasMissingInfo = progress && progress.missing !== undefined;
     const pct = progress && progress.total > 0
       ? Math.round((progress.current / progress.total) * 100)
       : null;
+    const isAnalyzing = progress && progress.total === 0 && progress.totalInAcumatica !== undefined;
 
     return (
       <td className="px-3 py-3">
-        <div className="flex flex-col items-center gap-1.5 min-w-[120px]">
+        <div className="flex flex-col items-center gap-1.5 min-w-[130px]">
           <RefreshCw size={14} className="animate-spin text-blue-500" />
-          <span className="text-xs text-blue-600 font-medium">Syncing...</span>
+
+          {isAnalyzing ? (
+            <span className="text-xs text-blue-600 font-medium">All in sync</span>
+          ) : hasMissingInfo && progress.total > 0 ? (
+            <span className="text-xs text-blue-600 font-medium">
+              Fetching {progress.missing} missing...
+            </span>
+          ) : (
+            <span className="text-xs text-blue-600 font-medium">Syncing...</span>
+          )}
+
+          {hasMissingInfo && (
+            <span className="text-[10px] text-gray-400">
+              {progress.alreadyInDb} of {progress.totalInAcumatica} already synced
+            </span>
+          )}
 
           {progress && progress.total > 0 && (
             <>

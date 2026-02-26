@@ -171,8 +171,8 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
         }
 
         const progress = job.progress || {};
-        if (progress.total) {
-          const current = (progress.created || 0) + (progress.updated || 0);
+        if (progress.total !== undefined) {
+          const current = progress.processed || ((progress.created || 0) + (progress.updated || 0));
           setFetches(prev => ({
             ...prev,
             [key]: {
@@ -186,6 +186,9 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
                 updated: progress.updated || 0,
                 applicationsSynced: progress.applicationsSynced || 0,
                 filesSynced: progress.filesSynced || 0,
+                totalInAcumatica: progress.totalInAcumatica,
+                alreadyInDb: progress.alreadyInDb,
+                missing: progress.missing,
               },
               jobId
             }

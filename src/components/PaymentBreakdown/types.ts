@@ -71,6 +71,9 @@ export interface FetchProgress {
   updated: number;
   applicationsSynced: number;
   filesSynced: number;
+  totalInAcumatica?: number;
+  alreadyInDb?: number;
+  missing?: number;
 }
 
 export interface FetchState {
