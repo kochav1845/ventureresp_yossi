@@ -86,14 +86,8 @@ export default function CustomerMonthlySheet({ customerId, customerName, custome
   const loadMonthlyData = useCallback(async () => {
     setLoading(true);
     try {
-      const emailToUse = customerEmail || '';
-      if (!emailToUse) {
-        setMonthlyData([]);
-        setLoading(false);
-        return;
-      }
       const { data, error } = await supabase.rpc('get_customer_monthly_overview', {
-        p_customer_email: emailToUse,
+        p_customer_id: customerId,
         p_year: selectedYear,
       });
 
@@ -104,7 +98,7 @@ export default function CustomerMonthlySheet({ customerId, customerName, custome
     } finally {
       setLoading(false);
     }
-  }, [customerEmail, selectedYear]);
+  }, [customerId, selectedYear]);
 
   useEffect(() => {
     loadMonthlyData();
