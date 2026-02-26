@@ -7,42 +7,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-interface Customer {
-  id: string;
-  name: string;
-  email: string;
-  is_active: boolean;
-  responded_this_month: boolean;
-  postpone_until: string | null;
-}
-
-interface Assignment {
-  id: string;
-  customer_id: string;
-  template_id: string;
-  formula_id: string;
-  start_day_of_month: number;
-  timezone: string;
-  is_active: boolean;
-}
-
-interface EmailTemplate {
-  id: string;
-  name: string;
-  subject: string;
-  body: string;
-}
-
-interface EmailFormula {
-  id: string;
-  name: string;
-  description: string;
-  schedule: {
-    day: number;
-    times: string[];
-  }[];
-}
-
 interface SendEmailResult {
   assignment_id: string;
   customer_id: string;
@@ -99,7 +63,7 @@ const isTimeToSend = (
   const scheduledMinutes = schedHour * 60 + schedMin;
   const diffMinutes = Math.abs(currentMinutes - scheduledMinutes);
 
-  return diffMinutes <= 2;
+  return diffMinutes <= 5;
 };
 
 const sendEmail = async (
@@ -159,51 +123,63 @@ const processEmailSchedule = async (
   supabase: any,
   sendgridApiKey: string | undefined,
   fromEmail: string
-): Promise<SendEmailResult[]> => {
+): Promise<{ results: SendEmailResult[]; debugInfo: any }> => {
   const now = new Date();
   const results: SendEmailResult[] = [];
 
   const { data: assignments, error: assignmentsError } = await supabase
     .from('customer_assignments')
-    .select(`
-      id,
-      customer_id,
-      template_id,
-      formula_id,
-      start_day_of_month,
-      timezone,
-      is_active,
-      customers!inner (
-        id,
-        name,
-        email,
-        is_active,
-        responded_this_month,
-        postpone_until
-      ),
-      email_templates!inner (
-        id,
-        name,
-        subject,
-        body
-      ),
-      email_formulas!inner (
-        id,
-        name,
-        description,
-        schedule
-      )
-    `)
+    .select('id, customer_id, template_id, formula_id, start_day_of_month, timezone, is_active')
     .eq('is_active', true);
 
   if (assignmentsError) {
-    throw assignmentsError;
+    throw new Error(`Failed to fetch assignments: ${assignmentsError.message}`);
   }
 
-  for (const assignment of assignments || []) {
-    const customer = assignment.customers as unknown as Customer;
-    const template = assignment.email_templates as unknown as EmailTemplate;
-    const formula = assignment.email_formulas as unknown as EmailFormula;
+  if (!assignments || assignments.length === 0) {
+    return { results, debugInfo: { assignmentCount: 0, error: 'No active assignments found' } };
+  }
+
+  const customerIds = [...new Set(assignments.map((a: any) => a.customer_id))];
+  const formulaIds = [...new Set(assignments.map((a: any) => a.formula_id))];
+  const templateIds = [...new Set(assignments.map((a: any) => a.template_id))];
+
+  const [customersRes, formulasRes, templatesRes] = await Promise.all([
+    supabase.from('customers').select('id, name, email, is_active, responded_this_month, postpone_until').in('id', customerIds),
+    supabase.from('email_formulas').select('id, name, description, schedule').in('id', formulaIds),
+    supabase.from('email_templates').select('id, name, subject, body').in('id', templateIds),
+  ]);
+
+  if (customersRes.error) throw new Error(`Failed to fetch customers: ${customersRes.error.message}`);
+  if (formulasRes.error) throw new Error(`Failed to fetch formulas: ${formulasRes.error.message}`);
+  if (templatesRes.error) throw new Error(`Failed to fetch templates: ${templatesRes.error.message}`);
+
+  const customersMap = new Map((customersRes.data || []).map((c: any) => [c.id, c]));
+  const formulasMap = new Map((formulasRes.data || []).map((f: any) => [f.id, f]));
+  const templatesMap = new Map((templatesRes.data || []).map((t: any) => [t.id, t]));
+
+  const debugInfo = {
+    assignmentCount: assignments.length,
+    customerCount: customersRes.data?.length || 0,
+    formulaCount: formulasRes.data?.length || 0,
+    templateCount: templatesRes.data?.length || 0,
+  };
+
+  for (const assignment of assignments) {
+    const customer = customersMap.get(assignment.customer_id);
+    const formula = formulasMap.get(assignment.formula_id);
+    const template = templatesMap.get(assignment.template_id);
+
+    if (!customer || !formula || !template) {
+      results.push({
+        assignment_id: assignment.id,
+        customer_id: assignment.customer_id,
+        customer_name: customer?.name || 'Unknown',
+        status: 'skipped',
+        reason: `Missing data: customer=${!!customer}, formula=${!!formula}, template=${!!template}`,
+      });
+      continue;
+    }
 
     if (!customer.is_active) {
       results.push({
@@ -312,7 +288,7 @@ const processEmailSchedule = async (
     }
   }
 
-  return results;
+  return { results, debugInfo };
 };
 
 Deno.serve(async (req: Request) => {
@@ -332,13 +308,10 @@ Deno.serve(async (req: Request) => {
     const fromEmail = Deno.env.get("FROM_EMAIL") || "ventureresp@starwork.dev";
 
     const testMode = !sendgridApiKey;
-    if (testMode) {
-      console.warn("SENDGRID_API_KEY not configured, running in test mode");
-    }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const results = await processEmailSchedule(supabase, sendgridApiKey, fromEmail);
+    const { results, debugInfo } = await processEmailSchedule(supabase, sendgridApiKey, fromEmail);
 
     const executionTime = Date.now() - startTime;
     const sentCount = results.filter(r => r.status === 'sent').length;
@@ -349,12 +322,12 @@ Deno.serve(async (req: Request) => {
       execution_id: executionId,
       executed_at: new Date().toISOString(),
       execution_time_ms: executionTime,
-      total_assignments_checked: (results || []).length,
+      total_assignments_checked: results.length,
       emails_queued: 0,
       emails_sent: sentCount,
       emails_failed: failedCount,
       test_mode: testMode,
-      detailed_recipients: results.filter(r => r.status === 'sent'),
+      detailed_recipients: results.filter(r => r.status === 'sent').concat([{ debug: debugInfo } as any]),
       skipped_customers: results.filter(r => r.status === 'skipped'),
       error_summary: failedCount > 0 ? `${failedCount} emails failed` : null,
     });
@@ -365,6 +338,7 @@ Deno.serve(async (req: Request) => {
         execution_id: executionId,
         execution_time_ms: executionTime,
         test_mode: testMode,
+        debug: debugInfo,
         summary: {
           total: results.length,
           sent: sentCount,
@@ -378,11 +352,11 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
-    console.error('Error in email scheduler:', error);
     return new Response(
       JSON.stringify({
         success: false,
         error: (error as Error).message,
+        stack: (error as Error).stack,
       }),
       {
         status: 500,
