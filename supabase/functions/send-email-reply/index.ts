@@ -35,6 +35,17 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const { data: emailSettings } = await supabase
+      .from('email_settings')
+      .select('*')
+      .limit(1)
+      .maybeSingle();
+
+    const arFromEmail = emailSettings?.ar_from_email || 'ar@ventureresp.app';
+    const arFromName = emailSettings?.company_name || 'Venture Respiratory';
+    const replyToEmail = emailSettings?.reply_to_email || arFromEmail;
+    const replyToName = emailSettings?.reply_to_name || arFromName;
+
     const content = [];
     if (body) {
       content.push({
@@ -56,12 +67,12 @@ Deno.serve(async (req: Request) => {
         },
       ],
       from: {
-        email: "ar@ventureresp.app",
-        name: "Venture Respiratory",
+        email: arFromEmail,
+        name: arFromName,
       },
       reply_to: {
-        email: "ar@ventureresp.app",
-        name: "Venture Respiratory",
+        email: replyToEmail,
+        name: replyToName,
       },
       subject: subject,
       content: content,

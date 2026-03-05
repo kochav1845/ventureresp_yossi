@@ -71,6 +71,9 @@ const sendEmail = async (
   subject: string,
   body: string,
   fromEmail: string,
+  fromName: string,
+  replyToEmail: string,
+  replyToName: string,
   sendgridApiKey: string
 ): Promise<{ success: boolean; error?: string }> => {
   const emailData = {
@@ -80,8 +83,8 @@ const sendEmail = async (
         subject: subject,
       },
     ],
-    from: { email: fromEmail, name: 'Venture Respiratory - Accounts Receivable' },
-    reply_to: { email: fromEmail, name: 'Venture Respiratory - Accounts Receivable' },
+    from: { email: fromEmail, name: fromName },
+    reply_to: { email: replyToEmail, name: replyToName },
     content: [
       {
         type: 'text/html',
@@ -123,7 +126,10 @@ const sendEmail = async (
 const processEmailSchedule = async (
   supabase: any,
   sendgridApiKey: string | undefined,
-  fromEmail: string
+  fromEmail: string,
+  fromName: string,
+  replyToEmail: string,
+  replyToName: string
 ): Promise<{ results: SendEmailResult[]; debugInfo: any }> => {
   const now = new Date();
   const results: SendEmailResult[] = [];
@@ -267,6 +273,9 @@ const processEmailSchedule = async (
               template.subject,
               template.body,
               fromEmail,
+              fromName,
+              replyToEmail,
+              replyToName,
               sendgridApiKey
             );
 
@@ -316,13 +325,23 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sendgridApiKey = Deno.env.get("SENDGRID_API_KEY");
-    const fromEmail = Deno.env.get("FROM_EMAIL") || "ar@ventureresp.app";
 
     const testMode = !sendgridApiKey;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { results, debugInfo } = await processEmailSchedule(supabase, sendgridApiKey, fromEmail);
+    const { data: emailSettings } = await supabase
+      .from('email_settings')
+      .select('*')
+      .limit(1)
+      .maybeSingle();
+
+    const fromEmail = emailSettings?.ar_from_email || Deno.env.get("FROM_EMAIL") || "ar@ventureresp.app";
+    const fromName = emailSettings?.ar_from_name || 'Venture Respiratory - Accounts Receivable';
+    const replyToEmail = emailSettings?.reply_to_email || fromEmail;
+    const replyToName = emailSettings?.reply_to_name || fromName;
+
+    const { results, debugInfo } = await processEmailSchedule(supabase, sendgridApiKey, fromEmail, fromName, replyToEmail, replyToName);
 
     const executionTime = Date.now() - startTime;
     const sentCount = results.filter(r => r.status === 'sent').length;

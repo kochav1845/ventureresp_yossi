@@ -215,6 +215,7 @@ export default function Layout() {
     { id: 'ticket-status-settings', name: 'Ticket Status Settings', icon: Settings },
     { id: 'invoice-color-settings', name: 'Invoice Color Settings', icon: Palette },
     { id: 'auto-ticket-rules', name: 'Auto-Ticket Rules', icon: Clock },
+    { id: 'email-settings', name: 'Email Settings', icon: Mail },
   ] : [];
 
   const developerItems = [

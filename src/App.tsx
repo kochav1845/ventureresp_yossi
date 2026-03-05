@@ -79,6 +79,7 @@ import VoidedPaymentsByDate from './components/VoidedPaymentsByDate';
 import Last15DaysPaymentFetch from './components/Last15DaysPaymentFetch';
 import ConnectionDiagnostic from './components/ConnectionDiagnostic';
 import PaymentBreakdown from './components/PaymentBreakdown';
+import EmailSettings from './components/EmailSettings';
 
 function LoadingScreen() {
   return (
@@ -202,6 +203,7 @@ function AppContent() {
         <Route path="auto-ticket-rules" element={<AutoTicketRules onBack={() => window.history.back()} />} />
         <Route path="sync-health" element={<SyncHealthDashboard />} />
         <Route path="last-15-days-payments" element={<Last15DaysPaymentFetch />} />
+        <Route path="email-settings" element={<EmailSettings />} />
       </Route>
 
       <Route path="*" element={<Navigate to={defaultRoute} replace />} />

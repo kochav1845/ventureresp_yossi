@@ -159,6 +159,19 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    const { data: emailSettings } = await supabase
+      .from('email_settings')
+      .select('*')
+      .limit(1)
+      .maybeSingle();
+
+    const arFromEmail = emailSettings?.ar_from_email || 'ar@ventureresp.app';
+    const arFromName = emailSettings?.ar_from_name || 'Venture Respiratory - Accounts Receivable';
+    const replyToEmail = emailSettings?.reply_to_email || arFromEmail;
+    const replyToName = emailSettings?.reply_to_name || arFromName;
+    const trackClicks = emailSettings?.sendgrid_tracking_clicks ?? true;
+    const trackOpens = emailSettings?.sendgrid_tracking_opens ?? true;
+
     let emailSubject = replacePlaceholders(template.subject, customerData);
     let emailBody = replacePlaceholders(template.body, customerData);
 
@@ -195,12 +208,12 @@ Deno.serve(async (req: Request) => {
         },
       ],
       from: {
-        email: 'ar@ventureresp.app',
-        name: 'Venture Respiratory - Accounts Receivable',
+        email: arFromEmail,
+        name: arFromName,
       },
       reply_to: {
-        email: 'ar@ventureresp.app',
-        name: 'Venture Respiratory - Accounts Receivable',
+        email: replyToEmail,
+        name: replyToName,
       },
       content: [
         {
@@ -211,11 +224,11 @@ Deno.serve(async (req: Request) => {
       attachments,
       tracking_settings: {
         click_tracking: {
-          enable: true,
+          enable: trackClicks,
           enable_text: false
         },
         open_tracking: {
-          enable: true
+          enable: trackOpens
         }
       }
     };

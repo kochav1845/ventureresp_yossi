@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,7 +37,22 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const loginUrl = `${Deno.env.get('SUPABASE_URL')?.replace('.supabase.co', '.com') || 'https://your-app.com'}/signin`;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { data: emailSettings } = await supabase
+      .from('email_settings')
+      .select('*')
+      .limit(1)
+      .maybeSingle();
+
+    const noreplyFromEmail = emailSettings?.noreply_from_email || 'noreply@ventureresp.app';
+    const noreplyFromName = emailSettings?.noreply_from_name || 'Venture Respiratory Admin';
+    const companyName = emailSettings?.company_name || 'Venture Respiratory';
+    const domain = emailSettings?.domain || 'ventureresp.app';
+
+    const loginUrl = `https://${domain}/signin`;
 
     const emailHtml = `
       <!DOCTYPE html>
@@ -44,7 +60,7 @@ Deno.serve(async (req: Request) => {
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Welcome to Venture Respiratory Admin Portal</title>
+          <title>Welcome to ${companyName} Admin Portal</title>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -143,7 +159,7 @@ Deno.serve(async (req: Request) => {
               position: relative;
             }
             .steps li:before {
-              content: "✓";
+              content: "\\2713";
               position: absolute;
               left: 0;
               background-color: #10b981;
@@ -176,7 +192,7 @@ Deno.serve(async (req: Request) => {
         <body>
           <div class="container">
             <div class="header">
-              <div class="logo">Venture Respiratory</div>
+              <div class="logo">${companyName}</div>
               <div class="title">Welcome to the Admin Portal</div>
             </div>
 
@@ -185,7 +201,7 @@ Deno.serve(async (req: Request) => {
             </div>
 
             <p>
-              An administrator has created an account for you in the Venture Respiratory Admin Portal.
+              An administrator has created an account for you in the ${companyName} Admin Portal.
               You can now access the system to manage customers, invoices, and collections.
             </p>
 
@@ -220,7 +236,7 @@ Deno.serve(async (req: Request) => {
             </div>
 
             <div class="footer">
-              <p>This is an automated email from Venture Respiratory Admin Portal.</p>
+              <p>This is an automated email from ${companyName} Admin Portal.</p>
               <p>If you have any questions, please contact your administrator.</p>
             </div>
           </div>
@@ -229,11 +245,11 @@ Deno.serve(async (req: Request) => {
     `;
 
     const emailText = `
-Welcome to Venture Respiratory Admin Portal
+Welcome to ${companyName} Admin Portal
 
 Hello ${name},
 
-An administrator has created an account for you in the Venture Respiratory Admin Portal.
+An administrator has created an account for you in the ${companyName} Admin Portal.
 
 YOUR TEMPORARY PASSWORD: ${temporaryPassword}
 
@@ -248,7 +264,7 @@ To get started:
 
 SECURITY NOTE: Please do not share this temporary password with anyone. If you did not expect this email, please contact your system administrator immediately.
 
-This is an automated email from Venture Respiratory Admin Portal.
+This is an automated email from ${companyName} Admin Portal.
     `;
 
     const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
@@ -270,12 +286,12 @@ This is an automated email from Venture Respiratory Admin Portal.
       personalizations: [
         {
           to: [{ email: to, name: name }],
-          subject: 'Welcome to Venture Respiratory - Temporary Password',
+          subject: `Welcome to ${companyName} - Temporary Password`,
         },
       ],
       from: {
-        email: 'noreply@ventureresp.app',
-        name: 'Venture Respiratory Admin',
+        email: noreplyFromEmail,
+        name: noreplyFromName,
       },
       content: [
         {
