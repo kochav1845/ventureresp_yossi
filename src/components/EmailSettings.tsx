@@ -14,7 +14,12 @@ import {
   MousePointer,
   Building2,
   AtSign,
-  Loader2
+  Loader2,
+  FileText,
+  Key,
+  Clock,
+  MessageSquare,
+  X
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -36,16 +41,22 @@ interface EmailSettingsData {
   updated_by: string | null;
 }
 
+interface TestResult {
+  type: string;
+  success: boolean;
+  message: string;
+}
+
 export default function EmailSettings() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [settings, setSettings] = useState<EmailSettingsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [testingEmail, setTestingEmail] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testingType, setTestingType] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<TestResult[]>([]);
 
   useEffect(() => {
     loadSettings();
@@ -108,33 +119,100 @@ export default function EmailSettings() {
     }
   };
 
-  const handleTestEmail = async () => {
+  const getHeaders = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('No active session');
+    return {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+    };
+  };
+
+  const addTestResult = (result: TestResult) => {
+    setTestResults(prev => [result, ...prev]);
+  };
+
+  const clearTestResults = () => setTestResults([]);
+
+  const testAREmail = async () => {
     if (!user) return;
-    setTestingEmail(true);
-    setTestResult(null);
-
+    setTestingType('ar');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('No active session');
+      const headers = await getHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-customer-invoice-email`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            template: {
+              subject: '[TEST] Customer Invoice Email - {{customer_name}}',
+              body: `<div style="font-family: Arial, sans-serif;">
+                <h2 style="color: #1e3a5f;">Test: Customer Invoice Email</h2>
+                <p>Hello {{customer_name}},</p>
+                <p>This is a <strong>test</strong> of the customer invoice email type.</p>
+                <p>Balance: {{balance}}</p>
+                <p>Total Invoices: {{total_invoices}}</p>
+                {{invoice_table}}
+                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+                <p style="color: #6b7280; font-size: 12px;">Sent from: ${settings?.ar_from_email} (${settings?.ar_from_name})</p>
+                <p style="color: #6b7280; font-size: 12px;">Test sent at: ${new Date().toLocaleString()}</p>
+              </div>`,
+              include_invoice_table: true,
+              include_payment_table: false,
+            },
+            customerData: {
+              customer_name: profile?.full_name || 'Test Customer',
+              customer_id: 'TEST-001',
+              customer_email: user.email,
+              balance: 1250.00,
+              total_invoices: 3,
+              invoices: [
+                { reference_number: 'INV-TEST-001', invoice_date: '2026-01-15', due_date: '2026-02-15', amount: 500.00, balance: 500.00, description: 'Test Invoice 1' },
+                { reference_number: 'INV-TEST-002', invoice_date: '2026-02-01', due_date: '2026-03-01', amount: 450.00, balance: 450.00, description: 'Test Invoice 2' },
+                { reference_number: 'INV-TEST-003', invoice_date: '2026-02-15', due_date: '2026-03-15', amount: 300.00, balance: 300.00, description: 'Test Invoice 3' },
+              ],
+            },
+            sentByUserId: user.id,
+          }),
+        }
+      );
 
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || errData.details || `Status ${response.status}`);
+      }
+
+      addTestResult({ type: 'AR Invoice Email', success: true, message: `Sent to ${user.email} with sample invoice table` });
+    } catch (err: any) {
+      addTestResult({ type: 'AR Invoice Email', success: false, message: err.message });
+    } finally {
+      setTestingType(null);
+    }
+  };
+
+  const testReplyEmail = async () => {
+    if (!user) return;
+    setTestingType('reply');
+    try {
+      const headers = await getHeaders();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email-reply`,
         {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
+          headers,
           body: JSON.stringify({
             to: user.email,
-            subject: 'Email Settings Test - Venture Respiratory',
+            subject: '[TEST] Email Reply',
             html: `<div style="font-family: Arial, sans-serif; padding: 20px;">
-              <h2>Email Settings Test</h2>
-              <p>This is a test email sent from your Venture Respiratory admin portal.</p>
-              <p>If you received this email, your email settings are configured correctly.</p>
+              <h2 style="color: #1e3a5f;">Test: Email Reply</h2>
+              <p>This is a <strong>test</strong> of the email reply function.</p>
+              <p>This type of email is sent when a user replies to a customer from the inbox.</p>
               <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-              <p style="color: #6b7280; font-size: 12px;">Sent at: ${new Date().toLocaleString()}</p>
+              <p style="color: #6b7280; font-size: 12px;">Sent from: ${settings?.ar_from_email} (${settings?.company_name})</p>
+              <p style="color: #6b7280; font-size: 12px;">Reply-To: ${settings?.reply_to_email} (${settings?.reply_to_name})</p>
+              <p style="color: #6b7280; font-size: 12px;">Test sent at: ${new Date().toLocaleString()}</p>
             </div>`,
           }),
         }
@@ -142,14 +220,129 @@ export default function EmailSettings() {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Failed with status ${response.status}`);
+        throw new Error(errData.error || `Status ${response.status}`);
       }
 
-      setTestResult({ success: true, message: `Test email sent to ${user.email}` });
+      addTestResult({ type: 'Email Reply', success: true, message: `Sent to ${user.email}` });
     } catch (err: any) {
-      setTestResult({ success: false, message: err.message || 'Failed to send test email' });
+      addTestResult({ type: 'Email Reply', success: false, message: err.message });
     } finally {
-      setTestingEmail(false);
+      setTestingType(null);
+    }
+  };
+
+  const testTemporaryPasswordEmail = async () => {
+    if (!user) return;
+    setTestingType('password');
+    try {
+      const headers = await getHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-temporary-password`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            to: user.email,
+            name: profile?.full_name || 'Test User',
+            temporaryPassword: 'TestP@ss123-DEMO',
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || errData.details || `Status ${response.status}`);
+      }
+
+      addTestResult({ type: 'Temporary Password', success: true, message: `Sent to ${user.email} from ${settings?.noreply_from_email}` });
+    } catch (err: any) {
+      addTestResult({ type: 'Temporary Password', success: false, message: err.message });
+    } finally {
+      setTestingType(null);
+    }
+  };
+
+  const testSchedulerEmail = async () => {
+    if (!user) return;
+    setTestingType('scheduler');
+    try {
+      const headers = await getHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email-reply`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            to: user.email,
+            subject: '[TEST] Scheduled Email Preview',
+            html: `<div style="font-family: Arial, sans-serif; padding: 20px;">
+              <h2 style="color: #1e3a5f;">Test: Scheduled Email</h2>
+              <p>This is a <strong>test</strong> simulating a scheduled email.</p>
+              <p>The email scheduler automatically sends emails to customers based on their assigned formula and template. This test verifies that the sender settings are working correctly for scheduled emails.</p>
+              <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                <p style="margin: 0 0 8px 0; font-weight: 600; color: #334155;">Current Scheduler Settings:</p>
+                <p style="margin: 4px 0; color: #64748b; font-size: 14px;">From: ${settings?.ar_from_email} (${settings?.ar_from_name})</p>
+                <p style="margin: 4px 0; color: #64748b; font-size: 14px;">Reply-To: ${settings?.reply_to_email} (${settings?.reply_to_name})</p>
+              </div>
+              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+              <p style="color: #6b7280; font-size: 12px;">Test sent at: ${new Date().toLocaleString()}</p>
+            </div>`,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Status ${response.status}`);
+      }
+
+      addTestResult({ type: 'Scheduled Email', success: true, message: `Preview sent to ${user.email}` });
+    } catch (err: any) {
+      addTestResult({ type: 'Scheduled Email', success: false, message: err.message });
+    } finally {
+      setTestingType(null);
+    }
+  };
+
+  const testReminderEmail = async () => {
+    if (!user) return;
+    setTestingType('reminder');
+    try {
+      const headers = await getHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email-reply`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            to: user.email,
+            subject: '[TEST] Reminder Notification',
+            html: `<div style="font-family: Arial, sans-serif; padding: 20px;">
+              <h2 style="color: #1e3a5f;">Test: Reminder Email Notification</h2>
+              <p>This is a <strong>test</strong> of the reminder notification email.</p>
+              <p>Reminder notifications are sent to users when they have upcoming or overdue reminders.</p>
+              <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin: 16px 0; border-radius: 4px;">
+                <p style="margin: 0; font-weight: 600; color: #92400e;">Sample Reminder</p>
+                <p style="margin: 4px 0 0 0; color: #78350f; font-size: 14px;">Follow up with customer ABC Corp about overdue invoices</p>
+              </div>
+              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+              <p style="color: #6b7280; font-size: 12px;">Sent from: ${settings?.ar_from_email}</p>
+              <p style="color: #6b7280; font-size: 12px;">Test sent at: ${new Date().toLocaleString()}</p>
+            </div>`,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Status ${response.status}`);
+      }
+
+      addTestResult({ type: 'Reminder Notification', success: true, message: `Sent to ${user.email}` });
+    } catch (err: any) {
+      addTestResult({ type: 'Reminder Notification', success: false, message: err.message });
+    } finally {
+      setTestingType(null);
     }
   };
 
@@ -185,6 +378,62 @@ export default function EmailSettings() {
     );
   }
 
+  const emailTests = [
+    {
+      id: 'ar',
+      name: 'Customer Invoice Email',
+      description: 'Sends a sample invoice email with a table of test invoices',
+      icon: FileText,
+      color: 'blue',
+      sender: settings.ar_from_email,
+      handler: testAREmail,
+    },
+    {
+      id: 'reply',
+      name: 'Email Reply',
+      description: 'Sends a reply-style email as used when responding from the inbox',
+      icon: MessageSquare,
+      color: 'emerald',
+      sender: settings.ar_from_email,
+      handler: testReplyEmail,
+    },
+    {
+      id: 'password',
+      name: 'Temporary Password',
+      description: 'Sends a welcome email with a demo temporary password',
+      icon: Key,
+      color: 'amber',
+      sender: settings.noreply_from_email,
+      handler: testTemporaryPasswordEmail,
+    },
+    {
+      id: 'scheduler',
+      name: 'Scheduled Email',
+      description: 'Sends a preview of what scheduled emails look like to customers',
+      icon: Clock,
+      color: 'cyan',
+      sender: settings.ar_from_email,
+      handler: testSchedulerEmail,
+    },
+    {
+      id: 'reminder',
+      name: 'Reminder Notification',
+      description: 'Sends a sample reminder notification email to yourself',
+      icon: Mail,
+      color: 'rose',
+      sender: settings.ar_from_email,
+      handler: testReminderEmail,
+    },
+  ];
+
+  const colorMap: Record<string, { bg: string; iconBg: string; iconText: string; border: string; hoverBg: string }> = {
+    blue: { bg: 'bg-blue-50', iconBg: 'bg-blue-100', iconText: 'text-blue-600', border: 'border-blue-200', hoverBg: 'hover:bg-blue-100' },
+    emerald: { bg: 'bg-emerald-50', iconBg: 'bg-emerald-100', iconText: 'text-emerald-600', border: 'border-emerald-200', hoverBg: 'hover:bg-emerald-100' },
+    amber: { bg: 'bg-amber-50', iconBg: 'bg-amber-100', iconText: 'text-amber-600', border: 'border-amber-200', hoverBg: 'hover:bg-amber-100' },
+    cyan: { bg: 'bg-cyan-50', iconBg: 'bg-cyan-100', iconText: 'text-cyan-600', border: 'border-cyan-200', hoverBg: 'hover:bg-cyan-100' },
+    rose: { bg: 'bg-rose-50', iconBg: 'bg-rose-100', iconText: 'text-rose-600', border: 'border-rose-200', hoverBg: 'hover:bg-rose-100' },
+  };
+
   return (
     <div className="max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-8">
@@ -202,34 +451,20 @@ export default function EmailSettings() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleTestEmail}
-            disabled={testingEmail}
-            className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors font-medium text-sm disabled:opacity-50"
-          >
-            {testingEmail ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
-            Send Test Email
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium text-sm disabled:opacity-50 shadow-sm"
-          >
-            {saving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : saveSuccess ? (
-              <CheckCircle className="w-4 h-4" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
-            {saveSuccess ? 'Saved' : 'Save Changes'}
-          </button>
-        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium text-sm disabled:opacity-50 shadow-sm"
+        >
+          {saving ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : saveSuccess ? (
+            <CheckCircle className="w-4 h-4" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          {saveSuccess ? 'Saved' : 'Save Changes'}
+        </button>
       </div>
 
       {error && (
@@ -238,28 +473,6 @@ export default function EmailSettings() {
           <div>
             <p className="text-red-800 font-medium text-sm">Error</p>
             <p className="text-red-600 text-sm mt-0.5">{error}</p>
-          </div>
-        </div>
-      )}
-
-      {testResult && (
-        <div className={`mb-6 p-4 border rounded-xl flex items-start gap-3 ${
-          testResult.success
-            ? 'bg-emerald-50 border-emerald-200'
-            : 'bg-red-50 border-red-200'
-        }`}>
-          {testResult.success ? (
-            <CheckCircle className="w-5 h-5 text-emerald-500 mt-0.5 flex-shrink-0" />
-          ) : (
-            <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
-          )}
-          <div>
-            <p className={`font-medium text-sm ${testResult.success ? 'text-emerald-800' : 'text-red-800'}`}>
-              {testResult.success ? 'Test Email Sent' : 'Test Failed'}
-            </p>
-            <p className={`text-sm mt-0.5 ${testResult.success ? 'text-emerald-600' : 'text-red-600'}`}>
-              {testResult.message}
-            </p>
           </div>
         </div>
       )}
@@ -494,6 +707,90 @@ export default function EmailSettings() {
               </div>
             </label>
           </div>
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Test Emails</h2>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Send a test of each email type to <span className="font-medium text-slate-700">{user?.email}</span>
+            </p>
+          </div>
+          {testResults.length > 0 && (
+            <button
+              onClick={clearTestResults}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Clear Results
+            </button>
+          )}
+        </div>
+
+        {testResults.length > 0 && (
+          <div className="mb-4 space-y-2">
+            {testResults.map((result, i) => (
+              <div
+                key={i}
+                className={`p-3 rounded-xl border flex items-center gap-3 text-sm animate-fade-in ${
+                  result.success
+                    ? 'bg-emerald-50 border-emerald-200'
+                    : 'bg-red-50 border-red-200'
+                }`}
+              >
+                {result.success ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                )}
+                <span className={`font-medium ${result.success ? 'text-emerald-700' : 'text-red-700'}`}>
+                  {result.type}:
+                </span>
+                <span className={result.success ? 'text-emerald-600' : 'text-red-600'}>
+                  {result.message}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {emailTests.map((test) => {
+            const Icon = test.icon;
+            const colors = colorMap[test.color];
+            const isLoading = testingType === test.id;
+            const isDisabled = testingType !== null;
+
+            return (
+              <button
+                key={test.id}
+                onClick={test.handler}
+                disabled={isDisabled}
+                className={`relative text-left p-5 rounded-2xl border transition-all ${colors.border} ${colors.bg} ${colors.hoverBg} disabled:opacity-50 disabled:cursor-not-allowed group`}
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  <div className={`w-9 h-9 rounded-lg ${colors.iconBg} flex items-center justify-center flex-shrink-0`}>
+                    {isLoading ? (
+                      <Loader2 className={`w-4.5 h-4.5 animate-spin ${colors.iconText}`} />
+                    ) : (
+                      <Icon className={`w-4.5 h-4.5 ${colors.iconText}`} />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800">{test.name}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{test.description}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <AtSign className="w-3 h-3" />
+                  <span className="truncate">{test.sender}</span>
+                </div>
+                <div className={`absolute inset-0 rounded-2xl border-2 border-transparent group-hover:border-current opacity-0 group-hover:opacity-10 transition-all pointer-events-none ${colors.iconText}`} />
+              </button>
+            );
+          })}
         </div>
       </div>
 
