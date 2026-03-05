@@ -336,10 +336,24 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .maybeSingle();
 
-    const fromEmail = emailSettings?.ar_from_email || Deno.env.get("FROM_EMAIL") || "ar@ventureresp.app";
-    const fromName = emailSettings?.ar_from_name || 'Venture Respiratory - Accounts Receivable';
-    const replyToEmail = emailSettings?.reply_to_email || fromEmail;
-    const replyToName = emailSettings?.reply_to_name || fromName;
+    let fromEmail = emailSettings?.ar_from_email || Deno.env.get("FROM_EMAIL") || "ar@ventureresp.app";
+    let fromName = emailSettings?.ar_from_name || 'Venture Respiratory - Accounts Receivable';
+    let replyToEmail = emailSettings?.reply_to_email || fromEmail;
+    let replyToName = emailSettings?.reply_to_name || fromName;
+
+    const { data: censusSender } = await supabase
+      .from('department_email_senders')
+      .select('*')
+      .eq('department_key', 'census')
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (censusSender) {
+      if (censusSender.from_email) fromEmail = censusSender.from_email;
+      if (censusSender.from_name) fromName = censusSender.from_name;
+      if (censusSender.reply_to_email) replyToEmail = censusSender.reply_to_email;
+      if (censusSender.reply_to_name) replyToName = censusSender.reply_to_name;
+    }
 
     const { results, debugInfo } = await processEmailSchedule(supabase, sendgridApiKey, fromEmail, fromName, replyToEmail, replyToName);
 

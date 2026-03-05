@@ -121,6 +121,7 @@ Deno.serve(async (req: Request) => {
               to: targetEmail,
               subject: emailSubject,
               html: emailBody,
+              department: 'reminders',
             }),
           });
 

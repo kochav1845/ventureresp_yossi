@@ -11,6 +11,7 @@ interface RequestBody {
   to: string;
   name: string;
   temporaryPassword: string;
+  department?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -22,7 +23,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { to, name, temporaryPassword }: RequestBody = await req.json();
+    const { to, name, temporaryPassword, department }: RequestBody = await req.json();
 
     if (!to || !name || !temporaryPassword) {
       return new Response(
@@ -47,10 +48,23 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .maybeSingle();
 
-    const noreplyFromEmail = emailSettings?.noreply_from_email || 'noreply@ventureresp.app';
-    const noreplyFromName = emailSettings?.noreply_from_name || 'Venture Respiratory Admin';
+    let noreplyFromEmail = emailSettings?.noreply_from_email || 'noreply@ventureresp.app';
+    let noreplyFromName = emailSettings?.noreply_from_name || 'Venture Respiratory Admin';
     const companyName = emailSettings?.company_name || 'Venture Respiratory';
     const domain = emailSettings?.domain || 'ventureresp.app';
+
+    const deptKey = department || 'noreply';
+    const { data: deptSender } = await supabase
+      .from('department_email_senders')
+      .select('*')
+      .eq('department_key', deptKey)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (deptSender) {
+      if (deptSender.from_email) noreplyFromEmail = deptSender.from_email;
+      if (deptSender.from_name) noreplyFromName = deptSender.from_name;
+    }
 
     const loginUrl = `https://${domain}/signin`;
 

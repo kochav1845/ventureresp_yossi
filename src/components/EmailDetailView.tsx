@@ -335,6 +335,7 @@ export default function EmailDetailView({ email, onBack }: EmailDetailProps) {
             subject: replySubject,
             body: replyBody,
             inbound_email_id: email.id,
+            department: 'ar',
           }),
         }
       );

@@ -368,6 +368,91 @@ Deno.serve(async (req: Request) => {
         .update({ responded_this_month: true })
         .eq('id', customer.id);
 
+      const { data: acumaticaCustomer } = await supabase
+        .from('acumatica_customers')
+        .select('customer_id')
+        .or(`email_address.ilike.${senderEmail},general_email.ilike.${senderEmail},billing_email.ilike.${senderEmail}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (acumaticaCustomer?.customer_id) {
+        const acId = acumaticaCustomer.customer_id;
+
+        const { data: existingTracking } = await supabase
+          .from('customer_monthly_tracking')
+          .select('id')
+          .eq('acumatica_customer_id', acId)
+          .eq('month', currentMonth)
+          .eq('year', currentYear)
+          .maybeSingle();
+
+        if (!existingTracking) {
+          await supabase
+            .from('customer_monthly_tracking')
+            .insert({
+              acumatica_customer_id: acId,
+              month: currentMonth,
+              year: currentYear,
+              status: 'responded',
+              emails_received_count: 1,
+              last_response_at: new Date().toISOString(),
+            });
+        } else {
+          await supabase
+            .from('customer_monthly_tracking')
+            .update({
+              status: 'responded',
+              emails_received_count: existingTracking.emails_received_count ? existingTracking.emails_received_count + 1 : 1,
+              last_response_at: new Date().toISOString(),
+            })
+            .eq('id', existingTracking.id);
+        }
+
+        const { data: trackingRecord } = await supabase
+          .from('customer_monthly_tracking')
+          .select('id')
+          .eq('acumatica_customer_id', acId)
+          .eq('month', currentMonth)
+          .eq('year', currentYear)
+          .maybeSingle();
+
+        if (trackingRecord) {
+          for (const { file, name } of attachmentFiles) {
+            const timestamp = Date.now();
+            const sanitizedFilename = name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const storagePath = `${customer.id}/${currentYear}/${currentMonth}/${timestamp}_${sanitizedFilename}`;
+
+            const { data: existingFile } = await supabase
+              .from('customer_monthly_files')
+              .select('id')
+              .eq('acumatica_customer_id', acId)
+              .eq('month', currentMonth)
+              .eq('year', currentYear)
+              .eq('filename', name)
+              .maybeSingle();
+
+            if (!existingFile) {
+              await supabase
+                .from('customer_monthly_files')
+                .insert({
+                  tracking_id: trackingRecord.id,
+                  acumatica_customer_id: acId,
+                  month: currentMonth,
+                  year: currentYear,
+                  filename: name,
+                  storage_path: storagePath,
+                  file_size: file.size,
+                  mime_type: file.type,
+                  upload_source: 'email',
+                  inbound_email_id: inboundEmail.id,
+                });
+
+              console.log('Crossposted attachment to monthly files:', name);
+            }
+          }
+        }
+      }
+
       actionTaken = 'marked_responded';
       analysis.intent = 'file_attached';
       analysis.confidence = Math.max(analysis.confidence, 0.9);

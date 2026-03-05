@@ -44,6 +44,7 @@ interface RequestBody {
   customerData: CustomerData;
   pdfBase64?: string;
   sentByUserId?: string;
+  department?: string;
 }
 
 const formatCurrency = (amount: number) => {
@@ -132,7 +133,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body: RequestBody = await req.json();
-    const { templateId, templateName, template, customerData, pdfBase64, sentByUserId } = body;
+    const { templateId, templateName, template, customerData, pdfBase64, sentByUserId, department } = body;
 
     if (!template || !customerData || !customerData.customer_email) {
       return new Response(
@@ -165,12 +166,28 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .maybeSingle();
 
-    const arFromEmail = emailSettings?.ar_from_email || 'ar@ventureresp.app';
-    const arFromName = emailSettings?.ar_from_name || 'Venture Respiratory - Accounts Receivable';
-    const replyToEmail = emailSettings?.reply_to_email || arFromEmail;
-    const replyToName = emailSettings?.reply_to_name || arFromName;
+    let arFromEmail = emailSettings?.ar_from_email || 'ar@ventureresp.app';
+    let arFromName = emailSettings?.ar_from_name || 'Venture Respiratory - Accounts Receivable';
+    let replyToEmail = emailSettings?.reply_to_email || arFromEmail;
+    let replyToName = emailSettings?.reply_to_name || arFromName;
     const trackClicks = emailSettings?.sendgrid_tracking_clicks ?? true;
     const trackOpens = emailSettings?.sendgrid_tracking_opens ?? true;
+
+    if (department) {
+      const { data: deptSender } = await supabase
+        .from('department_email_senders')
+        .select('*')
+        .eq('department_key', department)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (deptSender) {
+        if (deptSender.from_email) arFromEmail = deptSender.from_email;
+        if (deptSender.from_name) arFromName = deptSender.from_name;
+        if (deptSender.reply_to_email) replyToEmail = deptSender.reply_to_email;
+        if (deptSender.reply_to_name) replyToName = deptSender.reply_to_name;
+      }
+    }
 
     let emailSubject = replacePlaceholders(template.subject, customerData);
     let emailBody = replacePlaceholders(template.body, customerData);

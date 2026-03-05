@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import DepartmentEmailSenders from './DepartmentEmailSenders';
 
 interface EmailSettingsData {
   id: string;
@@ -175,6 +176,7 @@ export default function EmailSettings() {
               ],
             },
             sentByUserId: user.id,
+            department: 'ar',
           }),
         }
       );
@@ -205,6 +207,7 @@ export default function EmailSettings() {
           body: JSON.stringify({
             to: user.email,
             subject: '[TEST] Email Reply',
+            department: 'ar',
             html: `<div style="font-family: Arial, sans-serif; padding: 20px;">
               <h2 style="color: #1e3a5f;">Test: Email Reply</h2>
               <p>This is a <strong>test</strong> of the email reply function.</p>
@@ -245,6 +248,7 @@ export default function EmailSettings() {
             to: user.email,
             name: profile?.full_name || 'Test User',
             temporaryPassword: 'TestP@ss123-DEMO',
+            department: 'noreply',
           }),
         }
       );
@@ -275,6 +279,7 @@ export default function EmailSettings() {
           body: JSON.stringify({
             to: user.email,
             subject: '[TEST] Scheduled Email Preview',
+            department: 'census',
             html: `<div style="font-family: Arial, sans-serif; padding: 20px;">
               <h2 style="color: #1e3a5f;">Test: Scheduled Email</h2>
               <p>This is a <strong>test</strong> simulating a scheduled email.</p>
@@ -317,6 +322,7 @@ export default function EmailSettings() {
           body: JSON.stringify({
             to: user.email,
             subject: '[TEST] Reminder Notification',
+            department: 'reminders',
             html: `<div style="font-family: Arial, sans-serif; padding: 20px;">
               <h2 style="color: #1e3a5f;">Test: Reminder Email Notification</h2>
               <p>This is a <strong>test</strong> of the reminder notification email.</p>
@@ -708,6 +714,15 @@ export default function EmailSettings() {
             </label>
           </div>
         </div>
+      </div>
+
+      <div className="mt-8">
+        <DepartmentEmailSenders
+          fallbackFromEmail={settings.ar_from_email}
+          fallbackFromName={settings.ar_from_name}
+          fallbackReplyToEmail={settings.reply_to_email}
+          fallbackReplyToName={settings.reply_to_name}
+        />
       </div>
 
       <div className="mt-8">

@@ -13,6 +13,7 @@ interface SendEmailRequest {
   body?: string;
   html?: string;
   inbound_email_id?: string;
+  department?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -26,7 +27,7 @@ Deno.serve(async (req: Request) => {
     const sendgridApiKey = Deno.env.get("SENDGRID_API_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { to, subject, body, html, inbound_email_id }: SendEmailRequest = await req.json();
+    const { to, subject, body, html, inbound_email_id, department }: SendEmailRequest = await req.json();
 
     if (!to || !subject || (!body && !html)) {
       return new Response(
@@ -41,10 +42,26 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .maybeSingle();
 
-    const arFromEmail = emailSettings?.ar_from_email || 'ar@ventureresp.app';
-    const arFromName = emailSettings?.company_name || 'Venture Respiratory';
-    const replyToEmail = emailSettings?.reply_to_email || arFromEmail;
-    const replyToName = emailSettings?.reply_to_name || arFromName;
+    let arFromEmail = emailSettings?.ar_from_email || 'ar@ventureresp.app';
+    let arFromName = emailSettings?.company_name || 'Venture Respiratory';
+    let replyToEmail = emailSettings?.reply_to_email || arFromEmail;
+    let replyToName = emailSettings?.reply_to_name || arFromName;
+
+    if (department) {
+      const { data: deptSender } = await supabase
+        .from('department_email_senders')
+        .select('*')
+        .eq('department_key', department)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (deptSender) {
+        if (deptSender.from_email) arFromEmail = deptSender.from_email;
+        if (deptSender.from_name) arFromName = deptSender.from_name;
+        if (deptSender.reply_to_email) replyToEmail = deptSender.reply_to_email;
+        if (deptSender.reply_to_name) replyToName = deptSender.reply_to_name;
+      }
+    }
 
     const content = [];
     if (body) {

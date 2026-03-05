@@ -488,6 +488,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
               },
               pdfBase64: base64PDF,
               sentByUserId: profile?.id,
+              department: 'ar',
             })
           }
         );
