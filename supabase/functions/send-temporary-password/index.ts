@@ -274,7 +274,7 @@ This is an automated email from Venture Respiratory Admin Portal.
         },
       ],
       from: {
-        email: 'noreply@starwork.dev',
+        email: 'noreply@ventureresp.app',
         name: 'Venture Respiratory Admin',
       },
       content: [

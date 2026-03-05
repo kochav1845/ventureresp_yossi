@@ -56,12 +56,12 @@ Deno.serve(async (req: Request) => {
         },
       ],
       from: {
-        email: "ventureresp@starwork.dev",
-        name: "Venture Response Team",
+        email: "ar@ventureresp.app",
+        name: "Venture Respiratory",
       },
       reply_to: {
-        email: "ventureresp@inbound.starwork.dev",
-        name: "Venture Response Team",
+        email: "ar@ventureresp.app",
+        name: "Venture Respiratory",
       },
       subject: subject,
       content: content,

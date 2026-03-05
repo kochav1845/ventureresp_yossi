@@ -195,7 +195,11 @@ Deno.serve(async (req: Request) => {
         },
       ],
       from: {
-        email: 'invoices@starwork.dev',
+        email: 'ar@ventureresp.app',
+        name: 'Venture Respiratory - Accounts Receivable',
+      },
+      reply_to: {
+        email: 'ar@ventureresp.app',
         name: 'Venture Respiratory - Accounts Receivable',
       },
       content: [

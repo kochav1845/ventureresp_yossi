@@ -80,7 +80,8 @@ const sendEmail = async (
         subject: subject,
       },
     ],
-    from: { email: fromEmail },
+    from: { email: fromEmail, name: 'Venture Respiratory - Accounts Receivable' },
+    reply_to: { email: fromEmail, name: 'Venture Respiratory - Accounts Receivable' },
     content: [
       {
         type: 'text/html',
@@ -315,7 +316,7 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sendgridApiKey = Deno.env.get("SENDGRID_API_KEY");
-    const fromEmail = Deno.env.get("FROM_EMAIL") || "ventureresp@starwork.dev";
+    const fromEmail = Deno.env.get("FROM_EMAIL") || "ar@ventureresp.app";
 
     const testMode = !sendgridApiKey;
 
