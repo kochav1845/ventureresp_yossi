@@ -198,10 +198,6 @@ Deno.serve(async (req: Request) => {
         email: 'invoices@starwork.dev',
         name: 'Venture Respiratory - Accounts Receivable',
       },
-      reply_to: {
-        email: 'invoices@inbound.starwork.dev',
-        name: 'Venture Respiratory - Accounts Receivable',
-      },
       content: [
         {
           type: 'text/html',
