@@ -37,6 +37,19 @@ interface MonthlyFile {
   created_at: string;
 }
 
+interface MonthlyEmail {
+  id: string;
+  direction: 'sent' | 'received';
+  subject: string;
+  date: string;
+  status?: string;
+  sender_email?: string;
+  template_name?: string;
+  open_count?: number;
+  body_preview?: string;
+  sent_by_name?: string;
+}
+
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
@@ -77,7 +90,9 @@ export default function CustomerMonthlySheet({ customerId, customerName, custome
   const [loading, setLoading] = useState(true);
   const [expandedMonth, setExpandedMonth] = useState<number | null>(null);
   const [monthFiles, setMonthFiles] = useState<MonthlyFile[]>([]);
+  const [monthEmails, setMonthEmails] = useState<MonthlyEmail[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [loadingEmails, setLoadingEmails] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [editingNotes, setEditingNotes] = useState<number | null>(null);
   const [noteText, setNoteText] = useState('');
@@ -124,14 +139,140 @@ export default function CustomerMonthlySheet({ customerId, customerName, custome
     }
   };
 
+  const loadMonthEmails = async (month: number) => {
+    setLoadingEmails(true);
+    try {
+      const startDate = new Date(selectedYear, month - 1, 1).toISOString();
+      const endDate = new Date(selectedYear, month, 1).toISOString();
+
+      const emails: MonthlyEmail[] = [];
+
+      const { data: sentLogs } = await supabase
+        .from('customer_email_logs')
+        .select('id, subject, sent_at, status, template_name, open_count, sent_by_user_id')
+        .eq('customer_id', customerId)
+        .gte('sent_at', startDate)
+        .lt('sent_at', endDate)
+        .order('sent_at', { ascending: false });
+
+      if (sentLogs) {
+        const userIds = [...new Set(sentLogs.filter(e => e.sent_by_user_id).map(e => e.sent_by_user_id))];
+        let userMap = new Map<string, string>();
+        if (userIds.length > 0) {
+          const { data: users } = await supabase
+            .from('user_profiles')
+            .select('id, full_name')
+            .in('id', userIds);
+          if (users) {
+            userMap = new Map(users.map(u => [u.id, u.full_name]));
+          }
+        }
+
+        for (const log of sentLogs) {
+          emails.push({
+            id: log.id,
+            direction: 'sent',
+            subject: log.subject || '(No subject)',
+            date: log.sent_at,
+            status: log.status,
+            template_name: log.template_name,
+            open_count: log.open_count,
+            sent_by_name: log.sent_by_user_id ? userMap.get(log.sent_by_user_id) || undefined : undefined,
+          });
+        }
+      }
+
+      const { data: acCustomer } = await supabase
+        .from('acumatica_customers')
+        .select('email_address, general_email, billing_email')
+        .eq('customer_id', customerId)
+        .maybeSingle();
+
+      if (acCustomer) {
+        const customerEmails = [
+          acCustomer.email_address,
+          acCustomer.general_email,
+          acCustomer.billing_email,
+        ].filter((e): e is string => !!e && e.trim() !== '');
+        const uniqueEmails = [...new Set(customerEmails.map(e => e.toLowerCase()))];
+
+        if (uniqueEmails.length > 0) {
+          const { data: inbound } = await supabase
+            .from('inbound_emails')
+            .select('id, sender_email, subject, body, received_at, processing_status')
+            .in('sender_email', uniqueEmails)
+            .gte('received_at', startDate)
+            .lt('received_at', endDate)
+            .order('received_at', { ascending: false });
+
+          if (inbound) {
+            for (const email of inbound) {
+              const bodyText = email.body?.replace(/<[^>]*>/g, '') || '';
+              emails.push({
+                id: email.id,
+                direction: 'received',
+                subject: email.subject || '(No subject)',
+                date: email.received_at,
+                sender_email: email.sender_email,
+                body_preview: bodyText.slice(0, 120) + (bodyText.length > 120 ? '...' : ''),
+              });
+            }
+          }
+
+          const { data: replies } = await supabase
+            .from('outbound_replies')
+            .select('id, sent_to, subject, sent_at, sent_by')
+            .in('sent_to', uniqueEmails)
+            .gte('sent_at', startDate)
+            .lt('sent_at', endDate)
+            .order('sent_at', { ascending: false });
+
+          if (replies) {
+            const replyUserIds = [...new Set(replies.filter(r => r.sent_by).map(r => r.sent_by))];
+            let replyUserMap = new Map<string, string>();
+            if (replyUserIds.length > 0) {
+              const { data: users } = await supabase
+                .from('user_profiles')
+                .select('id, full_name')
+                .in('id', replyUserIds);
+              if (users) {
+                replyUserMap = new Map(users.map(u => [u.id, u.full_name]));
+              }
+            }
+
+            for (const reply of replies) {
+              emails.push({
+                id: reply.id,
+                direction: 'sent',
+                subject: reply.subject || '(No subject)',
+                date: reply.sent_at,
+                status: 'sent',
+                sent_by_name: reply.sent_by ? replyUserMap.get(reply.sent_by) || undefined : undefined,
+              });
+            }
+          }
+        }
+      }
+
+      emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setMonthEmails(emails);
+    } catch (err) {
+      console.error('Error loading month emails:', err);
+    } finally {
+      setLoadingEmails(false);
+    }
+  };
+
   const handleMonthClick = async (month: number) => {
     if (expandedMonth === month) {
       setExpandedMonth(null);
       setMonthFiles([]);
+      setMonthEmails([]);
       return;
     }
     setExpandedMonth(month);
-    await loadMonthFiles(month);
+    loadMonthFiles(month);
+    loadMonthEmails(month);
   };
 
   const ensureTrackingRecord = async (month: number): Promise<string> => {
@@ -392,7 +533,9 @@ export default function CustomerMonthlySheet({ customerId, customerName, custome
           customerName={customerName}
           data={monthlyData.find(m => m.month === expandedMonth)!}
           files={monthFiles}
+          emails={monthEmails}
           loadingFiles={loadingFiles}
+          loadingEmails={loadingEmails}
           uploading={uploading}
           editingNotes={editingNotes}
           noteText={noteText}
@@ -411,7 +554,7 @@ export default function CustomerMonthlySheet({ customerId, customerName, custome
           onNoteTextChange={setNoteText}
           onStartChangeStatus={() => setChangingStatus(expandedMonth)}
           onCancelChangeStatus={() => setChangingStatus(null)}
-          onClose={() => { setExpandedMonth(null); setMonthFiles([]); }}
+          onClose={() => { setExpandedMonth(null); setMonthFiles([]); setMonthEmails([]); }}
         />
       )}
     </div>
@@ -425,7 +568,9 @@ interface MonthDetailProps {
   customerName: string;
   data: MonthData;
   files: MonthlyFile[];
+  emails: MonthlyEmail[];
   loadingFiles: boolean;
+  loadingEmails: boolean;
   uploading: boolean;
   editingNotes: number | null;
   noteText: string;
@@ -444,7 +589,7 @@ interface MonthDetailProps {
 }
 
 function MonthDetail({
-  month, year, data, files, loadingFiles, uploading,
+  month, year, data, files, emails, loadingFiles, loadingEmails, uploading,
   editingNotes, noteText, changingStatus,
   onUpload, onDownload, onDelete, onStatusChange,
   onStartEditNotes, onSaveNotes, onCancelEditNotes, onNoteTextChange,
@@ -592,87 +737,191 @@ function MonthDetail({
             </div>
           </div>
 
-          <div className="lg:col-span-2">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Paperclip className="w-4 h-4 text-gray-500" />
-                <h5 className="text-sm font-semibold text-gray-900">
-                  Attachments ({files.length})
-                </h5>
+          <div className="lg:col-span-2 space-y-6">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Paperclip className="w-4 h-4 text-gray-500" />
+                  <h5 className="text-sm font-semibold text-gray-900">
+                    Attachments ({files.length})
+                  </h5>
+                </div>
+                <label className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm cursor-pointer transition-all ${
+                  uploading
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}>
+                  <Upload className="w-4 h-4" />
+                  {uploading ? 'Uploading...' : 'Upload File'}
+                  <input
+                    type="file"
+                    multiple
+                    onChange={onUpload}
+                    disabled={uploading}
+                    className="hidden"
+                    accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.xls,.xlsx,.doc,.docx,.txt,.csv,.zip"
+                  />
+                </label>
               </div>
-              <label className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm cursor-pointer transition-all ${
-                uploading
-                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}>
-                <Upload className="w-4 h-4" />
-                {uploading ? 'Uploading...' : 'Upload File'}
-                <input
-                  type="file"
-                  multiple
-                  onChange={onUpload}
-                  disabled={uploading}
-                  className="hidden"
-                  accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.xls,.xlsx,.doc,.docx,.txt,.csv,.zip"
-                />
-              </label>
-            </div>
 
-            {loadingFiles ? (
-              <div className="flex items-center justify-center py-12">
-                <RefreshCw className="w-5 h-5 animate-spin text-gray-400 mr-2" />
-                <span className="text-gray-500 text-sm">Loading files...</span>
-              </div>
-            ) : files.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-                <FileText className="w-10 h-10 text-gray-300 mb-3" />
-                <p className="text-gray-400 text-sm font-medium">No attachments for this month</p>
-                <p className="text-gray-300 text-xs mt-1">Upload files or they will appear here when received via email</p>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
-                {files.map((file) => (
-                  <div
-                    key={file.id}
-                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors group"
-                  >
-                    <span className="text-lg flex-shrink-0">{getFileIcon(file.mime_type)}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{file.filename}</p>
-                      <div className="flex items-center gap-3 mt-0.5">
-                        <span className="text-[10px] text-gray-400">{formatFileSize(file.file_size)}</span>
-                        <span className="text-[10px] text-gray-400">
-                          {new Date(file.created_at).toLocaleDateString()}
-                        </span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                          file.upload_source === 'email'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-200 text-gray-600'
-                        }`}>
-                          {file.upload_source === 'email' ? 'Email' : 'Manual'}
-                        </span>
+              {loadingFiles ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="w-5 h-5 animate-spin text-gray-400 mr-2" />
+                  <span className="text-gray-500 text-sm">Loading files...</span>
+                </div>
+              ) : files.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                  <FileText className="w-8 h-8 text-gray-300 mb-2" />
+                  <p className="text-gray-400 text-sm font-medium">No attachments for this month</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+                  {files.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors group"
+                    >
+                      <span className="text-lg flex-shrink-0">{getFileIcon(file.mime_type)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{file.filename}</p>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <span className="text-[10px] text-gray-400">{formatFileSize(file.file_size)}</span>
+                          <span className="text-[10px] text-gray-400">
+                            {new Date(file.created_at).toLocaleDateString()}
+                          </span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            file.upload_source === 'email'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-200 text-gray-600'
+                          }`}>
+                            {file.upload_source === 'email' ? 'Email' : 'Manual'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => onDownload(file)}
+                          className="p-1.5 rounded-lg hover:bg-white text-gray-500 hover:text-blue-600 transition-colors"
+                          title="Download"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => onDelete(file)}
+                          className="p-1.5 rounded-lg hover:bg-white text-gray-500 hover:text-red-600 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => onDownload(file)}
-                        className="p-1.5 rounded-lg hover:bg-white text-gray-500 hover:text-blue-600 transition-colors"
-                        title="Download"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => onDelete(file)}
-                        className="p-1.5 rounded-lg hover:bg-white text-gray-500 hover:text-red-600 transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Mail className="w-4 h-4 text-gray-500" />
+                <h5 className="text-sm font-semibold text-gray-900">
+                  Emails ({emails.length})
+                </h5>
               </div>
-            )}
+
+              {loadingEmails ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="w-5 h-5 animate-spin text-gray-400 mr-2" />
+                  <span className="text-gray-500 text-sm">Loading emails...</span>
+                </div>
+              ) : emails.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                  <Mail className="w-8 h-8 text-gray-300 mb-2" />
+                  <p className="text-gray-400 text-sm font-medium">No emails for this month</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+                  {emails.map((email) => (
+                    <div
+                      key={`${email.direction}-${email.id}`}
+                      className={`p-3 rounded-lg border transition-colors ${
+                        email.direction === 'sent'
+                          ? 'bg-blue-50/50 border-blue-100 hover:bg-blue-50'
+                          : 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          email.direction === 'sent'
+                            ? 'bg-blue-100 text-blue-600'
+                            : 'bg-emerald-100 text-emerald-600'
+                        }`}>
+                          {email.direction === 'sent' ? (
+                            <Mail className="w-3.5 h-3.5" />
+                          ) : (
+                            <MailOpen className="w-3.5 h-3.5" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                              email.direction === 'sent'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              {email.direction === 'sent' ? 'Sent' : 'Received'}
+                            </span>
+                            <span className="text-[10px] text-gray-400">
+                              {new Date(email.date).toLocaleDateString()} {new Date(email.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            {email.status && email.direction === 'sent' && (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                email.status === 'delivered' || email.status === 'opened' || email.status === 'clicked'
+                                  ? 'bg-green-100 text-green-700'
+                                  : email.status === 'bounced' || email.status === 'failed'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {email.status}
+                              </span>
+                            )}
+                            {email.open_count && email.open_count > 0 ? (
+                              <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                                <Eye className="w-2.5 h-2.5" /> {email.open_count}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {email.subject}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {email.sent_by_name && (
+                              <span className="text-[10px] text-gray-500">
+                                by {email.sent_by_name}
+                              </span>
+                            )}
+                            {email.template_name && (
+                              <span className="text-[10px] text-gray-400">
+                                Template: {email.template_name}
+                              </span>
+                            )}
+                            {email.sender_email && (
+                              <span className="text-[10px] text-gray-500">
+                                from {email.sender_email}
+                              </span>
+                            )}
+                          </div>
+                          {email.body_preview && (
+                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                              {email.body_preview}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
