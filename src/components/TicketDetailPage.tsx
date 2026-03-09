@@ -101,7 +101,7 @@ export default function TicketDetailPage() {
       const { data: ticketData, error: ticketError } = await supabase
         .from('collection_tickets')
         .select(`
-          id, ticket_number, status, priority, notes, created_at, closed_at,
+          id, ticket_number, status, priority, notes, created_at, resolved_at,
           customer_id, assigned_collector_id, ticket_type, due_date,
           promise_date, promise_by_user_id,
           user_profiles!collection_tickets_assigned_collector_id_fkey (full_name)
@@ -303,7 +303,7 @@ export default function TicketDetailPage() {
         ticket_type: ticketData.ticket_type || '',
         ticket_due_date: ticketData.due_date,
         ticket_created_at: ticketData.created_at,
-        ticket_closed_at: ticketData.closed_at,
+        ticket_closed_at: ticketData.resolved_at,
         assigned_collector_id: ticketData.assigned_collector_id,
         assigned_collector_name: (ticketData.user_profiles as any)?.full_name || null,
         customer_id: ticketData.customer_id,
