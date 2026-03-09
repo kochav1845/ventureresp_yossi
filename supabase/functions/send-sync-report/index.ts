@@ -254,7 +254,7 @@ Deno.serve(async (req: Request) => {
       .from('acumatica_customers')
       .select('*', { count: 'exact', head: true });
 
-    const { data: cronHealth } = await supabase.rpc('check_cron_job_health');
+    const { data: cronHealth } = await supabase.rpc('get_cron_run_details', { p_limit: 10 });
 
     const errors: string[] = [];
     for (const s of (syncStatuses || [])) {
