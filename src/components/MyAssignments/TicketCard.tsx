@@ -274,6 +274,10 @@ export default function TicketCard({
   const statusColorClass = currentStatus?.color_class || 'bg-gray-100 text-gray-800';
   const statusDisplayName = currentStatus?.display_name || ticket.ticket_status.replace('_', ' ').toUpperCase();
 
+  const oldestInvoiceDate = ticket.invoices.length > 0
+    ? ticket.invoices.filter(inv => inv.date).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0]?.date
+    : null;
+
   return (
     <>
       {showPromiseDateModal && (
@@ -288,10 +292,11 @@ export default function TicketCard({
           onSuccess={handlePromiseDateSuccess}
         />
       )}
-    <div id={`ticket-${ticket.ticket_id}`} className={`border-2 rounded-lg hover:shadow-md transition-shadow ${isTicketSelected ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}>
-      <div className={`p-4 border-b-2 ${getPriorityColor(ticket.ticket_priority)}`}>
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-3">
+    <div id={`ticket-${ticket.ticket_id}`} className={`border rounded-lg overflow-hidden transition-shadow hover:shadow-md ${isTicketSelected ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}>
+
+      <div className={`px-3 py-2 ${getPriorityColor(ticket.ticket_priority)}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 flex-wrap">
             {onToggleTicketSelection && (
               <button
                 onClick={(e) => { e.stopPropagation(); onToggleTicketSelection(ticket.ticket_id); }}
@@ -299,38 +304,38 @@ export default function TicketCard({
                 title={isTicketSelected ? 'Deselect this ticket' : 'Select this ticket'}
               >
                 {isTicketSelected ? (
-                  <CheckIcon className="w-5 h-5 text-blue-700" />
+                  <CheckIcon className="w-4 h-4 text-blue-700" />
                 ) : (
-                  <SquareIcon className="w-5 h-5 text-gray-400 hover:text-blue-500 transition-colors" />
+                  <SquareIcon className="w-4 h-4 text-gray-400 hover:text-blue-500 transition-colors" />
                 )}
               </button>
             )}
-            <Ticket className="w-5 h-5" />
+            <Ticket className="w-4 h-4 flex-shrink-0" />
             <button
               onClick={() => navigate(`/ticket/${ticket.ticket_id}`)}
-              className="font-mono font-bold text-lg hover:underline hover:text-blue-700 transition-colors cursor-pointer"
+              className="font-mono font-bold text-sm hover:underline hover:text-blue-700 transition-colors cursor-pointer"
             >
               {ticket.ticket_number}
             </button>
             <button
               onClick={() => navigate(`/ticket/${ticket.ticket_id}`)}
-              className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-white/80 border border-current rounded hover:bg-white transition-colors"
+              className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-white/80 border border-current rounded hover:bg-white transition-colors"
               title="Open ticket detail page"
             >
-              <ExternalLink className="w-3 h-3" />
+              <ExternalLink className="w-2.5 h-2.5" />
               Open
             </button>
             <div className="relative" ref={statusDropdownRef}>
               <button
                 onClick={(e) => { e.stopPropagation(); setShowStatusDropdown(!showStatusDropdown); setShowPriorityDropdown(false); }}
-                className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400 transition-all ${statusColorClass}`}
+                className={`px-2 py-0.5 rounded-full text-[11px] font-semibold cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400 transition-all ${statusColorClass}`}
                 title="Click to change status"
               >
                 {changingTicketStatus === ticket.ticket_id ? '...' : statusDisplayName}
-                <ChevronDown className="w-3 h-3 inline-block ml-1 -mt-0.5" />
+                <ChevronDown className="w-2.5 h-2.5 inline-block ml-0.5 -mt-0.5" />
               </button>
               {showStatusDropdown && (
-                <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-1.5 min-w-[180px] z-50">
+                <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-1 min-w-[170px] z-50">
                   {statusOptions.map((option) => {
                     const parts = option.color_class.split(' ');
                     const bgColor = parts.find(p => p.startsWith('bg-')) || 'bg-gray-500';
@@ -348,13 +353,13 @@ export default function TicketCard({
                             onTicketStatusChange(ticket.ticket_id, option.status_name);
                           }
                         }}
-                        className={`w-full text-left px-3 py-2 text-sm rounded flex items-center gap-2 transition-colors ${
+                        className={`w-full text-left px-2.5 py-1.5 text-xs rounded flex items-center gap-2 transition-colors ${
                           isActive ? 'bg-blue-50 font-semibold' : 'hover:bg-gray-50'
                         }`}
                       >
-                        <span className={`w-3 h-3 rounded-full flex-shrink-0 ${bgColor}`}></span>
+                        <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${bgColor}`}></span>
                         {option.display_name}
-                        {isActive && <CheckIcon className="w-3.5 h-3.5 text-blue-600 ml-auto" />}
+                        {isActive && <CheckIcon className="w-3 h-3 text-blue-600 ml-auto" />}
                       </button>
                     );
                   })}
@@ -362,36 +367,36 @@ export default function TicketCard({
               )}
             </div>
             {ticket.ticket_type && (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-300">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                 {ticket.ticket_type.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
               </span>
             )}
             {(ticket.has_images || ticket.has_memo_images || ticket.has_documents || ticket.has_memo_documents) && (
-              <div className="flex items-center gap-1.5 ml-1">
+              <div className="flex items-center gap-1">
                 {(ticket.has_images || ticket.has_memo_images) && (
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-700" title="Contains images">
-                    <Image className="w-3.5 h-3.5" />
+                  <span className="flex items-center px-1 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600" title="Contains images">
+                    <Image className="w-3 h-3" />
                   </span>
                 )}
                 {(ticket.has_documents || ticket.has_memo_documents) && (
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-100 border border-sky-300 text-sky-700" title="Contains attachments">
-                    <Paperclip className="w-3.5 h-3.5" />
+                  <span className="flex items-center px-1 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-600" title="Contains attachments">
+                    <Paperclip className="w-3 h-3" />
                   </span>
                 )}
               </div>
             )}
           </div>
-          <div className="relative" ref={priorityDropdownRef}>
+          <div className="relative flex-shrink-0" ref={priorityDropdownRef}>
             <button
               onClick={(e) => { e.stopPropagation(); setShowPriorityDropdown(!showPriorityDropdown); setShowStatusDropdown(false); }}
-              className="flex items-center gap-1.5 text-sm font-semibold cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400 rounded-lg px-3 py-1 transition-all"
+              className="flex items-center gap-1 text-xs font-semibold cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400 rounded px-2 py-0.5 transition-all"
               title="Click to change priority"
             >
-              {changingTicketPriority === ticket.ticket_id ? '...' : `Priority: ${ticket.ticket_priority.toUpperCase()}`}
-              <ChevronDown className="w-3.5 h-3.5" />
+              {changingTicketPriority === ticket.ticket_id ? '...' : ticket.ticket_priority.toUpperCase()}
+              <ChevronDown className="w-3 h-3" />
             </button>
             {showPriorityDropdown && (
-              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-1.5 min-w-[160px] z-50">
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-1 min-w-[140px] z-50">
                 {[
                   { value: 'urgent', label: 'Urgent', color: 'bg-red-500' },
                   { value: 'high', label: 'High', color: 'bg-orange-500' },
@@ -409,13 +414,13 @@ export default function TicketCard({
                           onTicketPriorityChange(ticket.ticket_id, option.value);
                         }
                       }}
-                      className={`w-full text-left px-3 py-2 text-sm rounded flex items-center gap-2 transition-colors ${
+                      className={`w-full text-left px-2.5 py-1.5 text-xs rounded flex items-center gap-2 transition-colors ${
                         isActive ? 'bg-blue-50 font-semibold' : 'hover:bg-gray-50'
                       }`}
                     >
-                      <span className={`w-3 h-3 rounded-full flex-shrink-0 ${option.color}`}></span>
+                      <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${option.color}`}></span>
                       {option.label}
-                      {isActive && <CheckIcon className="w-3.5 h-3.5 text-blue-600 ml-auto" />}
+                      {isActive && <CheckIcon className="w-3 h-3 text-blue-600 ml-auto" />}
                     </button>
                   );
                 })}
@@ -424,388 +429,288 @@ export default function TicketCard({
           </div>
         </div>
 
-        {ticket.assigned_collector_name && (
-          <div className="flex items-center gap-2 mb-3">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 border border-teal-200 rounded-lg text-sm">
-              <User className="w-3.5 h-3.5 text-teal-600" />
-              <span className="text-teal-700 font-medium">Assigned to:</span>
-              <span className="text-teal-900 font-semibold">{ticket.assigned_collector_name}</span>
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-3 mb-3">
+        <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[11px] text-gray-600">
+          {ticket.assigned_collector_name && (
+            <span className="flex items-center gap-1">
+              <User className="w-3 h-3 text-teal-600" />
+              <span className="text-gray-500">Assigned:</span>
+              <span className="font-medium text-gray-800">{ticket.assigned_collector_name}</span>
+            </span>
+          )}
           {ticket.ticket_created_at && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-              <Calendar className="w-3.5 h-3.5 text-blue-600" />
-              <span className="text-blue-700 font-medium">Created:</span>
-              <span className="text-blue-900 font-semibold">{formatDate(new Date(ticket.ticket_created_at), 'MMM d, yyyy')}</span>
-            </div>
+            <span className="flex items-center gap-1">
+              <Calendar className="w-3 h-3 text-blue-500" />
+              <span className="text-gray-500">Created:</span>
+              <span className="font-medium text-gray-800">{formatDate(new Date(ticket.ticket_created_at), 'MMM d, yyyy')}</span>
+            </span>
           )}
           {ticket.ticket_closed_at && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-lg text-sm">
-              <CalendarDays className="w-3.5 h-3.5 text-gray-600" />
-              <span className="text-gray-700 font-medium">Closed:</span>
-              <span className="text-gray-900 font-semibold">{formatDate(new Date(ticket.ticket_closed_at), 'MMM d, yyyy')}</span>
-            </div>
+            <span className="flex items-center gap-1">
+              <CalendarDays className="w-3 h-3 text-gray-500" />
+              <span className="text-gray-500">Closed:</span>
+              <span className="font-medium text-gray-800">{formatDate(new Date(ticket.ticket_closed_at), 'MMM d, yyyy')}</span>
+            </span>
           )}
-          {ticket.invoices.length > 0 && (() => {
-            const oldestDate = ticket.invoices
-              .filter(inv => inv.date)
-              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0]?.date;
-            return oldestDate ? (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-sm">
-                <CalendarDays className="w-3.5 h-3.5 text-amber-600" />
-                <span className="text-amber-700 font-medium">Oldest Invoice:</span>
-                <span className="text-amber-900 font-semibold">{formatDate(new Date(oldestDate), 'MMM d, yyyy')}</span>
-              </div>
-            ) : null;
-          })()}
+          {oldestInvoiceDate && (
+            <span className="flex items-center gap-1">
+              <CalendarDays className="w-3 h-3 text-amber-500" />
+              <span className="text-gray-500">Oldest Inv:</span>
+              <span className="font-medium text-gray-800">{formatDate(new Date(oldestInvoiceDate), 'MMM d, yyyy')}</span>
+            </span>
+          )}
         </div>
+      </div>
 
+      <div className="px-3 py-2 border-b border-gray-100 bg-white">
         {isBrokenPromise && (
-          <div className="mb-3 p-3 bg-red-100 border-2 border-red-500 rounded-lg">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-700 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="font-bold text-red-900 text-sm">BROKEN PROMISE</p>
-                <p className="text-xs text-red-800">
-                  Customer promised to pay by {new Date(ticket.promise_date!).toLocaleDateString()}
-                  {' '}({formatDistanceToNow(parseISO(ticket.promise_date!), { addSuffix: true })})
-                </p>
-                {ticket.promise_by_user_name && (
-                  <p className="text-xs text-red-700 mt-1">
-                    Promise recorded by: {ticket.promise_by_user_name}
-                  </p>
-                )}
-              </div>
+          <div className="mb-2 px-2.5 py-1.5 bg-red-50 border border-red-300 rounded flex items-center gap-2 text-xs">
+            <AlertTriangle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
+            <div>
+              <span className="font-bold text-red-800">BROKEN PROMISE</span>
+              <span className="text-red-700 ml-1.5">
+                Pay by {new Date(ticket.promise_date!).toLocaleDateString()}
+                {' '}({formatDistanceToNow(parseISO(ticket.promise_date!), { addSuffix: true })})
+              </span>
+              {ticket.promise_by_user_name && (
+                <span className="text-red-600 ml-1">- by {ticket.promise_by_user_name}</span>
+              )}
             </div>
           </div>
         )}
 
         {ticket.ticket_status === 'promised' && ticket.promise_date && !isBrokenPromise && (
-          <div className="mb-3 p-3 bg-blue-50 border border-blue-300 rounded-lg">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-blue-700 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="font-semibold text-blue-900 text-sm">Payment Promise Active</p>
-                <p className="text-xs text-blue-800">
-                  Customer promised to pay by {new Date(ticket.promise_date!).toLocaleDateString()}
-                  {' '}({formatDistanceToNow(parseISO(ticket.promise_date!), { addSuffix: true })})
-                </p>
-                {ticket.promise_by_user_name && (
-                  <p className="text-xs text-blue-700 mt-1">
-                    Promise recorded by: {ticket.promise_by_user_name}
-                  </p>
-                )}
-              </div>
+          <div className="mb-2 px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded flex items-center gap-2 text-xs">
+            <Calendar className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+            <div>
+              <span className="font-semibold text-blue-800">Promise Active</span>
+              <span className="text-blue-700 ml-1.5">
+                Pay by {new Date(ticket.promise_date!).toLocaleDateString()}
+                {' '}({formatDistanceToNow(parseISO(ticket.promise_date!), { addSuffix: true })})
+              </span>
+              {ticket.promise_by_user_name && (
+                <span className="text-blue-600 ml-1">- by {ticket.promise_by_user_name}</span>
+              )}
             </div>
           </div>
         )}
 
         {isOverdue && (
-          <div className="mb-3 p-3 bg-orange-100 border-2 border-orange-500 rounded-lg">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-orange-700 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="font-bold text-orange-900 text-sm">TICKET OVERDUE</p>
-                <p className="text-xs text-orange-800">
-                  Due date was {new Date(ticket.ticket_due_date!).toLocaleDateString()}
-                  {' '}({formatDistanceToNow(parseISO(ticket.ticket_due_date!), { addSuffix: true })})
-                </p>
-              </div>
-            </div>
+          <div className="mb-2 px-2.5 py-1.5 bg-orange-50 border border-orange-300 rounded flex items-center gap-2 text-xs">
+            <AlertTriangle className="w-3.5 h-3.5 text-orange-600 flex-shrink-0" />
+            <span className="font-bold text-orange-800">OVERDUE</span>
+            <span className="text-orange-700">
+              Due {new Date(ticket.ticket_due_date!).toLocaleDateString()}
+              {' '}({formatDistanceToNow(parseISO(ticket.ticket_due_date!), { addSuffix: true })})
+            </span>
           </div>
         )}
 
         {ticket.ticket_due_date && !isOverdue && (
-          <div className="mb-3 p-3 bg-green-50 border border-green-300 rounded-lg">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-green-700 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="font-semibold text-green-900 text-sm">Ticket Due Date</p>
-                <p className="text-xs text-green-800">
-                  Due by {new Date(ticket.ticket_due_date!).toLocaleDateString()}
-                  {' '}({formatDistanceToNow(parseISO(ticket.ticket_due_date!), { addSuffix: true })})
-                </p>
-              </div>
-            </div>
+          <div className="mb-2 px-2.5 py-1.5 bg-green-50 border border-green-200 rounded flex items-center gap-2 text-xs">
+            <Calendar className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+            <span className="font-medium text-green-800">Due by</span>
+            <span className="text-green-700">
+              {new Date(ticket.ticket_due_date!).toLocaleDateString()}
+              {' '}({formatDistanceToNow(parseISO(ticket.ticket_due_date!), { addSuffix: true })})
+            </span>
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <a
               href={`/acumatica-customers?customer=${ticket.customer_id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xl font-bold text-blue-600 hover:text-blue-800 hover:underline"
+              className="text-base font-bold text-blue-600 hover:text-blue-800 hover:underline truncate"
             >
               {ticket.customer_name}
             </a>
+            <span className="text-[10px] text-gray-400 flex-shrink-0">{ticket.customer_id}</span>
             <a
               href={getAcumaticaCustomerUrl(ticket.customer_id)}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
+              className="px-1.5 py-0.5 text-[10px] bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1 flex-shrink-0"
               title="View in Acumatica"
             >
-              <ExternalLink className="w-3 h-3" />
-              View in Acumatica
+              <ExternalLink className="w-2.5 h-2.5" />
+              Acumatica
             </a>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <button
               onClick={() => onOpenTicketMemo(ticket)}
-              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm"
-              title="Ticket Memos & Activity"
+              className="px-2 py-1 bg-gray-700 text-white rounded text-[11px] hover:bg-gray-800 transition-colors flex items-center gap-1"
+              title="Ticket Memos"
             >
-              <FileText className="w-4 h-4" />
+              <FileText className="w-3 h-3" />
               Memos
               {ticket.memo_count && ticket.memo_count > 0 && (
-                <span className="bg-white/20 text-white text-xs px-1.5 py-0.5 rounded-full">
-                  {ticket.memo_count}
-                </span>
+                <span className="bg-white/20 text-white text-[10px] px-1 rounded-full">{ticket.memo_count}</span>
               )}
             </button>
             <button
               onClick={() => onOpenTicketReminder(ticket)}
-              className="px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-2 text-sm"
-              title="Set Reminder for this Ticket"
+              className="px-2 py-1 bg-amber-600 text-white rounded text-[11px] hover:bg-amber-700 transition-colors flex items-center gap-1"
+              title="Set Reminder"
             >
-              <Bell className="w-4 h-4" />
-              Reminder
+              <Bell className="w-3 h-3" />
+              Remind
             </button>
           </div>
         </div>
-        <p className="text-sm text-gray-600 mb-2">
-          Customer ID: {ticket.customer_id}
-        </p>
 
-        {/* Real-time Balance Tracking */}
         {(ticket.customer_balance !== undefined || ticket.open_invoice_count !== undefined || ticket.oldest_invoice_date || ticket.last_payment_date) && (
-          <div className="mb-3 p-3 bg-slate-50 border border-slate-300 rounded-lg">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              {ticket.customer_balance !== undefined && (
-                <div className="flex items-start gap-2">
-                  <DollarSign className="w-4 h-4 text-green-700 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-medium text-gray-600">Customer Balance</p>
-                    <p className="text-sm font-bold text-gray-900">
-                      ${ticket.customer_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                </div>
-              )}
-              {ticket.open_invoice_count !== undefined && (
-                <div className="flex items-start gap-2">
-                  <FileText className="w-4 h-4 text-blue-700 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-medium text-gray-600">Open Invoices</p>
-                    <p className="text-sm font-bold text-gray-900">
-                      {ticket.open_invoice_count} invoice{ticket.open_invoice_count !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                </div>
-              )}
-              {ticket.oldest_invoice_date && (
-                <div className="flex items-start gap-2">
-                  <CalendarDays className="w-4 h-4 text-orange-700 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-medium text-gray-600">Oldest Invoice</p>
-                    <p className="text-sm font-bold text-gray-900">
-                      {formatDate(new Date(ticket.oldest_invoice_date), 'MMM d, yyyy')}
-                    </p>
-                  </div>
-                </div>
-              )}
-              {ticket.last_payment_amount != null && (
-                <div className="flex items-start gap-2">
-                  <Banknote className="w-4 h-4 text-teal-700 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-medium text-gray-600">Last Payment</p>
-                    <p className="text-sm font-bold text-teal-700">
-                      ${ticket.last_payment_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                </div>
-              )}
-              {ticket.last_payment_date && (
-                <div className="flex items-start gap-2">
-                  <Calendar className="w-4 h-4 text-teal-700 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-medium text-gray-600">Last Payment Date</p>
-                    <p className="text-sm font-bold text-gray-900">
-                      {formatDate(new Date(ticket.last_payment_date), 'MMM d, yyyy')}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] py-1.5 px-2 bg-gray-50 rounded border border-gray-100">
+            {ticket.customer_balance !== undefined && (
+              <span className="flex items-center gap-1">
+                <DollarSign className="w-3 h-3 text-green-600" />
+                <span className="text-gray-500">Balance:</span>
+                <span className="font-bold text-gray-900">${ticket.customer_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </span>
+            )}
+            {ticket.open_invoice_count !== undefined && (
+              <span className="flex items-center gap-1">
+                <FileText className="w-3 h-3 text-blue-600" />
+                <span className="font-bold text-gray-900">{ticket.open_invoice_count}</span>
+                <span className="text-gray-500">open</span>
+              </span>
+            )}
+            {ticket.oldest_invoice_date && (
+              <span className="flex items-center gap-1">
+                <CalendarDays className="w-3 h-3 text-orange-600" />
+                <span className="text-gray-500">Oldest:</span>
+                <span className="font-medium text-gray-800">{formatDate(new Date(ticket.oldest_invoice_date), 'MMM d, yyyy')}</span>
+              </span>
+            )}
+            {ticket.last_payment_amount != null && (
+              <span className="flex items-center gap-1">
+                <Banknote className="w-3 h-3 text-teal-600" />
+                <span className="text-gray-500">Last Pmt:</span>
+                <span className="font-bold text-teal-700">${ticket.last_payment_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </span>
+            )}
+            {ticket.last_payment_date && (
+              <span className="flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-teal-600" />
+                <span className="text-gray-500">on</span>
+                <span className="font-medium text-gray-800">{formatDate(new Date(ticket.last_payment_date), 'MMM d, yyyy')}</span>
+              </span>
+            )}
           </div>
         )}
 
         {relatedTickets.length > 0 && (
-          <div className="mt-3 p-3 bg-amber-50 border border-amber-300 rounded-lg">
-            <div className="flex items-start gap-2">
-              <Link2 className="w-4 h-4 text-amber-700 flex-shrink-0 mt-1" />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-amber-900 mb-2">
-                  {relatedTickets.length} Other Active Ticket{relatedTickets.length !== 1 ? 's' : ''} for this Customer
-                </p>
-                <div className="space-y-1">
-                  {relatedTickets.map((relatedTicket) => {
-                    const statusOption = statusOptions.find(s => s.status_name === relatedTicket.status);
-                    const statusDisplayName = statusOption?.display_name || relatedTicket.status.replace('_', ' ').toUpperCase();
-                    const statusColorClass = statusOption?.color_class || 'bg-gray-100 text-gray-800';
-
-                    return (
-                      <div
-                        key={relatedTicket.id}
-                        className="flex items-center justify-between gap-2 p-2 bg-white rounded border border-amber-200 hover:border-amber-400 transition-colors"
-                      >
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <span className="font-mono text-sm font-semibold text-amber-900">
-                            {relatedTicket.ticket_number}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColorClass}`}>
-                            {statusDisplayName}
-                          </span>
-                          <span className="text-xs text-amber-700">
-                            {relatedTicket.invoice_count} invoice{relatedTicket.invoice_count !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-                        <a
-                          href={`/ticket/${relatedTicket.id}`}
-                          onClick={(e) => { e.preventDefault(); navigate(`/ticket/${relatedTicket.id}`); }}
-                          className="px-2 py-1 text-xs bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors flex items-center gap-1 whitespace-nowrap no-underline"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          View
-                        </a>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+          <div className="mt-2 px-2 py-1.5 bg-amber-50 border border-amber-200 rounded text-xs">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Link2 className="w-3 h-3 text-amber-600" />
+              <span className="font-semibold text-amber-800">
+                {relatedTickets.length} Other Active Ticket{relatedTickets.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="space-y-1">
+              {relatedTickets.map((relatedTicket) => {
+                const statusOption = statusOptions.find(s => s.status_name === relatedTicket.status);
+                const relStatusName = statusOption?.display_name || relatedTicket.status.replace('_', ' ').toUpperCase();
+                const relStatusClass = statusOption?.color_class || 'bg-gray-100 text-gray-800';
+                return (
+                  <div key={relatedTicket.id} className="flex items-center justify-between gap-2 py-1 px-1.5 bg-white rounded border border-amber-100">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-xs font-semibold text-amber-900">{relatedTicket.ticket_number}</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${relStatusClass}`}>{relStatusName}</span>
+                      <span className="text-[10px] text-amber-600">{relatedTicket.invoice_count} inv</span>
+                    </div>
+                    <a
+                      href={`/ticket/${relatedTicket.id}`}
+                      onClick={(e) => { e.preventDefault(); navigate(`/ticket/${relatedTicket.id}`); }}
+                      className="px-1.5 py-0.5 text-[10px] bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors flex items-center gap-0.5 no-underline"
+                    >
+                      <ExternalLink className="w-2.5 h-2.5" />
+                      View
+                    </a>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
 
         {ticket.note_count && ticket.note_count > 0 && (
-          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-start gap-2">
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <MessageSquare className="w-4 h-4 text-blue-600" />
-                {ticket.has_attachments && (
-                  <Paperclip className="w-4 h-4 text-blue-600" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-blue-900">
-                  {ticket.note_count} Note{ticket.note_count !== 1 ? 's' : ''}
-                  {ticket.has_attachments && ' (with attachment)'}
-                </p>
-                {ticket.last_note && (
-                  <>
-                    <p className="text-xs text-blue-800 mt-1 line-clamp-2">
-                      {ticket.last_note.note_text}
-                    </p>
-                    <p className="text-xs text-blue-600 mt-1">
-                      {formatDistanceToNow(new Date(ticket.last_note.created_at), { addSuffix: true })}
-                    </p>
-                  </>
-                )}
-              </div>
+          <div className="mt-2 px-2 py-1.5 bg-blue-50 border border-blue-100 rounded text-xs">
+            <div className="flex items-center gap-1.5">
+              <MessageSquare className="w-3 h-3 text-blue-500" />
+              {ticket.has_attachments && <Paperclip className="w-3 h-3 text-blue-500" />}
+              <span className="font-semibold text-blue-800">{ticket.note_count} Note{ticket.note_count !== 1 ? 's' : ''}</span>
+              {ticket.last_note && (
+                <span className="text-blue-600 truncate ml-1">
+                  {ticket.last_note.note_text} - {formatDistanceToNow(new Date(ticket.last_note.created_at), { addSuffix: true })}
+                </span>
+              )}
             </div>
           </div>
         )}
 
         {ticket.memo_count && ticket.memo_count > 0 && (
           <div
-            className="mt-3 p-3 bg-slate-50 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors"
+            className="mt-2 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs cursor-pointer hover:bg-slate-100 transition-colors"
             onClick={() => onOpenTicketMemo(ticket)}
           >
-            <div className="flex items-start gap-2">
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <FileText className="w-4 h-4 text-slate-600" />
-                {ticket.has_memo_attachments && (
-                  <Paperclip className="w-4 h-4 text-slate-600" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-slate-900">
-                  {ticket.memo_count} Memo{ticket.memo_count !== 1 ? 's' : ''}
-                  {ticket.has_memo_attachments && ' (with attachment)'}
-                </p>
-                {ticket.last_memo && (
-                  <>
-                    <p className="text-xs text-slate-700 mt-1 line-clamp-2">
-                      {ticket.last_memo.memo_text}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      {formatDistanceToNow(new Date(ticket.last_memo.created_at), { addSuffix: true })}
-                    </p>
-                  </>
-                )}
-              </div>
+            <div className="flex items-center gap-1.5">
+              <FileText className="w-3 h-3 text-slate-500" />
+              {ticket.has_memo_attachments && <Paperclip className="w-3 h-3 text-slate-500" />}
+              <span className="font-semibold text-slate-800">{ticket.memo_count} Memo{ticket.memo_count !== 1 ? 's' : ''}</span>
+              {ticket.last_memo && (
+                <span className="text-slate-600 truncate ml-1">
+                  {ticket.last_memo.memo_text} - {formatDistanceToNow(new Date(ticket.last_memo.created_at), { addSuffix: true })}
+                </span>
+              )}
             </div>
           </div>
         )}
 
-        <div className="mt-3 pt-3 border-t border-gray-200">
-          {!showHistory && (
-            <div className="grid grid-cols-2 gap-4 text-xs mb-3">
+        <div className="mt-2 pt-2 border-t border-gray-100">
+          {!showHistory && (ticket.last_status_change || ticket.last_activity) && (
+            <div className="flex items-start gap-4 text-[11px] text-gray-500 mb-2">
               {ticket.last_status_change && (
-                <div className="flex items-start gap-2">
-                  <Clock className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-gray-700">Last Status Change</p>
-                    <p className="text-gray-600">{ticket.last_status_change.status}</p>
-                    <p className="text-gray-500">
-                      {formatDistanceToNow(new Date(ticket.last_status_change.changed_at), { addSuffix: true })}
-                    </p>
-                    <p className="text-gray-500">by {ticket.last_status_change.changed_by_name}</p>
-                  </div>
+                <div className="flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                  <span className="text-gray-400">Status:</span>
+                  <span className="text-gray-600">{ticket.last_status_change.status}</span>
+                  <span>{formatDistanceToNow(new Date(ticket.last_status_change.changed_at), { addSuffix: true })}</span>
+                  <span>by {ticket.last_status_change.changed_by_name}</span>
                 </div>
               )}
               {ticket.last_activity && (
-                <div className="flex items-start gap-2">
-                  <Clock className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-gray-700">Last Activity</p>
-                    <p className="text-gray-600">{ticket.last_activity.description}</p>
-                    <p className="text-gray-500">
-                      {formatDistanceToNow(new Date(ticket.last_activity.created_at), { addSuffix: true })}
-                    </p>
-                    <p className="text-gray-500">by {ticket.last_activity.created_by_name}</p>
-                  </div>
+                <div className="flex items-center gap-1 min-w-0">
+                  <Clock className="w-3 h-3 text-green-400 flex-shrink-0" />
+                  <span className="text-gray-400">Activity:</span>
+                  <span className="text-gray-600 truncate">{ticket.last_activity.description}</span>
+                  <span className="flex-shrink-0">{formatDistanceToNow(new Date(ticket.last_activity.created_at), { addSuffix: true })}</span>
                 </div>
               )}
             </div>
           )}
-
           <button
             onClick={() => setShowHistory(!showHistory)}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 text-sm font-medium rounded-lg border transition-all duration-200 hover:shadow-sm bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100 hover:border-gray-300"
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded border transition-all hover:shadow-sm bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100 hover:border-gray-300"
           >
-            <History className="w-4 h-4" />
-            {showHistory ? 'Hide Full History' : 'View Full History'}
-            {showHistory ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            <History className="w-3.5 h-3.5" />
+            {showHistory ? 'Hide History' : 'Full History'}
+            {showHistory ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
-
           {showHistory && (
-            <div className="mt-3 pt-3 border-t border-gray-200">
+            <div className="mt-2 pt-2 border-t border-gray-100">
               <TicketHistory ticketId={ticket.ticket_id} />
             </div>
           )}
         </div>
       </div>
 
-      <div className="p-4 bg-gray-50">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <h4 className="font-semibold text-gray-700">
+      <div className="px-3 py-2 bg-gray-50 border-t border-gray-100">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold text-gray-700 text-sm">
               Invoices ({openInvoices.length} open{paidInvoices.length > 0 ? `, ${paidInvoices.length} paid` : ''})
             </h4>
             {onSelectAllInTicket && openInvoices.length > 0 && (() => {
@@ -815,7 +720,7 @@ export default function TicketCard({
               return (
                 <button
                   onClick={() => onSelectAllInTicket(ticketInvoiceRefs)}
-                  className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors flex items-center gap-1.5 ${
+                  className={`px-2 py-0.5 text-[10px] font-medium rounded border transition-colors flex items-center gap-1 ${
                     allSelected
                       ? 'bg-blue-100 border-blue-300 text-blue-700 hover:bg-blue-200'
                       : someSelected
@@ -823,29 +728,25 @@ export default function TicketCard({
                         : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400'
                   }`}
                 >
-                  {allSelected ? (
-                    <CheckIcon className="w-3.5 h-3.5" />
-                  ) : (
-                    <SquareIcon className="w-3.5 h-3.5" />
-                  )}
+                  {allSelected ? <CheckIcon className="w-3 h-3" /> : <SquareIcon className="w-3 h-3" />}
                   {allSelected ? 'Deselect All' : 'Select All'}
                 </button>
               );
             })()}
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {onAddInvoices && (
               <button
                 onClick={handleOpenAddInvoices}
-                className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1.5 text-sm font-medium"
+                className="px-2 py-1 bg-green-600 text-white rounded text-[11px] hover:bg-green-700 transition-colors flex items-center gap-1 font-medium"
               >
-                <Plus className="w-4 h-4" />
-                Add Invoices
+                <Plus className="w-3 h-3" />
+                Add
               </button>
             )}
             <div className="text-right">
-              <p className="text-sm text-gray-600">Total Outstanding</p>
-              <p className="text-xl font-bold text-red-600">
+              <p className="text-[10px] text-gray-500 leading-none">Outstanding</p>
+              <p className="text-sm font-bold text-red-600 leading-tight">
                 ${calculateTotalBalance(ticket.invoices).toFixed(2)}
               </p>
             </div>
@@ -853,34 +754,29 @@ export default function TicketCard({
         </div>
 
         {showAddInvoices && (
-          <div className="mb-4 border-2 border-green-300 rounded-lg bg-green-50 overflow-hidden">
-            <div className="flex items-center justify-between p-3 bg-green-100 border-b border-green-300">
-              <h5 className="font-semibold text-green-900 text-sm flex items-center gap-2">
-                <Plus className="w-4 h-4" />
+          <div className="mb-3 border border-green-300 rounded bg-green-50 overflow-hidden">
+            <div className="flex items-center justify-between px-2.5 py-1.5 bg-green-100 border-b border-green-300">
+              <h5 className="font-semibold text-green-900 text-xs flex items-center gap-1.5">
+                <Plus className="w-3.5 h-3.5" />
                 Add Invoices to Ticket
               </h5>
-              <button
-                onClick={() => setShowAddInvoices(false)}
-                className="p-1 text-green-700 hover:text-green-900 rounded hover:bg-green-200 transition-colors"
-              >
-                <X className="w-4 h-4" />
+              <button onClick={() => setShowAddInvoices(false)} className="p-0.5 text-green-700 hover:text-green-900 rounded hover:bg-green-200 transition-colors">
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
-            <div className="p-3">
+            <div className="p-2.5">
               {loadingAvailable ? (
-                <div className="flex items-center justify-center py-6">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
-                  <span className="ml-2 text-sm text-green-700">Loading available invoices...</span>
+                <div className="flex items-center justify-center py-4">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-600"></div>
+                  <span className="ml-2 text-xs text-green-700">Loading...</span>
                 </div>
               ) : availableInvoices.length === 0 ? (
-                <p className="text-sm text-gray-600 text-center py-4">No additional open invoices found for this customer.</p>
+                <p className="text-xs text-gray-600 text-center py-3">No additional open invoices found.</p>
               ) : (
                 <>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-green-800">
-                      {availableInvoices.length} available invoice{availableInvoices.length !== 1 ? 's' : ''}
-                    </span>
-                    <label className="flex items-center gap-2 cursor-pointer text-sm text-green-700 hover:text-green-900">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs text-green-800">{availableInvoices.length} available</span>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs text-green-700 hover:text-green-900">
                       <input
                         type="checkbox"
                         checked={availableInvoices.length > 0 && selectedNewInvoices.size === availableInvoices.length}
@@ -891,16 +787,16 @@ export default function TicketCard({
                             setSelectedNewInvoices(new Set());
                           }
                         }}
-                        className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                        className="h-3.5 w-3.5 text-green-600 focus:ring-green-500 border-gray-300 rounded"
                       />
-                      Select All
+                      All
                     </label>
                   </div>
-                  <div className="max-h-48 overflow-y-auto space-y-1">
+                  <div className="max-h-40 overflow-y-auto space-y-1">
                     {availableInvoices.map((inv) => (
                       <label
                         key={inv.reference_number}
-                        className={`flex items-center p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                        className={`flex items-center p-2 rounded border cursor-pointer transition-colors text-xs ${
                           selectedNewInvoices.has(inv.reference_number)
                             ? 'bg-green-100 border-green-400'
                             : 'bg-white border-gray-200 hover:border-green-300'
@@ -910,40 +806,27 @@ export default function TicketCard({
                           type="checkbox"
                           checked={selectedNewInvoices.has(inv.reference_number)}
                           onChange={() => toggleNewInvoice(inv.reference_number)}
-                          className="mr-3 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                          className="mr-2 h-3.5 w-3.5 text-green-600 focus:ring-green-500 border-gray-300 rounded"
                         />
                         <div className="flex-1 min-w-0">
-                          <span className="font-mono font-medium text-sm text-gray-900">
-                            #{inv.reference_number}
-                          </span>
-                          {inv.description && (
-                            <span className="text-xs text-gray-500 ml-2 truncate">{inv.description}</span>
-                          )}
+                          <span className="font-mono font-medium text-gray-900">#{inv.reference_number}</span>
+                          {inv.description && <span className="text-gray-500 ml-1.5 truncate">{inv.description}</span>}
                         </div>
-                        <div className="text-right ml-3 flex-shrink-0">
-                          <div className="text-xs text-gray-500">
-                            Due: {new Date(inv.due_date).toLocaleDateString()}
-                          </div>
-                          <div className="text-sm font-semibold text-red-600">
-                            ${inv.balance.toFixed(2)}
-                          </div>
+                        <div className="text-right ml-2 flex-shrink-0">
+                          <div className="text-[10px] text-gray-500">Due: {new Date(inv.due_date).toLocaleDateString()}</div>
+                          <div className="font-semibold text-red-600">${inv.balance.toFixed(2)}</div>
                         </div>
                       </label>
                     ))}
                   </div>
-                  <div className="mt-3 flex items-center justify-end gap-2">
-                    <button
-                      onClick={() => setShowAddInvoices(false)}
-                      className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
+                  <div className="mt-2 flex items-center justify-end gap-2">
+                    <button onClick={() => setShowAddInvoices(false)} className="px-2.5 py-1 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50 transition-colors">Cancel</button>
                     <button
                       onClick={handleConfirmAddInvoices}
                       disabled={selectedNewInvoices.size === 0 || addingInvoices}
-                      className="px-4 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                      className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
                     >
-                      {addingInvoices ? 'Adding...' : `Add ${selectedNewInvoices.size} Invoice${selectedNewInvoices.size !== 1 ? 's' : ''}`}
+                      {addingInvoices ? 'Adding...' : `Add ${selectedNewInvoices.size}`}
                     </button>
                   </div>
                 </>
@@ -953,14 +836,14 @@ export default function TicketCard({
         )}
 
         {openInvoices.length === 0 && paidInvoices.length > 0 && (
-          <div className="flex items-center justify-center gap-2 py-4 text-green-700 bg-green-50 rounded-lg border border-green-200">
-            <CheckCircle className="w-5 h-5" />
+          <div className="flex items-center justify-center gap-1.5 py-2.5 text-green-700 bg-green-50 rounded border border-green-200 text-xs">
+            <CheckCircle className="w-4 h-4" />
             <span className="font-medium">All invoices are paid</span>
           </div>
         )}
 
         {openInvoices.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {(showAllInvoices ? openInvoices : openInvoices.slice(0, 2)).map(invoice => (
               <div key={invoice.invoice_reference_number} className="relative group">
                 <InvoiceItem
@@ -980,13 +863,13 @@ export default function TicketCard({
                   <button
                     onClick={() => handleRemoveInvoice(invoice.invoice_reference_number)}
                     disabled={removingInvoice === invoice.invoice_reference_number}
-                    className="absolute top-2 right-2 p-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 hover:text-red-800 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                    className="absolute top-1.5 right-1.5 p-1 bg-red-100 text-red-600 rounded hover:bg-red-200 hover:text-red-800 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50"
                     title="Remove from ticket"
                   >
                     {removingInvoice === invoice.invoice_reference_number ? (
-                      <div className="w-4 h-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
+                      <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
                     ) : (
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     )}
                   </button>
                 )}
@@ -998,34 +881,28 @@ export default function TicketCard({
         {openInvoices.length > 2 && (
           <button
             onClick={() => setShowAllInvoices(!showAllInvoices)}
-            className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors"
+            className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-400 transition-colors"
           >
             {showAllInvoices ? (
-              <>
-                <ChevronUp className="w-4 h-4" />
-                Show Less
-              </>
+              <><ChevronUp className="w-3.5 h-3.5" /> Show Less</>
             ) : (
-              <>
-                <ChevronDown className="w-4 h-4" />
-                Show {openInvoices.length - 2} More Open Invoice{openInvoices.length - 2 !== 1 ? 's' : ''}
-              </>
+              <><ChevronDown className="w-3.5 h-3.5" /> {openInvoices.length - 2} More Open Invoice{openInvoices.length - 2 !== 1 ? 's' : ''}</>
             )}
           </button>
         )}
 
         {paidInvoices.length > 0 && (
-          <div className={`${openInvoices.length > 0 ? 'mt-4 pt-4 border-t border-gray-200' : 'mt-2'}`}>
+          <div className={openInvoices.length > 0 ? 'mt-2 pt-2 border-t border-gray-200' : 'mt-1'}>
             <button
               onClick={() => setShowPaidInvoices(!showPaidInvoices)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-medium rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:border-green-300 transition-colors"
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:border-green-300 transition-colors"
             >
-              <CheckCircle className="w-4 h-4" />
-              {showPaidInvoices ? 'Hide' : 'Show'} {paidInvoices.length} Paid Invoice{paidInvoices.length !== 1 ? 's' : ''}
-              {showPaidInvoices ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              <CheckCircle className="w-3.5 h-3.5" />
+              {showPaidInvoices ? 'Hide' : 'Show'} {paidInvoices.length} Paid
+              {showPaidInvoices ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
             {showPaidInvoices && (
-              <div className="mt-3 space-y-2">
+              <div className="mt-2 space-y-1.5">
                 {paidInvoices.map(invoice => (
                   <div key={invoice.invoice_reference_number} className="relative group opacity-60">
                     <InvoiceItem
