@@ -80,6 +80,7 @@ import Last15DaysPaymentFetch from './components/Last15DaysPaymentFetch';
 import ConnectionDiagnostic from './components/ConnectionDiagnostic';
 import PaymentBreakdown from './components/PaymentBreakdown';
 import EmailSettings from './components/EmailSettings';
+import TicketDetailPage from './components/TicketDetailPage';
 
 function LoadingScreen() {
   return (
@@ -174,6 +175,7 @@ function AppContent() {
         <Route path="invoice-date-comparison" element={<InvoiceDateComparison onBack={() => window.history.back()} />} />
         <Route path="orphaned-application-diagnostic" element={<OrphanedApplicationDiagnostic />} />
         <Route path="collection-ticketing" element={<CollectionTicketing />} />
+        <Route path="ticket/:ticketId" element={<TicketDetailPage />} />
         <Route path="my-assignments" element={<MyAssignments />} />
         <Route path="collector-performance" element={<CollectorHub />} />
         <Route path="revenue-analytics" element={<RevenueAnalytics />} />

@@ -668,9 +668,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   };
 
   const handleTicketClick = (ticketId: string, isClosed?: boolean) => {
-    const params = new URLSearchParams({ ticket: ticketId });
-    if (isClosed) params.set('tab', 'closed');
-    navigate(`/collection-ticketing?${params.toString()}`);
+    navigate(`/ticket/${ticketId}`);
   };
 
   const handleQuickFilter = (type: string) => {

@@ -557,9 +557,8 @@ export default function TicketCard({
                           </span>
                         </div>
                         <a
-                          href={`/collection-ticketing?ticket=${relatedTicket.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                          href={`/ticket/${relatedTicket.id}`}
+                          onClick={(e) => { e.preventDefault(); navigate(`/ticket/${relatedTicket.id}`); }}
                           className="px-2 py-1 text-xs bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors flex items-center gap-1 whitespace-nowrap no-underline"
                         >
                           <ExternalLink className="w-3 h-3" />
