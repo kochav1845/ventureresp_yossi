@@ -507,21 +507,42 @@ export default function UnifiedTicketingSystem({
         const uniqueCustomerIds = [...new Set(ticketGroupsArray.map(t => t.customer_id))];
 
         if (uniqueCustomerIds.length > 0) {
-          const { data: customerBalances, error: balanceError } = await supabase
-            .from('acumatica_invoices')
-            .select('customer, date, balance, status')
-            .in('customer', uniqueCustomerIds)
-            .neq('status', 'Closed');
+          const fetchAllInvoiceBalances = async () => {
+            const all: any[] = [];
+            const batchSize = 200;
+            for (let i = 0; i < uniqueCustomerIds.length; i += batchSize) {
+              const batch = uniqueCustomerIds.slice(i, i + batchSize);
+              let from = 0;
+              let keepFetching = true;
+              while (keepFetching) {
+                const { data, error } = await supabase
+                  .from('acumatica_invoices')
+                  .select('customer, date, balance, status')
+                  .in('customer', batch)
+                  .neq('status', 'Closed')
+                  .range(from, from + 4999);
+                if (error || !data || data.length === 0) {
+                  keepFetching = false;
+                } else {
+                  all.push(...data);
+                  from += data.length;
+                  keepFetching = data.length === 5000;
+                }
+              }
+            }
+            return all;
+          };
 
-          if (!balanceError && customerBalances) {
-            // Calculate balance data for each customer
+          const customerBalances = await fetchAllInvoiceBalances();
+
+          if (customerBalances.length > 0) {
             const customerStats = new Map<string, {
               balance: number;
               invoice_count: number;
               oldest_date: string | null;
             }>();
 
-            customerBalances.forEach(inv => {
+            customerBalances.forEach((inv: any) => {
               if (!customerStats.has(inv.customer)) {
                 customerStats.set(inv.customer, {
                   balance: 0,
@@ -539,7 +560,6 @@ export default function UnifiedTicketingSystem({
               }
             });
 
-            // Merge balance data into tickets
             ticketGroupsArray.forEach(ticket => {
               const stats = customerStats.get(ticket.customer_id);
               if (stats) {
@@ -552,16 +572,28 @@ export default function UnifiedTicketingSystem({
         }
 
         if (uniqueCustomerIds.length > 0) {
-          const { data: lastPayments, error: paymentError } = await supabase
-            .from('acumatica_payments')
-            .select('customer_id, payment_amount, application_date')
-            .in('customer_id', uniqueCustomerIds)
-            .in('type', ['Payment', 'Prepayment'])
-            .order('application_date', { ascending: false });
+          const fetchAllPayments = async () => {
+            const all: any[] = [];
+            const batchSize = 200;
+            for (let i = 0; i < uniqueCustomerIds.length; i += batchSize) {
+              const batch = uniqueCustomerIds.slice(i, i + batchSize);
+              const { data, error } = await supabase
+                .from('acumatica_payments')
+                .select('customer_id, payment_amount, application_date')
+                .in('customer_id', batch)
+                .in('type', ['Payment', 'Prepayment'])
+                .order('application_date', { ascending: false })
+                .limit(5000);
+              if (!error && data) all.push(...data);
+            }
+            return all;
+          };
 
-          if (!paymentError && lastPayments) {
+          const lastPayments = await fetchAllPayments();
+
+          if (lastPayments.length > 0) {
             const customerLastPayment = new Map<string, { amount: number; date: string }>();
-            lastPayments.forEach(p => {
+            lastPayments.forEach((p: any) => {
               if (!customerLastPayment.has(p.customer_id)) {
                 customerLastPayment.set(p.customer_id, {
                   amount: p.payment_amount,
@@ -582,16 +614,27 @@ export default function UnifiedTicketingSystem({
 
         const allInvoiceRefs = ticketGroupsArray.flatMap(t => t.invoices.map(inv => inv.invoice_reference_number));
         if (allInvoiceRefs.length > 0) {
-          const { data: appData } = await supabase
-            .from('payment_invoice_applications')
-            .select('invoice_reference_number, application_date, amount_paid')
-            .in('invoice_reference_number', allInvoiceRefs)
-            .gt('amount_paid', 0)
-            .order('application_date', { ascending: false });
+          const fetchAllApps = async () => {
+            const all: any[] = [];
+            const batchSize = 300;
+            for (let i = 0; i < allInvoiceRefs.length; i += batchSize) {
+              const batch = allInvoiceRefs.slice(i, i + batchSize);
+              const { data } = await supabase
+                .from('payment_invoice_applications')
+                .select('invoice_reference_number, application_date, amount_paid')
+                .in('invoice_reference_number', batch)
+                .gt('amount_paid', 0)
+                .order('application_date', { ascending: false })
+                .limit(5000);
+              if (data) all.push(...data);
+            }
+            return all;
+          };
+          const appData = await fetchAllApps();
 
-          if (appData) {
+          if (appData.length > 0) {
             const invoiceCollectionDate = new Map<string, string>();
-            appData.forEach(a => {
+            appData.forEach((a: any) => {
               if (!invoiceCollectionDate.has(a.invoice_reference_number) && a.application_date) {
                 invoiceCollectionDate.set(a.invoice_reference_number, a.application_date);
               }
@@ -622,20 +665,35 @@ export default function UnifiedTicketingSystem({
   const loadCustomers = async () => {
     setLoadingCustomers(true);
     try {
-      const { data, error } = await supabase.rpc('get_customers_with_balance', {
-        p_balance_filter: 'all',
-        p_limit: 1000,
-        p_exclude_credit_memos: true,
-        p_calculate_avg_days: false
-      });
+      const allCustomers: any[] = [];
+      const batchSize = 2000;
+      let offset = 0;
+      let hasMore = true;
 
-      if (error) {
-        console.error('Error loading customers:', error);
-        throw error;
+      while (hasMore) {
+        const { data, error } = await supabase.rpc('get_customers_with_balance', {
+          p_balance_filter: 'all',
+          p_limit: batchSize,
+          p_offset: offset,
+          p_exclude_credit_memos: true,
+          p_calculate_avg_days: false
+        });
+
+        if (error) {
+          console.error('Error loading customers:', error);
+          throw error;
+        }
+
+        if (data && data.length > 0) {
+          allCustomers.push(...data);
+          offset += data.length;
+          hasMore = data.length === batchSize;
+        } else {
+          hasMore = false;
+        }
       }
 
-      // Map the gross_balance (invoices only, excluding credit memos) for collection purposes
-      const mappedCustomers = (data || []).map((c: any) => ({
+      const mappedCustomers = allCustomers.map((c: any) => ({
         customer_id: c.customer_id,
         customer_name: c.customer_name,
         balance: c.gross_balance || 0
