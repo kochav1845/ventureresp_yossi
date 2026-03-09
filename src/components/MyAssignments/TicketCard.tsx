@@ -272,9 +272,20 @@ export default function TicketCard({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
             <Ticket className="w-5 h-5" />
-            <span className="font-mono font-bold text-lg">
+            <button
+              onClick={() => navigate(`/ticket/${ticket.ticket_id}`)}
+              className="font-mono font-bold text-lg hover:underline hover:text-blue-700 transition-colors cursor-pointer"
+            >
               {ticket.ticket_number}
-            </span>
+            </button>
+            <button
+              onClick={() => navigate(`/ticket/${ticket.ticket_id}`)}
+              className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-white/80 border border-current rounded hover:bg-white transition-colors"
+              title="Open ticket detail page"
+            >
+              <ExternalLink className="w-3 h-3" />
+              Open
+            </button>
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColorClass}`}>
               {statusDisplayName}
             </span>
