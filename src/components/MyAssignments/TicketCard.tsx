@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Image, File } from 'lucide-react';
 import { formatDistanceToNow, isPast, parseISO, format as formatDate } from 'date-fns';
@@ -94,6 +94,23 @@ export default function TicketCard({
   const [removingInvoice, setRemovingInvoice] = useState<string | null>(null);
   const [showAllInvoices, setShowAllInvoices] = useState(false);
   const [showPaidInvoices, setShowPaidInvoices] = useState(false);
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+  const priorityDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
+        setShowStatusDropdown(false);
+      }
+      if (priorityDropdownRef.current && !priorityDropdownRef.current.contains(e.target as Node)) {
+        setShowPriorityDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const openInvoices = ticket.invoices.filter(inv => inv.balance > 0 && inv.invoice_status !== 'Closed');
   const paidInvoices = ticket.invoices.filter(inv => inv.balance <= 0 || inv.invoice_status === 'Closed');
@@ -303,9 +320,47 @@ export default function TicketCard({
               <ExternalLink className="w-3 h-3" />
               Open
             </button>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColorClass}`}>
-              {statusDisplayName}
-            </span>
+            <div className="relative" ref={statusDropdownRef}>
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowStatusDropdown(!showStatusDropdown); setShowPriorityDropdown(false); }}
+                className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400 transition-all ${statusColorClass}`}
+                title="Click to change status"
+              >
+                {changingTicketStatus === ticket.ticket_id ? '...' : statusDisplayName}
+                <ChevronDown className="w-3 h-3 inline-block ml-1 -mt-0.5" />
+              </button>
+              {showStatusDropdown && (
+                <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-1.5 min-w-[180px] z-50">
+                  {statusOptions.map((option) => {
+                    const parts = option.color_class.split(' ');
+                    const bgColor = parts.find(p => p.startsWith('bg-')) || 'bg-gray-500';
+                    const isActive = option.status_name === ticket.ticket_status;
+                    return (
+                      <button
+                        key={option.status_name}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowStatusDropdown(false);
+                          if (option.status_name === 'promised') {
+                            setPendingStatus('promised');
+                            setShowPromiseDateModal(true);
+                          } else if (option.status_name !== ticket.ticket_status) {
+                            onTicketStatusChange(ticket.ticket_id, option.status_name);
+                          }
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm rounded flex items-center gap-2 transition-colors ${
+                          isActive ? 'bg-blue-50 font-semibold' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className={`w-3 h-3 rounded-full flex-shrink-0 ${bgColor}`}></span>
+                        {option.display_name}
+                        {isActive && <CheckIcon className="w-3.5 h-3.5 text-blue-600 ml-auto" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             {ticket.ticket_type && (
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-300">
                 {ticket.ticket_type.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
@@ -326,10 +381,46 @@ export default function TicketCard({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2 text-sm flex-wrap">
-            <span className="font-semibold">
-              Priority: {ticket.ticket_priority.toUpperCase()}
-            </span>
+          <div className="relative" ref={priorityDropdownRef}>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowPriorityDropdown(!showPriorityDropdown); setShowStatusDropdown(false); }}
+              className="flex items-center gap-1.5 text-sm font-semibold cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400 rounded-lg px-3 py-1 transition-all"
+              title="Click to change priority"
+            >
+              {changingTicketPriority === ticket.ticket_id ? '...' : `Priority: ${ticket.ticket_priority.toUpperCase()}`}
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+            {showPriorityDropdown && (
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-1.5 min-w-[160px] z-50">
+                {[
+                  { value: 'urgent', label: 'Urgent', color: 'bg-red-500' },
+                  { value: 'high', label: 'High', color: 'bg-orange-500' },
+                  { value: 'medium', label: 'Medium', color: 'bg-yellow-500' },
+                  { value: 'low', label: 'Low', color: 'bg-green-500' },
+                ].map((option) => {
+                  const isActive = option.value === ticket.ticket_priority;
+                  return (
+                    <button
+                      key={option.value}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowPriorityDropdown(false);
+                        if (option.value !== ticket.ticket_priority) {
+                          onTicketPriorityChange(ticket.ticket_id, option.value);
+                        }
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm rounded flex items-center gap-2 transition-colors ${
+                        isActive ? 'bg-blue-50 font-semibold' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className={`w-3 h-3 rounded-full flex-shrink-0 ${option.color}`}></span>
+                      {option.label}
+                      {isActive && <CheckIcon className="w-3.5 h-3.5 text-blue-600 ml-auto" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -661,58 +752,6 @@ export default function TicketCard({
             </div>
           </div>
         )}
-
-        <div className="mt-4 pt-4 border-t border-gray-300">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Status</label>
-              <select
-                value={localTicketStatus}
-                onChange={(e) => setLocalTicketStatus(e.target.value)}
-                className="flex-1 min-w-0 px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-              >
-                {statusOptions.map(status => (
-                  <option key={status.id} value={status.status_name}>
-                    {status.display_name}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={handleStatusUpdate}
-                disabled={
-                  changingTicketStatus === ticket.ticket_id ||
-                  localTicketStatus === ticket.ticket_status
-                }
-                className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap transition-colors"
-              >
-                {changingTicketStatus === ticket.ticket_id ? '...' : 'Save'}
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Priority</label>
-              <select
-                value={localTicketPriority}
-                onChange={(e) => setLocalTicketPriority(e.target.value)}
-                className="flex-1 min-w-0 px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-              >
-                <option value="urgent">Urgent</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-              <button
-                onClick={() => onTicketPriorityChange(ticket.ticket_id, localTicketPriority)}
-                disabled={
-                  changingTicketPriority === ticket.ticket_id ||
-                  localTicketPriority === ticket.ticket_priority
-                }
-                className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap transition-colors"
-              >
-                {changingTicketPriority === ticket.ticket_id ? '...' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
 
         <div className="mt-3 pt-3 border-t border-gray-200">
           {!showHistory && (
