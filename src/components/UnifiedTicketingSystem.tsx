@@ -669,17 +669,14 @@ export default function UnifiedTicketingSystem({
     setLoadingCustomers(true);
     try {
       const allCustomers: any[] = [];
-      const batchSize = 2000;
+      const batchSize = 500;
       let offset = 0;
       let hasMore = true;
 
       while (hasMore) {
-        const { data, error } = await supabase.rpc('get_customers_with_balance', {
-          p_balance_filter: 'all',
+        const { data, error } = await supabase.rpc('get_customers_for_picker', {
           p_limit: batchSize,
-          p_offset: offset,
-          p_exclude_credit_memos: true,
-          p_calculate_avg_days: false
+          p_offset: offset
         });
 
         if (error) {
