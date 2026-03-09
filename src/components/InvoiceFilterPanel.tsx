@@ -104,12 +104,15 @@ export default function InvoiceFilterPanel({
     }).format(amount);
   };
 
-  const formatDate = (dateStr: string | null) => {
+  const formatDateLocal = (dateStr: string | null) => {
     if (!dateStr) return 'N/A';
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'UTC'
     });
   };
 
@@ -178,7 +181,7 @@ export default function InvoiceFilterPanel({
                     <Calendar className="w-4 h-4 text-orange-600" />
                     <span className="text-xs font-medium text-orange-700">Oldest Unpaid</span>
                   </div>
-                  <p className="text-sm font-bold text-orange-900">{formatDate(stats.oldest_unpaid_date)}</p>
+                  <p className="text-sm font-bold text-orange-900">{formatDateLocal(stats.oldest_unpaid_date)}</p>
                   {stats.oldest_unpaid_ref && (
                     <p className="text-xs text-orange-600 mt-1">Ref: {stats.oldest_unpaid_ref}</p>
                   )}
@@ -192,7 +195,7 @@ export default function InvoiceFilterPanel({
                     <Calendar className="w-4 h-4 text-cyan-600" />
                     <span className="text-xs font-medium text-cyan-700">Newest Unpaid</span>
                   </div>
-                  <p className="text-sm font-bold text-cyan-900">{formatDate(stats.newest_unpaid_date)}</p>
+                  <p className="text-sm font-bold text-cyan-900">{formatDateLocal(stats.newest_unpaid_date)}</p>
                   {stats.newest_unpaid_ref && (
                     <p className="text-xs text-cyan-600 mt-1">Ref: {stats.newest_unpaid_ref}</p>
                   )}

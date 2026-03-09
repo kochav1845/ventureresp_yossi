@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Calendar, Bell } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { formatDate, getLocalToday } from '../../lib/dateUtils';
 
 interface TicketPromiseDateModalProps {
   ticketId: string;
@@ -54,7 +55,7 @@ export default function TicketPromiseDateModal({
         .insert({
           ticket_id: ticketId,
           activity_type: 'note',
-          description: `Promise date set to ${new Date(promiseDate).toLocaleDateString()} - Customer promised to pay off ticket`,
+          description: `Promise date set to ${formatDate(promiseDate)} - Customer promised to pay off ticket`,
           created_by: user.id,
           metadata: {
             promise_date: promiseDate,
@@ -87,7 +88,7 @@ export default function TicketPromiseDateModal({
     }
   };
 
-  const minDate = new Date().toISOString().split('T')[0];
+  const minDate = getLocalToday();
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

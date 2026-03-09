@@ -33,6 +33,22 @@ export const formatDateTime = (dateString: string | null | undefined): string =>
   });
 };
 
+export const getLocalToday = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export const isDatePast = (dateString: string): boolean => {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const target = new Date(year, month - 1, day);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return target < now;
+};
+
 export const formatUTCDate = (dateString: string | null | undefined, format: 'short' | 'long' | 'numeric' = 'short'): string => {
   if (!dateString) return 'N/A';
 

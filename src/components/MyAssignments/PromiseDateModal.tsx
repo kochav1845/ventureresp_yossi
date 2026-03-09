@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getLocalToday } from '../../lib/dateUtils';
 
 interface PromiseDateModalProps {
   invoiceNumber: string;
@@ -7,7 +8,7 @@ interface PromiseDateModalProps {
 }
 
 export default function PromiseDateModal({ invoiceNumber, onConfirm, onCancel }: PromiseDateModalProps) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalToday();
   const [selectedDate, setSelectedDate] = useState(today);
 
   const handleConfirm = () => {

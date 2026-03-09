@@ -1,4 +1,5 @@
 import { Assignment } from './types';
+import { isDatePast } from '../../lib/dateUtils';
 
 export const getPriorityColor = (priority: string) => {
   switch (priority) {
@@ -54,10 +55,8 @@ export const isPromiseBroken = (invoice: Assignment) => {
   if (invoice.color_status !== 'green' || !invoice.promise_date) {
     return false;
   }
-  const promiseDate = new Date(invoice.promise_date);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return promiseDate < now;
+  const dateStr = invoice.promise_date.split('T')[0];
+  return isDatePast(dateStr);
 };
 
 export const getPriorityOrder = (priority: string): number => {

@@ -7,10 +7,11 @@ import {
   ChevronDown, ChevronUp, Plus, X, Trash2, History, Loader2,
   RefreshCw, TrendingUp, Hash, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
-import { formatDistanceToNow, isPast, parseISO, format as formatDate } from 'date-fns';
+import { formatDistanceToNow, format as dateFnsFormat } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
+import { formatDate, isDatePast } from '../lib/dateUtils';
 import InvoiceMemoModal from './InvoiceMemoModal';
 import TicketMemoModal from './TicketMemoModal';
 import CreateReminderModal from './CreateReminderModal';
@@ -594,8 +595,8 @@ export default function TicketDetailPage() {
   const totalOpen = openInvoices.reduce((s, inv) => s + (inv.balance || 0), 0);
 
   const isBrokenPromise = ticket.ticket_status === 'promised' &&
-    ticket.promise_date && isPast(parseISO(ticket.promise_date));
-  const isOverdue = ticket.ticket_due_date && isPast(parseISO(ticket.ticket_due_date));
+    ticket.promise_date && isDatePast(ticket.promise_date.split('T')[0]);
+  const isOverdue = ticket.ticket_due_date && isDatePast(ticket.ticket_due_date.split('T')[0]);
 
   const currentStatus = statusOptions.find(s => s.status_name === ticket.ticket_status);
   const statusColorClass = currentStatus?.color_class || 'bg-gray-100 text-gray-800';
@@ -697,7 +698,7 @@ export default function TicketDetailPage() {
           <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
           <span className="font-bold text-red-800">BROKEN PROMISE</span>
           <span className="text-red-700">
-            Pay by {new Date(ticket.promise_date!).toLocaleDateString()} ({formatDistanceToNow(parseISO(ticket.promise_date!), { addSuffix: true })})
+            Pay by {formatDate(ticket.promise_date!)} ({formatDistanceToNow(new Date(ticket.promise_date! + 'T12:00:00'), { addSuffix: true })})
             {ticket.promise_by_user_name && ` - by ${ticket.promise_by_user_name}`}
           </span>
         </div>
@@ -708,7 +709,7 @@ export default function TicketDetailPage() {
           <Calendar className="w-4 h-4 text-blue-600 flex-shrink-0" />
           <span className="font-semibold text-blue-800">Promise Active</span>
           <span className="text-blue-700">
-            Due by {new Date(ticket.promise_date).toLocaleDateString()} ({formatDistanceToNow(parseISO(ticket.promise_date), { addSuffix: true })})
+            Due by {formatDate(ticket.promise_date)} ({formatDistanceToNow(new Date(ticket.promise_date + 'T12:00:00'), { addSuffix: true })})
             {ticket.promise_by_user_name && ` - by ${ticket.promise_by_user_name}`}
           </span>
         </div>
@@ -719,7 +720,7 @@ export default function TicketDetailPage() {
           <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0" />
           <span className="font-bold text-orange-800">OVERDUE</span>
           <span className="text-orange-700">
-            Due {new Date(ticket.ticket_due_date!).toLocaleDateString()} ({formatDistanceToNow(parseISO(ticket.ticket_due_date!), { addSuffix: true })})
+            Due {formatDate(ticket.ticket_due_date!)} ({formatDistanceToNow(new Date(ticket.ticket_due_date! + 'T12:00:00'), { addSuffix: true })})
           </span>
         </div>
       )}
@@ -729,8 +730,8 @@ export default function TicketDetailPage() {
         <DashboardCard icon={FileText} label="Open Inv" value={String(openInvoices.length)} color="text-blue-600" bg="bg-blue-50 border-blue-100" />
         <DashboardCard icon={TrendingUp} label="Cust Bal" value={`$${(ticket.customer_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`} color="text-emerald-600" bg="bg-emerald-50 border-emerald-100" />
         <DashboardCard icon={Hash} label="Cust Inv" value={String(ticket.open_invoice_count || 0)} color="text-sky-600" bg="bg-sky-50 border-sky-100" />
-        <DashboardCard icon={Banknote} label="Last Pmt" value={ticket.last_payment_amount != null ? `$${ticket.last_payment_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : 'N/A'} subtitle={ticket.last_payment_date ? formatDate(new Date(ticket.last_payment_date), 'MMM d, yy') : undefined} color="text-teal-600" bg="bg-teal-50 border-teal-100" />
-        <DashboardCard icon={CalendarDays} label="Oldest Inv" value={ticket.oldest_invoice_date ? formatDate(new Date(ticket.oldest_invoice_date), 'MMM d, yy') : 'N/A'} color="text-amber-600" bg="bg-amber-50 border-amber-100" />
+        <DashboardCard icon={Banknote} label="Last Pmt" value={ticket.last_payment_amount != null ? `$${ticket.last_payment_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : 'N/A'} subtitle={ticket.last_payment_date ? formatDate(ticket.last_payment_date) : undefined} color="text-teal-600" bg="bg-teal-50 border-teal-100" />
+        <DashboardCard icon={CalendarDays} label="Oldest Inv" value={ticket.oldest_invoice_date ? formatDate(ticket.oldest_invoice_date) : 'N/A'} color="text-amber-600" bg="bg-amber-50 border-amber-100" />
       </div>
 
       <div className="flex gap-3">
@@ -816,21 +817,21 @@ export default function TicketDetailPage() {
                 <div className="flex items-center gap-2 text-xs">
                   <Calendar className="w-3 h-3 text-blue-500 flex-shrink-0" />
                   <span className="text-gray-500">Created</span>
-                  <span className="font-medium text-gray-900 ml-auto">{formatDate(new Date(ticket.ticket_created_at), 'MMM d, yyyy')}</span>
+                  <span className="font-medium text-gray-900 ml-auto">{dateFnsFormat(new Date(ticket.ticket_created_at), 'MMM d, yyyy')}</span>
                 </div>
               )}
               {ticket.ticket_due_date && (
                 <div className="flex items-center gap-2 text-xs">
                   <CalendarDays className={`w-3 h-3 flex-shrink-0 ${isOverdue ? 'text-orange-500' : 'text-green-500'}`} />
                   <span className="text-gray-500">Due</span>
-                  <span className={`font-medium ml-auto ${isOverdue ? 'text-orange-600' : 'text-gray-900'}`}>{formatDate(new Date(ticket.ticket_due_date), 'MMM d, yyyy')}</span>
+                  <span className={`font-medium ml-auto ${isOverdue ? 'text-orange-600' : 'text-gray-900'}`}>{formatDate(ticket.ticket_due_date)}</span>
                 </div>
               )}
               {ticket.ticket_closed_at && (
                 <div className="flex items-center gap-2 text-xs">
                   <CheckCircle className="w-3 h-3 text-gray-500 flex-shrink-0" />
                   <span className="text-gray-500">Closed</span>
-                  <span className="font-medium text-gray-900 ml-auto">{formatDate(new Date(ticket.ticket_closed_at), 'MMM d, yyyy')}</span>
+                  <span className="font-medium text-gray-900 ml-auto">{dateFnsFormat(new Date(ticket.ticket_closed_at), 'MMM d, yyyy')}</span>
                 </div>
               )}
               {ticket.last_status_change && (
@@ -948,7 +949,7 @@ export default function TicketDetailPage() {
                             <label key={inv.reference_number} className={`flex items-center p-2 rounded border cursor-pointer transition-colors text-xs ${selectedNewInvoices.has(inv.reference_number) ? 'bg-green-100 border-green-400' : 'bg-white border-gray-200 hover:border-green-300'}`}>
                               <input type="checkbox" checked={selectedNewInvoices.has(inv.reference_number)} onChange={() => { const n = new Set(selectedNewInvoices); n.has(inv.reference_number) ? n.delete(inv.reference_number) : n.add(inv.reference_number); setSelectedNewInvoices(n); }} className="mr-2 h-3.5 w-3.5 text-green-600 focus:ring-green-500 border-gray-300 rounded" />
                               <span className="font-mono font-medium text-gray-900 flex-1">#{inv.reference_number}</span>
-                              <div className="text-right ml-2"><div className="text-[10px] text-gray-500">Due: {new Date(inv.due_date).toLocaleDateString()}</div><div className="font-semibold text-red-600">${inv.balance.toFixed(2)}</div></div>
+                              <div className="text-right ml-2"><div className="text-[10px] text-gray-500">Due: {formatDate(inv.due_date)}</div><div className="font-semibold text-red-600">${inv.balance.toFixed(2)}</div></div>
                             </label>
                           ))}
                         </div>
@@ -1015,9 +1016,9 @@ export default function TicketDetailPage() {
                               <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">
                                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${invoice.invoice_status === 'Open' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>{invoice.invoice_status}</span>
                               </td>
-                              <td className="px-2 py-1.5 border-r border-gray-100 text-gray-600 whitespace-nowrap">{invoice.date ? new Date(invoice.date).toLocaleDateString() : '-'}</td>
-                              <td className="px-2 py-1.5 border-r border-gray-100 text-gray-600 whitespace-nowrap">{invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : '-'}</td>
-                              <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">{invoice.collection_date ? <span className="text-green-700 font-medium">{new Date(invoice.collection_date).toLocaleDateString()}</span> : <span className="text-gray-400">-</span>}</td>
+                              <td className="px-2 py-1.5 border-r border-gray-100 text-gray-600 whitespace-nowrap">{invoice.date ? formatDate(invoice.date) : '-'}</td>
+                              <td className="px-2 py-1.5 border-r border-gray-100 text-gray-600 whitespace-nowrap">{invoice.due_date ? formatDate(invoice.due_date) : '-'}</td>
+                              <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">{invoice.collection_date ? <span className="text-green-700 font-medium">{formatDate(invoice.collection_date)}</span> : <span className="text-gray-400">-</span>}</td>
                               <td className="px-2 py-1.5 border-r border-gray-100 text-right whitespace-nowrap text-gray-600">${(invoice.amount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                               <td className={`px-2 py-1.5 border-r border-gray-100 text-right whitespace-nowrap font-semibold ${isShortPaid ? 'text-orange-600' : 'text-gray-900'}`}>
                                 ${(invoice.balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -1103,9 +1104,9 @@ export default function TicketDetailPage() {
                                   </div>
                                 </td>
                                 <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap"><span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">Paid</span></td>
-                                <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">{invoice.date ? new Date(invoice.date).toLocaleDateString() : '-'}</td>
-                                <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">{invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : '-'}</td>
-                                <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">{invoice.collection_date ? <span className="text-green-600">{new Date(invoice.collection_date).toLocaleDateString()}</span> : '-'}</td>
+                                <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">{invoice.date ? formatDate(invoice.date) : '-'}</td>
+                                <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">{invoice.due_date ? formatDate(invoice.due_date) : '-'}</td>
+                                <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">{invoice.collection_date ? <span className="text-green-600">{formatDate(invoice.collection_date)}</span> : '-'}</td>
                                 <td className="px-2 py-1.5 border-r border-gray-100 text-right whitespace-nowrap">${(invoice.amount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                                 <td className="px-2 py-1.5 border-r border-gray-100 text-right whitespace-nowrap text-green-700 font-medium">${(invoice.balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                                 <td className="px-2 py-1.5 text-center whitespace-nowrap"><button onClick={() => setMemoModal(invoice)} className="p-0.5 text-blue-500 hover:bg-blue-100 rounded transition-colors" title="Memos"><MessageSquare className="w-3 h-3" /></button></td>

@@ -3,6 +3,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Assignment } from './types';
 import { isPromiseBroken } from './utils';
 import { getAcumaticaInvoiceUrl } from '../../lib/acumaticaLinks';
+import { formatDate } from '../../lib/dateUtils';
 import ColorStatusPicker from './ColorStatusPicker';
 
 interface ColorStatusOption {
@@ -103,7 +104,7 @@ export default function InvoiceItem({
               {invoice.invoice_status}
             </span>
             {isPromiseBroken(invoice) && (
-              <span className="px-2 py-1 rounded text-xs font-bold bg-red-600 text-white animate-pulse border-2 border-red-800 shadow-lg" title={`Promised payment date was ${new Date(invoice.promise_date!).toLocaleDateString()}`}>
+              <span className="px-2 py-1 rounded text-xs font-bold bg-red-600 text-white animate-pulse border-2 border-red-800 shadow-lg" title={`Promised payment date was ${formatDate(invoice.promise_date!)}`}>
                 BROKEN PROMISE
               </span>
             )}
@@ -134,18 +135,18 @@ export default function InvoiceItem({
             {invoice.date && (
               <div className="flex items-center gap-1">
                 <Calendar className="w-4 h-4 text-gray-500" />
-                <span>Inv: {new Date(invoice.date).toLocaleDateString()}</span>
+                <span>Inv: {formatDate(invoice.date)}</span>
               </div>
             )}
             <div className="flex items-center gap-1">
               <Calendar className="w-4 h-4 text-gray-500" />
-              <span>Due: {new Date(invoice.due_date).toLocaleDateString()}</span>
+              <span>Due: {formatDate(invoice.due_date)}</span>
             </div>
             {invoice.collection_date && (
               <div className="flex items-center gap-1">
                 <Calendar className="w-4 h-4 text-green-600" />
                 <span className="text-green-700 font-medium">
-                  Collected: {new Date(invoice.collection_date).toLocaleDateString()}
+                  Collected: {formatDate(invoice.collection_date)}
                 </span>
               </div>
             )}
@@ -164,9 +165,9 @@ export default function InvoiceItem({
           </div>
           {invoice.date && invoice.collection_date && (
             <div className="mt-2 flex items-center gap-2 text-xs bg-blue-50 border border-blue-200 rounded px-3 py-1.5">
-              <span className="text-gray-600">{new Date(invoice.date).toLocaleDateString()}</span>
+              <span className="text-gray-600">{formatDate(invoice.date)}</span>
               <ArrowRight className="w-3 h-3 text-blue-500" />
-              <span className="text-green-700 font-medium">{new Date(invoice.collection_date).toLocaleDateString()}</span>
+              <span className="text-green-700 font-medium">{formatDate(invoice.collection_date)}</span>
               <span className="text-blue-600 font-medium ml-1">
                 ({Math.ceil((new Date(invoice.collection_date).getTime() - new Date(invoice.date).getTime()) / (1000 * 60 * 60 * 24))} days to collect)
               </span>

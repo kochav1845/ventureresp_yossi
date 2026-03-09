@@ -743,11 +743,14 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.toLocaleDateString('en-US', {
       weekday: 'short',
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'UTC'
     });
   };
 
@@ -849,7 +852,7 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
         return 'All Time';
       case 'custom':
         if (customStartDate && customEndDate) {
-          return `${new Date(customStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${new Date(customEndDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+          return `${formatDate(customStartDate)} - ${formatDate(customEndDate)}`;
         }
         return 'Custom Range';
       default:

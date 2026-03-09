@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Image, File } from 'lucide-react';
-import { formatDistanceToNow, isPast, parseISO, format as formatDate } from 'date-fns';
+import { formatDistanceToNow, isPast, parseISO, format as dateFnsFormat } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
 import { getAcumaticaCustomerUrl } from '../../lib/acumaticaLinks';
 import { supabase } from '../../lib/supabase';
+import { formatDate, isDatePast } from '../../lib/dateUtils';
 import InvoiceItem from './InvoiceItem';
 import TicketPromiseDateModal from './TicketPromiseDateModal';
 import TicketHistory from './TicketHistory';
@@ -266,9 +267,9 @@ export default function TicketCard({
 
   const isBrokenPromise = ticket.ticket_status === 'promised' &&
     ticket.promise_date &&
-    isPast(parseISO(ticket.promise_date));
+    isDatePast(ticket.promise_date.split('T')[0]);
 
-  const isOverdue = ticket.ticket_due_date && isPast(parseISO(ticket.ticket_due_date));
+  const isOverdue = ticket.ticket_due_date && isDatePast(ticket.ticket_due_date.split('T')[0]);
 
   const currentStatus = statusOptions.find(s => s.status_name === ticket.ticket_status);
   const statusColorClass = currentStatus?.color_class || 'bg-gray-100 text-gray-800';
@@ -441,21 +442,21 @@ export default function TicketCard({
             <span className="flex items-center gap-1">
               <Calendar className="w-3 h-3 text-blue-500" />
               <span className="text-gray-500">Created:</span>
-              <span className="font-medium text-gray-800">{formatDate(new Date(ticket.ticket_created_at), 'MMM d, yyyy')}</span>
+              <span className="font-medium text-gray-800">{dateFnsFormat(new Date(ticket.ticket_created_at), 'MMM d, yyyy')}</span>
             </span>
           )}
           {ticket.ticket_closed_at && (
             <span className="flex items-center gap-1">
               <CalendarDays className="w-3 h-3 text-gray-500" />
               <span className="text-gray-500">Closed:</span>
-              <span className="font-medium text-gray-800">{formatDate(new Date(ticket.ticket_closed_at), 'MMM d, yyyy')}</span>
+              <span className="font-medium text-gray-800">{dateFnsFormat(new Date(ticket.ticket_closed_at), 'MMM d, yyyy')}</span>
             </span>
           )}
           {oldestInvoiceDate && (
             <span className="flex items-center gap-1">
               <CalendarDays className="w-3 h-3 text-amber-500" />
               <span className="text-gray-500">Oldest Inv:</span>
-              <span className="font-medium text-gray-800">{formatDate(new Date(oldestInvoiceDate), 'MMM d, yyyy')}</span>
+              <span className="font-medium text-gray-800">{formatDate(oldestInvoiceDate)}</span>
             </span>
           )}
         </div>
@@ -468,8 +469,8 @@ export default function TicketCard({
             <div>
               <span className="font-bold text-red-800">BROKEN PROMISE</span>
               <span className="text-red-700 ml-1.5">
-                Pay by {new Date(ticket.promise_date!).toLocaleDateString()}
-                {' '}({formatDistanceToNow(parseISO(ticket.promise_date!), { addSuffix: true })})
+                Pay by {formatDate(ticket.promise_date!)}
+                {' '}({formatDistanceToNow(new Date(ticket.promise_date! + 'T12:00:00'), { addSuffix: true })})
               </span>
               {ticket.promise_by_user_name && (
                 <span className="text-red-600 ml-1">- by {ticket.promise_by_user_name}</span>
@@ -484,8 +485,8 @@ export default function TicketCard({
             <div>
               <span className="font-semibold text-blue-800">Promise Active</span>
               <span className="text-blue-700 ml-1.5">
-                Pay by {new Date(ticket.promise_date!).toLocaleDateString()}
-                {' '}({formatDistanceToNow(parseISO(ticket.promise_date!), { addSuffix: true })})
+                Pay by {formatDate(ticket.promise_date!)}
+                {' '}({formatDistanceToNow(new Date(ticket.promise_date! + 'T12:00:00'), { addSuffix: true })})
               </span>
               {ticket.promise_by_user_name && (
                 <span className="text-blue-600 ml-1">- by {ticket.promise_by_user_name}</span>
@@ -499,8 +500,8 @@ export default function TicketCard({
             <AlertTriangle className="w-3.5 h-3.5 text-orange-600 flex-shrink-0" />
             <span className="font-bold text-orange-800">OVERDUE</span>
             <span className="text-orange-700">
-              Due {new Date(ticket.ticket_due_date!).toLocaleDateString()}
-              {' '}({formatDistanceToNow(parseISO(ticket.ticket_due_date!), { addSuffix: true })})
+              Due {formatDate(ticket.ticket_due_date!)}
+              {' '}({formatDistanceToNow(new Date(ticket.ticket_due_date! + 'T12:00:00'), { addSuffix: true })})
             </span>
           </div>
         )}
@@ -510,8 +511,8 @@ export default function TicketCard({
             <Calendar className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
             <span className="font-medium text-green-800">Due by</span>
             <span className="text-green-700">
-              {new Date(ticket.ticket_due_date!).toLocaleDateString()}
-              {' '}({formatDistanceToNow(parseISO(ticket.ticket_due_date!), { addSuffix: true })})
+              {formatDate(ticket.ticket_due_date!)}
+              {' '}({formatDistanceToNow(new Date(ticket.ticket_due_date! + 'T12:00:00'), { addSuffix: true })})
             </span>
           </div>
         )}
@@ -581,7 +582,7 @@ export default function TicketCard({
               <span className="flex items-center gap-1">
                 <CalendarDays className="w-3 h-3 text-orange-600" />
                 <span className="text-gray-500">Oldest:</span>
-                <span className="font-medium text-gray-800">{formatDate(new Date(ticket.oldest_invoice_date), 'MMM d, yyyy')}</span>
+                <span className="font-medium text-gray-800">{formatDate(ticket.oldest_invoice_date)}</span>
               </span>
             )}
             {ticket.last_payment_amount != null && (
@@ -595,7 +596,7 @@ export default function TicketCard({
               <span className="flex items-center gap-1">
                 <Calendar className="w-3 h-3 text-teal-600" />
                 <span className="text-gray-500">on</span>
-                <span className="font-medium text-gray-800">{formatDate(new Date(ticket.last_payment_date), 'MMM d, yyyy')}</span>
+                <span className="font-medium text-gray-800">{formatDate(ticket.last_payment_date)}</span>
               </span>
             )}
           </div>
@@ -813,7 +814,7 @@ export default function TicketCard({
                           {inv.description && <span className="text-gray-500 ml-1.5 truncate">{inv.description}</span>}
                         </div>
                         <div className="text-right ml-2 flex-shrink-0">
-                          <div className="text-[10px] text-gray-500">Due: {new Date(inv.due_date).toLocaleDateString()}</div>
+                          <div className="text-[10px] text-gray-500">Due: {formatDate(inv.due_date)}</div>
                           <div className="font-semibold text-red-600">${inv.balance.toFixed(2)}</div>
                         </div>
                       </label>

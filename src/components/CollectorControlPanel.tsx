@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { formatDate } from '../lib/dateUtils';
 import {
   ArrowLeft, Search, FileText, DollarSign, Users, Mail,
   Calendar, Filter, CheckCircle, XCircle, Clock, Edit2,
@@ -347,7 +348,7 @@ export default function CollectorControlPanel({ onBack }: { onBack: () => void }
                           {invoice.customer_name}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {new Date(invoice.due_date).toLocaleDateString()}
+                          {formatDate(invoice.due_date)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
                           ${invoice.balance?.toFixed(2)}
@@ -444,7 +445,7 @@ export default function CollectorControlPanel({ onBack }: { onBack: () => void }
                             assignment.priority === 'medium' ? 'text-yellow-600' :
                             'text-green-600'
                           }`}>{assignment.priority}</span></span>
-                          <span>Assigned: {new Date(assignment.assigned_date).toLocaleDateString()}</span>
+                          <span>Assigned: {formatDate(assignment.assigned_date)}</span>
                         </div>
                       </div>
                       <span className={`px-3 py-1 rounded text-sm font-medium ${

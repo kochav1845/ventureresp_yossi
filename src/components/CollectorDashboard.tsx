@@ -6,6 +6,7 @@ import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import InvoiceMemoModal from './InvoiceMemoModal';
 import TicketNoteModal from './TicketNoteModal';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
+import { formatDate } from '../lib/dateUtils';
 
 interface Assignment {
   assignment_id: string;
@@ -466,7 +467,7 @@ export default function CollectorDashboard() {
                                   <div className="grid grid-cols-2 gap-3 text-sm text-gray-600">
                                     <div className="flex items-center gap-1">
                                       <Calendar className="w-4 h-4" />
-                                      <span>Due: {new Date(invoice.due_date).toLocaleDateString()}</span>
+                                      <span>Due: {formatDate(invoice.due_date)}</span>
                                     </div>
                                     <div className="flex items-center gap-1">
                                       <DollarSign className="w-4 h-4" />
@@ -543,13 +544,13 @@ export default function CollectorDashboard() {
                             <div>
                               <p className="text-gray-500">Invoice Date</p>
                               <p className="font-medium text-gray-900">
-                                {new Date(invoice.date).toLocaleDateString()}
+                                {formatDate(invoice.date)}
                               </p>
                             </div>
                             <div>
                               <p className="text-gray-500">Due Date</p>
                               <p className="font-medium text-gray-900">
-                                {new Date(invoice.due_date).toLocaleDateString()}
+                                {formatDate(invoice.due_date)}
                               </p>
                             </div>
                             <div>

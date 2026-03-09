@@ -40,7 +40,8 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
       startDate.setDate(startDate.getDate() - daysAgo);
       const startStr = startDate.toISOString();
       const startDateStr = startStr.split('T')[0];
-      const endDateStr = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const endDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
       const [profilesResult, monitoringResult, collectionResult, activityResult] = await Promise.all([
         supabase.from('user_profiles').select('id, full_name, email, role').in('role', ['collector', 'admin', 'manager']),

@@ -27,7 +27,8 @@ import BatchNoteModal from './MyAssignments/BatchNoteModal';
 import PromiseDateModal from './MyAssignments/PromiseDateModal';
 import { sortTicketsByPriority } from './MyAssignments/utils';
 import TicketSearchFilter, { TicketFilters, filterTickets } from './TicketSearchFilter';
-import { format, isPast, parseISO } from 'date-fns';
+import { format } from 'date-fns';
+import { isDatePast, formatDate as formatDateUtil } from '../lib/dateUtils';
 
 interface UnifiedTicketingSystemProps {
   showOnlyAssigned?: boolean;
@@ -162,7 +163,7 @@ export default function UnifiedTicketingSystem({
 
   // Filter overdue tickets (only from active tickets)
   const overdueTickets = activeTickets.filter(ticket =>
-    ticket.ticket_due_date && isPast(parseISO(ticket.ticket_due_date))
+    ticket.ticket_due_date && isDatePast(ticket.ticket_due_date.split('T')[0])
   );
 
   useEffect(() => {
@@ -1630,7 +1631,7 @@ export default function UnifiedTicketingSystem({
                             <div className="font-medium text-gray-900">{invoice.reference_number}</div>
                             <div className="text-sm text-gray-500">{invoice.description}</div>
                             <div className="text-sm text-gray-500">
-                              Date: {new Date(invoice.date).toLocaleDateString()} | Due: {new Date(invoice.due_date).toLocaleDateString()}
+                              Date: {formatDateUtil(invoice.date)} | Due: {formatDateUtil(invoice.due_date)}
                             </div>
                           </div>
                           <div className="text-right">

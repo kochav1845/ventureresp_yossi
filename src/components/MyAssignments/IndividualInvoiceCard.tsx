@@ -3,6 +3,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Assignment } from './types';
 import { isPromiseBroken } from './utils';
 import { getAcumaticaInvoiceUrl } from '../../lib/acumaticaLinks';
+import { formatDate } from '../../lib/dateUtils';
 import ColorStatusPicker from './ColorStatusPicker';
 
 interface IndividualInvoiceCardProps {
@@ -62,7 +63,7 @@ export default function IndividualInvoiceCard({
               {invoice.invoice_status}
             </span>
             {isPromiseBroken(invoice) && (
-              <span className="px-2 py-1 rounded text-xs font-bold bg-red-600 text-white animate-pulse border-2 border-red-800 shadow-lg" title={`Promised payment date was ${new Date(invoice.promise_date!).toLocaleDateString()}`}>
+              <span className="px-2 py-1 rounded text-xs font-bold bg-red-600 text-white animate-pulse border-2 border-red-800 shadow-lg" title={`Promised payment date was ${formatDate(invoice.promise_date!)}`}>
                 BROKEN PROMISE
               </span>
             )}
@@ -105,13 +106,13 @@ export default function IndividualInvoiceCard({
             <div>
               <p className="text-gray-500">Invoice Date</p>
               <p className="font-medium text-gray-900">
-                {new Date(invoice.date).toLocaleDateString()}
+                {formatDate(invoice.date)}
               </p>
             </div>
             <div>
               <p className="text-gray-500">Due Date</p>
               <p className="font-medium text-gray-900">
-                {new Date(invoice.due_date).toLocaleDateString()}
+                {formatDate(invoice.due_date)}
               </p>
             </div>
             <div>
