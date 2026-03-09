@@ -37,6 +37,8 @@ interface TicketCardProps {
   onSelectAllInTicket?: (invoiceRefs: string[]) => void;
   onAddInvoices?: (ticketId: string, invoiceRefs: string[], collectorId: string) => Promise<void>;
   onRemoveInvoice?: (ticketId: string, invoiceRef: string) => Promise<void>;
+  isTicketSelected?: boolean;
+  onToggleTicketSelection?: (ticketId: string) => void;
 }
 
 export default function TicketCard({
@@ -59,7 +61,9 @@ export default function TicketCard({
   onOpenInvoiceReminder,
   onSelectAllInTicket,
   onAddInvoices,
-  onRemoveInvoice
+  onRemoveInvoice,
+  isTicketSelected = false,
+  onToggleTicketSelection
 }: TicketCardProps) {
   const navigate = useNavigate();
   const [localTicketStatus, setLocalTicketStatus] = useState(ticket.ticket_status);
@@ -267,32 +271,23 @@ export default function TicketCard({
           onSuccess={handlePromiseDateSuccess}
         />
       )}
-    <div id={`ticket-${ticket.ticket_id}`} className="border-2 border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+    <div id={`ticket-${ticket.ticket_id}`} className={`border-2 rounded-lg hover:shadow-md transition-shadow ${isTicketSelected ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}>
       <div className={`p-4 border-b-2 ${getPriorityColor(ticket.ticket_priority)}`}>
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-            {onSelectAllInTicket && openInvoices.length > 0 && (() => {
-              const ticketInvoiceRefs = openInvoices.map(inv => inv.invoice_reference_number);
-              const allSelected = ticketInvoiceRefs.every(ref => selectedInvoices.has(ref));
-              const someSelected = ticketInvoiceRefs.some(ref => selectedInvoices.has(ref));
-              return (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onSelectAllInTicket(ticketInvoiceRefs); }}
-                  className="flex-shrink-0 focus:outline-none"
-                  title={allSelected ? 'Deselect all invoices in this ticket' : 'Select all invoices in this ticket'}
-                >
-                  {allSelected ? (
-                    <CheckIcon className="w-5 h-5 text-blue-700" />
-                  ) : someSelected ? (
-                    <div className="w-5 h-5 border-2 border-blue-500 rounded bg-blue-100 flex items-center justify-center">
-                      <div className="w-2.5 h-0.5 bg-blue-600 rounded" />
-                    </div>
-                  ) : (
-                    <SquareIcon className="w-5 h-5 text-gray-400 hover:text-blue-500 transition-colors" />
-                  )}
-                </button>
-              );
-            })()}
+            {onToggleTicketSelection && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onToggleTicketSelection(ticket.ticket_id); }}
+                className="flex-shrink-0 focus:outline-none"
+                title={isTicketSelected ? 'Deselect this ticket' : 'Select this ticket'}
+              >
+                {isTicketSelected ? (
+                  <CheckIcon className="w-5 h-5 text-blue-700" />
+                ) : (
+                  <SquareIcon className="w-5 h-5 text-gray-400 hover:text-blue-500 transition-colors" />
+                )}
+              </button>
+            )}
             <Ticket className="w-5 h-5" />
             <button
               onClick={() => navigate(`/ticket/${ticket.ticket_id}`)}

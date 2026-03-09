@@ -22,6 +22,7 @@ import { Assignment, TicketGroup, TicketStatusOption } from './MyAssignments/typ
 import TicketCard from './MyAssignments/TicketCard';
 import IndividualInvoiceCard from './MyAssignments/IndividualInvoiceCard';
 import BatchActionToolbar from './MyAssignments/BatchActionToolbar';
+import TicketBatchActionToolbar from './MyAssignments/TicketBatchActionToolbar';
 import BatchNoteModal from './MyAssignments/BatchNoteModal';
 import PromiseDateModal from './MyAssignments/PromiseDateModal';
 import { sortTicketsByPriority } from './MyAssignments/utils';
@@ -103,6 +104,8 @@ export default function UnifiedTicketingSystem({
   const [changingTicketStatus, setChangingTicketStatus] = useState<string | null>(null);
   const [changingTicketPriority, setChangingTicketPriority] = useState<string | null>(null);
   const [promiseDateModalInvoice, setPromiseDateModalInvoice] = useState<string | null>(null);
+  const [selectedTickets, setSelectedTickets] = useState<Set<string>>(new Set());
+  const [processingBulkTickets, setProcessingBulkTickets] = useState(false);
 
   // Options
   const [statusOptions, setStatusOptions] = useState<TicketStatusOption[]>([]);
@@ -1158,6 +1161,105 @@ export default function UnifiedTicketingSystem({
     }
   };
 
+  const toggleTicketSelection = (ticketId: string) => {
+    const next = new Set(selectedTickets);
+    if (next.has(ticketId)) {
+      next.delete(ticketId);
+    } else {
+      next.add(ticketId);
+    }
+    setSelectedTickets(next);
+  };
+
+  const toggleSelectAllTickets = () => {
+    const displayTickets = showOnlyAssigned
+      ? filteredTickets
+      : activeTab === 'overdue'
+        ? overdueTickets
+        : activeTab === 'closed'
+          ? filteredClosedTickets
+          : filteredTickets;
+
+    if (selectedTickets.size === displayTickets.length) {
+      setSelectedTickets(new Set());
+    } else {
+      setSelectedTickets(new Set(displayTickets.map(t => t.ticket_id)));
+    }
+  };
+
+  const handleBulkTicketStatusChange = async (newStatus: string) => {
+    if (!profile?.id || selectedTickets.size === 0) return;
+
+    setProcessingBulkTickets(true);
+    try {
+      const allTickets = [...tickets, ...closedTickets];
+      for (const ticketId of Array.from(selectedTickets)) {
+        const ticket = allTickets.find(t => t.ticket_id === ticketId);
+        if (!ticket || ticket.ticket_status === newStatus) continue;
+
+        const { error: updateError } = await supabase
+          .from('collection_tickets')
+          .update({ status: newStatus })
+          .eq('id', ticketId);
+
+        if (updateError) throw updateError;
+
+        await supabase
+          .from('ticket_status_history')
+          .insert({
+            ticket_id: ticketId,
+            old_status: ticket.ticket_status,
+            new_status: newStatus,
+            changed_by: profile.id,
+            notes: `Bulk status change to ${newStatus}`
+          });
+
+        await supabase
+          .from('ticket_activity_log')
+          .insert({
+            ticket_id: ticketId,
+            activity_type: 'status_change',
+            description: `Bulk status change from ${ticket.ticket_status} to ${newStatus}`,
+            created_by: profile.id,
+            metadata: { old_status: ticket.ticket_status, new_status: newStatus, bulk: true }
+          });
+      }
+
+      setSelectedTickets(new Set());
+      await loadTickets();
+      alert(`${selectedTickets.size} ticket(s) updated to ${newStatus}`);
+    } catch (error: any) {
+      console.error('Bulk ticket status change error:', error);
+      alert('Failed to update some tickets: ' + error.message);
+    } finally {
+      setProcessingBulkTickets(false);
+    }
+  };
+
+  const handleBulkTicketPriorityChange = async (newPriority: string) => {
+    if (!profile?.id || selectedTickets.size === 0) return;
+
+    setProcessingBulkTickets(true);
+    try {
+      for (const ticketId of Array.from(selectedTickets)) {
+        await supabase.rpc('update_ticket_priority', {
+          p_ticket_id: ticketId,
+          p_new_priority: newPriority,
+          p_user_id: profile.id
+        });
+      }
+
+      setSelectedTickets(new Set());
+      await loadTickets();
+      alert(`${selectedTickets.size} ticket(s) priority updated to ${newPriority}`);
+    } catch (error: any) {
+      console.error('Bulk ticket priority change error:', error);
+      alert('Failed to update some tickets: ' + error.message);
+    } finally {
+      setProcessingBulkTickets(false);
+    }
+  };
+
   const handleBatchAddNote = async () => {
     if (!profile?.id || selectedInvoices.size === 0 || !batchNote.trim()) return;
 
@@ -1357,7 +1459,7 @@ export default function UnifiedTicketingSystem({
             <div className="border-b border-gray-200">
               <div className="flex gap-1 p-1">
                 <button
-                  onClick={() => setActiveTab('create')}
+                  onClick={() => { setActiveTab('create'); setSelectedTickets(new Set()); }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                     activeTab === 'create'
                       ? 'bg-blue-600 text-white'
@@ -1368,7 +1470,7 @@ export default function UnifiedTicketingSystem({
                   Create Ticket
                 </button>
                 <button
-                  onClick={() => setActiveTab('tickets')}
+                  onClick={() => { setActiveTab('tickets'); setSelectedTickets(new Set()); }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                     activeTab === 'tickets'
                       ? 'bg-blue-600 text-white'
@@ -1379,7 +1481,7 @@ export default function UnifiedTicketingSystem({
                   Tickets ({filteredTickets.length})
                 </button>
                 <button
-                  onClick={() => setActiveTab('individual')}
+                  onClick={() => { setActiveTab('individual'); setSelectedTickets(new Set()); }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                     activeTab === 'individual'
                       ? 'bg-blue-600 text-white'
@@ -1390,7 +1492,7 @@ export default function UnifiedTicketingSystem({
                   Individual Invoices ({filteredIndividualAssignments.length})
                 </button>
                 <button
-                  onClick={() => setActiveTab('overdue')}
+                  onClick={() => { setActiveTab('overdue'); setSelectedTickets(new Set()); }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                     activeTab === 'overdue'
                       ? 'bg-red-600 text-white'
@@ -1401,7 +1503,7 @@ export default function UnifiedTicketingSystem({
                   Overdue Tickets ({overdueTickets.length})
                 </button>
                 <button
-                  onClick={() => setActiveTab('closed')}
+                  onClick={() => { setActiveTab('closed'); setSelectedTickets(new Set()); }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                     activeTab === 'closed'
                       ? 'bg-gray-700 text-white'
@@ -1703,31 +1805,45 @@ export default function UnifiedTicketingSystem({
                       <p className="text-gray-500">{emptyMessage}</p>
                     </div>
                   ) : (
-                    displayTickets.map(ticket => (
-                      <TicketCard
-                        key={ticket.ticket_id}
-                        ticket={ticket}
-                        selectedInvoices={selectedInvoices}
-                        changingColorForInvoice={changingColorForInvoice}
-                        changingTicketStatus={changingTicketStatus}
-                        changingTicketPriority={changingTicketPriority}
+                    <>
+                      <TicketBatchActionToolbar
+                        selectedCount={selectedTickets.size}
+                        totalCount={displayTickets.length}
                         statusOptions={statusOptions}
-                        colorOptions={colorOptions}
-                        onToggleInvoiceSelection={toggleInvoiceSelection}
-                        onSelectAllInTicket={handleSelectAllInTicket}
-                        onColorChange={handleColorChange}
-                        onToggleColorPicker={setChangingColorForInvoice}
-                        onOpenMemo={handleOpenMemo}
-                        onTicketStatusChange={handleTicketStatusChange}
-                        onTicketPriorityChange={handleTicketPriorityChange}
-                        onPromiseDateSet={loadTickets}
-                        onOpenTicketMemo={handleOpenTicketMemo}
-                        onOpenTicketReminder={handleOpenTicketReminder}
-                        onOpenInvoiceReminder={handleOpenInvoiceReminder}
-                        onAddInvoices={handleAddInvoicesToTicket}
-                        onRemoveInvoice={handleRemoveInvoiceFromTicket}
+                        processing={processingBulkTickets}
+                        onToggleSelectAll={toggleSelectAllTickets}
+                        onClearSelection={() => setSelectedTickets(new Set())}
+                        onBatchStatusChange={handleBulkTicketStatusChange}
+                        onBatchPriorityChange={handleBulkTicketPriorityChange}
                       />
-                    ))
+                      {displayTickets.map(ticket => (
+                        <TicketCard
+                          key={ticket.ticket_id}
+                          ticket={ticket}
+                          selectedInvoices={selectedInvoices}
+                          changingColorForInvoice={changingColorForInvoice}
+                          changingTicketStatus={changingTicketStatus}
+                          changingTicketPriority={changingTicketPriority}
+                          statusOptions={statusOptions}
+                          colorOptions={colorOptions}
+                          onToggleInvoiceSelection={toggleInvoiceSelection}
+                          onSelectAllInTicket={handleSelectAllInTicket}
+                          onColorChange={handleColorChange}
+                          onToggleColorPicker={setChangingColorForInvoice}
+                          onOpenMemo={handleOpenMemo}
+                          onTicketStatusChange={handleTicketStatusChange}
+                          onTicketPriorityChange={handleTicketPriorityChange}
+                          onPromiseDateSet={loadTickets}
+                          onOpenTicketMemo={handleOpenTicketMemo}
+                          onOpenTicketReminder={handleOpenTicketReminder}
+                          onOpenInvoiceReminder={handleOpenInvoiceReminder}
+                          onAddInvoices={handleAddInvoicesToTicket}
+                          onRemoveInvoice={handleRemoveInvoiceFromTicket}
+                          isTicketSelected={selectedTickets.has(ticket.ticket_id)}
+                          onToggleTicketSelection={toggleTicketSelection}
+                        />
+                      ))}
+                    </>
                   );
                 })()}
               </div>
