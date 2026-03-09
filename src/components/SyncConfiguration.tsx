@@ -6,6 +6,7 @@ import CredentialsCard from './SyncConfig/CredentialsCard';
 import EntitySyncCard from './SyncConfig/EntitySyncCard';
 import DateRangeSync from './SyncConfig/DateRangeSync';
 import CronJobControl from './CronJobControl';
+import SyncReportRecipients from './SyncConfig/SyncReportRecipients';
 
 interface SyncConfigurationProps {
   onBack?: () => void;
@@ -233,6 +234,8 @@ export default function SyncConfiguration({ onBack }: SyncConfigurationProps) {
           </button>
 
           <DateRangeSync hasCredentials={hasCredentials} />
+
+          <SyncReportRecipients />
 
           <CronJobControl />
 
