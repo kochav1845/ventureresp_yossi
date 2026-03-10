@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Calendar, DollarSign, MessageSquare, ExternalLink, CheckSquare, Square, Paperclip, Bell, ArrowRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Assignment } from './types';
@@ -35,6 +36,7 @@ export default function InvoiceItem({
   onOpenMemo,
   onOpenReminder
 }: InvoiceItemProps) {
+  const [colorPickerAnchor, setColorPickerAnchor] = useState<DOMRect | null>(null);
   const getColorDisplay = () => {
     if (!invoice.color_status) return null;
 
@@ -110,7 +112,15 @@ export default function InvoiceItem({
             )}
             <div className="relative color-picker-container">
               <button
-                onClick={onToggleColorPicker}
+                onClick={(e) => {
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  if (showColorPicker) {
+                    setColorPickerAnchor(null);
+                  } else {
+                    setColorPickerAnchor(rect);
+                  }
+                  onToggleColorPicker();
+                }}
                 className="focus:outline-none"
               >
                 {colorDisplay ? (
@@ -122,11 +132,12 @@ export default function InvoiceItem({
                 )}
               </button>
 
-              {showColorPicker && (
+              {showColorPicker && colorPickerAnchor && (
                 <ColorStatusPicker
                   currentStatus={invoice.color_status}
                   onColorChange={onColorChange}
-                  onClose={onToggleColorPicker}
+                  onClose={() => { setColorPickerAnchor(null); onToggleColorPicker(); }}
+                  anchorRect={colorPickerAnchor}
                 />
               )}
             </div>

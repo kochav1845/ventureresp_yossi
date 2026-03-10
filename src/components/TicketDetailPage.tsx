@@ -47,6 +47,7 @@ export default function TicketDetailPage() {
   const [changingTicketPriority, setChangingTicketPriority] = useState(false);
 
   const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
+  const [colorPickerAnchor, setColorPickerAnchor] = useState<DOMRect | null>(null);
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
 
   const [showPromiseDateModal, setShowPromiseDateModal] = useState(false);
@@ -914,7 +915,7 @@ export default function TicketDetailPage() {
             </div>
           )}
 
-          <div className="bg-white border border-gray-200 rounded-lg overflow-visible">
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-3 py-2 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-gray-600" />
@@ -987,8 +988,8 @@ export default function TicketDetailPage() {
               )}
 
               {openInvoices.length > 0 && (
-                <div className="border border-gray-200 rounded overflow-visible">
-                  <div className="overflow-x-auto overflow-y-visible">
+                <div className="border border-gray-200 rounded overflow-hidden">
+                  <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="bg-gray-50 border-b border-gray-200">
@@ -1049,11 +1050,23 @@ export default function TicketDetailPage() {
                               </td>
                               <td className="px-2 py-1.5 border-r border-gray-100 text-center whitespace-nowrap">
                                 <div className="relative color-picker-container inline-block">
-                                  <button onClick={() => setChangingColorForInvoice(changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number)} className="focus:outline-none">
+                                  <button
+                                    onClick={(e) => {
+                                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                      if (changingColorForInvoice === invoice.invoice_reference_number) {
+                                        setChangingColorForInvoice(null);
+                                        setColorPickerAnchor(null);
+                                      } else {
+                                        setChangingColorForInvoice(invoice.invoice_reference_number);
+                                        setColorPickerAnchor(rect);
+                                      }
+                                    }}
+                                    className="focus:outline-none"
+                                  >
                                     {colorOption ? <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full text-white ${bgColor}`}>{colorOption.display_name}</span> : <span className="px-1.5 py-0.5 text-[10px] text-gray-400 hover:text-gray-600 border border-dashed border-gray-300 rounded-full cursor-pointer">Set</span>}
                                   </button>
-                                  {changingColorForInvoice === invoice.invoice_reference_number && (
-                                    <div className="absolute z-[9999] top-full mt-1 right-0"><ColorStatusPicker currentStatus={invoice.color_status} onColorChange={(color) => handleColorChange(invoice.invoice_reference_number, color)} onClose={() => setChangingColorForInvoice(null)} /></div>
+                                  {changingColorForInvoice === invoice.invoice_reference_number && colorPickerAnchor && (
+                                    <ColorStatusPicker currentStatus={invoice.color_status} onColorChange={(color) => handleColorChange(invoice.invoice_reference_number, color)} onClose={() => { setChangingColorForInvoice(null); setColorPickerAnchor(null); }} anchorRect={colorPickerAnchor} />
                                   )}
                                 </div>
                               </td>

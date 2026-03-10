@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ExternalLink, MessageSquare, CheckSquare, Square, Paperclip, Bell } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Assignment } from './types';
@@ -27,6 +28,7 @@ export default function IndividualInvoiceCard({
   onOpenMemo,
   onOpenReminder
 }: IndividualInvoiceCardProps) {
+  const [colorPickerAnchor, setColorPickerAnchor] = useState<DOMRect | null>(null);
   return (
     <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between">
@@ -69,7 +71,15 @@ export default function IndividualInvoiceCard({
             )}
             <div className="relative color-picker-container">
               <button
-                onClick={onToggleColorPicker}
+                onClick={(e) => {
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  if (showColorPicker) {
+                    setColorPickerAnchor(null);
+                  } else {
+                    setColorPickerAnchor(rect);
+                  }
+                  onToggleColorPicker();
+                }}
                 className="focus:outline-none"
               >
                 {invoice.color_status ? (
@@ -87,11 +97,12 @@ export default function IndividualInvoiceCard({
                 )}
               </button>
 
-              {showColorPicker && (
+              {showColorPicker && colorPickerAnchor && (
                 <ColorStatusPicker
                   currentStatus={invoice.color_status}
                   onColorChange={onColorChange}
-                  onClose={onToggleColorPicker}
+                  onClose={() => { setColorPickerAnchor(null); onToggleColorPicker(); }}
+                  anchorRect={colorPickerAnchor}
                 />
               )}
             </div>
