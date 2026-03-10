@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Image, File } from 'lucide-react';
-import { formatDistanceToNow, isPast, parseISO, format as dateFnsFormat } from 'date-fns';
+import { formatDistanceToNow, format as dateFnsFormat } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
-import { getAcumaticaCustomerUrl } from '../../lib/acumaticaLinks';
+import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../../lib/acumaticaLinks';
 import { supabase } from '../../lib/supabase';
 import { formatDate, isDatePast } from '../../lib/dateUtils';
-import InvoiceItem from './InvoiceItem';
 import TicketPromiseDateModal from './TicketPromiseDateModal';
 import TicketHistory from './TicketHistory';
+import ColorStatusPicker from './ColorStatusPicker';
+import { isPromiseBroken } from './utils';
 
 interface ColorStatusOption {
   status_name: string;
@@ -844,42 +845,113 @@ export default function TicketCard({
         )}
 
         {openInvoices.length > 0 && (
-          <div className="space-y-1.5">
-            {(showAllInvoices ? openInvoices : openInvoices.slice(0, 2)).map(invoice => (
-              <div key={invoice.invoice_reference_number} className="relative group">
-                <InvoiceItem
-                  invoice={invoice}
-                  isSelected={selectedInvoices.has(invoice.invoice_reference_number)}
-                  showColorPicker={changingColorForInvoice === invoice.invoice_reference_number}
-                  colorOptions={colorOptions}
-                  onToggleSelection={() => onToggleInvoiceSelection(invoice.invoice_reference_number)}
-                  onColorChange={(color) => onColorChange(invoice.invoice_reference_number, color)}
-                  onToggleColorPicker={() => onToggleColorPicker(
-                    changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number
-                  )}
-                  onOpenMemo={() => onOpenMemo(invoice)}
-                  onOpenReminder={() => onOpenInvoiceReminder(invoice)}
-                />
-                {onRemoveInvoice && (
-                  <button
-                    onClick={() => handleRemoveInvoice(invoice.invoice_reference_number)}
-                    disabled={removingInvoice === invoice.invoice_reference_number}
-                    className="absolute top-1.5 right-1.5 p-1 bg-red-100 text-red-600 rounded hover:bg-red-200 hover:text-red-800 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                    title="Remove from ticket"
-                  >
-                    {removingInvoice === invoice.invoice_reference_number ? (
-                      <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
-                    ) : (
-                      <Trash2 className="w-3.5 h-3.5" />
-                    )}
-                  </button>
-                )}
-              </div>
-            ))}
+          <div className="border border-gray-200 rounded overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="w-7 px-1.5 py-1.5 text-center border-r border-gray-200">
+                      {onSelectAllInTicket && (() => {
+                        const refs = openInvoices.map(inv => inv.invoice_reference_number);
+                        const allSel = refs.every(ref => selectedInvoices.has(ref));
+                        return (
+                          <input type="checkbox" checked={allSel} onChange={() => onSelectAllInTicket(refs)} className="h-3 w-3 text-blue-600 border-gray-300 rounded cursor-pointer" />
+                        );
+                      })()}
+                    </th>
+                    <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Invoice #</th>
+                    <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Status</th>
+                    <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Inv Date</th>
+                    <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Due Date</th>
+                    <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Collected</th>
+                    <th className="px-1.5 py-1.5 text-right font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Amount</th>
+                    <th className="px-1.5 py-1.5 text-right font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Balance</th>
+                    <th className="px-1.5 py-1.5 text-center font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Color</th>
+                    <th className="px-1.5 py-1.5 text-center font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Days</th>
+                    <th className="px-1.5 py-1.5 text-center font-semibold text-gray-600 whitespace-nowrap">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(showAllInvoices ? openInvoices : openInvoices.slice(0, 5)).map((invoice, idx) => {
+                    const colorOption = invoice.color_status ? colorOptions.find(opt => opt.status_name === invoice.color_status) : null;
+                    const colorParts = colorOption?.color_class?.split(' ') || [];
+                    const bgColor = colorParts.find(p => p.startsWith('bg-')) || '';
+                    const daysToCollect = invoice.date && invoice.collection_date
+                      ? Math.ceil((new Date(invoice.collection_date).getTime() - new Date(invoice.date).getTime()) / (1000 * 60 * 60 * 24))
+                      : null;
+                    const isShortPaid = invoice.amount !== invoice.balance && invoice.balance > 0;
+                    const brokenPromise = isPromiseBroken(invoice);
+                    return (
+                      <tr key={invoice.invoice_reference_number} className={`border-b border-gray-100 hover:bg-blue-50/50 transition-colors group ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'} ${selectedInvoices.has(invoice.invoice_reference_number) ? '!bg-blue-50' : ''}`}>
+                        <td className="px-1.5 py-1 text-center border-r border-gray-100">
+                          <input type="checkbox" checked={selectedInvoices.has(invoice.invoice_reference_number)} onChange={() => onToggleInvoiceSelection(invoice.invoice_reference_number)} className="h-3 w-3 text-blue-600 border-gray-300 rounded cursor-pointer" />
+                        </td>
+                        <td className="px-1.5 py-1 border-r border-gray-100 whitespace-nowrap">
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono font-semibold text-gray-900">#{invoice.invoice_reference_number}</span>
+                            <a href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number)} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 opacity-60 hover:opacity-100"><ExternalLink className="w-2.5 h-2.5" /></a>
+                          </div>
+                        </td>
+                        <td className="px-1.5 py-1 border-r border-gray-100 whitespace-nowrap">
+                          <div className="flex items-center gap-1">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${invoice.invoice_status === 'Open' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>{invoice.invoice_status}</span>
+                            {brokenPromise && <span className="px-1 py-0.5 rounded text-[9px] font-bold bg-red-600 text-white" title={`Promise date was ${formatDate(invoice.promise_date!)}`}>BP</span>}
+                          </div>
+                        </td>
+                        <td className="px-1.5 py-1 border-r border-gray-100 text-gray-600 whitespace-nowrap">{invoice.date ? formatDate(invoice.date) : '-'}</td>
+                        <td className="px-1.5 py-1 border-r border-gray-100 text-gray-600 whitespace-nowrap">{invoice.due_date ? formatDate(invoice.due_date) : '-'}</td>
+                        <td className="px-1.5 py-1 border-r border-gray-100 whitespace-nowrap">{invoice.collection_date ? <span className="text-green-700 font-medium">{formatDate(invoice.collection_date)}</span> : <span className="text-gray-400">-</span>}</td>
+                        <td className="px-1.5 py-1 border-r border-gray-100 text-right whitespace-nowrap text-gray-600">${(invoice.amount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                        <td className={`px-1.5 py-1 border-r border-gray-100 text-right whitespace-nowrap font-semibold ${isShortPaid ? 'text-orange-600' : 'text-gray-900'}`}>
+                          ${(invoice.balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          {isShortPaid && <span className="text-[9px] ml-0.5 text-orange-500">(short)</span>}
+                        </td>
+                        <td className="px-1.5 py-1 border-r border-gray-100 text-center whitespace-nowrap">
+                          <div className="relative color-picker-container inline-block">
+                            <button onClick={(e) => { e.stopPropagation(); onToggleColorPicker(changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number); }} className="focus:outline-none">
+                              {colorOption ? <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full text-white ${bgColor}`}>{colorOption.display_name}</span> : <span className="px-1.5 py-0.5 text-[10px] text-gray-400 hover:text-gray-600 border border-dashed border-gray-300 rounded-full cursor-pointer">Set</span>}
+                            </button>
+                            {changingColorForInvoice === invoice.invoice_reference_number && (
+                              <div className="absolute z-20 top-full mt-1 right-0">
+                                <ColorStatusPicker currentStatus={invoice.color_status} onColorChange={(color) => onColorChange(invoice.invoice_reference_number, color)} onClose={() => onToggleColorPicker(null)} />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-1.5 py-1 border-r border-gray-100 text-center whitespace-nowrap">
+                          {daysToCollect !== null ? <span className="text-blue-700 font-medium text-[10px]">{daysToCollect}d</span> : <span className="text-gray-400">-</span>}
+                        </td>
+                        <td className="px-1.5 py-1 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <button onClick={() => onOpenInvoiceReminder(invoice)} className="p-0.5 text-amber-600 hover:bg-amber-100 rounded transition-colors" title="Reminder"><Bell className="w-3 h-3" /></button>
+                            <button onClick={() => onOpenMemo(invoice)} className={`p-0.5 rounded transition-colors relative ${invoice.memo_count && invoice.memo_count > 0 ? 'text-amber-700 hover:bg-amber-100' : 'text-blue-600 hover:bg-blue-100'}`} title="Memos">
+                              <MessageSquare className="w-3 h-3" />
+                              {invoice.memo_count && invoice.memo_count > 0 && <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[8px] rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">{invoice.memo_count}</span>}
+                            </button>
+                            {onRemoveInvoice && (
+                              <button onClick={() => handleRemoveInvoice(invoice.invoice_reference_number)} disabled={removingInvoice === invoice.invoice_reference_number} className="p-0.5 text-red-500 hover:bg-red-100 rounded transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50" title="Remove">
+                                {removingInvoice === invoice.invoice_reference_number ? <div className="w-3 h-3 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div> : <Trash2 className="w-3 h-3" />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-50 border-t border-gray-200 font-semibold">
+                    <td colSpan={7} className="px-1.5 py-1 text-right text-gray-600 border-r border-gray-200 text-xs">Total Outstanding:</td>
+                    <td className="px-1.5 py-1 text-right text-red-700 border-r border-gray-200 whitespace-nowrap text-xs">${calculateTotalBalance(openInvoices).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td colSpan={3}></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
         )}
 
-        {openInvoices.length > 2 && (
+        {openInvoices.length > 5 && (
           <button
             onClick={() => setShowAllInvoices(!showAllInvoices)}
             className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-400 transition-colors"
@@ -887,7 +959,7 @@ export default function TicketCard({
             {showAllInvoices ? (
               <><ChevronUp className="w-3.5 h-3.5" /> Show Less</>
             ) : (
-              <><ChevronDown className="w-3.5 h-3.5" /> {openInvoices.length - 2} More Open Invoice{openInvoices.length - 2 !== 1 ? 's' : ''}</>
+              <><ChevronDown className="w-3.5 h-3.5" /> {openInvoices.length - 5} More Open Invoice{openInvoices.length - 5 !== 1 ? 's' : ''}</>
             )}
           </button>
         )}
@@ -903,24 +975,40 @@ export default function TicketCard({
               {showPaidInvoices ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
             {showPaidInvoices && (
-              <div className="mt-2 space-y-1.5">
-                {paidInvoices.map(invoice => (
-                  <div key={invoice.invoice_reference_number} className="relative group opacity-60">
-                    <InvoiceItem
-                      invoice={invoice}
-                      isSelected={selectedInvoices.has(invoice.invoice_reference_number)}
-                      showColorPicker={changingColorForInvoice === invoice.invoice_reference_number}
-                      colorOptions={colorOptions}
-                      onToggleSelection={() => onToggleInvoiceSelection(invoice.invoice_reference_number)}
-                      onColorChange={(color) => onColorChange(invoice.invoice_reference_number, color)}
-                      onToggleColorPicker={() => onToggleColorPicker(
-                        changingColorForInvoice === invoice.invoice_reference_number ? null : invoice.invoice_reference_number
-                      )}
-                      onOpenMemo={() => onOpenMemo(invoice)}
-                      onOpenReminder={() => onOpenInvoiceReminder(invoice)}
-                    />
-                  </div>
-                ))}
+              <div className="mt-2 border border-gray-200 rounded overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Invoice #</th>
+                        <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Status</th>
+                        <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Inv Date</th>
+                        <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Due Date</th>
+                        <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Collected</th>
+                        <th className="px-1.5 py-1.5 text-right font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Amount</th>
+                        <th className="px-1.5 py-1.5 text-right font-semibold text-gray-600 whitespace-nowrap">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paidInvoices.map((invoice, idx) => (
+                        <tr key={invoice.invoice_reference_number} className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'} opacity-60`}>
+                          <td className="px-1.5 py-1 border-r border-gray-100 whitespace-nowrap">
+                            <div className="flex items-center gap-1">
+                              <span className="font-mono font-medium">#{invoice.invoice_reference_number}</span>
+                              <a href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number)} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-600"><ExternalLink className="w-2.5 h-2.5" /></a>
+                            </div>
+                          </td>
+                          <td className="px-1.5 py-1 border-r border-gray-100 whitespace-nowrap"><span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">Paid</span></td>
+                          <td className="px-1.5 py-1 border-r border-gray-100 whitespace-nowrap">{invoice.date ? formatDate(invoice.date) : '-'}</td>
+                          <td className="px-1.5 py-1 border-r border-gray-100 whitespace-nowrap">{invoice.due_date ? formatDate(invoice.due_date) : '-'}</td>
+                          <td className="px-1.5 py-1 border-r border-gray-100 whitespace-nowrap">{invoice.collection_date ? <span className="text-green-600">{formatDate(invoice.collection_date)}</span> : '-'}</td>
+                          <td className="px-1.5 py-1 border-r border-gray-100 text-right whitespace-nowrap">${(invoice.amount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-1.5 py-1 text-right whitespace-nowrap text-green-700 font-medium">${(invoice.balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
