@@ -858,8 +858,8 @@ export default function TicketCard({
         )}
 
         {openInvoices.length > 0 && (
-          <div className="border border-gray-200 rounded overflow-hidden">
-            <div className="overflow-x-auto">
+          <div className="border border-gray-200 rounded overflow-visible">
+            <div className="overflow-x-auto overflow-y-visible">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
@@ -934,7 +934,7 @@ export default function TicketCard({
                               {colorOption ? <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full text-white ${bgColor}`}>{colorOption.display_name}</span> : <span className="px-1.5 py-0.5 text-[10px] text-gray-400 hover:text-gray-600 border border-dashed border-gray-300 rounded-full cursor-pointer">Set</span>}
                             </button>
                             {changingColorForInvoice === invoice.invoice_reference_number && (
-                              <div className="absolute z-20 top-full mt-1 right-0">
+                              <div className="absolute z-[9999] top-full mt-1 right-0">
                                 <ColorStatusPicker currentStatus={invoice.color_status} onColorChange={(color) => onColorChange(invoice.invoice_reference_number, color)} onClose={() => onToggleColorPicker(null)} />
                               </div>
                             )}
