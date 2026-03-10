@@ -39,17 +39,14 @@ const getTimeInTimezone = (timezone: string): { day: number; hour: number; minut
 };
 
 const isTimeToSend = (
-  startDayOfMonth: number,
   scheduleDay: number,
   sendTime: string,
   timezone: string
 ): boolean => {
   const tz = getTimeInTimezone(timezone);
-
-  const targetDayOfMonth = startDayOfMonth + (scheduleDay - 1);
   const daysInMonth = new Date(tz.year, tz.month, 0).getDate();
 
-  let effectiveTargetDay = targetDayOfMonth;
+  let effectiveTargetDay = scheduleDay;
   if (effectiveTargetDay > daysInMonth) {
     effectiveTargetDay = daysInMonth;
   }
@@ -225,7 +222,6 @@ const processEmailSchedule = async (
     for (const scheduleItem of schedule) {
       for (const sendTime of scheduleItem.times || []) {
         const shouldSend = isTimeToSend(
-          assignment.start_day_of_month,
           scheduleItem.day,
           sendTime,
           assignment.timezone || 'America/New_York'

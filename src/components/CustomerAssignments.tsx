@@ -472,12 +472,6 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
 
                         <div className="flex items-center gap-6 flex-wrap">
                           <div className="flex items-center gap-2">
-                            <Calendar className="text-slate-400" size={16} />
-                            <span className="text-slate-300 text-sm">
-                              Starts: Day <span className="font-medium">{assignment.start_day_of_month}</span>
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
                             <Clock className="text-slate-400" size={16} />
                             <span className="text-slate-300 text-sm">
                               Timezone: <span className="font-medium">{assignment.timezone?.replace('America/', '').replace('_', ' ') || 'UTC'}</span>
