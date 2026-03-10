@@ -5,7 +5,8 @@ import {
   User, AlertTriangle, Clock, Banknote, Link2, ExternalLink,
   Bell, MessageSquare, Paperclip, Image, File, CheckCircle,
   ChevronDown, ChevronUp, Plus, X, Trash2, History, Loader2,
-  RefreshCw, TrendingUp, Hash, PanelLeftClose, PanelLeftOpen
+  RefreshCw, TrendingUp, Hash, PanelLeftClose, PanelLeftOpen,
+  ArrowUp, ArrowDown
 } from 'lucide-react';
 import { formatDistanceToNow, format as dateFnsFormat } from 'date-fns';
 import { supabase } from '../lib/supabase';
@@ -19,7 +20,8 @@ import TicketStatusChangeModal from './TicketStatusChangeModal';
 import TicketHistory from './MyAssignments/TicketHistory';
 import TicketPromiseDateModal from './MyAssignments/TicketPromiseDateModal';
 import { TicketGroup, Assignment, TicketStatusOption } from './MyAssignments/types';
-import { getPriorityColor, calculateTotalBalance } from './MyAssignments/utils';
+import { getPriorityColor, calculateTotalBalance, sortInvoices } from './MyAssignments/utils';
+import type { InvoiceSortField, SortDirection } from './MyAssignments/utils';
 import ColorStatusPicker from './MyAssignments/ColorStatusPicker';
 
 interface ColorStatusOption {
@@ -93,6 +95,17 @@ export default function TicketDetailPage() {
   const [addingInvoices, setAddingInvoices] = useState(false);
   const [removingInvoice, setRemovingInvoice] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [invoiceSortField, setInvoiceSortField] = useState<InvoiceSortField | null>(null);
+  const [invoiceSortDir, setInvoiceSortDir] = useState<SortDirection>('asc');
+
+  const handleInvoiceSort = (field: InvoiceSortField) => {
+    if (invoiceSortField === field) {
+      setInvoiceSortDir(invoiceSortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setInvoiceSortField(field);
+      setInvoiceSortDir('asc');
+    }
+  };
 
   const loadTicketData = useCallback(async () => {
     if (!ticketId) return;
@@ -589,7 +602,8 @@ export default function TicketDetailPage() {
     );
   }
 
-  const openInvoices = ticket.invoices.filter(inv => inv.balance > 0 && inv.invoice_status !== 'Closed');
+  const rawOpenInvoices = ticket.invoices.filter(inv => inv.balance > 0 && inv.invoice_status !== 'Closed');
+  const openInvoices = invoiceSortField ? sortInvoices(rawOpenInvoices, invoiceSortField, invoiceSortDir) : rawOpenInvoices;
   const paidInvoices = ticket.invoices.filter(inv => inv.balance <= 0 || inv.invoice_status === 'Closed');
   const totalOutstanding = calculateTotalBalance(ticket.invoices);
   const totalOpen = openInvoices.reduce((s, inv) => s + (inv.balance || 0), 0);
@@ -981,15 +995,24 @@ export default function TicketDetailPage() {
                           <th className="w-8 px-2 py-2 text-center border-r border-gray-200">
                             <input type="checkbox" checked={openInvoices.every(inv => selectedInvoices.has(inv.invoice_reference_number))} onChange={(e) => { const n = new Set(selectedInvoices); openInvoices.forEach(inv => { e.target.checked ? n.add(inv.invoice_reference_number) : n.delete(inv.invoice_reference_number); }); setSelectedInvoices(n); }} className="h-3.5 w-3.5 text-blue-600 border-gray-300 rounded cursor-pointer" />
                           </th>
-                          <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Invoice #</th>
-                          <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Status</th>
-                          <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Inv Date</th>
-                          <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Due Date</th>
-                          <th className="px-2 py-2 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Collected</th>
-                          <th className="px-2 py-2 text-right font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Amount</th>
-                          <th className="px-2 py-2 text-right font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Balance</th>
-                          <th className="px-2 py-2 text-center font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Color</th>
-                          <th className="px-2 py-2 text-center font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Days</th>
+                          {([
+                            { field: 'invoice_reference_number' as InvoiceSortField, label: 'Invoice #', align: 'text-left' },
+                            { field: 'invoice_status' as InvoiceSortField, label: 'Status', align: 'text-left' },
+                            { field: 'date' as InvoiceSortField, label: 'Inv Date', align: 'text-left' },
+                            { field: 'due_date' as InvoiceSortField, label: 'Due Date', align: 'text-left' },
+                            { field: 'collection_date' as InvoiceSortField, label: 'Collected', align: 'text-left' },
+                            { field: 'amount' as InvoiceSortField, label: 'Amount', align: 'text-right' },
+                            { field: 'balance' as InvoiceSortField, label: 'Balance', align: 'text-right' },
+                            { field: 'color_status' as InvoiceSortField, label: 'Color', align: 'text-center' },
+                            { field: 'days' as InvoiceSortField, label: 'Days', align: 'text-center' },
+                          ]).map(col => (
+                            <th key={col.field} className={`px-2 py-2 ${col.align} font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors select-none`} onClick={() => handleInvoiceSort(col.field)}>
+                              <div className={`flex items-center gap-0.5 ${col.align === 'text-right' ? 'justify-end' : col.align === 'text-center' ? 'justify-center' : ''}`}>
+                                {col.label}
+                                {invoiceSortField === col.field ? (invoiceSortDir === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-600" /> : <ArrowDown className="w-3 h-3 text-blue-600" />) : <ArrowDown className="w-3 h-3 text-gray-300" />}
+                              </div>
+                            </th>
+                          ))}
                           <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap">Actions</th>
                         </tr>
                       </thead>

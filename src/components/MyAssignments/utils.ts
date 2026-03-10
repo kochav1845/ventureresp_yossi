@@ -74,3 +74,48 @@ export const sortTicketsByPriority = <T extends { ticket_priority: string }>(tic
     return getPriorityOrder(a.ticket_priority) - getPriorityOrder(b.ticket_priority);
   });
 };
+
+export type InvoiceSortField = 'invoice_reference_number' | 'invoice_status' | 'date' | 'due_date' | 'collection_date' | 'amount' | 'balance' | 'color_status' | 'days';
+export type SortDirection = 'asc' | 'desc';
+
+export const sortInvoices = (invoices: Assignment[], field: InvoiceSortField, direction: SortDirection): Assignment[] => {
+  return [...invoices].sort((a, b) => {
+    let cmp = 0;
+    switch (field) {
+      case 'invoice_reference_number':
+        cmp = (a.invoice_reference_number || '').localeCompare(b.invoice_reference_number || '');
+        break;
+      case 'invoice_status':
+        cmp = (a.invoice_status || '').localeCompare(b.invoice_status || '');
+        break;
+      case 'date':
+        cmp = (a.date || '').localeCompare(b.date || '');
+        break;
+      case 'due_date':
+        cmp = (a.due_date || '').localeCompare(b.due_date || '');
+        break;
+      case 'collection_date':
+        cmp = (a.collection_date || '').localeCompare(b.collection_date || '');
+        break;
+      case 'amount':
+        cmp = (a.amount ?? 0) - (b.amount ?? 0);
+        break;
+      case 'balance':
+        cmp = (a.balance ?? 0) - (b.balance ?? 0);
+        break;
+      case 'color_status':
+        cmp = (a.color_status || '').localeCompare(b.color_status || '');
+        break;
+      case 'days': {
+        const daysA = a.date && a.collection_date ? Math.ceil((new Date(a.collection_date).getTime() - new Date(a.date).getTime()) / 86400000) : null;
+        const daysB = b.date && b.collection_date ? Math.ceil((new Date(b.collection_date).getTime() - new Date(b.date).getTime()) / 86400000) : null;
+        if (daysA === null && daysB === null) cmp = 0;
+        else if (daysA === null) cmp = 1;
+        else if (daysB === null) cmp = -1;
+        else cmp = daysA - daysB;
+        break;
+      }
+    }
+    return direction === 'asc' ? cmp : -cmp;
+  });
+};

@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Image, File } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Image, File, ArrowUp, ArrowDown } from 'lucide-react';
 import { formatDistanceToNow, format as dateFnsFormat } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
-import { getPriorityColor, getStatusColor, calculateTotalBalance } from './utils';
+import { getPriorityColor, getStatusColor, calculateTotalBalance, sortInvoices } from './utils';
+import type { InvoiceSortField, SortDirection } from './utils';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../../lib/acumaticaLinks';
 import { supabase } from '../../lib/supabase';
 import { formatDate, isDatePast } from '../../lib/dateUtils';
@@ -98,6 +99,8 @@ export default function TicketCard({
   const [showPaidInvoices, setShowPaidInvoices] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
+  const [invoiceSortField, setInvoiceSortField] = useState<InvoiceSortField | null>(null);
+  const [invoiceSortDir, setInvoiceSortDir] = useState<SortDirection>('asc');
   const statusDropdownRef = useRef<HTMLDivElement>(null);
   const priorityDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -114,7 +117,17 @@ export default function TicketCard({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const openInvoices = ticket.invoices.filter(inv => inv.balance > 0 && inv.invoice_status !== 'Closed');
+  const handleInvoiceSort = (field: InvoiceSortField) => {
+    if (invoiceSortField === field) {
+      setInvoiceSortDir(invoiceSortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setInvoiceSortField(field);
+      setInvoiceSortDir('asc');
+    }
+  };
+
+  const rawOpenInvoices = ticket.invoices.filter(inv => inv.balance > 0 && inv.invoice_status !== 'Closed');
+  const openInvoices = invoiceSortField ? sortInvoices(rawOpenInvoices, invoiceSortField, invoiceSortDir) : rawOpenInvoices;
   const paidInvoices = ticket.invoices.filter(inv => inv.balance <= 0 || inv.invoice_status === 'Closed');
 
   const loadAvailableInvoices = async () => {
@@ -859,15 +872,24 @@ export default function TicketCard({
                         );
                       })()}
                     </th>
-                    <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Invoice #</th>
-                    <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Status</th>
-                    <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Inv Date</th>
-                    <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Due Date</th>
-                    <th className="px-1.5 py-1.5 text-left font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Collected</th>
-                    <th className="px-1.5 py-1.5 text-right font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Amount</th>
-                    <th className="px-1.5 py-1.5 text-right font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Balance</th>
-                    <th className="px-1.5 py-1.5 text-center font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Color</th>
-                    <th className="px-1.5 py-1.5 text-center font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap">Days</th>
+                    {([
+                      { field: 'invoice_reference_number' as InvoiceSortField, label: 'Invoice #', align: 'text-left' },
+                      { field: 'invoice_status' as InvoiceSortField, label: 'Status', align: 'text-left' },
+                      { field: 'date' as InvoiceSortField, label: 'Inv Date', align: 'text-left' },
+                      { field: 'due_date' as InvoiceSortField, label: 'Due Date', align: 'text-left' },
+                      { field: 'collection_date' as InvoiceSortField, label: 'Collected', align: 'text-left' },
+                      { field: 'amount' as InvoiceSortField, label: 'Amount', align: 'text-right' },
+                      { field: 'balance' as InvoiceSortField, label: 'Balance', align: 'text-right' },
+                      { field: 'color_status' as InvoiceSortField, label: 'Color', align: 'text-center' },
+                      { field: 'days' as InvoiceSortField, label: 'Days', align: 'text-center' },
+                    ]).map(col => (
+                      <th key={col.field} className={`px-1.5 py-1.5 ${col.align} font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors select-none`} onClick={() => handleInvoiceSort(col.field)}>
+                        <div className={`flex items-center gap-0.5 ${col.align === 'text-right' ? 'justify-end' : col.align === 'text-center' ? 'justify-center' : ''}`}>
+                          {col.label}
+                          {invoiceSortField === col.field ? (invoiceSortDir === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-blue-600" /> : <ArrowDown className="w-2.5 h-2.5 text-blue-600" />) : <ArrowDown className="w-2.5 h-2.5 text-gray-300" />}
+                        </div>
+                      </th>
+                    ))}
                     <th className="px-1.5 py-1.5 text-center font-semibold text-gray-600 whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
