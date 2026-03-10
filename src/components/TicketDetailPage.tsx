@@ -914,7 +914,7 @@ export default function TicketDetailPage() {
             </div>
           )}
 
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="bg-white border border-gray-200 rounded-lg overflow-visible">
             <div className="px-3 py-2 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-gray-600" />

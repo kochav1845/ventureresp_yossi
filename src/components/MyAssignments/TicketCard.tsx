@@ -307,7 +307,7 @@ export default function TicketCard({
           onSuccess={handlePromiseDateSuccess}
         />
       )}
-    <div id={`ticket-${ticket.ticket_id}`} className={`border rounded-lg overflow-hidden transition-shadow hover:shadow-md ${isTicketSelected ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}>
+    <div id={`ticket-${ticket.ticket_id}`} className={`border rounded-lg overflow-visible transition-shadow hover:shadow-md ${isTicketSelected ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}>
 
       <div className={`px-3 py-2 ${getPriorityColor(ticket.ticket_priority)}`}>
         <div className="flex items-center justify-between">
