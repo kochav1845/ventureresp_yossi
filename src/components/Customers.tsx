@@ -253,27 +253,39 @@ export default function Customers({ onBack }: CustomersProps) {
 
         if (testError) throw testError;
 
-        const mergedData = (testData || []).map((item: any) => ({
-          id: item.id,
-          name: item.customer_name || '',
-          email: item.email_address || '',
-          is_active: true,
-          responded_this_month: false,
-          postpone_until: null,
-          postpone_reason: null,
-          created_at: item.created_at,
-          updated_at: item.updated_at,
-          customer_id: item.customer_id,
-          balance: item.calculated_balance || 0,
-          invoice_count: item.open_invoice_count || 0,
-          max_days_overdue: item.max_days_overdue || 0,
-          red_threshold_days: item.red_threshold_days || 30,
-          red_count: item.red_count || 0,
-          yellow_count: item.yellow_count || 0,
-          green_count: item.green_count || 0,
-          exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
-          exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
-        }));
+        const { data: customerTableData } = await supabase
+          .from('customers')
+          .select('id, responded_this_month, postpone_until, postpone_reason, is_active');
+        const customerLookup = new Map<string, any>();
+        (customerTableData || []).forEach((c: any) => {
+          customerLookup.set(c.id, c);
+        });
+
+        const mergedData = (testData || []).map((item: any) => {
+          const realId = item.customer_id?.startsWith('TEST-') ? item.customer_id.replace('TEST-', '') : null;
+          const custRecord = realId ? customerLookup.get(realId) : null;
+          return {
+            id: realId || item.id,
+            name: item.customer_name || '',
+            email: item.email_address || '',
+            is_active: custRecord?.is_active ?? true,
+            responded_this_month: custRecord?.responded_this_month ?? false,
+            postpone_until: custRecord?.postpone_until ?? null,
+            postpone_reason: custRecord?.postpone_reason ?? null,
+            created_at: item.created_at,
+            updated_at: item.updated_at,
+            customer_id: item.customer_id,
+            balance: item.calculated_balance || 0,
+            invoice_count: item.open_invoice_count || 0,
+            max_days_overdue: item.max_days_overdue || 0,
+            red_threshold_days: item.red_threshold_days || 30,
+            red_count: item.red_count || 0,
+            yellow_count: item.yellow_count || 0,
+            green_count: item.green_count || 0,
+            exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
+            exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
+          };
+        });
 
         setGrandTotalCustomers(mergedData.length);
         setAllCustomers(mergedData);
@@ -424,26 +436,37 @@ export default function Customers({ onBack }: CustomersProps) {
 
         if (analyticsError) throw analyticsError;
 
-        // Map analytics data to customer format
-        const filtered = (analyticsData || []).map((item: CustomerAnalyticsData) => ({
-          id: item.customer_id,
-          customer_id: item.customer_id,
-          name: item.customer_name,
-          email: item.email_address || '',
-          is_active: true,
-          responded_this_month: false,
-          postpone_until: null,
-          postpone_reason: null,
-          created_at: item.created_at,
-          updated_at: item.updated_at,
-          balance: item.calculated_balance || 0,
-          invoice_count: item.open_invoice_count || 0,
-          max_days_overdue: item.max_days_overdue || 0,
-          oldest_invoice_date: null,
-          newest_invoice_date: null,
-          exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
-          exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
-        }));
+        const { data: custTableData } = await supabase
+          .from('customers')
+          .select('id, responded_this_month, postpone_until, postpone_reason, is_active');
+        const custLookup = new Map<string, any>();
+        (custTableData || []).forEach((c: any) => {
+          custLookup.set(c.id, c);
+        });
+
+        const filtered = (analyticsData || []).map((item: CustomerAnalyticsData) => {
+          const realId = item.customer_id?.startsWith('TEST-') ? item.customer_id.replace('TEST-', '') : null;
+          const custRecord = realId ? custLookup.get(realId) : null;
+          return {
+            id: realId || item.customer_id,
+            customer_id: item.customer_id,
+            name: item.customer_name,
+            email: item.email_address || '',
+            is_active: custRecord?.is_active ?? true,
+            responded_this_month: custRecord?.responded_this_month ?? false,
+            postpone_until: custRecord?.postpone_until ?? null,
+            postpone_reason: custRecord?.postpone_reason ?? null,
+            created_at: item.created_at,
+            updated_at: item.updated_at,
+            balance: item.calculated_balance || 0,
+            invoice_count: item.open_invoice_count || 0,
+            max_days_overdue: item.max_days_overdue || 0,
+            oldest_invoice_date: null,
+            newest_invoice_date: null,
+            exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
+            exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
+          };
+        });
 
         setFilteredCustomers(filtered);
         setTotalCount(filtered.length);
