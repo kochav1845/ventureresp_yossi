@@ -81,6 +81,7 @@ import ConnectionDiagnostic from './components/ConnectionDiagnostic';
 import PaymentBreakdown from './components/PaymentBreakdown';
 import EmailSettings from './components/EmailSettings';
 import TicketDetailPage from './components/TicketDetailPage';
+import CustomerStatements from './components/CustomerStatements';
 
 function LoadingScreen() {
   return (
@@ -152,6 +153,7 @@ function AppContent() {
         <Route path="invoice-status-admin" element={<InvoiceStatusAdminPanel />} />
         <Route path="invoice-status-analytics" element={<InvoiceStatusAnalytics />} />
         <Route path="customer-reports" element={<CustomerReportsMonthly />} />
+        <Route path="customer-statements" element={<CustomerStatements />} />
         <Route path="customer-report-templates" element={<CustomerReportTemplates />} />
         <Route path="customer-email-tracking" element={<CustomerEmailTracking />} />
         <Route path="system-documentation" element={<SystemDocumentation />} />

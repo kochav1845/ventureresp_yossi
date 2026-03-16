@@ -26,7 +26,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Palette,
-  Eye
+  Eye,
+  ClipboardList
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import RemindersSidebar from './RemindersSidebar';
@@ -203,6 +204,7 @@ export default function Layout() {
     { id: 'user-approval', name: 'User Approval', icon: Shield },
     { id: 'create-user', name: 'Create New User', icon: Users },
     { id: 'collector-monitoring', name: 'Collector Dashboard', icon: Activity },
+    { id: 'customer-statements', name: 'Customer Statements', icon: ClipboardList },
     { id: 'customer-reports', name: 'Customer Reports', icon: FileText },
     { id: 'customer-report-templates', name: 'Report Templates', icon: Mail },
     { id: 'customer-email-tracking', name: 'Email Tracking', icon: Eye },
