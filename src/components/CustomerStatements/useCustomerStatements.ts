@@ -27,13 +27,21 @@ export function useCustomerStatements() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.rpc('get_customer_statements', {
-        p_test_mode: testMode,
-      });
+      let allData: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase.rpc('get_customer_statements', {
+          p_test_mode: testMode,
+        }).range(from, from + pageSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allData = [...allData, ...data];
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
 
-      if (error) throw error;
-
-      const mapped: StatementCustomer[] = (data || []).map((row: any) => ({
+      const mapped: StatementCustomer[] = allData.map((row: any) => ({
         customer_id: row.customer_id,
         customer_name: row.customer_name || row.customer_id,
         email: row.email || '',
