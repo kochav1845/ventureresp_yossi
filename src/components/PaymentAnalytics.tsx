@@ -938,15 +938,32 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         console.log(`Using selected month: ${startStr} to ${endStr}`);
       }
 
-      const { data: paymentsData, error } = await supabase
-        .rpc('get_payments_with_applications', {
-          p_start_date: startStr,
-          p_end_date: endStr
-        });
+      const batchSize = 1000;
+      let allPaymentsData: any[] = [];
+      let offset = 0;
+      let hasMore = true;
 
-      if (error) throw error;
+      while (hasMore) {
+        setLoadingBatchInfo(`Loading payments... (${allPaymentsData.length} loaded)`);
+        const { data: batch, error: batchError } = await supabase
+          .rpc('get_payments_with_applications', {
+            p_start_date: startStr,
+            p_end_date: endStr
+          })
+          .range(offset, offset + batchSize - 1);
 
-      const paymentRows: PaymentRow[] = (paymentsData || []).map((payment: any) => {
+        if (batchError) throw batchError;
+
+        if (batch && batch.length > 0) {
+          allPaymentsData = [...allPaymentsData, ...batch];
+          offset += batchSize;
+          hasMore = batch.length === batchSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      const paymentRows: PaymentRow[] = (allPaymentsData).map((payment: any) => {
         const apps = payment.invoice_applications || [];
         const invoiceList = apps.length > 0
           ? apps.map((app: any) => `${app.doc_type}: ${app.invoice_reference_number}`).join(', ')
