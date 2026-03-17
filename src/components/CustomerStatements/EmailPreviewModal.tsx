@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { X, ChevronLeft, ChevronRight, Mail, FileSpreadsheet, Paperclip, Eye } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, ChevronLeft, ChevronRight, Mail, FileSpreadsheet, Paperclip, Eye, Edit3 } from 'lucide-react';
 import type { StatementCustomer, ReportTemplate } from './types';
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
   useTestEmail: boolean;
   testEmail: string;
   onClose: () => void;
-  onConfirmSend: () => void;
+  onConfirmSend: (emailOverrides: Record<string, string>) => void;
   sending: boolean;
 }
 
@@ -56,12 +56,13 @@ function replacePlaceholders(text: string, customer: StatementCustomer) {
 }
 
 function renderInvoiceTable(invoices: StatementCustomer['invoices']) {
-  const unpaid = invoices.filter(inv => inv.balance > 0)
-    .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+  const displayInvoices = invoices
+    .filter(inv => inv.balance !== 0)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  if (unpaid.length === 0) return null;
+  if (displayInvoices.length === 0) return null;
 
-  const totalBalance = unpaid.reduce((sum, inv) => sum + inv.balance, 0);
+  const totalBalance = displayInvoices.reduce((sum, inv) => sum + inv.balance, 0);
 
   return (
     <div className="my-4 overflow-x-auto rounded-lg border border-gray-200">
@@ -76,20 +77,25 @@ function renderInvoiceTable(invoices: StatementCustomer['invoices']) {
           </tr>
         </thead>
         <tbody>
-          {unpaid.map((inv, i) => (
-            <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-              <td className="px-3 py-2 text-gray-800 border-b border-gray-100">{inv.reference_number}</td>
-              <td className="px-3 py-2 text-gray-600 border-b border-gray-100">{formatDate(inv.date)}</td>
-              <td className="px-3 py-2 text-gray-600 border-b border-gray-100">{formatDate(inv.due_date)}</td>
-              <td className="px-3 py-2 text-gray-800 text-right border-b border-gray-100">{formatCurrency(inv.amount)}</td>
-              <td className="px-3 py-2 text-gray-900 text-right font-medium border-b border-gray-100">{formatCurrency(inv.balance)}</td>
-            </tr>
-          ))}
+          {displayInvoices.map((inv, i) => {
+            const isCredit = inv.balance < 0;
+            return (
+              <tr key={i} className={isCredit ? 'bg-blue-50/30' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                <td className="px-3 py-2 text-gray-800 border-b border-gray-100">{inv.reference_number}</td>
+                <td className="px-3 py-2 text-gray-600 border-b border-gray-100">{formatDate(inv.date)}</td>
+                <td className="px-3 py-2 text-gray-600 border-b border-gray-100">{isCredit ? '' : formatDate(inv.due_date)}</td>
+                <td className={`px-3 py-2 text-right border-b border-gray-100 ${isCredit ? 'text-blue-700' : 'text-gray-800'}`}>{formatCurrency(inv.amount)}</td>
+                <td className={`px-3 py-2 text-right font-medium border-b border-gray-100 ${isCredit ? 'text-blue-700' : 'text-gray-900'}`}>{formatCurrency(inv.balance)}</td>
+              </tr>
+            );
+          })}
         </tbody>
         <tfoot>
-          <tr className="bg-red-50">
-            <td colSpan={4} className="px-3 py-2.5 font-semibold text-gray-800 border-t-2 border-gray-200">Total Balance Due:</td>
-            <td className="px-3 py-2.5 text-right font-bold text-red-600 text-base border-t-2 border-gray-200">{formatCurrency(totalBalance)}</td>
+          <tr className="bg-gray-800">
+            <td colSpan={4} className="px-3 py-2.5 font-bold text-white border-t-2 border-gray-300">Total Balance Due:</td>
+            <td className="px-3 py-2.5 text-right font-bold text-white text-base border-t-2 border-gray-300">
+              {formatCurrency(totalBalance)}
+            </td>
           </tr>
         </tfoot>
       </table>
@@ -99,11 +105,21 @@ function renderInvoiceTable(invoices: StatementCustomer['invoices']) {
 
 export default function EmailPreviewModal({ customers, template, useTestEmail, testEmail, onClose, onConfirmSend, sending }: Props) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const customer = customers[currentIndex];
+  const [emailOverrides, setEmailOverrides] = useState<Record<string, string>>({});
+  const [editingEmail, setEditingEmail] = useState(false);
 
+  useEffect(() => {
+    const overrides: Record<string, string> = {};
+    customers.forEach(c => {
+      overrides[c.customer_id] = useTestEmail ? testEmail : c.email;
+    });
+    setEmailOverrides(overrides);
+  }, [customers, useTestEmail, testEmail]);
+
+  const customer = customers[currentIndex];
   if (!customer) return null;
 
-  const recipientEmail = useTestEmail ? testEmail : customer.email;
+  const currentEmail = emailOverrides[customer.customer_id] || '';
   const subjectPrefix = useTestEmail ? '[TEST] ' : '';
   const subject = subjectPrefix + replacePlaceholders(template.subject, customer);
 
@@ -129,7 +145,7 @@ export default function EmailPreviewModal({ customers, template, useTestEmail, t
             {customers.length > 1 && (
               <div className="flex items-center gap-1.5 bg-white rounded-lg border border-gray-200 px-1">
                 <button
-                  onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
+                  onClick={() => { setCurrentIndex(Math.max(0, currentIndex - 1)); setEditingEmail(false); }}
                   disabled={currentIndex === 0}
                   className="p-1.5 text-gray-500 hover:text-gray-800 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
                 >
@@ -139,7 +155,7 @@ export default function EmailPreviewModal({ customers, template, useTestEmail, t
                   {currentIndex + 1} of {customers.length}
                 </span>
                 <button
-                  onClick={() => setCurrentIndex(Math.min(customers.length - 1, currentIndex + 1))}
+                  onClick={() => { setCurrentIndex(Math.min(customers.length - 1, currentIndex + 1)); setEditingEmail(false); }}
                   disabled={currentIndex === customers.length - 1}
                   className="p-1.5 text-gray-500 hover:text-gray-800 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
                 >
@@ -156,10 +172,39 @@ export default function EmailPreviewModal({ customers, template, useTestEmail, t
         <div className="flex-1 overflow-y-auto">
           <div className="px-6 py-4 space-y-3 border-b border-gray-100 bg-white">
             <div className="flex items-start gap-3">
-              <span className="text-xs font-medium text-gray-400 uppercase tracking-wide w-16 pt-0.5 flex-shrink-0">To</span>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-800">{customer.customer_name}</span>
-                <span className="text-xs text-gray-400">&lt;{recipientEmail || 'no email'}&gt;</span>
+              <span className="text-xs font-medium text-gray-400 uppercase tracking-wide w-16 pt-2 flex-shrink-0">To</span>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-800 font-medium">{customer.customer_name}</span>
+                </div>
+                {editingEmail ? (
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <input
+                      type="email"
+                      value={currentEmail}
+                      onChange={(e) => setEmailOverrides(prev => ({ ...prev, [customer.customer_id]: e.target.value }))}
+                      className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-blue-50/30"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => setEditingEmail(false)}
+                      className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors"
+                    >
+                      Done
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-xs text-gray-500">&lt;{currentEmail || 'no email'}&gt;</span>
+                    <button
+                      onClick={() => setEditingEmail(true)}
+                      className="p-1 text-gray-400 hover:text-blue-600 rounded transition-colors"
+                      title="Edit email address"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex items-start gap-3">
@@ -226,7 +271,7 @@ export default function EmailPreviewModal({ customers, template, useTestEmail, t
               Cancel
             </button>
             <button
-              onClick={onConfirmSend}
+              onClick={() => onConfirmSend(emailOverrides)}
               disabled={sending}
               className={`flex items-center gap-2 px-5 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed ${
                 useTestEmail ? 'bg-teal-600 hover:bg-teal-700' : 'bg-blue-600 hover:bg-blue-700'

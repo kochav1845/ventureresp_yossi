@@ -62,15 +62,20 @@ const formatDate = (dateStr: string) => {
 };
 
 const generateInvoiceTable = (invoices: Invoice[]) => {
-  const rows = invoices.map(inv => `
-    <tr>
+  const rows = invoices.map(inv => {
+    const isCredit = inv.balance < 0;
+    const rowBg = isCredit ? 'background-color: #eff6ff;' : '';
+    const amountColor = isCredit ? 'color: #1d4ed8;' : '';
+    return `
+    <tr style="${rowBg}">
       <td style="padding: 12px; border-bottom: 1px solid #e2e8f0;">${inv.reference_number}</td>
       <td style="padding: 12px; border-bottom: 1px solid #e2e8f0;">${formatDate(inv.invoice_date)}</td>
-      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0;">${formatDate(inv.due_date)}</td>
-      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right;">${formatCurrency(inv.amount)}</td>
-      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold;">${formatCurrency(inv.balance)}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0;">${isCredit ? '' : formatDate(inv.due_date)}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right; ${amountColor}">${formatCurrency(inv.amount)}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold; ${amountColor}">${formatCurrency(inv.balance)}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   return `
     <div style="margin: 24px 0; overflow-x: auto;">
@@ -88,9 +93,9 @@ const generateInvoiceTable = (invoices: Invoice[]) => {
           ${rows}
         </tbody>
         <tfoot>
-          <tr style="background-color: #fef2f2;">
-            <td colspan="4" style="padding: 12px; font-weight: 600; border-top: 2px solid #cbd5e1;">Total Balance Due:</td>
-            <td style="padding: 12px; text-align: right; font-weight: bold; font-size: 16px; color: #dc2626; border-top: 2px solid #cbd5e1;">
+          <tr style="background-color: #1f2937; color: #ffffff;">
+            <td colspan="4" style="padding: 14px; font-weight: 700; font-size: 15px; border-top: 2px solid #374151;">Total Balance Due:</td>
+            <td style="padding: 14px; text-align: right; font-weight: 800; font-size: 17px; border-top: 2px solid #374151;">
               ${formatCurrency(invoices.reduce((sum, inv) => sum + inv.balance, 0))}
             </td>
           </tr>

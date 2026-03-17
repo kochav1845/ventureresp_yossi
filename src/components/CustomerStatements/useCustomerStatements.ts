@@ -66,15 +66,19 @@ export function useCustomerStatements() {
     return data.map((inv: any) => {
       const dueDate = inv.due_date ? new Date(inv.due_date) : today;
       const daysOverdue = Math.max(0, Math.floor((today.getTime() - dueDate.getTime()) / 86400000));
+      const isCredit = inv.type === 'Credit Memo' || inv.type === 'Credit WO';
+      const rawAmount = Number(inv.amount) || Number(inv.dac_total) || 0;
+      const rawBalance = Number(inv.balance) || 0;
       return {
         reference_number: inv.reference_number,
         date: inv.date,
         due_date: inv.due_date,
-        amount: Number(inv.amount) || Number(inv.dac_total) || 0,
-        balance: Number(inv.balance) || 0,
+        amount: isCredit ? -Math.abs(rawAmount) : rawAmount,
+        balance: isCredit ? -Math.abs(rawBalance) : rawBalance,
         status: inv.status,
         description: inv.description || '',
-        days_overdue: daysOverdue,
+        days_overdue: isCredit ? 0 : daysOverdue,
+        type: inv.type || 'Invoice',
       };
     });
   };

@@ -35,7 +35,8 @@ function getAgingLabel(days: number): string {
 }
 
 export default function CustomerStatementCard({ customer, selected, expanded, loadingInvoices, onToggleSelect, onToggleExpand }: Props) {
-  const openInvoices = customer.invoices.filter(inv => inv.balance > 0);
+  const allInvoices = customer.invoices.filter(inv => inv.balance !== 0);
+  const openInvoices = allInvoices.filter(inv => inv.balance > 0);
   const agingBuckets = { current: 0, d30: 0, d60: 0, d90: 0, d90plus: 0 };
   openInvoices.forEach(inv => {
     const d = inv.days_overdue;
@@ -143,34 +144,41 @@ export default function CustomerStatementCard({ customer, selected, expanded, lo
                   <th className="text-left px-3 py-2.5 font-medium hidden md:table-cell">Description</th>
                   <th className="text-right px-3 py-2.5 font-medium">Amount</th>
                   <th className="text-right px-3 py-2.5 font-medium">Balance</th>
-                  <th className="text-center px-3 py-2.5 font-medium">Aging</th>
+                  <th className="text-center px-3 py-2.5 font-medium w-16">Aging</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {openInvoices
-                  .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
-                  .map(inv => (
-                    <tr key={inv.reference_number} className="bg-white hover:bg-gray-50 transition-colors">
-                      <td className="px-3 py-2 font-medium text-gray-800">{inv.reference_number}</td>
-                      <td className="px-3 py-2 text-gray-600">{fmtDate(inv.date)}</td>
-                      <td className="px-3 py-2 text-gray-600">{fmtDate(inv.due_date)}</td>
-                      <td className="px-3 py-2 text-gray-500 hidden md:table-cell max-w-[200px] truncate">{inv.description}</td>
-                      <td className="px-3 py-2 text-right text-gray-700">{fmtCurrency(inv.amount)}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmtCurrency(inv.balance)}</td>
-                      <td className="px-3 py-2 text-center">
-                        <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${getAgingColor(inv.days_overdue)}`}>
-                          {getAgingLabel(inv.days_overdue)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                {allInvoices
+                  .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                  .map(inv => {
+                    const isCredit = inv.balance < 0;
+                    return (
+                      <tr key={inv.reference_number} className={`hover:bg-gray-50 transition-colors ${isCredit ? 'bg-blue-50/30' : 'bg-white'}`}>
+                        <td className="px-3 py-2 font-medium text-gray-800">{inv.reference_number}</td>
+                        <td className="px-3 py-2 text-gray-600">{fmtDate(inv.date)}</td>
+                        <td className="px-3 py-2 text-gray-600">{isCredit ? '' : fmtDate(inv.due_date)}</td>
+                        <td className="px-3 py-2 text-gray-500 hidden md:table-cell max-w-[200px] truncate">{inv.description}</td>
+                        <td className={`px-3 py-2 text-right ${isCredit ? 'text-blue-700' : 'text-gray-700'}`}>{fmtCurrency(inv.amount)}</td>
+                        <td className={`px-3 py-2 text-right font-semibold ${isCredit ? 'text-blue-700' : 'text-gray-900'}`}>{fmtCurrency(inv.balance)}</td>
+                        <td className="px-3 py-2 text-center w-16">
+                          {isCredit ? (
+                            <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full text-blue-700 bg-blue-50">Credit</span>
+                          ) : (
+                            <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${getAgingColor(inv.days_overdue)}`}>
+                              {getAgingLabel(inv.days_overdue)}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
               <tfoot>
-                <tr className="bg-gray-100 font-semibold">
-                  <td className="px-3 py-2.5" colSpan={4}>Total</td>
-                  <td className="px-3 py-2.5 text-right">{fmtCurrency(openInvoices.reduce((s, i) => s + i.amount, 0))}</td>
-                  <td className="px-3 py-2.5 text-right text-gray-900">{fmtCurrency(customer.total_balance)}</td>
-                  <td className="px-3 py-2.5"></td>
+                <tr className="bg-gray-800 text-white">
+                  <td className="px-3 py-3 font-bold text-sm" colSpan={4}>Total</td>
+                  <td className="px-3 py-3 text-right font-bold text-sm">{fmtCurrency(allInvoices.reduce((s, i) => s + i.amount, 0))}</td>
+                  <td className="px-3 py-3 text-right font-bold text-sm">{fmtCurrency(allInvoices.reduce((s, i) => s + i.balance, 0))}</td>
+                  <td className="px-3 py-3"></td>
                 </tr>
               </tfoot>
             </table>

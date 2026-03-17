@@ -9,6 +9,7 @@ export interface StatementInvoice {
   status: string;
   description: string;
   days_overdue: number;
+  type: string;
 }
 
 export interface StatementCustomerData {
@@ -23,7 +24,7 @@ export interface StatementCustomerData {
   invoices: StatementInvoice[];
 }
 
-const fmtCurrency = (n: number) => `$${Math.abs(n).toFixed(2)}`;
+const fmtCurrency = (n: number) => n < 0 ? `-$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`;
 const fmtDate = (s: string) => {
   if (!s) return '';
   const d = new Date(s);
@@ -83,8 +84,8 @@ export function generateCustomerStatementExcel(customer: StatementCustomerData):
   ];
 
   const sortedInvoices = [...customer.invoices]
-    .filter(inv => inv.balance > 0)
-    .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+    .filter(inv => inv.balance !== 0)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   sortedInvoices.forEach(inv => {
     headerRows.push([
@@ -94,13 +95,14 @@ export function generateCustomerStatementExcel(customer: StatementCustomerData):
       inv.description || '',
       fmtCurrency(inv.amount),
       fmtCurrency(inv.balance),
-      inv.days_overdue,
-      getAgingBucket(inv.days_overdue),
+      inv.balance < 0 ? '' : inv.days_overdue,
+      inv.balance < 0 ? 'Credit' : getAgingBucket(inv.days_overdue),
     ]);
   });
 
+  const netBalance = sortedInvoices.reduce((s, inv) => s + inv.balance, 0);
   headerRows.push([]);
-  headerRows.push(['', '', '', 'TOTAL:', '', fmtCurrency(customer.total_balance), '', '']);
+  headerRows.push(['', '', '', 'TOTAL:', '', fmtCurrency(netBalance), '', '']);
 
   const ws = XLSX.utils.aoa_to_sheet(headerRows);
   ws['!cols'] = [
@@ -110,8 +112,8 @@ export function generateCustomerStatementExcel(customer: StatementCustomerData):
     { wch: 35 },
     { wch: 14 },
     { wch: 14 },
-    { wch: 14 },
-    { wch: 12 },
+    { wch: 10 },
+    { wch: 10 },
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Statement');
@@ -171,8 +173,8 @@ export function generateBatchStatementExcel(customers: StatementCustomerData[]):
 
   sorted.forEach(c => {
     const sortedInv = [...c.invoices]
-      .filter(inv => inv.balance > 0)
-      .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+      .filter(inv => inv.balance !== 0)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     sortedInv.forEach(inv => {
       detailRows.push([
@@ -184,8 +186,8 @@ export function generateBatchStatementExcel(customers: StatementCustomerData[]):
         inv.description || '',
         fmtCurrency(inv.amount),
         fmtCurrency(inv.balance),
-        inv.days_overdue,
-        getAgingBucket(inv.days_overdue),
+        inv.balance < 0 ? '' : inv.days_overdue,
+        inv.balance < 0 ? 'Credit' : getAgingBucket(inv.days_overdue),
       ]);
     });
   });
@@ -197,7 +199,7 @@ export function generateBatchStatementExcel(customers: StatementCustomerData[]):
   detailWs['!cols'] = [
     { wch: 16 }, { wch: 28 }, { wch: 18 }, { wch: 14 },
     { wch: 14 }, { wch: 35 }, { wch: 14 }, { wch: 14 },
-    { wch: 14 }, { wch: 12 },
+    { wch: 10 }, { wch: 10 },
   ];
   XLSX.utils.book_append_sheet(wb, detailWs, 'Invoice Detail');
 

@@ -7,6 +7,7 @@ export interface StatementInvoice {
   status: string;
   description: string;
   days_overdue: number;
+  type: string;
 }
 
 export interface StatementCustomer {

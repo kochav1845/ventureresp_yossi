@@ -91,9 +91,8 @@ export default function StatementActions({ selectedCustomers, templates, selecte
     setShowPreview(true);
   };
 
-  const handleSendEmails = async () => {
+  const handleSendEmails = async (emailOverrides: Record<string, string>) => {
     if (!selectedTemplate || customersWithEmail.length === 0) return;
-    if (useTestEmail && !testEmail.trim()) return;
 
     setShowPreview(false);
     setSending(true);
@@ -107,10 +106,9 @@ export default function StatementActions({ selectedCustomers, templates, selecte
       }
     }
 
-    const recipientEmail = useTestEmail ? testEmail.trim() : '';
     const progress: EmailProgress[] = customersWithEmail.map(c => ({
       customer: c.customer_name,
-      email: useTestEmail ? recipientEmail : c.email,
+      email: emailOverrides[c.customer_id] || c.email,
       status: 'pending',
     }));
     setEmailProgress([...progress]);
@@ -126,17 +124,18 @@ export default function StatementActions({ selectedCustomers, templates, selecte
         const excelData = generateCustomerStatementExcel(customerWithInvoices);
         const base64 = uint8ArrayToBase64(excelData);
 
-        const oldestInvoice = customerInvoices.length > 0
-          ? customerInvoices.reduce((oldest, inv) =>
+        const positiveInvoices = customerInvoices.filter(inv => inv.balance > 0);
+        const oldestInvoice = positiveInvoices.length > 0
+          ? positiveInvoices.reduce((oldest, inv) =>
               new Date(inv.date) < new Date(oldest.date) ? inv : oldest
-            , customerInvoices[0])
+            , positiveInvoices[0])
           : null;
 
         const daysOverdue = oldestInvoice?.due_date
           ? Math.max(0, Math.floor((Date.now() - new Date(oldestInvoice.due_date).getTime()) / 86400000))
           : 0;
 
-        const emailToSend = useTestEmail ? recipientEmail : customer.email;
+        const emailToSend = emailOverrides[customer.customer_id] || customer.email;
 
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-customer-invoice-email`,
@@ -163,7 +162,8 @@ export default function StatementActions({ selectedCustomers, templates, selecte
                 balance: customer.total_balance,
                 total_invoices: customer.open_invoice_count,
                 invoices: customerInvoices
-                  .filter(inv => inv.balance > 0)
+                  .filter(inv => inv.balance !== 0)
+                  .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                   .map(inv => ({
                     reference_number: inv.reference_number,
                     invoice_date: inv.date,
