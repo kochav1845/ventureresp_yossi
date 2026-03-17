@@ -151,6 +151,7 @@ export default function Layout() {
       items: [
         ...(hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW) ? [{ id: 'acumatica-customers', name: 'Customers', icon: Users, permission: PERMISSION_KEYS.CUSTOMERS_VIEW }] : []),
         ...(hasPermission(PERMISSION_KEYS.CUSTOMERS_DASHBOARD) ? [{ id: 'customer-analytics', name: 'Customer Dashboard', icon: BarChart3, permission: PERMISSION_KEYS.CUSTOMERS_DASHBOARD }] : []),
+        ...(hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW) ? [{ id: 'customer-statements', name: 'Statements & Reports', icon: ClipboardList, permission: PERMISSION_KEYS.CUSTOMERS_VIEW }] : []),
         ...(canBeAssignedAsCollector ? [{ id: 'my-assignments', name: 'My Assignments', icon: Ticket }] : []),
       ]
     },
