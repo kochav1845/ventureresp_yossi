@@ -9,12 +9,13 @@ const fmtCurrency = (n: number) =>
 
 export default function CustomerStatements() {
   const {
-    customers, loading, templates, selectedTemplateId, setSelectedTemplateId,
+    customers, loading, loadingInvoices, templates, selectedTemplateId, setSelectedTemplateId,
     selectedIds, toggleCustomer, selectAll, deselectAll,
     search, setSearch, minBalance, setMinBalance,
     sortField, setSortField, sortOrder, setSortOrder,
     expandedId, toggleExpand,
     showTestCustomers, toggleTestCustomers,
+    ensureInvoicesLoaded,
   } = useCustomerStatements();
 
   const selectedCustomers = customers.filter(c => selectedIds.has(c.customer_id));
@@ -180,6 +181,7 @@ export default function CustomerStatements() {
         templates={templates}
         selectedTemplateId={selectedTemplateId}
         onTemplateChange={setSelectedTemplateId}
+        ensureInvoicesLoaded={ensureInvoicesLoaded}
       />
 
       <div className="space-y-3">
@@ -189,6 +191,7 @@ export default function CustomerStatements() {
             customer={customer}
             selected={selectedIds.has(customer.customer_id)}
             expanded={expandedId === customer.customer_id}
+            loadingInvoices={loadingInvoices === customer.customer_id}
             onToggleSelect={() => toggleCustomer(customer.customer_id)}
             onToggleExpand={() => toggleExpand(customer.customer_id)}
           />

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import type { StatementCustomer, ReportTemplate, SortField, SortOrder } from './types';
+import type { StatementCustomer, StatementInvoice, ReportTemplate, SortField, SortOrder } from './types';
 
 export function useCustomerStatements() {
   const [customers, setCustomers] = useState<StatementCustomer[]>([]);
@@ -14,135 +14,10 @@ export function useCustomerStatements() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showTestCustomers, setShowTestCustomers] = useState(false);
+  const [invoiceCache, setInvoiceCache] = useState<Record<string, StatementInvoice[]>>({});
+  const [loadingInvoices, setLoadingInvoices] = useState<string | null>(null);
   const loadedRef = useRef(false);
   const testLoadedRef = useRef(false);
-
-  const buildCustomerMap = (allInvoices: any[], allCustomers: any[]) => {
-    const custInfoMap = new Map(
-      allCustomers.map((c: any) => [c.customer_id, {
-        name: c.customer_name,
-        email: c.billing_email || c.general_email || '',
-        terms: c.terms || '',
-      }])
-    );
-
-    const today = new Date();
-    const custMap = new Map<string, StatementCustomer>();
-
-    allCustomers.forEach((c: any) => {
-      custMap.set(c.customer_id, {
-        customer_id: c.customer_id,
-        customer_name: c.customer_name || c.customer_id,
-        email: c.billing_email || c.general_email || '',
-        terms: c.terms || '',
-        total_balance: 0,
-        credit_memo_balance: 0,
-        open_invoice_count: 0,
-        max_days_overdue: 0,
-        invoices: [],
-      });
-    });
-
-    allInvoices.forEach((inv: any) => {
-      const custId = inv.customer;
-      const info = custInfoMap.get(custId);
-
-      if (!custMap.has(custId)) {
-        custMap.set(custId, {
-          customer_id: custId,
-          customer_name: info?.name || custId,
-          email: info?.email || '',
-          terms: info?.terms || '',
-          total_balance: 0,
-          credit_memo_balance: 0,
-          open_invoice_count: 0,
-          max_days_overdue: 0,
-          invoices: [],
-        });
-      }
-
-      const customer = custMap.get(custId)!;
-      const balance = Number(inv.balance) || 0;
-      const dueDate = inv.due_date ? new Date(inv.due_date) : today;
-      const daysOverdue = Math.max(0, Math.floor((today.getTime() - dueDate.getTime()) / 86400000));
-      const invType = inv.type || 'Invoice';
-      const isCreditType = invType === 'Credit Memo' || invType === 'Credit WO';
-
-      if (isCreditType && balance > 0) {
-        customer.credit_memo_balance += balance;
-      }
-
-      if (balance > 0 && !isCreditType && inv.status !== 'Voided') {
-        customer.total_balance += balance;
-        customer.open_invoice_count++;
-        if (daysOverdue > customer.max_days_overdue) {
-          customer.max_days_overdue = daysOverdue;
-        }
-      }
-
-      if (balance > 0 && inv.status !== 'Voided') {
-        customer.invoices.push({
-          reference_number: inv.reference_number,
-          date: inv.date,
-          due_date: inv.due_date,
-          amount: Number(inv.dac_total) || 0,
-          balance,
-          status: inv.status,
-          description: inv.description || '',
-          days_overdue: daysOverdue,
-        });
-      }
-    });
-
-    return custMap;
-  };
-
-  const fetchPaginated = async (table: string, select: string, filters?: Record<string, any>) => {
-    let all: any[] = [];
-    let from = 0;
-    const pageSize = 1000;
-
-    while (true) {
-      let query = supabase.from(table).select(select).range(from, from + pageSize - 1);
-      if (filters) {
-        Object.entries(filters).forEach(([key, value]) => {
-          query = query.eq(key, value);
-        });
-      }
-      const { data, error } = await query;
-      if (error) throw error;
-      if (!data || data.length === 0) break;
-      all = [...all, ...data];
-      from += pageSize;
-      if (data.length < pageSize) break;
-    }
-    return all;
-  };
-
-  const fetchInvoicesForCustomers = async (customerIds: string[]) => {
-    const all: any[] = [];
-    const batchSize = 50;
-    for (let i = 0; i < customerIds.length; i += batchSize) {
-      const batch = customerIds.slice(i, i + batchSize);
-      let from = 0;
-      const pageSize = 1000;
-      while (true) {
-        const { data, error } = await supabase
-          .from('acumatica_invoices')
-          .select('id, customer, reference_number, date, due_date, dac_total, balance, status, description, type')
-          .in('customer', batch)
-          .gt('balance', 0)
-          .neq('status', 'Voided')
-          .range(from, from + pageSize - 1);
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        all.push(...data);
-        from += pageSize;
-        if (data.length < pageSize) break;
-      }
-    }
-    return all;
-  };
 
   const loadData = useCallback(async (testMode: boolean) => {
     if (testMode && testLoadedRef.current) return;
@@ -152,31 +27,112 @@ export function useCustomerStatements() {
     setLoading(true);
 
     try {
-      const customerFilter = testMode
-        ? { is_test_customer: true }
-        : { is_test_customer: false };
+      const { data, error } = await supabase.rpc('get_customer_statements', {
+        p_test_mode: testMode,
+      });
 
-      const allCustomers = await fetchPaginated(
-        'acumatica_customers',
-        'customer_id, customer_name, billing_email, general_email, terms',
-        customerFilter
-      );
+      if (error) throw error;
 
-      const customerIds = allCustomers.map((c: any) => c.customer_id);
-      const filteredInvoices = await fetchInvoicesForCustomers(customerIds);
-      const custMap = buildCustomerMap(filteredInvoices, allCustomers);
+      const mapped: StatementCustomer[] = (data || []).map((row: any) => ({
+        customer_id: row.customer_id,
+        customer_name: row.customer_name || row.customer_id,
+        email: row.email || '',
+        terms: row.terms || '',
+        total_balance: Number(row.total_balance) || 0,
+        credit_memo_balance: Number(row.credit_memo_balance) || 0,
+        open_invoice_count: Number(row.open_invoice_count) || 0,
+        max_days_overdue: Number(row.max_days_overdue) || 0,
+        invoices: [],
+      }));
 
-      if (testMode) {
-        setCustomers(Array.from(custMap.values()));
-      } else {
-        setCustomers(Array.from(custMap.values()).filter(c => c.total_balance > 0));
-      }
+      setCustomers(mapped);
     } catch (err) {
       console.error('Error loading customer statements data:', err);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const mapInvoices = (data: any[]): StatementInvoice[] => {
+    const today = new Date();
+    return data.map((inv: any) => {
+      const dueDate = inv.due_date ? new Date(inv.due_date) : today;
+      const daysOverdue = Math.max(0, Math.floor((today.getTime() - dueDate.getTime()) / 86400000));
+      return {
+        reference_number: inv.reference_number,
+        date: inv.date,
+        due_date: inv.due_date,
+        amount: Number(inv.dac_total) || 0,
+        balance: Number(inv.balance) || 0,
+        status: inv.status,
+        description: inv.description || '',
+        days_overdue: daysOverdue,
+      };
+    });
+  };
+
+  const loadInvoicesForCustomer = useCallback(async (customerId: string) => {
+    if (invoiceCache[customerId]) return;
+    setLoadingInvoices(customerId);
+
+    try {
+      const { data, error } = await supabase
+        .from('acumatica_invoices')
+        .select('reference_number, date, due_date, dac_total, balance, status, description, type')
+        .eq('customer', customerId)
+        .gt('balance', 0)
+        .neq('status', 'Voided')
+        .order('due_date', { ascending: true });
+
+      if (error) throw error;
+
+      const invoices = mapInvoices(data || []);
+      setInvoiceCache(prev => ({ ...prev, [customerId]: invoices }));
+      setCustomers(prev => prev.map(c =>
+        c.customer_id === customerId ? { ...c, invoices } : c
+      ));
+    } catch (err) {
+      console.error('Error loading invoices for customer:', err);
+    } finally {
+      setLoadingInvoices(null);
+    }
+  }, [invoiceCache]);
+
+  const ensureInvoicesLoaded = useCallback(async (customerIds: string[]): Promise<void> => {
+    const missing = customerIds.filter(id => !invoiceCache[id]);
+    if (missing.length === 0) return;
+
+    const batchSize = 20;
+    const newCache: Record<string, StatementInvoice[]> = {};
+
+    for (let i = 0; i < missing.length; i += batchSize) {
+      const batch = missing.slice(i, i + batchSize);
+      const { data, error } = await supabase
+        .from('acumatica_invoices')
+        .select('customer, reference_number, date, due_date, dac_total, balance, status, description, type')
+        .in('customer', batch)
+        .gt('balance', 0)
+        .neq('status', 'Voided')
+        .order('due_date', { ascending: true });
+
+      if (error) throw error;
+
+      const grouped: Record<string, any[]> = {};
+      (data || []).forEach((inv: any) => {
+        if (!grouped[inv.customer]) grouped[inv.customer] = [];
+        grouped[inv.customer].push(inv);
+      });
+
+      batch.forEach(cid => {
+        newCache[cid] = mapInvoices(grouped[cid] || []);
+      });
+    }
+
+    setInvoiceCache(prev => ({ ...prev, ...newCache }));
+    setCustomers(prev => prev.map(c =>
+      newCache[c.customer_id] ? { ...c, invoices: newCache[c.customer_id] } : c
+    ));
+  }, [invoiceCache]);
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -235,19 +191,28 @@ export function useCustomerStatements() {
 
   const selectAll = () => setSelectedIds(new Set(filtered.map(c => c.customer_id)));
   const deselectAll = () => setSelectedIds(new Set());
-  const toggleExpand = (id: string) => setExpandedId(prev => prev === id ? null : id);
+
+  const toggleExpand = (id: string) => {
+    const newId = expandedId === id ? null : id;
+    setExpandedId(newId);
+    if (newId) {
+      loadInvoicesForCustomer(newId);
+    }
+  };
 
   const handleToggleTestCustomers = (value: boolean) => {
     if (value) testLoadedRef.current = false;
     else loadedRef.current = false;
     setSelectedIds(new Set());
     setSearch('');
+    setInvoiceCache({});
     setShowTestCustomers(value);
   };
 
   return {
     customers: filtered,
     loading,
+    loadingInvoices,
     templates,
     selectedTemplateId,
     setSelectedTemplateId,
@@ -267,5 +232,6 @@ export function useCustomerStatements() {
     toggleExpand,
     showTestCustomers,
     toggleTestCustomers: handleToggleTestCustomers,
+    ensureInvoicesLoaded,
   };
 }

@@ -5,6 +5,7 @@ interface Props {
   customer: StatementCustomer;
   selected: boolean;
   expanded: boolean;
+  loadingInvoices: boolean;
   onToggleSelect: () => void;
   onToggleExpand: () => void;
 }
@@ -33,7 +34,7 @@ function getAgingLabel(days: number): string {
   return '90+ days';
 }
 
-export default function CustomerStatementCard({ customer, selected, expanded, onToggleSelect, onToggleExpand }: Props) {
+export default function CustomerStatementCard({ customer, selected, expanded, loadingInvoices, onToggleSelect, onToggleExpand }: Props) {
   const openInvoices = customer.invoices.filter(inv => inv.balance > 0);
   const agingBuckets = { current: 0, d30: 0, d60: 0, d90: 0, d90plus: 0 };
   openInvoices.forEach(inv => {
@@ -110,6 +111,13 @@ export default function CustomerStatementCard({ customer, selected, expanded, on
 
       {expanded && (
         <div className="border-t border-gray-100 px-5 py-4 space-y-4 bg-gray-50/50">
+          {loadingInvoices ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-500 border-t-transparent mr-3" />
+              <span className="text-sm text-gray-500">Loading invoices...</span>
+            </div>
+          ) : (
+          <>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {[
               { label: 'Current', amount: agingBuckets.current, color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
@@ -167,6 +175,8 @@ export default function CustomerStatementCard({ customer, selected, expanded, on
               </tfoot>
             </table>
           </div>
+          </>
+          )}
         </div>
       )}
     </div>

@@ -14,6 +14,7 @@ interface Props {
   templates: ReportTemplate[];
   selectedTemplateId: string | null;
   onTemplateChange: (id: string) => void;
+  ensureInvoicesLoaded: (customerIds: string[]) => Promise<void>;
 }
 
 type ActionMode = null | 'download' | 'email';
@@ -24,7 +25,7 @@ interface EmailProgress {
   error?: string;
 }
 
-export default function StatementActions({ selectedCustomers, templates, selectedTemplateId, onTemplateChange }: Props) {
+export default function StatementActions({ selectedCustomers, templates, selectedTemplateId, onTemplateChange, ensureInvoicesLoaded }: Props) {
   const { profile } = useAuth();
   const [actionMode, setActionMode] = useState<ActionMode>(null);
   const [sending, setSending] = useState(false);
@@ -34,8 +35,19 @@ export default function StatementActions({ selectedCustomers, templates, selecte
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
   const customersWithEmail = selectedCustomers.filter(c => c.email);
 
-  const handleDownload = () => {
+  const [preparingData, setPreparingData] = useState(false);
+
+  const handleDownload = async () => {
     if (selectedCustomers.length === 0) return;
+
+    setPreparingData(true);
+    try {
+      await ensureInvoicesLoaded(selectedCustomers.map(c => c.customer_id));
+    } catch (err) {
+      console.error('Error loading invoice data:', err);
+    } finally {
+      setPreparingData(false);
+    }
 
     if (downloadType === 'combined') {
       const data = generateBatchStatementExcel(selectedCustomers);
@@ -54,6 +66,11 @@ export default function StatementActions({ selectedCustomers, templates, selecte
     if (!selectedTemplate || customersWithEmail.length === 0) return;
 
     setSending(true);
+    try {
+      await ensureInvoicesLoaded(customersWithEmail.map(c => c.customer_id));
+    } catch (err) {
+      console.error('Error loading invoice data:', err);
+    }
     const progress: EmailProgress[] = customersWithEmail.map(c => ({
       customer: c.customer_name,
       status: 'pending',
