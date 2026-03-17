@@ -119,6 +119,31 @@ export function useCustomerStatements() {
     return all;
   };
 
+  const fetchInvoicesForCustomers = async (customerIds: string[]) => {
+    const all: any[] = [];
+    const batchSize = 50;
+    for (let i = 0; i < customerIds.length; i += batchSize) {
+      const batch = customerIds.slice(i, i + batchSize);
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from('acumatica_invoices')
+          .select('id, customer, reference_number, date, due_date, dac_total, balance, status, description, type')
+          .in('customer', batch)
+          .gt('balance', 0)
+          .neq('status', 'Voided')
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        from += pageSize;
+        if (data.length < pageSize) break;
+      }
+    }
+    return all;
+  };
+
   const loadData = useCallback(async (testMode: boolean) => {
     if (testMode && testLoadedRef.current) return;
     if (!testMode && loadedRef.current) return;
@@ -137,14 +162,8 @@ export function useCustomerStatements() {
         customerFilter
       );
 
-      const customerIds = new Set(allCustomers.map((c: any) => c.customer_id));
-
-      const allInvoices = await fetchPaginated(
-        'acumatica_invoices',
-        'id, customer, reference_number, date, due_date, dac_total, balance, status, description, type'
-      );
-
-      const filteredInvoices = allInvoices.filter((inv: any) => customerIds.has(inv.customer));
+      const customerIds = allCustomers.map((c: any) => c.customer_id);
+      const filteredInvoices = await fetchInvoicesForCustomers(customerIds);
       const custMap = buildCustomerMap(filteredInvoices, allCustomers);
 
       if (testMode) {
