@@ -88,8 +88,8 @@ export function useCustomerStatements() {
         .from('acumatica_invoices')
         .select('reference_number, date, due_date, dac_total, balance, status, description, type')
         .eq('customer', customerId)
-        .gt('balance', 0)
         .neq('status', 'Voided')
+        .neq('status', 'Draft')
         .order('due_date', { ascending: true });
 
       if (error) throw error;
@@ -119,8 +119,8 @@ export function useCustomerStatements() {
         .from('acumatica_invoices')
         .select('customer, reference_number, date, due_date, dac_total, balance, status, description, type')
         .in('customer', batch)
-        .gt('balance', 0)
         .neq('status', 'Voided')
+        .neq('status', 'Draft')
         .order('due_date', { ascending: true });
 
       if (error) throw error;
