@@ -70,7 +70,7 @@ export function useCustomerStatements() {
         reference_number: inv.reference_number,
         date: inv.date,
         due_date: inv.due_date,
-        amount: Number(inv.dac_total) || 0,
+        amount: Number(inv.amount) || Number(inv.dac_total) || 0,
         balance: Number(inv.balance) || 0,
         status: inv.status,
         description: inv.description || '',
@@ -86,7 +86,7 @@ export function useCustomerStatements() {
     try {
       const { data, error } = await supabase
         .from('acumatica_invoices')
-        .select('reference_number, date, due_date, dac_total, balance, status, description, type')
+        .select('reference_number, date, due_date, amount, dac_total, balance, status, description, type')
         .eq('customer', customerId)
         .gt('balance', 0)
         .neq('status', 'Voided')
@@ -122,7 +122,7 @@ export function useCustomerStatements() {
       const batch = missing.slice(i, i + batchSize);
       const { data, error } = await supabase
         .from('acumatica_invoices')
-        .select('customer, reference_number, date, due_date, dac_total, balance, status, description, type')
+        .select('customer, reference_number, date, due_date, amount, dac_total, balance, status, description, type')
         .in('customer', batch)
         .gt('balance', 0)
         .neq('status', 'Voided')
