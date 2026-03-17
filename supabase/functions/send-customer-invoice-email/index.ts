@@ -43,6 +43,7 @@ interface RequestBody {
   template?: Template;
   customerData: CustomerData;
   pdfBase64?: string;
+  excelBase64?: string;
   sentByUserId?: string;
   department?: string;
 }
@@ -133,7 +134,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body: RequestBody = await req.json();
-    const { templateId, templateName, template, customerData, pdfBase64, sentByUserId, department } = body;
+    const { templateId, templateName, template, customerData, pdfBase64, excelBase64, sentByUserId, department } = body;
 
     if (!template || !customerData || !customerData.customer_email) {
       return new Response(
@@ -208,11 +209,18 @@ Deno.serve(async (req: Request) => {
     `;
 
     const attachments = [];
-    if (pdfBase64) {
+    if (excelBase64) {
+      attachments.push({
+        content: excelBase64,
+        filename: `Statement_${customerData.customer_name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`,
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        disposition: 'attachment',
+      });
+    } else if (pdfBase64) {
       attachments.push({
         content: pdfBase64,
-        filename: `Invoice_Statement_${new Date().toISOString().split('T')[0]}.png`,
-        type: 'image/png',
+        filename: `Invoice_Statement_${new Date().toISOString().split('T')[0]}.pdf`,
+        type: 'application/pdf',
         disposition: 'attachment',
       });
     }
@@ -274,7 +282,7 @@ Deno.serve(async (req: Request) => {
         error_message: errorText,
         invoice_count: customerData.invoices?.length || 0,
         total_balance: customerData.balance || 0,
-        had_pdf_attachment: !!pdfBase64,
+        had_pdf_attachment: !!(excelBase64 || pdfBase64),
         sent_by_user_id: sentByUserId || null,
       });
 
@@ -302,7 +310,7 @@ Deno.serve(async (req: Request) => {
         status: 'sent',
         invoice_count: customerData.invoices?.length || 0,
         total_balance: customerData.balance || 0,
-        had_pdf_attachment: !!pdfBase64,
+        had_pdf_attachment: !!(excelBase64 || pdfBase64),
         sent_by_user_id: sentByUserId || null,
       })
       .select()

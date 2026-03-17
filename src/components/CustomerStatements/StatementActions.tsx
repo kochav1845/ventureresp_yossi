@@ -142,7 +142,7 @@ export default function StatementActions({ selectedCustomers, templates, selecte
                 oldest_invoice_date: oldestInvoice?.date || '',
                 days_overdue: daysOverdue,
               },
-              pdfBase64: base64,
+              excelBase64: base64,
               sentByUserId: profile?.id,
               department: 'ar',
             }),
