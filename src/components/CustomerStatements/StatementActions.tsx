@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileSpreadsheet, Mail, Download, Send, X, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { FileSpreadsheet, Mail, Download, Send, X, AlertTriangle, CheckCircle, Loader2, FlaskConical } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   generateCustomerStatementExcel,
@@ -21,6 +21,7 @@ type ActionMode = null | 'download' | 'email';
 
 interface EmailProgress {
   customer: string;
+  email: string;
   status: 'pending' | 'sending' | 'success' | 'failed';
   error?: string;
 }
@@ -31,9 +32,11 @@ export default function StatementActions({ selectedCustomers, templates, selecte
   const [sending, setSending] = useState(false);
   const [emailProgress, setEmailProgress] = useState<EmailProgress[]>([]);
   const [downloadType, setDownloadType] = useState<'individual' | 'combined'>('combined');
+  const [useTestEmail, setUseTestEmail] = useState(false);
+  const [testEmail, setTestEmail] = useState('');
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
-  const customersWithEmail = selectedCustomers.filter(c => c.email);
+  const customersWithEmail = useTestEmail ? selectedCustomers : selectedCustomers.filter(c => c.email);
 
   const [preparingData, setPreparingData] = useState(false);
 
@@ -64,6 +67,7 @@ export default function StatementActions({ selectedCustomers, templates, selecte
 
   const handleSendEmails = async () => {
     if (!selectedTemplate || customersWithEmail.length === 0) return;
+    if (useTestEmail && !testEmail.trim()) return;
 
     setSending(true);
     try {
@@ -71,8 +75,11 @@ export default function StatementActions({ selectedCustomers, templates, selecte
     } catch (err) {
       console.error('Error loading invoice data:', err);
     }
+
+    const recipientEmail = useTestEmail ? testEmail.trim() : '';
     const progress: EmailProgress[] = customersWithEmail.map(c => ({
       customer: c.customer_name,
+      email: useTestEmail ? recipientEmail : c.email,
       status: 'pending',
     }));
     setEmailProgress([...progress]);
@@ -96,6 +103,8 @@ export default function StatementActions({ selectedCustomers, templates, selecte
           ? Math.max(0, Math.floor((Date.now() - new Date(oldestInvoice.due_date).getTime()) / 86400000))
           : 0;
 
+        const emailToSend = useTestEmail ? recipientEmail : customer.email;
+
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-customer-invoice-email`,
           {
@@ -108,14 +117,16 @@ export default function StatementActions({ selectedCustomers, templates, selecte
               templateId: selectedTemplateId,
               templateName: selectedTemplate.name,
               template: {
-                subject: selectedTemplate.subject,
+                subject: useTestEmail
+                  ? `[TEST] ${selectedTemplate.subject}`
+                  : selectedTemplate.subject,
                 body: selectedTemplate.body,
                 include_invoice_table: selectedTemplate.include_invoice_table,
               },
               customerData: {
                 customer_name: customer.customer_name,
                 customer_id: customer.customer_id,
-                customer_email: customer.email,
+                customer_email: emailToSend,
                 balance: customer.total_balance,
                 total_invoices: customer.open_invoice_count,
                 invoices: customer.invoices
@@ -256,19 +267,81 @@ export default function StatementActions({ selectedCustomers, templates, selecte
               </select>
             </div>
 
+            <div className="flex items-center gap-4 flex-wrap p-3 rounded-lg border border-gray-200 bg-white">
+              <span className="text-sm text-gray-700 font-medium">Send to:</span>
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+                <button
+                  onClick={() => setUseTestEmail(false)}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                    !useTestEmail
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5" />
+                    Customer Email
+                  </span>
+                </button>
+                <button
+                  onClick={() => setUseTestEmail(true)}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                    useTestEmail
+                      ? 'bg-teal-600 text-white shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <FlaskConical className="w-3.5 h-3.5" />
+                    Test Email
+                  </span>
+                </button>
+              </div>
+              {useTestEmail && (
+                <div className="flex-1 min-w-[250px]">
+                  <input
+                    type="email"
+                    value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)}
+                    placeholder="Enter test email address..."
+                    className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:ring-2 focus:ring-teal-400 focus:border-transparent placeholder-gray-400"
+                  />
+                </div>
+              )}
+              {useTestEmail && (
+                <span className="text-xs text-teal-700 bg-teal-50 px-2.5 py-1 rounded-full font-medium">
+                  All emails go to test address - subjects prefixed with [TEST]
+                </span>
+              )}
+            </div>
+
             <div className="flex items-center justify-between flex-wrap gap-3">
               <p className="text-sm text-gray-600">
-                Sending to <span className="font-semibold text-blue-700">{customersWithEmail.length}</span> customer{customersWithEmail.length !== 1 ? 's' : ''} with email addresses.
-                Each receives their personalized statement with an Excel attachment.
+                {useTestEmail ? (
+                  <>
+                    Sending <span className="font-semibold text-teal-700">{customersWithEmail.length}</span> statement{customersWithEmail.length !== 1 ? 's' : ''} to{' '}
+                    <span className="font-semibold text-teal-700">{testEmail || '...'}</span>.
+                    Each statement is personalized per customer.
+                  </>
+                ) : (
+                  <>
+                    Sending to <span className="font-semibold text-blue-700">{customersWithEmail.length}</span> customer{customersWithEmail.length !== 1 ? 's' : ''} with email addresses.
+                    Each receives their personalized statement with an Excel attachment.
+                  </>
+                )}
               </p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleSendEmails}
-                  disabled={sending || customersWithEmail.length === 0 || !selectedTemplate}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                  disabled={sending || customersWithEmail.length === 0 || !selectedTemplate || (useTestEmail && !testEmail.trim())}
+                  className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors text-sm font-medium ${
+                    useTestEmail ? 'bg-teal-600 hover:bg-teal-700' : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
                 >
                   {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  {sending ? 'Sending...' : `Send ${customersWithEmail.length} Email${customersWithEmail.length !== 1 ? 's' : ''}`}
+                  {sending ? 'Sending...' : useTestEmail
+                    ? `Test ${customersWithEmail.length} Email${customersWithEmail.length !== 1 ? 's' : ''}`
+                    : `Send ${customersWithEmail.length} Email${customersWithEmail.length !== 1 ? 's' : ''}`}
                 </button>
                 <button onClick={() => { setActionMode(null); setEmailProgress([]); }} className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
                   <X className="w-4 h-4" />
@@ -293,6 +366,7 @@ export default function StatementActions({ selectedCustomers, templates, selecte
                       {p.status === 'success' && <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />}
                       {p.status === 'failed' && <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />}
                       <span className="text-gray-700 truncate">{p.customer}</span>
+                      <span className="text-xs text-gray-400 truncate hidden sm:inline">{p.email}</span>
                       {p.error && <span className="text-xs text-red-500 ml-auto truncate max-w-[200px]">{p.error}</span>}
                     </div>
                   ))}
