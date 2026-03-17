@@ -153,7 +153,7 @@ export default function StatementActions({ selectedCustomers, templates, selecte
                   ? `[TEST] ${selectedTemplate.subject}`
                   : selectedTemplate.subject,
                 body: selectedTemplate.body,
-                include_invoice_table: selectedTemplate.include_invoice_table,
+                include_invoice_table: false,
               },
               customerData: {
                 customer_name: customer.customer_name,

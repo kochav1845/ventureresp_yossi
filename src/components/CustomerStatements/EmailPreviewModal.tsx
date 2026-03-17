@@ -55,54 +55,6 @@ function replacePlaceholders(text: string, customer: StatementCustomer) {
   return result;
 }
 
-function renderInvoiceTable(invoices: StatementCustomer['invoices']) {
-  const displayInvoices = invoices
-    .filter(inv => inv.balance !== 0)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-  if (displayInvoices.length === 0) return null;
-
-  const totalBalance = displayInvoices.reduce((sum, inv) => sum + inv.balance, 0);
-
-  return (
-    <div className="my-4 overflow-x-auto rounded-lg border border-gray-200">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-gray-50">
-            <th className="px-3 py-2.5 text-left font-semibold text-gray-700 border-b-2 border-gray-200">Invoice #</th>
-            <th className="px-3 py-2.5 text-left font-semibold text-gray-700 border-b-2 border-gray-200">Invoice Date</th>
-            <th className="px-3 py-2.5 text-left font-semibold text-gray-700 border-b-2 border-gray-200">Due Date</th>
-            <th className="px-3 py-2.5 text-right font-semibold text-gray-700 border-b-2 border-gray-200">Amount</th>
-            <th className="px-3 py-2.5 text-right font-semibold text-gray-700 border-b-2 border-gray-200">Balance</th>
-          </tr>
-        </thead>
-        <tbody>
-          {displayInvoices.map((inv, i) => {
-            const isCredit = inv.balance < 0;
-            return (
-              <tr key={i} className={isCredit ? 'bg-blue-50/30' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                <td className="px-3 py-2 text-gray-800 border-b border-gray-100">{inv.reference_number}</td>
-                <td className="px-3 py-2 text-gray-600 border-b border-gray-100">{formatDate(inv.date)}</td>
-                <td className="px-3 py-2 text-gray-600 border-b border-gray-100">{isCredit ? '' : formatDate(inv.due_date)}</td>
-                <td className={`px-3 py-2 text-right border-b border-gray-100 ${isCredit ? 'text-blue-700' : 'text-gray-800'}`}>{formatCurrency(inv.amount)}</td>
-                <td className={`px-3 py-2 text-right font-medium border-b border-gray-100 ${isCredit ? 'text-blue-700' : 'text-gray-900'}`}>{formatCurrency(inv.balance)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-        <tfoot>
-          <tr className="bg-gray-800">
-            <td colSpan={4} className="px-3 py-2.5 font-bold text-white border-t-2 border-gray-300">Total Balance Due:</td>
-            <td className="px-3 py-2.5 text-right font-bold text-white text-base border-t-2 border-gray-300">
-              {formatCurrency(totalBalance)}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  );
-}
-
 export default function EmailPreviewModal({ customers, template, useTestEmail, testEmail, onClose, onConfirmSend, sending }: Props) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [emailOverrides, setEmailOverrides] = useState<Record<string, string>>({});
@@ -123,9 +75,7 @@ export default function EmailPreviewModal({ customers, template, useTestEmail, t
   const subjectPrefix = useTestEmail ? '[TEST] ' : '';
   const subject = subjectPrefix + replacePlaceholders(template.subject, customer);
 
-  let bodyText = replacePlaceholders(template.body, customer);
-  const hasInvoiceTablePlaceholder = bodyText.includes('{{invoice_table}}');
-  const bodyParts = bodyText.split('{{invoice_table}}');
+  let bodyText = replacePlaceholders(template.body, customer).replace(/\{\{invoice_table\}\}/g, '').replace(/\{\{payment_table\}\}/g, '');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -227,31 +177,12 @@ export default function EmailPreviewModal({ customers, template, useTestEmail, t
             <div className="mx-auto max-w-[600px] bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
               <div className="px-6 py-5">
                 <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed">
-                  {hasInvoiceTablePlaceholder ? (
-                    <>
-                      {bodyParts.map((part, i) => (
-                        <div key={i}>
-                          {part.split('\n').map((line, j) => (
-                            <span key={j}>
-                              {line}
-                              {j < part.split('\n').length - 1 && <br />}
-                            </span>
-                          ))}
-                          {i < bodyParts.length - 1 && template.include_invoice_table && renderInvoiceTable(customer.invoices)}
-                        </div>
-                      ))}
-                    </>
-                  ) : (
-                    <>
-                      {bodyText.split('\n').map((line, i) => (
-                        <span key={i}>
-                          {line}
-                          {i < bodyText.split('\n').length - 1 && <br />}
-                        </span>
-                      ))}
-                      {template.include_invoice_table && renderInvoiceTable(customer.invoices)}
-                    </>
-                  )}
+                  {bodyText.split('\n').map((line, i) => (
+                    <span key={i}>
+                      {line}
+                      {i < bodyText.split('\n').length - 1 && <br />}
+                    </span>
+                  ))}
                 </div>
               </div>
             </div>
