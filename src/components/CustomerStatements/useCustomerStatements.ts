@@ -88,6 +88,7 @@ export function useCustomerStatements() {
         .from('acumatica_invoices')
         .select('reference_number, date, due_date, dac_total, balance, status, description, type')
         .eq('customer', customerId)
+        .gt('balance', 0)
         .neq('status', 'Voided')
         .neq('status', 'Draft')
         .order('due_date', { ascending: true });
@@ -106,9 +107,13 @@ export function useCustomerStatements() {
     }
   }, [invoiceCache]);
 
-  const ensureInvoicesLoaded = useCallback(async (customerIds: string[]): Promise<void> => {
+  const ensureInvoicesLoaded = useCallback(async (customerIds: string[]): Promise<Record<string, StatementInvoice[]>> => {
     const missing = customerIds.filter(id => !invoiceCache[id]);
-    if (missing.length === 0) return;
+    if (missing.length === 0) {
+      const result: Record<string, StatementInvoice[]> = {};
+      customerIds.forEach(id => { result[id] = invoiceCache[id] || []; });
+      return result;
+    }
 
     const batchSize = 20;
     const newCache: Record<string, StatementInvoice[]> = {};
@@ -119,6 +124,7 @@ export function useCustomerStatements() {
         .from('acumatica_invoices')
         .select('customer, reference_number, date, due_date, dac_total, balance, status, description, type')
         .in('customer', batch)
+        .gt('balance', 0)
         .neq('status', 'Voided')
         .neq('status', 'Draft')
         .order('due_date', { ascending: true });
@@ -140,6 +146,12 @@ export function useCustomerStatements() {
     setCustomers(prev => prev.map(c =>
       newCache[c.customer_id] ? { ...c, invoices: newCache[c.customer_id] } : c
     ));
+
+    const result: Record<string, StatementInvoice[]> = {};
+    customerIds.forEach(id => {
+      result[id] = newCache[id] || invoiceCache[id] || [];
+    });
+    return result;
   }, [invoiceCache]);
 
   const loadTemplates = useCallback(async () => {

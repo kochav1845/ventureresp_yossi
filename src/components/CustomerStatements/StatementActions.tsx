@@ -15,7 +15,7 @@ interface Props {
   templates: ReportTemplate[];
   selectedTemplateId: string | null;
   onTemplateChange: (id: string) => void;
-  ensureInvoicesLoaded: (customerIds: string[]) => Promise<void>;
+  ensureInvoicesLoaded: (customerIds: string[]) => Promise<Record<string, import('./types').StatementInvoice[]>>;
 }
 
 type ActionMode = null | 'download' | 'email';
@@ -46,19 +46,25 @@ export default function StatementActions({ selectedCustomers, templates, selecte
     if (selectedCustomers.length === 0) return;
 
     setPreparingData(true);
+    let invoiceMap: Record<string, import('./types').StatementInvoice[]> = {};
     try {
-      await ensureInvoicesLoaded(selectedCustomers.map(c => c.customer_id));
+      invoiceMap = await ensureInvoicesLoaded(selectedCustomers.map(c => c.customer_id));
     } catch (err) {
       console.error('Error loading invoice data:', err);
     } finally {
       setPreparingData(false);
     }
 
+    const customersWithInvoices = selectedCustomers.map(c => ({
+      ...c,
+      invoices: invoiceMap[c.customer_id] || c.invoices,
+    }));
+
     if (downloadType === 'combined') {
-      const data = generateBatchStatementExcel(selectedCustomers);
+      const data = generateBatchStatementExcel(customersWithInvoices);
       downloadExcelFile(data, `Customer_Statements_${new Date().toISOString().split('T')[0]}.xlsx`);
     } else {
-      selectedCustomers.forEach(customer => {
+      customersWithInvoices.forEach(customer => {
         const data = generateCustomerStatementExcel(customer);
         const safeName = customer.customer_name.replace(/[^a-zA-Z0-9]/g, '_');
         downloadExcelFile(data, `Statement_${safeName}_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -67,13 +73,16 @@ export default function StatementActions({ selectedCustomers, templates, selecte
     setActionMode(null);
   };
 
+  const [freshInvoiceMap, setFreshInvoiceMap] = useState<Record<string, import('./types').StatementInvoice[]>>({});
+
   const handlePreview = async () => {
     if (!selectedTemplate || customersWithEmail.length === 0) return;
     if (useTestEmail && !testEmail.trim()) return;
 
     setPreparingData(true);
     try {
-      await ensureInvoicesLoaded(customersWithEmail.map(c => c.customer_id));
+      const invoiceMap = await ensureInvoicesLoaded(customersWithEmail.map(c => c.customer_id));
+      setFreshInvoiceMap(invoiceMap);
     } catch (err) {
       console.error('Error loading invoice data:', err);
     } finally {
@@ -88,10 +97,14 @@ export default function StatementActions({ selectedCustomers, templates, selecte
 
     setShowPreview(false);
     setSending(true);
-    try {
-      await ensureInvoicesLoaded(customersWithEmail.map(c => c.customer_id));
-    } catch (err) {
-      console.error('Error loading invoice data:', err);
+
+    let invoiceMap = freshInvoiceMap;
+    if (Object.keys(invoiceMap).length === 0) {
+      try {
+        invoiceMap = await ensureInvoicesLoaded(customersWithEmail.map(c => c.customer_id));
+      } catch (err) {
+        console.error('Error loading invoice data:', err);
+      }
     }
 
     const recipientEmail = useTestEmail ? testEmail.trim() : '';
@@ -104,17 +117,19 @@ export default function StatementActions({ selectedCustomers, templates, selecte
 
     for (let i = 0; i < customersWithEmail.length; i++) {
       const customer = customersWithEmail[i];
+      const customerInvoices = invoiceMap[customer.customer_id] || customer.invoices;
+      const customerWithInvoices = { ...customer, invoices: customerInvoices };
       progress[i].status = 'sending';
       setEmailProgress([...progress]);
 
       try {
-        const excelData = generateCustomerStatementExcel(customer);
+        const excelData = generateCustomerStatementExcel(customerWithInvoices);
         const base64 = uint8ArrayToBase64(excelData);
 
-        const oldestInvoice = customer.invoices.length > 0
-          ? customer.invoices.reduce((oldest, inv) =>
+        const oldestInvoice = customerInvoices.length > 0
+          ? customerInvoices.reduce((oldest, inv) =>
               new Date(inv.date) < new Date(oldest.date) ? inv : oldest
-            , customer.invoices[0])
+            , customerInvoices[0])
           : null;
 
         const daysOverdue = oldestInvoice?.due_date
@@ -147,7 +162,7 @@ export default function StatementActions({ selectedCustomers, templates, selecte
                 customer_email: emailToSend,
                 balance: customer.total_balance,
                 total_invoices: customer.open_invoice_count,
-                invoices: customer.invoices
+                invoices: customerInvoices
                   .filter(inv => inv.balance > 0)
                   .map(inv => ({
                     reference_number: inv.reference_number,
@@ -268,7 +283,10 @@ export default function StatementActions({ selectedCustomers, templates, selecte
 
       {showPreview && selectedTemplate && (
         <EmailPreviewModal
-          customers={customersWithEmail}
+          customers={customersWithEmail.map(c => ({
+            ...c,
+            invoices: freshInvoiceMap[c.customer_id] || c.invoices,
+          }))}
           template={selectedTemplate}
           useTestEmail={useTestEmail}
           testEmail={testEmail}
