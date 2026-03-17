@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileSpreadsheet, Mail, Download, Send, X, AlertTriangle, CheckCircle, Loader2, FlaskConical } from 'lucide-react';
+import { FileSpreadsheet, Mail, Download, Send, X, AlertTriangle, CheckCircle, Loader2, FlaskConical, Eye } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   generateCustomerStatementExcel,
@@ -7,6 +7,7 @@ import {
   uint8ArrayToBase64,
   downloadExcelFile,
 } from '../../lib/statementExport';
+import EmailPreviewModal from './EmailPreviewModal';
 import type { StatementCustomer, ReportTemplate } from './types';
 
 interface Props {
@@ -39,6 +40,7 @@ export default function StatementActions({ selectedCustomers, templates, selecte
   const customersWithEmail = useTestEmail ? selectedCustomers : selectedCustomers.filter(c => c.email);
 
   const [preparingData, setPreparingData] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   const handleDownload = async () => {
     if (selectedCustomers.length === 0) return;
@@ -65,10 +67,26 @@ export default function StatementActions({ selectedCustomers, templates, selecte
     setActionMode(null);
   };
 
+  const handlePreview = async () => {
+    if (!selectedTemplate || customersWithEmail.length === 0) return;
+    if (useTestEmail && !testEmail.trim()) return;
+
+    setPreparingData(true);
+    try {
+      await ensureInvoicesLoaded(customersWithEmail.map(c => c.customer_id));
+    } catch (err) {
+      console.error('Error loading invoice data:', err);
+    } finally {
+      setPreparingData(false);
+    }
+    setShowPreview(true);
+  };
+
   const handleSendEmails = async () => {
     if (!selectedTemplate || customersWithEmail.length === 0) return;
     if (useTestEmail && !testEmail.trim()) return;
 
+    setShowPreview(false);
     setSending(true);
     try {
       await ensureInvoicesLoaded(customersWithEmail.map(c => c.customer_id));
@@ -248,6 +266,18 @@ export default function StatementActions({ selectedCustomers, templates, selecte
         </div>
       )}
 
+      {showPreview && selectedTemplate && (
+        <EmailPreviewModal
+          customers={customersWithEmail}
+          template={selectedTemplate}
+          useTestEmail={useTestEmail}
+          testEmail={testEmail}
+          onClose={() => setShowPreview(false)}
+          onConfirmSend={handleSendEmails}
+          sending={sending}
+        />
+      )}
+
       {actionMode === 'email' && (
         <div className="px-6 py-4 bg-blue-50/50 animate-in fade-in duration-200">
           <div className="space-y-4">
@@ -332,17 +362,21 @@ export default function StatementActions({ selectedCustomers, templates, selecte
               </p>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleSendEmails}
-                  disabled={sending || customersWithEmail.length === 0 || !selectedTemplate || (useTestEmail && !testEmail.trim())}
+                  onClick={handlePreview}
+                  disabled={sending || preparingData || customersWithEmail.length === 0 || !selectedTemplate || (useTestEmail && !testEmail.trim())}
                   className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors text-sm font-medium ${
                     useTestEmail ? 'bg-teal-600 hover:bg-teal-700' : 'bg-blue-600 hover:bg-blue-700'
                   }`}
                 >
-                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  {sending ? 'Sending...' : useTestEmail
-                    ? `Test ${customersWithEmail.length} Email${customersWithEmail.length !== 1 ? 's' : ''}`
-                    : `Send ${customersWithEmail.length} Email${customersWithEmail.length !== 1 ? 's' : ''}`}
+                  {preparingData ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                  {preparingData ? 'Loading...' : 'Preview & Send'}
                 </button>
+                {sending && (
+                  <span className="flex items-center gap-1.5 text-sm text-blue-600 font-medium">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Sending...
+                  </span>
+                )}
                 <button onClick={() => { setActionMode(null); setEmailProgress([]); }} className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
                   <X className="w-4 h-4" />
                 </button>
