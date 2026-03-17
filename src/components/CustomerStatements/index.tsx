@@ -1,4 +1,4 @@
-import { Search, X, ArrowUpDown, DollarSign, FileText, Users, Clock, CheckSquare, Square } from 'lucide-react';
+import { Search, X, ArrowUpDown, DollarSign, FileText, Users, Clock, CheckSquare, Square, FlaskConical } from 'lucide-react';
 import { useCustomerStatements } from './useCustomerStatements';
 import CustomerStatementCard from './CustomerStatementCard';
 import StatementActions from './StatementActions';
@@ -14,6 +14,7 @@ export default function CustomerStatements() {
     search, setSearch, minBalance, setMinBalance,
     sortField, setSortField, sortOrder, setSortOrder,
     expandedId, toggleExpand,
+    showTestCustomers, toggleTestCustomers,
   } = useCustomerStatements();
 
   const selectedCustomers = customers.filter(c => selectedIds.has(c.customer_id));
@@ -34,9 +35,40 @@ export default function CustomerStatements() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Customer Statements</h1>
-        <p className="text-sm text-gray-500 mt-1">Select customers to download or email their open balance statements</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {showTestCustomers ? 'Test Customer Statements' : 'Customer Statements'}
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {showTestCustomers
+              ? 'Test customers for verifying email and statement workflows'
+              : 'Select customers to download or email their open balance statements'}
+          </p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-1.5 border border-gray-200 inline-flex shrink-0">
+          <button
+            onClick={() => toggleTestCustomers(false)}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+              !showTestCustomers
+                ? 'bg-slate-800 text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            All Customers
+          </button>
+          <button
+            onClick={() => toggleTestCustomers(true)}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
+              showTestCustomers
+                ? 'bg-teal-600 text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <FlaskConical className="w-3.5 h-3.5" />
+            Test Customers
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -167,7 +199,9 @@ export default function CustomerStatements() {
             <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <h3 className="text-lg font-medium text-gray-700">No customers found</h3>
             <p className="text-sm text-gray-500 mt-1">
-              {search ? 'Try adjusting your search or filters' : 'No customers with open balances'}
+              {search ? 'Try adjusting your search or filters'
+                : showTestCustomers ? 'No test customers found'
+                : 'No customers with open balances'}
             </p>
           </div>
         )}
