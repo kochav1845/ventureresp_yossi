@@ -176,7 +176,7 @@ Deno.serve(async (req: Request) => {
     const cutoffTime = new Date(Date.now() - lookbackMinutes * 60 * 1000);
     const filterDate = cutoffTime.toISOString().split('.')[0];
 
-    const paymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$expand=files&$filter=LastModifiedDateTime gt datetimeoffset'${filterDate}' and Type ne 'Credit Memo'`;
+    const paymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$expand=files&$filter=LastModifiedDateTime gt datetimeoffset'${filterDate}'`;
 
     console.log(`Fetching payments modified after ${filterDate} (last ${lookbackMinutes} minutes)`);
 
