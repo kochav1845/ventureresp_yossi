@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ComparisonState, FetchState, ComparisonResult, VerifyState } from './types';
+import { ComparisonState, FetchState, ComparisonResult, TypeCount, VerifyState } from './types';
 
 const AUTO_EXPIRE_MINUTES = 30;
 const POLL_INTERVAL_MS = 4000;
@@ -71,19 +71,36 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
       const acumaticaData = await response.json();
       if (!acumaticaData.success) throw new Error(acumaticaData.error || 'Failed to get Acumatica count');
 
-      const { count: dbCount, error: dbError } = await supabase
-        .from('acumatica_payments')
-        .select('*', { count: 'exact', head: true })
-        .gte('application_date', `${startDate}T00:00:00`)
-        .lte('application_date', `${endDate}T23:59:59`)
-        .neq('type', 'Credit Memo');
+      const acumaticaByType: Record<string, number> = acumaticaData.byType || {};
+
+      const { data: dbTypeCounts, error: dbError } = await supabase
+        .rpc('get_payment_counts_by_type', {
+          p_start_date: `${startDate}T00:00:00`,
+          p_end_date: `${endDate}T23:59:59`,
+        });
 
       if (dbError) throw new Error(dbError.message);
 
+      const dbByType: Record<string, number> = {};
+      let totalDbCount = 0;
+      for (const row of (dbTypeCounts || [])) {
+        dbByType[row.payment_type] = row.type_count;
+        totalDbCount += row.type_count;
+      }
+
+      const allTypes = new Set([...Object.keys(acumaticaByType), ...Object.keys(dbByType)]);
+      const byType: Record<string, TypeCount> = {};
+      for (const t of allTypes) {
+        const a = acumaticaByType[t] || 0;
+        const d = dbByType[t] || 0;
+        byType[t] = { acumatica: a, db: d, difference: a - d };
+      }
+
       const result: ComparisonResult = {
         acumaticaCount: acumaticaData.count,
-        dbCount: dbCount || 0,
-        difference: acumaticaData.count - (dbCount || 0),
+        dbCount: totalDbCount,
+        difference: acumaticaData.count - totalDbCount,
+        byType,
       };
 
       setComparisons(prev => ({

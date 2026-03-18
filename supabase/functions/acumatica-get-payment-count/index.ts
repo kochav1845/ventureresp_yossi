@@ -62,8 +62,6 @@ Deno.serve(async (req: Request) => {
 
     if (type) {
       filters.push(`Type eq '${type}'`);
-    } else {
-      filters.push(`Type ne 'Credit Memo'`);
     }
 
     if (dateFrom) {
@@ -79,7 +77,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const filterParam = filters.length > 0 ? `$filter=${filters.join(' and ')}` : '';
-    const restUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?${filterParam}&$select=ReferenceNbr`;
+    const restUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?${filterParam}&$select=ReferenceNbr,Type`;
 
     console.log(`Fetching payment count via REST API: ${restUrl}`);
 
@@ -98,14 +96,22 @@ Deno.serve(async (req: Request) => {
     }
 
     const data = await response.json();
-    const count = Array.isArray(data) ? data.length : 0;
+    const items = Array.isArray(data) ? data : [];
+    const count = items.length;
 
-    console.log(`Payment count result: ${count}`);
+    const byType: Record<string, number> = {};
+    for (const item of items) {
+      const t = item.Type?.value || 'Unknown';
+      byType[t] = (byType[t] || 0) + 1;
+    }
+
+    console.log(`Payment count result: ${count}, byType:`, byType);
 
     return new Response(
       JSON.stringify({
         success: true,
         count,
+        byType,
         filters: {
           status,
           type,

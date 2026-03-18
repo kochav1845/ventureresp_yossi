@@ -52,10 +52,17 @@ export function formatNumber(num: number): string {
   return new Intl.NumberFormat('en-US').format(num);
 }
 
+export interface TypeCount {
+  acumatica: number;
+  db: number;
+  difference: number;
+}
+
 export interface ComparisonResult {
   acumaticaCount: number;
   dbCount: number;
   difference: number;
+  byType: Record<string, TypeCount>;
 }
 
 export interface ComparisonState {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { RefreshCw, Check, AlertTriangle, Download, XCircle, Search, Wrench, X, StopCircle } from 'lucide-react';
-import { ComparisonState, FetchState, VerifyState, formatCurrency } from './types';
+import { ComparisonState, FetchState, VerifyState, PAYMENT_TYPE_CONFIG, formatCurrency } from './types';
 
 interface SyncCheckCellProps {
   comparison: ComparisonState | undefined;
@@ -15,6 +15,7 @@ interface SyncCheckCellProps {
 
 export default function SyncCheckCell({ comparison, fetchState, verification, onCompare, onFetch, onVerify, onCancel }: SyncCheckCellProps) {
   const [showVerifyDetail, setShowVerifyDetail] = useState(false);
+  const [showTypeBreakdown, setShowTypeBreakdown] = useState(true);
 
   const handleCompare = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -159,15 +160,20 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
   }
 
   if (comparison?.result) {
-    const { acumaticaCount, dbCount, difference } = comparison.result;
+    const { acumaticaCount, dbCount, difference, byType } = comparison.result;
     const inSync = difference === 0;
     const missing = difference > 0;
     const hasExtra = difference < 0;
     const verifyResult = verification?.result;
 
+    const typeEntries = Object.entries(byType || {}).sort((a, b) => {
+      const order = ['Payment', 'Prepayment', 'Credit Memo', 'Voided Payment', 'Voided Check', 'Refund', 'Balance WO'];
+      return (order.indexOf(a[0]) === -1 ? 99 : order.indexOf(a[0])) - (order.indexOf(b[0]) === -1 ? 99 : order.indexOf(b[0]));
+    });
+
     return (
       <td className="px-3 py-3 relative">
-        <div className="flex flex-col items-center gap-1.5 min-w-[130px]">
+        <div className="flex flex-col items-center gap-1.5 min-w-[180px]">
           {fetchState?.result && (
             <div className="text-[10px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
               +{fetchState.result.created} new, ~{fetchState.result.updated} upd
@@ -206,6 +212,55 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
           <div className="text-[10px] text-gray-400 leading-tight text-center">
             Acumatica: {acumaticaCount} | DB: {dbCount}
           </div>
+
+          {typeEntries.length > 0 && (
+            <div className="w-full">
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowTypeBreakdown(!showTypeBreakdown); }}
+                className="text-[10px] text-gray-500 hover:text-blue-600 font-medium mb-1 w-full text-center"
+              >
+                {showTypeBreakdown ? 'Hide' : 'Show'} type breakdown
+              </button>
+              {showTypeBreakdown && (
+                <div className="space-y-0.5 w-full">
+                  <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 text-[9px] font-semibold text-gray-400 uppercase tracking-wider px-1 pb-0.5 border-b border-gray-100">
+                    <span>Type</span>
+                    <span className="text-right">Acum</span>
+                    <span className="text-right">DB</span>
+                    <span className="text-right">Diff</span>
+                  </div>
+                  {typeEntries.map(([typeName, counts]) => {
+                    const config = PAYMENT_TYPE_CONFIG[typeName];
+                    const typeInSync = counts.difference === 0;
+                    const typeMissing = counts.difference > 0;
+                    return (
+                      <div
+                        key={typeName}
+                        className={`grid grid-cols-[1fr_auto_auto_auto] gap-x-2 text-[10px] px-1 py-0.5 rounded ${
+                          !typeInSync ? 'bg-amber-50/60' : ''
+                        }`}
+                      >
+                        <span
+                          className="font-medium truncate"
+                          style={{ color: config?.color || '#6b7280' }}
+                          title={typeName}
+                        >
+                          {config?.label || typeName}
+                        </span>
+                        <span className="text-right tabular-nums text-gray-600">{counts.acumatica}</span>
+                        <span className="text-right tabular-nums text-gray-600">{counts.db}</span>
+                        <span className={`text-right tabular-nums font-semibold ${
+                          typeInSync ? 'text-emerald-600' : typeMissing ? 'text-amber-600' : 'text-blue-600'
+                        }`}>
+                          {typeInSync ? '0' : typeMissing ? `-${counts.difference}` : `+${Math.abs(counts.difference)}`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {verifyResult && verifyResult.stalePayments.length > 0 && (
             <button
