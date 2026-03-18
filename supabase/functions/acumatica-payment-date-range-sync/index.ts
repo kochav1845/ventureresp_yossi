@@ -257,7 +257,7 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
   const filterStartDate = new Date(startDate).toISOString().split('.')[0];
   const filterEndDate = new Date(endDate).toISOString().split('.')[0];
 
-  const paymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=ApplicationDate ge datetimeoffset'${filterStartDate}' and ApplicationDate le datetimeoffset'${filterEndDate}' and Type ne 'Credit Memo'`;
+  const paymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=ApplicationDate ge datetimeoffset'${filterStartDate}' and ApplicationDate le datetimeoffset'${filterEndDate}'`;
 
   console.log(`[payment-sync] Fetching payment list from ${filterStartDate} to ${filterEndDate}`);
 
@@ -283,8 +283,7 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
     .from('acumatica_payments')
     .select('id, reference_number, type, status, last_modified_datetime')
     .gte('application_date', `${startDate}T00:00:00`)
-    .lte('application_date', `${endDate}T23:59:59`)
-    .neq('type', 'Credit Memo');
+    .lte('application_date', `${endDate}T23:59:59`);
 
   const dbKeyMap = new Map<string, { id: number; status: string; last_modified_datetime: string }>();
   if (dbPayments) {
