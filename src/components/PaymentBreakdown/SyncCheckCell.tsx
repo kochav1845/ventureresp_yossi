@@ -278,25 +278,25 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
           )}
 
           <div className="flex items-center gap-1.5 flex-wrap justify-center">
-            {missing && (
-              <button
-                onClick={handleFetch}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-white bg-amber-500 rounded-md hover:bg-amber-600 transition-colors shadow-sm"
-              >
-                <Download size={10} />
-                Fetch
-              </button>
-            )}
-            {(hasExtra || !inSync) && (
-              <button
-                onClick={(e) => handleVerify(e, false)}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-md hover:bg-teal-100 transition-colors"
-                title="Check for stale/moved payment dates"
-              >
-                <Search size={10} />
-                Verify
-              </button>
-            )}
+            <button
+              onClick={handleFetch}
+              className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-md transition-colors shadow-sm ${
+                !inSync
+                  ? 'text-white bg-amber-500 hover:bg-amber-600'
+                  : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+              }`}
+            >
+              <Download size={10} />
+              Fetch
+            </button>
+            <button
+              onClick={(e) => handleVerify(e, false)}
+              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-md hover:bg-teal-100 transition-colors"
+              title="Check for stale/moved payment dates"
+            >
+              <Search size={10} />
+              Verify
+            </button>
             {verifyResult && verifyResult.stalePayments.length > 0 && (
               <button
                 onClick={(e) => handleVerify(e, true)}
