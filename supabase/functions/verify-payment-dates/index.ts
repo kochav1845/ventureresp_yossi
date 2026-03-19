@@ -70,7 +70,7 @@ Deno.serve(async (req: Request) => {
     const filterStart = new Date(startDate).toISOString().split('.')[0];
     const filterEnd = new Date(endDate + 'T23:59:59').toISOString().split('.')[0];
 
-    const acumaticaPaymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=ApplicationDate ge datetimeoffset'${filterStart}' and ApplicationDate le datetimeoffset'${filterEnd}' and Type ne 'Credit Memo'&$select=ReferenceNbr,Type,ApplicationDate,LastModifiedDateTime,PaymentAmount,Status`;
+    const acumaticaPaymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=ApplicationDate ge datetimeoffset'${filterStart}' and ApplicationDate le datetimeoffset'${filterEnd}'&$select=ReferenceNbr,Type,ApplicationDate,LastModifiedDateTime,PaymentAmount,Status`;
 
     console.log(`[verify-dates] Fetching Acumatica payments for ${startDate} to ${endDate}`);
 
@@ -105,7 +105,7 @@ Deno.serve(async (req: Request) => {
       .select('id, reference_number, type, application_date, payment_amount, status, customer_name')
       .gte('application_date', `${startDate}T00:00:00`)
       .lte('application_date', `${endDate}T23:59:59`)
-      .neq('type', 'Credit Memo');
+;
 
     if (dbError) throw new Error(`DB query error: ${dbError.message}`);
 

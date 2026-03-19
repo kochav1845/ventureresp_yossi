@@ -144,6 +144,10 @@ export default function PaymentBreakdown() {
       'Refund Amount': m.refund_amount,
       'Balance W/O': m.balance_wo_count,
       'Balance W/O Amount': m.balance_wo_amount,
+      'Credit Memos': m.credit_memo_count,
+      'Credit Memo Amount': m.credit_memo_amount,
+      'Voided Refunds': m.voided_refund_count,
+      'Voided Refund Amount': m.voided_refund_amount,
     }));
 
     const headers = Object.keys(rows[0] || {});

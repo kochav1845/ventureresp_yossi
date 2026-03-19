@@ -16,7 +16,7 @@ interface MonthComparisonTableProps {
   onCancel?: (monthKey: string) => void;
 }
 
-type SortField = 'month' | 'total' | 'payments' | 'prepayments' | 'voided' | 'refunds' | 'balance_wo';
+type SortField = 'month' | 'total' | 'payments' | 'prepayments' | 'voided' | 'refunds' | 'balance_wo' | 'credit_memo' | 'voided_refund';
 type SortDir = 'asc' | 'desc';
 
 export default function MonthComparisonTable({
@@ -45,6 +45,8 @@ export default function MonthComparisonTable({
       case 'voided': return dir * (a.voided_amount - b.voided_amount);
       case 'refunds': return dir * (a.refund_amount - b.refund_amount);
       case 'balance_wo': return dir * (a.balance_wo_amount - b.balance_wo_amount);
+      case 'credit_memo': return dir * (a.credit_memo_amount - b.credit_memo_amount);
+      case 'voided_refund': return dir * (a.voided_refund_amount - b.voided_refund_amount);
       default: return 0;
     }
   });
@@ -83,6 +85,8 @@ export default function MonthComparisonTable({
             <SortHeader field="voided" className="text-right text-red-600">Voided</SortHeader>
             <SortHeader field="refunds" className="text-right text-amber-600">Refunds</SortHeader>
             <SortHeader field="balance_wo" className="text-right text-gray-500">Balance W/O</SortHeader>
+            <SortHeader field="credit_memo" className="text-right text-violet-600">Credit Memos</SortHeader>
+            <SortHeader field="voided_refund" className="text-right text-pink-600">Voided Refunds</SortHeader>
             <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-center text-gray-600">
               Sync Check
             </th>
@@ -118,6 +122,8 @@ export default function MonthComparisonTable({
                 <TypeCell count={month.voided_count} amount={month.voided_amount} type="Voided Payment" prevAmount={prevMonth?.voided_amount} getTrend={getTrend} />
                 <TypeCell count={month.refund_count} amount={month.refund_amount} type="Refund" prevAmount={prevMonth?.refund_amount} getTrend={getTrend} />
                 <TypeCell count={month.balance_wo_count} amount={month.balance_wo_amount} type="Balance WO" prevAmount={prevMonth?.balance_wo_amount} getTrend={getTrend} />
+                <TypeCell count={month.credit_memo_count} amount={month.credit_memo_amount} type="Credit Memo" prevAmount={prevMonth?.credit_memo_amount} getTrend={getTrend} />
+                <TypeCell count={month.voided_refund_count} amount={month.voided_refund_amount} type="Voided Refund" prevAmount={prevMonth?.voided_refund_amount} getTrend={getTrend} />
                 <SyncCheckCell
                   cellKey={month.month_key}
                   comparison={comparisons[month.month_key]}
