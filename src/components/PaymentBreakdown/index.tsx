@@ -48,7 +48,21 @@ export default function PaymentBreakdown() {
     fetchMonth, fetchDay,
     verifyMonth, verifyDay,
     cancelFetch,
+    deleteExtraPayment,
+    deleteAllExtraPayments,
   } = usePaymentComparison(loadMonthSummaries);
+
+  const handleDeletePayment = useCallback(async (monthKey: string, referenceNumber: string, type: string) => {
+    await deleteExtraPayment(monthKey, referenceNumber, type);
+    compareMonth(monthKey);
+    loadMonthSummaries();
+  }, [deleteExtraPayment, compareMonth, loadMonthSummaries]);
+
+  const handleDeleteAllExtra = useCallback(async (monthKey: string, payments: { reference_number: string; type: string }[]) => {
+    await deleteAllExtraPayments(monthKey, payments);
+    compareMonth(monthKey);
+    loadMonthSummaries();
+  }, [deleteAllExtraPayments, compareMonth, loadMonthSummaries]);
 
   useEffect(() => {
     loadMonthSummaries();
@@ -328,6 +342,8 @@ export default function PaymentBreakdown() {
                 onFetch={fetchMonth}
                 onVerify={(monthKey, fix) => verifyMonth(monthKey, fix)}
                 onCancel={cancelFetch}
+                onDeletePayment={handleDeletePayment}
+                onDeleteAllExtra={handleDeleteAllExtra}
               />
             </div>
           </>

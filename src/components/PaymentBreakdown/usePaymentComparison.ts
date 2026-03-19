@@ -478,6 +478,67 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
     return runVerify(dateKey, dateKey, dateKey, fix);
   }, [runVerify]);
 
+  const deleteExtraPayment = useCallback(async (key: string, referenceNumber: string, type: string) => {
+    const { data, error } = await supabase.rpc('delete_extra_payment', {
+      p_reference_number: referenceNumber,
+      p_type: type,
+    });
+
+    if (error) throw new Error(error.message);
+
+    setVerifications(prev => {
+      const current = prev[key];
+      if (!current?.result) return prev;
+      return {
+        ...prev,
+        [key]: {
+          ...current,
+          result: {
+            ...current.result,
+            stalePayments: current.result.stalePayments.filter(
+              p => !(p.reference_number === referenceNumber && p.type === type)
+            ),
+            inDbNotAcumatica: current.result.inDbNotAcumatica - (data || 0),
+          }
+        }
+      };
+    });
+
+    return data || 0;
+  }, []);
+
+  const deleteAllExtraPayments = useCallback(async (key: string, payments: { reference_number: string; type: string }[]) => {
+    let deleted = 0;
+    for (const p of payments) {
+      const { data, error } = await supabase.rpc('delete_extra_payment', {
+        p_reference_number: p.reference_number,
+        p_type: p.type,
+      });
+      if (!error) deleted += (data || 0);
+    }
+
+    setVerifications(prev => {
+      const current = prev[key];
+      if (!current?.result) return prev;
+      const deletedKeys = new Set(payments.map(p => `${p.type}:${p.reference_number}`));
+      return {
+        ...prev,
+        [key]: {
+          ...current,
+          result: {
+            ...current.result,
+            stalePayments: current.result.stalePayments.filter(
+              p => !deletedKeys.has(`${p.type}:${p.reference_number}`)
+            ),
+            inDbNotAcumatica: Math.max(0, current.result.inDbNotAcumatica - deleted),
+          }
+        }
+      };
+    });
+
+    return deleted;
+  }, []);
+
   return {
     comparisons,
     fetches,
@@ -489,5 +550,7 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
     verifyMonth,
     verifyDay,
     cancelFetch,
+    deleteExtraPayment,
+    deleteAllExtraPayments,
   };
 }

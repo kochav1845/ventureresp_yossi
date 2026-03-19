@@ -14,6 +14,8 @@ interface MonthComparisonTableProps {
   onFetch: (monthKey: string) => void;
   onVerify: (monthKey: string, fix: boolean) => void;
   onCancel?: (monthKey: string) => void;
+  onDeletePayment?: (monthKey: string, referenceNumber: string, type: string) => Promise<void>;
+  onDeleteAllExtra?: (monthKey: string, payments: { reference_number: string; type: string }[]) => Promise<void>;
 }
 
 type SortField = 'month' | 'total' | 'payments' | 'prepayments' | 'voided' | 'refunds' | 'balance_wo' | 'credit_memo' | 'voided_refund';
@@ -22,6 +24,7 @@ type SortDir = 'asc' | 'desc';
 export default function MonthComparisonTable({
   months, onMonthClick, selectedMonth,
   comparisons, fetches, verifications, onCompare, onFetch, onVerify, onCancel,
+  onDeletePayment, onDeleteAllExtra,
 }: MonthComparisonTableProps) {
   const [sortField, setSortField] = useState<SortField>('month');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -133,6 +136,8 @@ export default function MonthComparisonTable({
                   onFetch={() => onFetch(month.month_key)}
                   onVerify={(fix) => onVerify(month.month_key, fix)}
                   onCancel={onCancel ? () => onCancel(month.month_key) : undefined}
+                  onDeletePayment={onDeletePayment ? (ref, type) => onDeletePayment(month.month_key, ref, type) : undefined}
+                  onDeleteAllExtra={onDeleteAllExtra ? (payments) => onDeleteAllExtra(month.month_key, payments) : undefined}
                 />
               </tr>
             );

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RefreshCw, Check, AlertTriangle, Download, XCircle, Search, Wrench, X, StopCircle } from 'lucide-react';
+import { RefreshCw, Check, AlertTriangle, Download, XCircle, Search, Wrench, X, StopCircle, Trash2 } from 'lucide-react';
 import { ComparisonState, FetchState, VerifyState, PAYMENT_TYPE_CONFIG, formatCurrency } from './types';
 
 interface SyncCheckCellProps {
@@ -10,12 +10,16 @@ interface SyncCheckCellProps {
   onFetch: () => void;
   onVerify: (fix: boolean) => void;
   onCancel?: () => void;
+  onDeletePayment?: (referenceNumber: string, type: string) => Promise<void>;
+  onDeleteAllExtra?: (payments: { reference_number: string; type: string }[]) => Promise<void>;
   cellKey: string;
 }
 
-export default function SyncCheckCell({ comparison, fetchState, verification, onCompare, onFetch, onVerify, onCancel }: SyncCheckCellProps) {
+export default function SyncCheckCell({ comparison, fetchState, verification, onCompare, onFetch, onVerify, onCancel, onDeletePayment, onDeleteAllExtra }: SyncCheckCellProps) {
   const [showVerifyDetail, setShowVerifyDetail] = useState(false);
   const [showTypeBreakdown, setShowTypeBreakdown] = useState(true);
+  const [deletingPayments, setDeletingPayments] = useState<Set<string>>(new Set());
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const handleCompare = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -40,6 +44,37 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
   const handleCancel = (e: React.MouseEvent) => {
     e.stopPropagation();
     onCancel?.();
+  };
+
+  const handleDeletePayment = async (e: React.MouseEvent, referenceNumber: string, type: string) => {
+    e.stopPropagation();
+    if (!onDeletePayment) return;
+    const key = `${type}:${referenceNumber}`;
+    setDeletingPayments(prev => new Set(prev).add(key));
+    try {
+      await onDeletePayment(referenceNumber, type);
+    } finally {
+      setDeletingPayments(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
+  const handleDeleteAllExtra = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onDeleteAllExtra || !verification?.result) return;
+    const notFound = verification.result.stalePayments.filter(
+      p => !p.acumatica_date && p.acumatica_status === 'NOT FOUND IN ACUMATICA'
+    );
+    if (notFound.length === 0) return;
+    setDeletingAll(true);
+    try {
+      await onDeleteAllExtra(notFound.map(p => ({ reference_number: p.reference_number, type: p.type })));
+    } finally {
+      setDeletingAll(false);
+    }
   };
 
   if (fetchState?.loading) {
@@ -318,7 +353,7 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
 
         {showVerifyDetail && verifyResult && verifyResult.stalePayments.length > 0 && (
           <div
-            className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-3 min-w-[340px] max-h-[300px] overflow-y-auto"
+            className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-3 min-w-[380px] max-h-[400px] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-2">
@@ -332,22 +367,64 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
             <div className="text-[10px] text-gray-500 mb-2">
               These payments are in your DB for this date range but no longer in Acumatica for this range.
             </div>
+
+            {(() => {
+              const notFoundPayments = verifyResult.stalePayments.filter(
+                p => !p.acumatica_date && p.acumatica_status === 'NOT FOUND IN ACUMATICA'
+              );
+              return notFoundPayments.length > 1 && onDeleteAllExtra ? (
+                <button
+                  onClick={handleDeleteAllExtra}
+                  disabled={deletingAll}
+                  className="flex items-center gap-1 w-full px-2 py-1.5 mb-2 text-[10px] font-semibold text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed justify-center"
+                >
+                  {deletingAll ? (
+                    <RefreshCw size={10} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={10} />
+                  )}
+                  {deletingAll ? 'Deleting...' : `Delete All ${notFoundPayments.length} Not Found in Acumatica`}
+                </button>
+              ) : null;
+            })()}
+
             <div className="space-y-1.5">
-              {verifyResult.stalePayments.map((p, i) => (
-                <div key={i} className="flex items-start gap-2 text-[11px] p-1.5 bg-gray-50 rounded border border-gray-100">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-800">#{p.reference_number} ({p.type})</div>
-                    <div className="text-gray-500 truncate">{p.customer_name}</div>
-                    <div className="text-gray-400">{formatCurrency(p.amount)}</div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-red-500 line-through">{p.db_date?.split('T')[0]}</div>
-                    <div className="text-emerald-600 font-medium">
-                      {p.acumatica_date ? p.acumatica_date.split('T')[0] : p.acumatica_status}
+              {verifyResult.stalePayments.map((p, i) => {
+                const isNotFound = !p.acumatica_date && p.acumatica_status === 'NOT FOUND IN ACUMATICA';
+                const deleteKey = `${p.type}:${p.reference_number}`;
+                const isDeleting = deletingPayments.has(deleteKey);
+                return (
+                  <div key={i} className={`flex items-start gap-2 text-[11px] p-1.5 rounded border ${
+                    isNotFound ? 'bg-red-50/50 border-red-200' : 'bg-gray-50 border-gray-100'
+                  }`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-gray-800">#{p.reference_number} ({p.type})</div>
+                      <div className="text-gray-500 truncate">{p.customer_name}</div>
+                      <div className="text-gray-400">{formatCurrency(p.amount)}</div>
+                    </div>
+                    <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                      <div className="text-red-500 line-through">{p.db_date?.split('T')[0]}</div>
+                      <div className={`font-medium ${p.acumatica_date ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {p.acumatica_date ? p.acumatica_date.split('T')[0] : p.acumatica_status}
+                      </div>
+                      {isNotFound && onDeletePayment && (
+                        <button
+                          onClick={(e) => handleDeletePayment(e, p.reference_number, p.type)}
+                          disabled={isDeleting || deletingAll}
+                          className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-semibold text-red-700 bg-red-100 border border-red-300 rounded hover:bg-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isDeleting ? (
+                            <RefreshCw size={8} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={8} />
+                          )}
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
