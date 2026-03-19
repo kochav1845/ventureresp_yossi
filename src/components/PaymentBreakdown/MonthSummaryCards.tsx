@@ -1,4 +1,4 @@
-import { DollarSign, CreditCard, ArrowDownRight, RotateCcw, FileX, FileText, Ban } from 'lucide-react';
+import { DollarSign, CreditCard, ArrowDownRight, RotateCcw, FileX, FileText, Ban, FilePlus } from 'lucide-react';
 import { MonthSummary, formatCurrency, formatNumber } from './types';
 
 interface MonthSummaryCardsProps {
@@ -21,7 +21,9 @@ export default function MonthSummaryCards({ months }: MonthSummaryCardsProps) {
     creditMemoCount: acc.creditMemoCount + m.credit_memo_count,
     voidedRefunds: acc.voidedRefunds + m.voided_refund_amount,
     voidedRefundCount: acc.voidedRefundCount + m.voided_refund_count,
-  }), { total: 0, count: 0, payments: 0, paymentCount: 0, prepayments: 0, prepaymentCount: 0, voided: 0, voidedCount: 0, refunds: 0, refundCount: 0, creditMemos: 0, creditMemoCount: 0, voidedRefunds: 0, voidedRefundCount: 0 });
+    debitMemos: acc.debitMemos + m.debit_memo_amount,
+    debitMemoCount: acc.debitMemoCount + m.debit_memo_count,
+  }), { total: 0, count: 0, payments: 0, paymentCount: 0, prepayments: 0, prepaymentCount: 0, voided: 0, voidedCount: 0, refunds: 0, refundCount: 0, creditMemos: 0, creditMemoCount: 0, voidedRefunds: 0, voidedRefundCount: 0, debitMemos: 0, debitMemoCount: 0 });
 
   const cards = [
     { label: 'Net Collections', amount: totals.payments + totals.prepayments - Math.abs(totals.voided) - Math.abs(totals.refunds), count: totals.count, icon: DollarSign, gradient: 'from-emerald-500 to-teal-600', description: 'Payments + Prepayments - Voided - Refunds' },
@@ -31,10 +33,11 @@ export default function MonthSummaryCards({ months }: MonthSummaryCardsProps) {
     { label: 'Voided', amount: totals.voided, count: totals.voidedCount, icon: FileX, gradient: 'from-red-500 to-red-600', description: 'Voided and reversed payments' },
     { label: 'Refunds', amount: totals.refunds, count: totals.refundCount, icon: RotateCcw, gradient: 'from-amber-500 to-amber-600', description: 'Customer refunds issued' },
     { label: 'Voided Refunds', amount: totals.voidedRefunds, count: totals.voidedRefundCount, icon: Ban, gradient: 'from-pink-500 to-pink-600', description: 'Reversed refund transactions' },
+    { label: 'Debit Memos', amount: totals.debitMemos, count: totals.debitMemoCount, icon: FilePlus, gradient: 'from-orange-500 to-orange-600', description: 'Debit memo adjustments' },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
       {cards.map(card => {
         const Icon = card.icon;
         return (

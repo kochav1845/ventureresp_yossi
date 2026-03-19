@@ -17,7 +17,7 @@ interface DateDrillDownProps {
   excludeCreditMemos?: boolean;
 }
 
-type SortField = 'date' | 'total' | 'payment' | 'prepayment' | 'voided' | 'refund' | 'balance_wo' | 'credit_memo' | 'voided_refund';
+type SortField = 'date' | 'total' | 'payment' | 'prepayment' | 'voided' | 'refund' | 'balance_wo' | 'credit_memo' | 'voided_refund' | 'debit_memo';
 
 export default function DateDrillDown({
   days, monthLabel, onBack,
@@ -56,6 +56,7 @@ export default function DateDrillDown({
       case 'balance_wo': return dir * (getTypeAmount(a, 'Balance WO') - getTypeAmount(b, 'Balance WO'));
       case 'credit_memo': return dir * (getTypeAmount(a, 'Credit Memo') - getTypeAmount(b, 'Credit Memo'));
       case 'voided_refund': return dir * (getTypeAmount(a, 'Voided Refund') - getTypeAmount(b, 'Voided Refund'));
+      case 'debit_memo': return dir * (getTypeAmount(a, 'Debit Memo') - getTypeAmount(b, 'Debit Memo'));
       default: return 0;
     }
   });
@@ -105,7 +106,7 @@ export default function DateDrillDown({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-9 gap-3 mb-5">
         {[
           { label: 'Total', amount: totals.total, count: totals.count, color: 'text-gray-900', bg: 'bg-gray-50' },
           { label: 'Payments', amount: totals.types['Payment']?.amount || 0, count: totals.types['Payment']?.count || 0, color: 'text-blue-700', bg: 'bg-blue-50' },
@@ -115,6 +116,7 @@ export default function DateDrillDown({
           { label: 'Balance W/O', amount: totals.types['Balance WO']?.amount || 0, count: totals.types['Balance WO']?.count || 0, color: 'text-gray-600', bg: 'bg-gray-50' },
           { label: 'Credit Memos', amount: totals.types['Credit Memo']?.amount || 0, count: totals.types['Credit Memo']?.count || 0, color: 'text-violet-700', bg: 'bg-violet-50' },
           { label: 'Voided Refunds', amount: totals.types['Voided Refund']?.amount || 0, count: totals.types['Voided Refund']?.count || 0, color: 'text-pink-700', bg: 'bg-pink-50' },
+          { label: 'Debit Memos', amount: totals.types['Debit Memo']?.amount || 0, count: totals.types['Debit Memo']?.count || 0, color: 'text-orange-700', bg: 'bg-orange-50' },
         ].map(stat => (
           <div key={stat.label} className={`${stat.bg} rounded-lg p-3 border border-gray-100`}>
             <div className="text-xs font-medium text-gray-500 mb-1">{stat.label}</div>
@@ -137,6 +139,7 @@ export default function DateDrillDown({
               <SortHeader field="balance_wo" className="text-right text-gray-500">Balance W/O</SortHeader>
               <SortHeader field="credit_memo" className="text-right text-violet-600">Credit Memos</SortHeader>
               <SortHeader field="voided_refund" className="text-right text-pink-600">Voided Refunds</SortHeader>
+              <SortHeader field="debit_memo" className="text-right text-orange-600">Debit Memos</SortHeader>
               <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-center text-gray-600">
                 Sync Check
               </th>
@@ -185,7 +188,7 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState,
   onCancel?: () => void;
   excludeCreditMemos?: boolean;
 }) {
-  const allTypes = ['Payment', 'Prepayment', 'Voided Payment', 'Voided Check', 'Refund', 'Balance WO'];
+  const allTypes = ['Payment', 'Prepayment', 'Voided Payment', 'Voided Check', 'Refund', 'Balance WO', 'Credit Memo', 'Voided Refund', 'Debit Memo'];
 
   return (
     <>
@@ -228,6 +231,7 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState,
         <TypeCell types={day.types} typeKey="Balance WO" />
         <TypeCell types={day.types} typeKey="Credit Memo" />
         <TypeCell types={day.types} typeKey="Voided Refund" />
+        <TypeCell types={day.types} typeKey="Debit Memo" />
         <SyncCheckCell
           cellKey={day.date}
           comparison={comparison}
@@ -242,7 +246,7 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState,
       </tr>
       {isExpanded && (
         <tr className="bg-blue-50/50">
-          <td colSpan={10} className="px-6 py-3">
+          <td colSpan={11} className="px-6 py-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {allTypes.filter(t => day.types[t]).map(type => {
                 const data = day.types[type];

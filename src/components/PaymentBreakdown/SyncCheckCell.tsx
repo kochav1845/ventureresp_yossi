@@ -216,7 +216,7 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
     const typeEntries = Object.entries(byType || {})
       .filter(([typeName]) => !shouldExclude(typeName))
       .sort((a, b) => {
-        const order = ['Payment', 'Prepayment', 'Credit Memo', 'Voided Payment', 'Voided Check', 'Refund', 'Balance WO', 'Voided Refund'];
+        const order = ['Payment', 'Prepayment', 'Credit Memo', 'Debit Memo', 'Voided Payment', 'Voided Check', 'Refund', 'Balance WO', 'Voided Refund'];
         return (order.indexOf(a[0]) === -1 ? 99 : order.indexOf(a[0])) - (order.indexOf(b[0]) === -1 ? 99 : order.indexOf(b[0]));
       });
 

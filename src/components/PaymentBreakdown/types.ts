@@ -17,6 +17,8 @@ export interface MonthSummary {
   credit_memo_amount: number;
   voided_refund_count: number;
   voided_refund_amount: number;
+  debit_memo_count: number;
+  debit_memo_amount: number;
 }
 
 export interface DateBreakdownRow {
@@ -37,7 +39,7 @@ export interface DaySummary {
   types: Record<string, { count: number; amount: number; statuses: Record<string, { count: number; amount: number }> }>;
 }
 
-export type PaymentTypeKey = 'Payment' | 'Prepayment' | 'Voided Payment' | 'Refund' | 'Balance WO' | 'Credit Memo' | 'Voided Refund';
+export type PaymentTypeKey = 'Payment' | 'Prepayment' | 'Voided Payment' | 'Refund' | 'Balance WO' | 'Credit Memo' | 'Voided Refund' | 'Debit Memo';
 
 export const PAYMENT_TYPE_CONFIG: Record<string, { label: string; color: string; bgColor: string; textColor: string }> = {
   'Payment': { label: 'Payments', color: '#2563eb', bgColor: 'bg-blue-50', textColor: 'text-blue-700' },
@@ -48,6 +50,7 @@ export const PAYMENT_TYPE_CONFIG: Record<string, { label: string; color: string;
   'Balance WO': { label: 'Balance W/O', color: '#6b7280', bgColor: 'bg-gray-50', textColor: 'text-gray-700' },
   'Credit Memo': { label: 'Credit Memos', color: '#7c3aed', bgColor: 'bg-violet-50', textColor: 'text-violet-700' },
   'Voided Refund': { label: 'Voided Refunds', color: '#be185d', bgColor: 'bg-pink-50', textColor: 'text-pink-700' },
+  'Debit Memo': { label: 'Debit Memos', color: '#b45309', bgColor: 'bg-orange-50', textColor: 'text-orange-700' },
 };
 
 export function formatCurrency(amount: number): string {

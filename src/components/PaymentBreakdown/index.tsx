@@ -163,6 +163,8 @@ export default function PaymentBreakdown() {
       'Credit Memo Amount': m.credit_memo_amount,
       'Voided Refunds': m.voided_refund_count,
       'Voided Refund Amount': m.voided_refund_amount,
+      'Debit Memos': m.debit_memo_count,
+      'Debit Memo Amount': m.debit_memo_amount,
     }));
 
     const headers = Object.keys(rows[0] || {});
