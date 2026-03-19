@@ -12,10 +12,11 @@ interface SyncCheckCellProps {
   onCancel?: () => void;
   onDeletePayment?: (referenceNumber: string, type: string) => Promise<void>;
   onDeleteAllExtra?: (payments: { reference_number: string; type: string }[]) => Promise<void>;
+  excludeCreditMemos?: boolean;
   cellKey: string;
 }
 
-export default function SyncCheckCell({ comparison, fetchState, verification, onCompare, onFetch, onVerify, onCancel, onDeletePayment, onDeleteAllExtra }: SyncCheckCellProps) {
+export default function SyncCheckCell({ comparison, fetchState, verification, onCompare, onFetch, onVerify, onCancel, onDeletePayment, onDeleteAllExtra, excludeCreditMemos }: SyncCheckCellProps) {
   const [showVerifyDetail, setShowVerifyDetail] = useState(false);
   const [showTypeBreakdown, setShowTypeBreakdown] = useState(true);
   const [deletingPayments, setDeletingPayments] = useState<Set<string>>(new Set());
@@ -195,16 +196,29 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
   }
 
   if (comparison?.result) {
-    const { acumaticaCount, dbCount, difference, byType } = comparison.result;
+    const { byType } = comparison.result;
+
+    const creditMemoTypes = ['Credit Memo'];
+    const shouldExclude = (typeName: string) => excludeCreditMemos && creditMemoTypes.includes(typeName);
+
+    const acumaticaCount = Object.entries(byType || {}).reduce(
+      (sum, [t, c]) => sum + (shouldExclude(t) ? 0 : c.acumatica), 0
+    );
+    const dbCount = Object.entries(byType || {}).reduce(
+      (sum, [t, c]) => sum + (shouldExclude(t) ? 0 : c.db), 0
+    );
+    const difference = acumaticaCount - dbCount;
     const inSync = difference === 0;
     const missing = difference > 0;
     const hasExtra = difference < 0;
     const verifyResult = verification?.result;
 
-    const typeEntries = Object.entries(byType || {}).sort((a, b) => {
-      const order = ['Payment', 'Prepayment', 'Credit Memo', 'Voided Payment', 'Voided Check', 'Refund', 'Balance WO'];
-      return (order.indexOf(a[0]) === -1 ? 99 : order.indexOf(a[0])) - (order.indexOf(b[0]) === -1 ? 99 : order.indexOf(b[0]));
-    });
+    const typeEntries = Object.entries(byType || {})
+      .filter(([typeName]) => !shouldExclude(typeName))
+      .sort((a, b) => {
+        const order = ['Payment', 'Prepayment', 'Credit Memo', 'Voided Payment', 'Voided Check', 'Refund', 'Balance WO', 'Voided Refund'];
+        return (order.indexOf(a[0]) === -1 ? 99 : order.indexOf(a[0])) - (order.indexOf(b[0]) === -1 ? 99 : order.indexOf(b[0]));
+      });
 
     return (
       <td className="px-3 py-3 relative">

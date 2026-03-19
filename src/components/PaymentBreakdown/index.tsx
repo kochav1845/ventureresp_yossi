@@ -27,6 +27,7 @@ export default function PaymentBreakdown() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [showFilters, setShowFilters] = useState(false);
+  const [excludeCreditMemos, setExcludeCreditMemos] = useState(false);
 
   const loadMonthSummaries = useCallback(async () => {
     setLoading(true);
@@ -251,6 +252,25 @@ export default function PaymentBreakdown() {
                 <span className="w-2 h-2 rounded-full bg-blue-600"></span>
               )}
             </button>
+            <button
+              onClick={() => setExcludeCreditMemos(!excludeCreditMemos)}
+              className={`flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg transition-colors ${
+                excludeCreditMemos
+                  ? 'bg-amber-50 border-amber-200 text-amber-700'
+                  : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors ${
+                excludeCreditMemos ? 'bg-amber-500 border-amber-500' : 'border-gray-300'
+              }`}>
+                {excludeCreditMemos && (
+                  <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M2 6l3 3 5-5" />
+                  </svg>
+                )}
+              </div>
+              Exclude Credit Memos
+            </button>
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
@@ -313,6 +333,7 @@ export default function PaymentBreakdown() {
                   onFetch={fetchDay}
                   onVerify={(dateKey, fix) => verifyDay(dateKey, fix)}
                   onCancel={cancelFetch}
+                  excludeCreditMemos={excludeCreditMemos}
                 />
               </div>
             )}
@@ -344,6 +365,7 @@ export default function PaymentBreakdown() {
                 onCancel={cancelFetch}
                 onDeletePayment={handleDeletePayment}
                 onDeleteAllExtra={handleDeleteAllExtra}
+                excludeCreditMemos={excludeCreditMemos}
               />
             </div>
           </>

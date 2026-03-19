@@ -14,13 +14,14 @@ interface DateDrillDownProps {
   onFetch: (dateKey: string) => void;
   onVerify: (dateKey: string, fix: boolean) => void;
   onCancel?: (dateKey: string) => void;
+  excludeCreditMemos?: boolean;
 }
 
 type SortField = 'date' | 'total' | 'payment' | 'prepayment' | 'voided' | 'refund' | 'balance_wo' | 'credit_memo' | 'voided_refund';
 
 export default function DateDrillDown({
   days, monthLabel, onBack,
-  comparisons, fetches, verifications, onCompare, onFetch, onVerify, onCancel,
+  comparisons, fetches, verifications, onCompare, onFetch, onVerify, onCancel, excludeCreditMemos,
 }: DateDrillDownProps) {
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('date');
@@ -159,6 +160,7 @@ export default function DateDrillDown({
                   onFetch={() => onFetch(day.date)}
                   onVerify={(fix) => onVerify(day.date, fix)}
                   onCancel={onCancel ? () => onCancel(day.date) : undefined}
+                  excludeCreditMemos={excludeCreditMemos}
                 />
               );
             })}
@@ -169,7 +171,7 @@ export default function DateDrillDown({
   );
 }
 
-function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState, verification, onCompare, onFetch, onVerify, onCancel }: {
+function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState, verification, onCompare, onFetch, onVerify, onCancel, excludeCreditMemos }: {
   day: DaySummary;
   dayOfWeek: string;
   isExpanded: boolean;
@@ -181,6 +183,7 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState,
   onFetch: () => void;
   onVerify: (fix: boolean) => void;
   onCancel?: () => void;
+  excludeCreditMemos?: boolean;
 }) {
   const allTypes = ['Payment', 'Prepayment', 'Voided Payment', 'Voided Check', 'Refund', 'Balance WO'];
 
@@ -234,6 +237,7 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState,
           onFetch={onFetch}
           onVerify={onVerify}
           onCancel={onCancel}
+          excludeCreditMemos={excludeCreditMemos}
         />
       </tr>
       {isExpanded && (
