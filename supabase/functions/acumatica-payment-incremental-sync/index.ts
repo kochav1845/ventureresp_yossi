@@ -176,7 +176,7 @@ Deno.serve(async (req: Request) => {
     const cutoffTime = new Date(Date.now() - lookbackMinutes * 60 * 1000);
     const filterDate = cutoffTime.toISOString().split('.')[0];
 
-    const paymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$expand=files&$filter=LastModifiedDateTime gt datetimeoffset'${filterDate}'`;
+    const paymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$expand=files&$filter=LastModifiedDateTime gt datetimeoffset'${filterDate}'&$custom=Document.DocDate,Document.FinPeriodID`;
 
     console.log(`Fetching payments modified after ${filterDate} (last ${lookbackMinutes} minutes)`);
 
@@ -220,12 +220,15 @@ Deno.serve(async (req: Request) => {
             refNbr = refNbr.padStart(6, '0');
           }
 
+          const customDoc = payment.custom?.Document;
           const paymentData: any = {
             reference_number: refNbr,
             type: type,
             status: payment.Status?.value || null,
             hold: payment.Hold?.value || false,
             application_date: payment.ApplicationDate?.value || payment.PaymentDate?.value || null,
+            doc_date: customDoc?.DocDate?.value || null,
+            financial_period: customDoc?.FinPeriodID?.value || null,
             payment_amount: payment.PaymentAmount?.value || 0,
             available_balance: payment.UnappliedBalance?.value || 0,
             customer_id: payment.CustomerID?.value || null,

@@ -80,6 +80,9 @@ function normalizeRefNbr(refNbr: string): string {
 function extractPaymentData(payment: any) {
   const refNbr = normalizeRefNbr(payment.ReferenceNbr?.value || '');
   const type = payment.Type?.value;
+  const customDoc = payment.custom?.Document;
+  const docDate = customDoc?.DocDate?.value || null;
+  const financialPeriod = customDoc?.FinPeriodID?.value || null;
   return {
     refNbr,
     type,
@@ -89,6 +92,8 @@ function extractPaymentData(payment: any) {
       status: payment.Status?.value || null,
       hold: payment.Hold?.value || false,
       application_date: payment.ApplicationDate?.value || payment.PaymentDate?.value || null,
+      doc_date: docDate,
+      financial_period: financialPeriod,
       payment_amount: payment.PaymentAmount?.value || 0,
       available_balance: payment.UnappliedBalance?.value || 0,
       customer_id: payment.CustomerID?.value || null,
@@ -257,7 +262,7 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
   const filterStartDate = new Date(startDate).toISOString().split('.')[0];
   const filterEndDate = new Date(endDate).toISOString().split('.')[0];
 
-  const paymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=ApplicationDate ge datetimeoffset'${filterStartDate}' and ApplicationDate le datetimeoffset'${filterEndDate}'`;
+  const paymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=ApplicationDate ge datetimeoffset'${filterStartDate}' and ApplicationDate le datetimeoffset'${filterEndDate}'&$custom=Document.DocDate,Document.FinPeriodID`;
 
   console.log(`[payment-sync] Fetching payment list from ${filterStartDate} to ${filterEndDate}`);
 
