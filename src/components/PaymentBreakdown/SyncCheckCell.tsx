@@ -8,7 +8,7 @@ interface SyncCheckCellProps {
   verification: VerifyState | undefined;
   onCompare: () => void;
   onFetch: () => void;
-  onVerify: (fix: boolean) => void;
+  onVerify: (fix: boolean, deleteExtras?: boolean) => void;
   onCancel?: () => void;
   onDeletePayment?: (referenceNumber: string, type: string) => Promise<void>;
   onDeleteAllExtra?: (payments: { reference_number: string; type: string }[]) => Promise<void>;
@@ -32,9 +32,9 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
     onFetch();
   };
 
-  const handleVerify = (e: React.MouseEvent, fix: boolean) => {
+  const handleVerify = (e: React.MouseEvent, fix: boolean, deleteExtras?: boolean) => {
     e.stopPropagation();
-    onVerify(fix);
+    onVerify(fix, deleteExtras);
   };
 
   const handleToggleDetail = (e: React.MouseEvent) => {
@@ -311,6 +311,12 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
             </div>
           )}
 
+          {verifyResult && verifyResult.deletedPayments && verifyResult.deletedPayments.length > 0 && (
+            <div className="text-[10px] text-red-700 font-medium bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+              Deleted {verifyResult.deletedPayments.length} extras
+            </div>
+          )}
+
           {verifyResult && verifyResult.stalePayments.length > 0 && (
             <button
               onClick={handleToggleDetail}
@@ -354,6 +360,16 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
               >
                 <Wrench size={10} />
                 Fix Dates
+              </button>
+            )}
+            {!inSync && (
+              <button
+                onClick={(e) => handleVerify(e, true, true)}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors shadow-sm"
+                title="Fix stale dates and delete records not found in Acumatica"
+              >
+                <Trash2 size={10} />
+                Delete Extras
               </button>
             )}
             <button

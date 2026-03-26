@@ -117,6 +117,7 @@ export interface VerifyResult {
   inDbNotAcumatica: number;
   stalePayments: StalePayment[];
   fixedPayments: { reference_number: string; old_date: string; new_date: string }[];
+  deletedPayments: { reference_number: string; type: string; customer_name: string }[];
 }
 
 export interface VerifyState {

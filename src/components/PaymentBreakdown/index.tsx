@@ -333,7 +333,7 @@ export default function PaymentBreakdown() {
                   verifications={verifications}
                   onCompare={compareDay}
                   onFetch={fetchDay}
-                  onVerify={(dateKey, fix) => verifyDay(dateKey, fix)}
+                  onVerify={(dateKey, fix, deleteExtras) => verifyDay(dateKey, fix, deleteExtras)}
                   onCancel={cancelFetch}
                   excludeCreditMemos={excludeCreditMemos}
                 />
@@ -363,7 +363,7 @@ export default function PaymentBreakdown() {
                 verifications={verifications}
                 onCompare={compareMonth}
                 onFetch={fetchMonth}
-                onVerify={(monthKey, fix) => verifyMonth(monthKey, fix)}
+                onVerify={(monthKey, fix, deleteExtras) => verifyMonth(monthKey, fix, deleteExtras)}
                 onCancel={cancelFetch}
                 onDeletePayment={handleDeletePayment}
                 onDeleteAllExtra={handleDeleteAllExtra}

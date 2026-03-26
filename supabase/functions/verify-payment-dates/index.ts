@@ -32,7 +32,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { startDate, endDate, fix } = body;
+    const { startDate, endDate, fix, deleteExtras } = body;
 
     if (!startDate || !endDate) {
       return new Response(
@@ -151,58 +151,101 @@ Deno.serve(async (req: Request) => {
 
     const stalePayments: any[] = [];
     const fixedPayments: any[] = [];
+    const deletedPayments: any[] = [];
     const errors: string[] = [];
+    const shouldFix = fix || deleteExtras;
 
     for (const { key, payment } of inDbNotAcumatica) {
       const [type, refNbr] = key.split(':');
+      const isCM = type === 'Credit Memo';
       let realDate: string | null = null;
+      let realStatus: string | null = null;
+      let found = false;
 
       try {
-        const lookupUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(type)}/${encodeURIComponent(refNbr)}?$select=ReferenceNbr,Type,ApplicationDate,LastModifiedDateTime,PaymentAmount,Status`;
+        const lookupUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(type)}/${encodeURIComponent(refNbr)}?$select=ReferenceNbr,Type,ApplicationDate,LastModifiedDateTime,PaymentAmount,Status&$custom=Document.DocDate`;
         const lookupResponse = await sessionManager.makeAuthenticatedRequest(credentialsObj, lookupUrl);
 
         if (lookupResponse.ok) {
+          found = true;
           const lookupData = await lookupResponse.json();
-          realDate = lookupData.ApplicationDate?.value || null;
-          const realStatus = lookupData.Status?.value || null;
+          realStatus = lookupData.Status?.value || null;
+          if (isCM) {
+            realDate = lookupData.custom?.Document?.DocDate?.value || null;
+          } else {
+            realDate = lookupData.ApplicationDate?.value || null;
+          }
+        }
 
+        if (!found || (isCM && !realDate)) {
+          try {
+            const invUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice/${encodeURIComponent(refNbr)}?$select=ReferenceNbr,Type,Date,Status`;
+            const invResp = await sessionManager.makeAuthenticatedRequest(credentialsObj, invUrl);
+            if (invResp.ok) {
+              found = true;
+              const invData = await invResp.json();
+              realDate = invData.Date?.value || realDate;
+              realStatus = invData.Status?.value || realStatus;
+            }
+          } catch (_invErr) {}
+        }
+
+        const dbDate = isCM ? payment.doc_date : payment.application_date;
+
+        if (found) {
           stalePayments.push({
             reference_number: refNbr,
             type,
             customer_name: payment.customer_name,
-            db_date: payment.application_date,
+            db_date: dbDate,
             acumatica_date: realDate,
             acumatica_status: realStatus,
             amount: payment.payment_amount,
           });
 
-          if (fix && realDate) {
+          if (shouldFix && realDate) {
+            const updateFields: any = {
+              last_sync_timestamp: new Date().toISOString(),
+              status: realStatus || payment.status,
+            };
+            if (isCM) {
+              updateFields.doc_date = realDate;
+            } else {
+              updateFields.application_date = realDate;
+            }
+
             const { error: updateError } = await supabase
               .from('acumatica_payments')
-              .update({
-                application_date: realDate,
-                status: realStatus || payment.status,
-                last_sync_timestamp: new Date().toISOString(),
-              })
+              .update(updateFields)
               .eq('reference_number', refNbr)
               .eq('type', type);
 
             if (updateError) {
               errors.push(`Failed to fix ${refNbr}: ${updateError.message}`);
             } else {
-              fixedPayments.push({ reference_number: refNbr, type, old_date: payment.application_date, new_date: realDate });
+              fixedPayments.push({ reference_number: refNbr, type, old_date: dbDate, new_date: realDate });
             }
           }
-        } else if (lookupResponse.status === 404 || lookupResponse.status === 500) {
+        } else {
           stalePayments.push({
             reference_number: refNbr,
             type,
             customer_name: payment.customer_name,
-            db_date: payment.application_date,
+            db_date: dbDate,
             acumatica_date: null,
             acumatica_status: 'NOT FOUND IN ACUMATICA',
             amount: payment.payment_amount,
           });
+
+          if (deleteExtras) {
+            await supabase.from('payment_invoice_applications').delete().eq('payment_reference_number', refNbr);
+            const { error: delError } = await supabase.from('acumatica_payments').delete().eq('id', payment.id);
+            if (delError) {
+              errors.push(`Failed to delete ${refNbr}: ${delError.message}`);
+            } else {
+              deletedPayments.push({ reference_number: refNbr, type, customer_name: payment.customer_name });
+            }
+          }
         }
       } catch (err: any) {
         errors.push(`Lookup failed for ${refNbr}: ${err.message}`);
@@ -218,8 +261,10 @@ Deno.serve(async (req: Request) => {
         inAcumaticaNotDb: inAcumaticaNotDb.length,
         inDbNotAcumatica: inDbNotAcumatica.length,
         stalePayments,
-        fixedPayments: fix ? fixedPayments : [],
+        fixedPayments: shouldFix ? fixedPayments : [],
+        deletedPayments: deleteExtras ? deletedPayments : [],
         fixMode: !!fix,
+        deleteMode: !!deleteExtras,
         errors,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

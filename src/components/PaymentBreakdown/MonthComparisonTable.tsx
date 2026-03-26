@@ -12,7 +12,7 @@ interface MonthComparisonTableProps {
   verifications: Record<string, VerifyState>;
   onCompare: (monthKey: string) => void;
   onFetch: (monthKey: string) => void;
-  onVerify: (monthKey: string, fix: boolean) => void;
+  onVerify: (monthKey: string, fix: boolean, deleteExtras?: boolean) => void;
   onCancel?: (monthKey: string) => void;
   onDeletePayment?: (monthKey: string, referenceNumber: string, type: string) => Promise<void>;
   onDeleteAllExtra?: (monthKey: string, payments: { reference_number: string; type: string }[]) => Promise<void>;
@@ -138,7 +138,7 @@ export default function MonthComparisonTable({
                   verification={verifications[month.month_key]}
                   onCompare={() => onCompare(month.month_key)}
                   onFetch={() => onFetch(month.month_key)}
-                  onVerify={(fix) => onVerify(month.month_key, fix)}
+                  onVerify={(fix, deleteExtras) => onVerify(month.month_key, fix, deleteExtras)}
                   onCancel={onCancel ? () => onCancel(month.month_key) : undefined}
                   onDeletePayment={onDeletePayment ? (ref, type) => onDeletePayment(month.month_key, ref, type) : undefined}
                   onDeleteAllExtra={onDeleteAllExtra ? (payments) => onDeleteAllExtra(month.month_key, payments) : undefined}

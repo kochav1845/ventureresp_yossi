@@ -418,7 +418,7 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
     return runFetch(dateKey, dateKey, dateKey);
   }, [runFetch]);
 
-  const runVerify = useCallback(async (key: string, startDate: string, endDate: string, fix: boolean) => {
+  const runVerify = useCallback(async (key: string, startDate: string, endDate: string, fix: boolean, deleteExtras = false) => {
     setVerifications(prev => ({
       ...prev,
       [key]: { loading: true, error: null, result: null }
@@ -435,11 +435,13 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
           'Content-Type': 'application/json',
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
         },
-        body: JSON.stringify({ startDate, endDate, fix }),
+        body: JSON.stringify({ startDate, endDate, fix, deleteExtras }),
       });
 
       const data = await response.json();
       if (!data.success) throw new Error(data.error || 'Verification failed');
+
+      const hadChanges = (data.fixedPayments?.length > 0) || (data.deletedPayments?.length > 0);
 
       setVerifications(prev => ({
         ...prev,
@@ -453,11 +455,12 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
             inDbNotAcumatica: data.inDbNotAcumatica,
             stalePayments: data.stalePayments || [],
             fixedPayments: data.fixedPayments || [],
+            deletedPayments: data.deletedPayments || [],
           }
         }
       }));
 
-      if (fix && data.fixedPayments?.length > 0) {
+      if (hadChanges) {
         await runComparison(key, startDate, endDate);
         onDataRefresh?.();
       }
@@ -469,13 +472,13 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
     }
   }, [runComparison, onDataRefresh]);
 
-  const verifyMonth = useCallback((monthKey: string, fix = false) => {
+  const verifyMonth = useCallback((monthKey: string, fix = false, deleteExtras = false) => {
     const { startDate, endDate } = getMonthRange(monthKey);
-    return runVerify(monthKey, startDate, endDate, fix);
+    return runVerify(monthKey, startDate, endDate, fix, deleteExtras);
   }, [runVerify]);
 
-  const verifyDay = useCallback((dateKey: string, fix = false) => {
-    return runVerify(dateKey, dateKey, dateKey, fix);
+  const verifyDay = useCallback((dateKey: string, fix = false, deleteExtras = false) => {
+    return runVerify(dateKey, dateKey, dateKey, fix, deleteExtras);
   }, [runVerify]);
 
   const deleteExtraPayment = useCallback(async (key: string, referenceNumber: string, type: string) => {

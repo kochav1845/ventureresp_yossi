@@ -12,7 +12,7 @@ interface DateDrillDownProps {
   verifications: Record<string, VerifyState>;
   onCompare: (dateKey: string) => void;
   onFetch: (dateKey: string) => void;
-  onVerify: (dateKey: string, fix: boolean) => void;
+  onVerify: (dateKey: string, fix: boolean, deleteExtras?: boolean) => void;
   onCancel?: (dateKey: string) => void;
   excludeCreditMemos?: boolean;
 }
@@ -161,7 +161,7 @@ export default function DateDrillDown({
                   verification={verifications[day.date]}
                   onCompare={() => onCompare(day.date)}
                   onFetch={() => onFetch(day.date)}
-                  onVerify={(fix) => onVerify(day.date, fix)}
+                  onVerify={(fix, deleteExtras) => onVerify(day.date, fix, deleteExtras)}
                   onCancel={onCancel ? () => onCancel(day.date) : undefined}
                   excludeCreditMemos={excludeCreditMemos}
                 />
@@ -184,7 +184,7 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle, comparison, fetchState,
   verification: VerifyState | undefined;
   onCompare: () => void;
   onFetch: () => void;
-  onVerify: (fix: boolean) => void;
+  onVerify: (fix: boolean, deleteExtras?: boolean) => void;
   onCancel?: () => void;
   excludeCreditMemos?: boolean;
 }) {
