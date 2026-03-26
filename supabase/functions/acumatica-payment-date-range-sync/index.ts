@@ -494,84 +494,7 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
         }
 
         try {
-          let inserted = false;
-          let insertedId: number | null = null;
-          let customerId: string | null = null;
-
-          const cmDetailUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/Credit Memo/${encodeURIComponent(refNbr)}?$expand=ApplicationHistory,files&$custom=Document.DocDate,Document.FinPeriodID`;
-          const cmDetailResp = await sessionManager.makeAuthenticatedRequest(credentialsObj, cmDetailUrl);
-
-          if (cmDetailResp.ok) {
-            const cmDetail = await cmDetailResp.json();
-            const cmPaymentData = extractPaymentData(cmDetail);
-            if (!cmPaymentData.data.doc_date && docDate) {
-              cmPaymentData.data.doc_date = docDate;
-            }
-            customerId = cmPaymentData.data.customer_id;
-
-            const { data: upserted, error: insertError } = await supabase
-              .from('acumatica_payments')
-              .upsert(cmPaymentData.data, { onConflict: 'reference_number,type' })
-              .select('id')
-              .maybeSingle();
-
-            if (!insertError && upserted) {
-              inserted = true;
-              insertedId = upserted.id;
-              cmCreated++;
-            } else if (insertError) {
-              console.error(`[payment-sync] CM upsert error ${refNbr}:`, insertError.message);
-            }
-          } else {
-            console.log(`[payment-sync] Payment endpoint failed for CM ${refNbr} (${cmDetailResp.status}), trying Invoice endpoint`);
-            const invoiceCmUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice/${encodeURIComponent(refNbr)}?$select=ReferenceNbr,Type,CustomerID,Customer,Status,Date,DueDate,Amount,Balance,Description,Terms,LocationID,CurrencyID,PostPeriod,LastModifiedDateTime,CreatedDateTime`;
-            const invoiceCmResp = await sessionManager.makeAuthenticatedRequest(credentialsObj, invoiceCmUrl);
-
-            if (invoiceCmResp.ok) {
-              const inv = await invoiceCmResp.json();
-              customerId = inv.CustomerID?.value || null;
-              const cmRecord = {
-                reference_number: refNbr,
-                type: 'Credit Memo',
-                status: inv.Status?.value || null,
-                hold: false,
-                application_date: inv.Date?.value || null,
-                doc_date: docDate || inv.Date?.value || null,
-                payment_amount: parseFloat(inv.Amount?.value || '0'),
-                available_balance: parseFloat(inv.Balance?.value || '0'),
-                customer_id: inv.CustomerID?.value || null,
-                customer_name: inv.Customer?.value || null,
-                payment_method: null,
-                cash_account: null,
-                payment_ref: null,
-                description: inv.Description?.value || null,
-                currency_id: inv.CurrencyID?.value || null,
-                last_modified_datetime: inv.LastModifiedDateTime?.value || null,
-                raw_data: inv,
-                last_sync_timestamp: new Date().toISOString(),
-              };
-
-              const { data: upserted, error: insertError } = await supabase
-                .from('acumatica_payments')
-                .upsert(cmRecord, { onConflict: 'reference_number,type' })
-                .select('id')
-                .maybeSingle();
-
-              if (!insertError && upserted) {
-                inserted = true;
-                insertedId = upserted.id;
-                cmCreated++;
-              } else if (insertError) {
-                stats.errors.push(`CM Invoice upsert error ${refNbr}: ${insertError.message}`);
-              }
-            } else {
-              stats.errors.push(`CM ${refNbr}: both Payment (${cmDetailResp.status}) and Invoice endpoints failed`);
-            }
-          }
-
-          if (inserted && insertedId) {
-            await fetchPaymentDetails(supabase, sessionManager, credentialsObj, insertedId, refNbr, 'Credit Memo', customerId, stats);
-          }
+          console.log(`[payment-sync] CM ${refNbr} not in DB, skipping creation (not requested)`);
         } catch (cmErr: any) {
           stats.errors.push(`CM fetch error ${refNbr}: ${cmErr.message}`);
         }
@@ -648,10 +571,63 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
           try {
             const lookupResp = await sessionManager.makeAuthenticatedRequest(credentialsObj, lookupUrl);
             if (lookupResp.status === 404 || lookupResp.status === 500) {
-              await supabase.from('payment_invoice_applications').delete().eq('payment_reference_number', extra.reference_number);
-              await supabase.from('acumatica_payments').delete().eq('id', extra.id);
-              deleted++;
-              console.log(`[payment-sync] Deleted extra CM: ${extra.reference_number}`);
+              let invoiceFound = false;
+              try {
+                const invLookupUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice/${encodeURIComponent(extra.reference_number)}?$select=ReferenceNbr,Type,Date`;
+                const invResp = await sessionManager.makeAuthenticatedRequest(credentialsObj, invLookupUrl);
+                if (invResp.ok) {
+                  const invData = await invResp.json();
+                  const realDocDate = invData.Date?.value;
+                  if (realDocDate) {
+                    invoiceFound = true;
+                    await supabase.from('acumatica_payments').update({
+                      doc_date: realDocDate,
+                      last_sync_timestamp: new Date().toISOString(),
+                    }).eq('id', extra.id);
+                    updated++;
+                    console.log(`[payment-sync] Fixed CM doc_date ${extra.reference_number}: -> ${realDocDate}`);
+                  }
+                }
+              } catch (_invErr) {}
+
+              if (!invoiceFound) {
+                await supabase.from('payment_invoice_applications').delete().eq('payment_reference_number', extra.reference_number);
+                await supabase.from('acumatica_payments').delete().eq('id', extra.id);
+                deleted++;
+                console.log(`[payment-sync] Deleted extra CM: ${extra.reference_number}`);
+              }
+            } else if (lookupResp.ok) {
+              const lookupData = await lookupResp.json();
+              let realDocDate: string | null = null;
+              const customFields = lookupData.custom?.Document;
+              if (customFields?.DocDate?.value) {
+                realDocDate = customFields.DocDate.value;
+              }
+
+              if (!realDocDate) {
+                try {
+                  const invLookupUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice/${encodeURIComponent(extra.reference_number)}?$select=ReferenceNbr,Date`;
+                  const invResp = await sessionManager.makeAuthenticatedRequest(credentialsObj, invLookupUrl);
+                  if (invResp.ok) {
+                    const invData = await invResp.json();
+                    realDocDate = invData.Date?.value || null;
+                  }
+                } catch (_invErr) {}
+              }
+
+              if (realDocDate) {
+                await supabase.from('acumatica_payments').update({
+                  doc_date: realDocDate,
+                  last_sync_timestamp: new Date().toISOString(),
+                }).eq('id', extra.id);
+                updated++;
+                console.log(`[payment-sync] Fixed CM doc_date ${extra.reference_number}: -> ${realDocDate}`);
+              } else {
+                await supabase.from('payment_invoice_applications').delete().eq('payment_reference_number', extra.reference_number);
+                await supabase.from('acumatica_payments').delete().eq('id', extra.id);
+                deleted++;
+                console.log(`[payment-sync] Deleted CM with no valid date: ${extra.reference_number}`);
+              }
             }
           } catch (lookupErr: any) {
             stats.errors.push(`CM cleanup error ${extra.reference_number}: ${lookupErr.message}`);
