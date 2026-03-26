@@ -494,6 +494,10 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
         }
 
         try {
+          let inserted = false;
+          let insertedId: number | null = null;
+          let customerId: string | null = null;
+
           const cmDetailUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/Credit Memo/${encodeURIComponent(refNbr)}?$expand=ApplicationHistory,files&$custom=Document.DocDate,Document.FinPeriodID`;
           const cmDetailResp = await sessionManager.makeAuthenticatedRequest(credentialsObj, cmDetailUrl);
 
@@ -503,17 +507,70 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
             if (!cmPaymentData.data.doc_date && docDate) {
               cmPaymentData.data.doc_date = docDate;
             }
+            customerId = cmPaymentData.data.customer_id;
 
-            const { data: inserted, error: insertError } = await supabase
+            const { data: upserted, error: insertError } = await supabase
               .from('acumatica_payments')
               .upsert(cmPaymentData.data, { onConflict: 'reference_number,type' })
               .select('id')
               .maybeSingle();
 
-            if (!insertError && inserted) {
+            if (!insertError && upserted) {
+              inserted = true;
+              insertedId = upserted.id;
               cmCreated++;
-              await fetchPaymentDetails(supabase, sessionManager, credentialsObj, inserted.id, refNbr, 'Credit Memo', cmPaymentData.data.customer_id, stats);
+            } else if (insertError) {
+              console.error(`[payment-sync] CM upsert error ${refNbr}:`, insertError.message);
             }
+          } else {
+            console.log(`[payment-sync] Payment endpoint failed for CM ${refNbr} (${cmDetailResp.status}), trying Invoice endpoint`);
+            const invoiceCmUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice/${encodeURIComponent(refNbr)}?$select=ReferenceNbr,Type,CustomerID,Customer,Status,Date,DueDate,Amount,Balance,Description,Terms,LocationID,CurrencyID,PostPeriod,LastModifiedDateTime,CreatedDateTime`;
+            const invoiceCmResp = await sessionManager.makeAuthenticatedRequest(credentialsObj, invoiceCmUrl);
+
+            if (invoiceCmResp.ok) {
+              const inv = await invoiceCmResp.json();
+              customerId = inv.CustomerID?.value || null;
+              const cmRecord = {
+                reference_number: refNbr,
+                type: 'Credit Memo',
+                status: inv.Status?.value || null,
+                hold: false,
+                application_date: inv.Date?.value || null,
+                doc_date: docDate || inv.Date?.value || null,
+                payment_amount: parseFloat(inv.Amount?.value || '0'),
+                available_balance: parseFloat(inv.Balance?.value || '0'),
+                customer_id: inv.CustomerID?.value || null,
+                customer_name: inv.Customer?.value || null,
+                payment_method: null,
+                cash_account: null,
+                payment_ref: null,
+                description: inv.Description?.value || null,
+                currency_id: inv.CurrencyID?.value || null,
+                last_modified_datetime: inv.LastModifiedDateTime?.value || null,
+                raw_data: inv,
+                last_sync_timestamp: new Date().toISOString(),
+              };
+
+              const { data: upserted, error: insertError } = await supabase
+                .from('acumatica_payments')
+                .upsert(cmRecord, { onConflict: 'reference_number,type' })
+                .select('id')
+                .maybeSingle();
+
+              if (!insertError && upserted) {
+                inserted = true;
+                insertedId = upserted.id;
+                cmCreated++;
+              } else if (insertError) {
+                stats.errors.push(`CM Invoice upsert error ${refNbr}: ${insertError.message}`);
+              }
+            } else {
+              stats.errors.push(`CM ${refNbr}: both Payment (${cmDetailResp.status}) and Invoice endpoints failed`);
+            }
+          }
+
+          if (inserted && insertedId) {
+            await fetchPaymentDetails(supabase, sessionManager, credentialsObj, insertedId, refNbr, 'Credit Memo', customerId, stats);
           }
         } catch (cmErr: any) {
           stats.errors.push(`CM fetch error ${refNbr}: ${cmErr.message}`);
