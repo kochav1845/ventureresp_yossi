@@ -238,8 +238,12 @@ Deno.serve(async (req: Request) => {
           });
 
           if (deleteExtras) {
-            await supabase.from('payment_invoice_applications').delete().eq('payment_reference_number', refNbr);
-            const { error: delError } = await supabase.from('acumatica_payments').delete().eq('id', payment.id);
+            const paymentId = payment.id;
+            await supabase.from('payment_invoice_applications').delete().eq('payment_id', paymentId);
+            await supabase.from('payment_change_log').delete().eq('payment_id', paymentId);
+            await supabase.from('payment_attachments').delete().eq('payment_id', paymentId);
+            await supabase.from('payment_application_fetch_logs').delete().eq('payment_id', paymentId);
+            const { error: delError } = await supabase.from('acumatica_payments').delete().eq('id', paymentId);
             if (delError) {
               errors.push(`Failed to delete ${refNbr}: ${delError.message}`);
             } else {
