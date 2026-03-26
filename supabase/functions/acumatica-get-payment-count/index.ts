@@ -87,14 +87,12 @@ Deno.serve(async (req: Request) => {
     if (!type || type === 'Credit Memo') {
       const cmFilters: string[] = [`Type eq 'Credit Memo'`];
       if (status) cmFilters.push(`Status eq '${status}'`);
-      if (dateFrom) cmFilters.push(`Date ge datetimeoffset'${dateFrom}'`);
-      if (dateTo) cmFilters.push(`Date le datetimeoffset'${dateTo}'`);
-      if (customerId) cmFilters.push(`Customer eq '${customerId}'`);
+      if (customerId) cmFilters.push(`CustomerID eq '${customerId}'`);
 
       const cmFilterParam = `$filter=${cmFilters.join(' and ')}`;
-      const cmUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?${cmFilterParam}&$select=ReferenceNbr,Type`;
+      const cmUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?${cmFilterParam}&$select=ReferenceNbr,Type&$custom=Document.DocDate`;
 
-      console.log(`Fetching Credit Memo count via Invoice endpoint: ${cmUrl}`);
+      console.log(`Fetching Credit Memo count via Payment endpoint with DocDate: ${cmUrl}`);
 
       const cmResponse = await sessionManager.makeAuthenticatedRequest(credentials, cmUrl, {
         method: 'GET',
@@ -104,12 +102,26 @@ Deno.serve(async (req: Request) => {
       if (cmResponse.ok) {
         const cmData = await cmResponse.json();
         const cmItems = Array.isArray(cmData) ? cmData : [];
-        byType['Credit Memo'] = cmItems.length;
-        totalCount += cmItems.length;
-        console.log(`Credit Memo count (by DocDate): ${cmItems.length}`);
+
+        const dateFromStr = dateFrom ? dateFrom.split('T')[0] : null;
+        const dateToStr = dateTo ? dateTo.split('T')[0] : null;
+
+        let cmCount = 0;
+        for (const item of cmItems) {
+          const docDate = item.custom?.Document?.DocDate?.value;
+          if (!docDate) continue;
+          const docDateStr = docDate.split('T')[0];
+          if (dateFromStr && docDateStr < dateFromStr) continue;
+          if (dateToStr && docDateStr > dateToStr) continue;
+          cmCount++;
+        }
+
+        byType['Credit Memo'] = cmCount;
+        totalCount += cmCount;
+        console.log(`Credit Memo count (by DocDate): ${cmCount} out of ${cmItems.length} total CMs`);
       } else {
         const errorText = await cmResponse.text();
-        console.error(`Failed to fetch credit memos from Invoice endpoint: ${cmResponse.status} - ${errorText.substring(0, 200)}`);
+        console.error(`Failed to fetch credit memos from Payment endpoint: ${cmResponse.status} - ${errorText.substring(0, 200)}`);
         byType['Credit Memo'] = 0;
       }
     }
