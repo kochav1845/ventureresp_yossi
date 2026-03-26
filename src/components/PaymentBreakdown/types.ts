@@ -124,4 +124,5 @@ export interface VerifyState {
   loading: boolean;
   error: string | null;
   result: VerifyResult | null;
+  mode?: 'verify' | 'fix' | 'delete';
 }

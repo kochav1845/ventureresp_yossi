@@ -419,9 +419,10 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
   }, [runFetch]);
 
   const runVerify = useCallback(async (key: string, startDate: string, endDate: string, fix: boolean, deleteExtras = false) => {
+    const mode = deleteExtras ? 'delete' : fix ? 'fix' : 'verify';
     setVerifications(prev => ({
       ...prev,
-      [key]: { loading: true, error: null, result: null }
+      [key]: { loading: true, error: null, result: null, mode }
     }));
 
     try {

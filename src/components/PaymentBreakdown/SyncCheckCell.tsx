@@ -136,11 +136,19 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
   }
 
   if (verification?.loading) {
+    const isDeleteMode = verification.mode === 'delete';
+    const isFixMode = verification.mode === 'fix';
     return (
       <td className="px-3 py-3">
         <div className="flex flex-col items-center gap-1">
-          <Search size={14} className="animate-pulse text-teal-500" />
-          <span className="text-xs text-teal-600 font-medium">Verifying...</span>
+          {isDeleteMode ? (
+            <Trash2 size={14} className="animate-pulse text-red-500" />
+          ) : (
+            <Search size={14} className="animate-pulse text-teal-500" />
+          )}
+          <span className={`text-xs font-medium ${isDeleteMode ? 'text-red-600' : 'text-teal-600'}`}>
+            {isDeleteMode ? 'Deleting extras...' : isFixMode ? 'Fixing dates...' : 'Verifying...'}
+          </span>
         </div>
       </td>
     );
