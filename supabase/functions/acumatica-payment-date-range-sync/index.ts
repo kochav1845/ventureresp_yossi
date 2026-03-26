@@ -494,7 +494,69 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
         }
 
         try {
-          console.log(`[payment-sync] CM ${refNbr} not in DB, skipping creation (not requested)`);
+          console.log(`[payment-sync] CM ${refNbr} not in DB, fetching from Payment endpoint...`);
+          const cmPaymentUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/Credit Memo/${encodeURIComponent(refNbr)}?$custom=Document.DocDate,Document.FinPeriodID`;
+          const cmPaymentResp = await sessionManager.makeAuthenticatedRequest(credentialsObj, cmPaymentUrl);
+
+          if (cmPaymentResp.ok) {
+            const cmPayment = await cmPaymentResp.json();
+            const cmPaymentData = extractPaymentData(cmPayment);
+            if (docDate) {
+              cmPaymentData.data.doc_date = docDate;
+            }
+
+            const { data: inserted, error: insertErr } = await supabase
+              .from('acumatica_payments')
+              .insert(cmPaymentData.data)
+              .select('id')
+              .single();
+
+            if (insertErr) {
+              if (insertErr.code === '23505') {
+                cmUpdated++;
+              } else {
+                stats.errors.push(`CM insert failed ${refNbr}: ${insertErr.message}`);
+              }
+            } else if (inserted) {
+              cmCreated++;
+              console.log(`[payment-sync] Created CM ${refNbr} in DB`);
+              await fetchPaymentDetails(supabase, sessionManager, credentialsObj, inserted.id, refNbr, 'Credit Memo', cmPaymentData.data.customer_id, stats);
+            }
+          } else {
+            console.log(`[payment-sync] CM ${refNbr} not found in Payment endpoint (${cmPaymentResp.status}), creating from Invoice data`);
+            const minimalCmData = {
+              reference_number: refNbr,
+              type: 'Credit Memo' as string,
+              status: null,
+              hold: false,
+              application_date: docDate,
+              doc_date: docDate,
+              financial_period: null,
+              payment_amount: 0,
+              available_balance: 0,
+              customer_id: null,
+              customer_name: null,
+              payment_method: null,
+              cash_account: null,
+              payment_ref: null,
+              description: null,
+              currency_id: null,
+              last_modified_datetime: null,
+              raw_data: cm,
+              last_sync_timestamp: new Date().toISOString()
+            };
+
+            const { error: insertErr } = await supabase
+              .from('acumatica_payments')
+              .insert(minimalCmData);
+
+            if (!insertErr) {
+              cmCreated++;
+              console.log(`[payment-sync] Created minimal CM ${refNbr} in DB from Invoice data`);
+            } else if (insertErr.code !== '23505') {
+              stats.errors.push(`CM minimal insert failed ${refNbr}: ${insertErr.message}`);
+            }
+          }
         } catch (cmErr: any) {
           stats.errors.push(`CM fetch error ${refNbr}: ${cmErr.message}`);
         }
