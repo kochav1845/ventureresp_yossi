@@ -72,25 +72,43 @@ Deno.serve(async (req: Request) => {
 
     const acumaticaMap = new Map<string, { date: string; type: string; amount: number; status: string }>();
 
-    const nonCmUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=Type ne 'Credit Memo' and ApplicationDate ge datetimeoffset'${filterStart}' and ApplicationDate le datetimeoffset'${filterEnd}'&$select=ReferenceNbr,Type,ApplicationDate,LastModifiedDateTime,PaymentAmount,Status`;
-    console.log(`[verify-dates] Fetching non-CM payments from Acumatica`);
+    const rangeStart = new Date(startDate);
+    const rangeEnd = new Date(endDate + 'T23:59:59.999Z');
+
+    const nonCmUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=Type ne 'Credit Memo' and ApplicationDate ge datetimeoffset'${filterStart}' and ApplicationDate le datetimeoffset'${filterEnd}'&$select=ReferenceNbr,Type,ApplicationDate,LastModifiedDateTime,PaymentAmount,Status&$custom=Document.DocDate`;
+    console.log(`[verify-dates] Fetching non-CM payments from Acumatica (with DocDate)`);
     const nonCmResponse = await sessionManager.makeAuthenticatedRequest(credentialsObj, nonCmUrl);
     if (!nonCmResponse.ok) {
       const errText = await nonCmResponse.text();
       throw new Error(`Acumatica API error: ${nonCmResponse.status} - ${errText.substring(0, 300)}`);
     }
     const nonCmData = await nonCmResponse.json();
+    let nonCmSkipped = 0;
     for (const p of (Array.isArray(nonCmData) ? nonCmData : [])) {
       let refNbr = p.ReferenceNbr?.value;
       if (!refNbr) continue;
       if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) refNbr = refNbr.padStart(6, '0');
       const type = p.Type?.value || '';
+      const docDate = p.custom?.Document?.DocDate?.value || null;
+      const effectiveDate = docDate || p.ApplicationDate?.value || '';
+
+      if (effectiveDate) {
+        const effDateObj = new Date(effectiveDate);
+        if (effDateObj < rangeStart || effDateObj > rangeEnd) {
+          nonCmSkipped++;
+          continue;
+        }
+      }
+
       acumaticaMap.set(`${type}:${refNbr}`, {
-        date: p.ApplicationDate?.value || '',
+        date: effectiveDate,
         type,
         amount: p.PaymentAmount?.value || 0,
         status: p.Status?.value || '',
       });
+    }
+    if (nonCmSkipped > 0) {
+      console.log(`[verify-dates] Skipped ${nonCmSkipped} non-CM payments whose DocDate is outside ${startDate} to ${endDate}`);
     }
 
     const cmUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=Type eq 'Credit Memo' and Date ge datetimeoffset'${filterStart}' and Date le datetimeoffset'${filterEnd}'&$select=ReferenceNbr,Type,Date,Amount,Status`;
@@ -113,12 +131,23 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[verify-dates] Acumatica has ${acumaticaMap.size} payments in range`);
 
-    const { data: dbNonCm } = await supabase
+    const { data: dbNonCmWithDocDate } = await supabase
       .from('acumatica_payments')
       .select('id, reference_number, type, application_date, doc_date, payment_amount, status, customer_name')
       .neq('type', 'Credit Memo')
+      .not('doc_date', 'is', null)
+      .gte('doc_date', `${startDate}T00:00:00`)
+      .lte('doc_date', `${endDate}T23:59:59`);
+
+    const { data: dbNonCmNoDocDate } = await supabase
+      .from('acumatica_payments')
+      .select('id, reference_number, type, application_date, doc_date, payment_amount, status, customer_name')
+      .neq('type', 'Credit Memo')
+      .is('doc_date', null)
       .gte('application_date', `${startDate}T00:00:00`)
       .lte('application_date', `${endDate}T23:59:59`);
+
+    const dbNonCm = [...(dbNonCmWithDocDate || []), ...(dbNonCmNoDocDate || [])];
 
     const { data: dbCm } = await supabase
       .from('acumatica_payments')
@@ -159,6 +188,7 @@ Deno.serve(async (req: Request) => {
       const [type, refNbr] = key.split(':');
       const isCM = type === 'Credit Memo';
       let realDate: string | null = null;
+      let realAppDate: string | null = null;
       let realStatus: string | null = null;
       let found = false;
 
@@ -170,11 +200,8 @@ Deno.serve(async (req: Request) => {
           found = true;
           const lookupData = await lookupResponse.json();
           realStatus = lookupData.Status?.value || null;
-          if (isCM) {
-            realDate = lookupData.custom?.Document?.DocDate?.value || null;
-          } else {
-            realDate = lookupData.ApplicationDate?.value || null;
-          }
+          realAppDate = lookupData.ApplicationDate?.value || null;
+          realDate = lookupData.custom?.Document?.DocDate?.value || realAppDate;
         }
 
         if (!found || (isCM && !realDate)) {
@@ -190,7 +217,7 @@ Deno.serve(async (req: Request) => {
           } catch (_invErr) {}
         }
 
-        const dbDate = isCM ? payment.doc_date : payment.application_date;
+        const dbDate = payment.doc_date || payment.application_date;
 
         if (found) {
           stalePayments.push({
@@ -207,11 +234,10 @@ Deno.serve(async (req: Request) => {
             const updateFields: any = {
               last_sync_timestamp: new Date().toISOString(),
               status: realStatus || payment.status,
+              doc_date: realDate,
             };
-            if (isCM) {
-              updateFields.doc_date = realDate;
-            } else {
-              updateFields.application_date = realDate;
+            if (!isCM && realAppDate) {
+              updateFields.application_date = realAppDate;
             }
 
             const { error: updateError } = await supabase
@@ -262,6 +288,7 @@ Deno.serve(async (req: Request) => {
         dateRange: { startDate, endDate },
         acumaticaCount: acumaticaMap.size,
         dbCount: dbMap.size,
+        nonCmSkippedByDocDate: nonCmSkipped,
         inAcumaticaNotDb: inAcumaticaNotDb.length,
         inDbNotAcumatica: inDbNotAcumatica.length,
         stalePayments,
