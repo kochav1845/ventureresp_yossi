@@ -95,7 +95,7 @@ export interface FetchProgress {
 export interface FetchState {
   loading: boolean;
   error: string | null;
-  result: { created: number; updated: number } | null;
+  result: { created: number; updated: number; deleted?: number } | null;
   progress?: FetchProgress | null;
   jobId?: string | null;
 }

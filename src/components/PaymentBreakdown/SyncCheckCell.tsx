@@ -225,7 +225,7 @@ export default function SyncCheckCell({ comparison, fetchState, verification, on
         <div className="flex flex-col items-center gap-1.5 min-w-[180px]">
           {fetchState?.result && (
             <div className="text-[10px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-              +{fetchState.result.created} new, ~{fetchState.result.updated} upd
+              +{fetchState.result.created} new, ~{fetchState.result.updated} upd{fetchState.result.deleted ? `, -${fetchState.result.deleted} del` : ''}
             </div>
           )}
 

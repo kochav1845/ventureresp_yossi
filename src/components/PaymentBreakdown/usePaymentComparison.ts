@@ -256,7 +256,7 @@ export function usePaymentComparison(onDataRefresh?: () => void) {
         if (job.status === 'completed') {
           setFetches(prev => ({
             ...prev,
-            [key]: { loading: false, error: null, result: { created: progress.created || 0, updated: progress.updated || 0 }, progress: null, jobId: null }
+            [key]: { loading: false, error: null, result: { created: progress.created || 0, updated: progress.updated || 0, deleted: progress.deleted || 0 }, progress: null, jobId: null }
           }));
           await runComparison(key, startDate, endDate);
           onDataRefresh?.();

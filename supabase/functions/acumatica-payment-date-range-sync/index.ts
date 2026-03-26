@@ -457,11 +457,162 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
     }
   }
 
+  let cmCreated = 0;
+  let cmUpdated = 0;
+  try {
+    const cmUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=Type eq 'Credit Memo' and Date ge datetimeoffset'${filterStartDate}' and Date le datetimeoffset'${filterEndDate}'&$select=ReferenceNbr,Type,Date`;
+    console.log(`[payment-sync] Fetching Credit Memos by DocDate from Invoice endpoint`);
+    const cmResponse = await sessionManager.makeAuthenticatedRequest(credentialsObj, cmUrl);
+
+    if (cmResponse.ok) {
+      const cmData = await cmResponse.json();
+      const cmItems = Array.isArray(cmData) ? cmData : [];
+      console.log(`[payment-sync] Found ${cmItems.length} Credit Memos by DocDate`);
+
+      for (const cm of cmItems) {
+        let refNbr = cm.ReferenceNbr?.value;
+        if (!refNbr) continue;
+        if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) refNbr = refNbr.padStart(6, '0');
+        const docDate = cm.Date?.value;
+        acumaticaKeys.add(`Credit Memo::${refNbr}`);
+
+        const { data: cmExists } = await supabase
+          .from('acumatica_payments')
+          .select('id, doc_date')
+          .eq('reference_number', refNbr)
+          .eq('type', 'Credit Memo')
+          .maybeSingle();
+
+        if (cmExists) {
+          if (docDate && cmExists.doc_date !== docDate) {
+            await supabase.from('acumatica_payments')
+              .update({ doc_date: docDate, last_sync_timestamp: new Date().toISOString() })
+              .eq('id', cmExists.id);
+            cmUpdated++;
+          }
+          continue;
+        }
+
+        try {
+          const cmDetailUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/Credit Memo/${encodeURIComponent(refNbr)}?$expand=ApplicationHistory,files&$custom=Document.DocDate,Document.FinPeriodID`;
+          const cmDetailResp = await sessionManager.makeAuthenticatedRequest(credentialsObj, cmDetailUrl);
+
+          if (cmDetailResp.ok) {
+            const cmDetail = await cmDetailResp.json();
+            const cmPaymentData = extractPaymentData(cmDetail);
+            if (!cmPaymentData.data.doc_date && docDate) {
+              cmPaymentData.data.doc_date = docDate;
+            }
+
+            const { data: inserted, error: insertError } = await supabase
+              .from('acumatica_payments')
+              .upsert(cmPaymentData.data, { onConflict: 'reference_number,type' })
+              .select('id')
+              .maybeSingle();
+
+            if (!insertError && inserted) {
+              cmCreated++;
+              await fetchPaymentDetails(supabase, sessionManager, credentialsObj, inserted.id, refNbr, 'Credit Memo', cmPaymentData.data.customer_id, stats);
+            }
+          }
+        } catch (cmErr: any) {
+          stats.errors.push(`CM fetch error ${refNbr}: ${cmErr.message}`);
+        }
+      }
+      console.log(`[payment-sync] CMs by DocDate: ${cmCreated} created, ${cmUpdated} doc_date updated`);
+    }
+  } catch (cmFetchErr: any) {
+    console.error(`[payment-sync] CM by DocDate fetch error:`, cmFetchErr.message);
+  }
+
+  created += cmCreated;
+  updated += cmUpdated;
+
+  let deleted = 0;
+  try {
+    const { data: dbAllInRange } = await supabase
+      .from('acumatica_payments')
+      .select('id, reference_number, type')
+      .gte('application_date', `${startDate}T00:00:00`)
+      .lte('application_date', `${endDate}T23:59:59`)
+      .neq('type', 'Credit Memo');
+
+    if (dbAllInRange) {
+      const extras = dbAllInRange.filter(
+        (p: any) => !acumaticaKeys.has(`${p.type}::${p.reference_number}`)
+      );
+
+      if (extras.length > 0 && extras.length <= 50) {
+        console.log(`[payment-sync] Found ${extras.length} extra non-CM payments in DB, checking...`);
+        for (const extra of extras) {
+          const lookupUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(extra.type)}/${encodeURIComponent(extra.reference_number)}?$select=ReferenceNbr,ApplicationDate`;
+          try {
+            const lookupResp = await sessionManager.makeAuthenticatedRequest(credentialsObj, lookupUrl);
+            if (lookupResp.status === 404 || lookupResp.status === 500) {
+              await supabase.from('payment_invoice_applications').delete().eq('payment_reference_number', extra.reference_number);
+              await supabase.from('acumatica_payments').delete().eq('id', extra.id);
+              deleted++;
+              console.log(`[payment-sync] Deleted extra: ${extra.type} ${extra.reference_number}`);
+            } else if (lookupResp.ok) {
+              const lookupData = await lookupResp.json();
+              const realDate = lookupData.ApplicationDate?.value;
+              if (realDate) {
+                await supabase.from('acumatica_payments').update({
+                  application_date: realDate,
+                  last_sync_timestamp: new Date().toISOString(),
+                }).eq('id', extra.id);
+                updated++;
+                console.log(`[payment-sync] Fixed date for ${extra.type} ${extra.reference_number}: -> ${realDate}`);
+              }
+            }
+          } catch (lookupErr: any) {
+            stats.errors.push(`Cleanup lookup error ${extra.reference_number}: ${lookupErr.message}`);
+          }
+        }
+      }
+    }
+
+    const { data: dbCmsInRange } = await supabase
+      .from('acumatica_payments')
+      .select('id, reference_number, type')
+      .eq('type', 'Credit Memo')
+      .gte('doc_date', `${startDate}T00:00:00`)
+      .lte('doc_date', `${endDate}T23:59:59`);
+
+    if (dbCmsInRange) {
+      const cmExtras = dbCmsInRange.filter(
+        (p: any) => !acumaticaKeys.has(`Credit Memo::${p.reference_number}`)
+      );
+
+      if (cmExtras.length > 0 && cmExtras.length <= 50) {
+        console.log(`[payment-sync] Found ${cmExtras.length} extra Credit Memos in DB, checking...`);
+        for (const extra of cmExtras) {
+          const lookupUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/Credit Memo/${encodeURIComponent(extra.reference_number)}?$select=ReferenceNbr&$custom=Document.DocDate`;
+          try {
+            const lookupResp = await sessionManager.makeAuthenticatedRequest(credentialsObj, lookupUrl);
+            if (lookupResp.status === 404 || lookupResp.status === 500) {
+              await supabase.from('payment_invoice_applications').delete().eq('payment_reference_number', extra.reference_number);
+              await supabase.from('acumatica_payments').delete().eq('id', extra.id);
+              deleted++;
+              console.log(`[payment-sync] Deleted extra CM: ${extra.reference_number}`);
+            }
+          } catch (lookupErr: any) {
+            stats.errors.push(`CM cleanup error ${extra.reference_number}: ${lookupErr.message}`);
+          }
+        }
+      }
+    }
+
+    console.log(`[payment-sync] Cleanup: ${deleted} deleted`);
+  } catch (cleanupErr: any) {
+    console.error(`[payment-sync] Cleanup error:`, cleanupErr.message);
+  }
+
   await supabase.from('async_sync_jobs').update({
     status: 'completed',
     completed_at: new Date().toISOString(),
     progress: {
-      created, updated,
+      created, updated, deleted,
       applicationsSynced: stats.applicationsSynced,
       filesSynced: stats.filesSynced,
       total: totalToProcess,
@@ -472,8 +623,8 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
     }
   }).eq('id', jobId);
 
-  console.log(`[payment-sync] Done: ${created} created, ${updated} updated, ${stats.applicationsSynced} apps, ${stats.filesSynced} files`);
-  return { created, updated, applicationsSynced: stats.applicationsSynced, filesSynced: stats.filesSynced, total: totalToProcess };
+  console.log(`[payment-sync] Done: ${created} created, ${updated} updated, ${deleted} deleted, ${stats.applicationsSynced} apps`);
+  return { created, updated, deleted, applicationsSynced: stats.applicationsSynced, filesSynced: stats.filesSynced, total: totalToProcess };
 }
 
 Deno.serve(async (req: Request) => {

@@ -70,27 +70,22 @@ Deno.serve(async (req: Request) => {
     const filterStart = new Date(startDate).toISOString().split('.')[0];
     const filterEnd = new Date(endDate + 'T23:59:59').toISOString().split('.')[0];
 
-    const acumaticaPaymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=ApplicationDate ge datetimeoffset'${filterStart}' and ApplicationDate le datetimeoffset'${filterEnd}'&$select=ReferenceNbr,Type,ApplicationDate,LastModifiedDateTime,PaymentAmount,Status`;
-
-    console.log(`[verify-dates] Fetching Acumatica payments for ${startDate} to ${endDate}`);
-
-    const acumaticaResponse = await sessionManager.makeAuthenticatedRequest(credentialsObj, acumaticaPaymentsUrl);
-    if (!acumaticaResponse.ok) {
-      const errText = await acumaticaResponse.text();
-      throw new Error(`Acumatica API error: ${acumaticaResponse.status} - ${errText.substring(0, 300)}`);
-    }
-
-    const acumaticaData = await acumaticaResponse.json();
-    const acumaticaPayments = Array.isArray(acumaticaData) ? acumaticaData : [];
-
     const acumaticaMap = new Map<string, { date: string; type: string; amount: number; status: string }>();
-    for (const p of acumaticaPayments) {
+
+    const nonCmUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=Type ne 'Credit Memo' and ApplicationDate ge datetimeoffset'${filterStart}' and ApplicationDate le datetimeoffset'${filterEnd}'&$select=ReferenceNbr,Type,ApplicationDate,LastModifiedDateTime,PaymentAmount,Status`;
+    console.log(`[verify-dates] Fetching non-CM payments from Acumatica`);
+    const nonCmResponse = await sessionManager.makeAuthenticatedRequest(credentialsObj, nonCmUrl);
+    if (!nonCmResponse.ok) {
+      const errText = await nonCmResponse.text();
+      throw new Error(`Acumatica API error: ${nonCmResponse.status} - ${errText.substring(0, 300)}`);
+    }
+    const nonCmData = await nonCmResponse.json();
+    for (const p of (Array.isArray(nonCmData) ? nonCmData : [])) {
       let refNbr = p.ReferenceNbr?.value;
       if (!refNbr) continue;
       if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) refNbr = refNbr.padStart(6, '0');
       const type = p.Type?.value || '';
-      const key = `${type}:${refNbr}`;
-      acumaticaMap.set(key, {
+      acumaticaMap.set(`${type}:${refNbr}`, {
         date: p.ApplicationDate?.value || '',
         type,
         amount: p.PaymentAmount?.value || 0,
@@ -98,21 +93,43 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const cmUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=Type eq 'Credit Memo' and Date ge datetimeoffset'${filterStart}' and Date le datetimeoffset'${filterEnd}'&$select=ReferenceNbr,Type,Date,Amount,Status`;
+    console.log(`[verify-dates] Fetching Credit Memos by DocDate from Invoice endpoint`);
+    const cmResponse = await sessionManager.makeAuthenticatedRequest(credentialsObj, cmUrl);
+    if (cmResponse.ok) {
+      const cmData = await cmResponse.json();
+      for (const p of (Array.isArray(cmData) ? cmData : [])) {
+        let refNbr = p.ReferenceNbr?.value;
+        if (!refNbr) continue;
+        if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) refNbr = refNbr.padStart(6, '0');
+        acumaticaMap.set(`Credit Memo:${refNbr}`, {
+          date: p.Date?.value || '',
+          type: 'Credit Memo',
+          amount: p.Amount?.value || 0,
+          status: p.Status?.value || '',
+        });
+      }
+    }
+
     console.log(`[verify-dates] Acumatica has ${acumaticaMap.size} payments in range`);
 
-    const { data: dbPayments, error: dbError } = await supabase
+    const { data: dbNonCm } = await supabase
       .from('acumatica_payments')
-      .select('id, reference_number, type, application_date, payment_amount, status, customer_name')
+      .select('id, reference_number, type, application_date, doc_date, payment_amount, status, customer_name')
+      .neq('type', 'Credit Memo')
       .gte('application_date', `${startDate}T00:00:00`)
-      .lte('application_date', `${endDate}T23:59:59`)
-;
+      .lte('application_date', `${endDate}T23:59:59`);
 
-    if (dbError) throw new Error(`DB query error: ${dbError.message}`);
+    const { data: dbCm } = await supabase
+      .from('acumatica_payments')
+      .select('id, reference_number, type, application_date, doc_date, payment_amount, status, customer_name')
+      .eq('type', 'Credit Memo')
+      .gte('doc_date', `${startDate}T00:00:00`)
+      .lte('doc_date', `${endDate}T23:59:59`);
 
     const dbMap = new Map<string, any>();
-    for (const p of (dbPayments || [])) {
-      const key = `${p.type}:${p.reference_number}`;
-      dbMap.set(key, p);
+    for (const p of [...(dbNonCm || []), ...(dbCm || [])]) {
+      dbMap.set(`${p.type}:${p.reference_number}`, p);
     }
 
     console.log(`[verify-dates] DB has ${dbMap.size} payments in range`);
