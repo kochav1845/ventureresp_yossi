@@ -1076,7 +1076,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         const { data: batch, error: batchError } = await supabase
           .rpc('get_payments_with_applications', {
             p_start_date: startStr,
-            p_end_date: endStr
+            p_end_date: endStr,
+            p_type: filterType !== 'all' ? filterType : null,
+            p_exclude_credit_memos: filterType === 'all'
           })
           .range(offset, offset + batchSize - 1);
 
@@ -1121,7 +1123,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         .rpc('get_payment_summary_stats', {
           p_start_date: startStr,
           p_end_date: endStr,
-          p_excluded_customers: excludedCustomerArray
+          p_excluded_customers: excludedCustomerArray,
+          p_type: filterType !== 'all' ? filterType : null,
+          p_exclude_credit_memos: filterType === 'all'
         });
 
       if (statsError) {
@@ -1206,9 +1210,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const filterAndSortPayments = () => {
     let filtered = [...payments];
-
-    // Filter out credit memos (voided payments are kept for visibility)
-    filtered = filtered.filter(p => p.type !== 'Credit Memo');
 
     // Filter out excluded customers
     if (excludedCustomerIds.size > 0) {
