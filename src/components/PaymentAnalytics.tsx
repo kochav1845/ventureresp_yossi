@@ -111,6 +111,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
+  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterPaymentMethod !== 'all' || filterInvoicePeriod !== 'all';
+
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(null);
   const [invoiceApplications, setInvoiceApplications] = useState<InvoiceApplication[]>([]);
@@ -329,7 +331,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       }
     };
     loadViewData();
-  }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, excludedCustomerIds]);
+  }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, excludedCustomerIds, filterStatus, filterType, filterPaymentMethod, filterInvoicePeriod]);
 
   useEffect(() => {
     filterAndSortPayments();
@@ -683,6 +685,45 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     setLoading(true);
     setLoadingBatchInfo('');
     try {
+      if (hasActiveFilters) {
+        const excludedCustomerArray = Array.from(excludedCustomerIds);
+        const { data: filteredData, error: filteredError } = await supabase.rpc('get_filtered_payment_aggregates', {
+          p_period_type: 'monthly',
+          p_year: year,
+          p_status: filterStatus !== 'all' ? filterStatus : null,
+          p_type: filterType !== 'all' ? filterType : null,
+          p_payment_method: filterPaymentMethod !== 'all' ? filterPaymentMethod : null,
+          p_has_applications: filterInvoicePeriod !== 'all' ? filterInvoicePeriod : null,
+          p_excluded_customers: excludedCustomerArray
+        });
+
+        if (filteredError) throw filteredError;
+
+        const aggregates = Array.from({ length: 12 }, (_, month) => ({ month, total: 0, count: 0 }));
+        let totalAmount = 0;
+        let totalCount = 0;
+        let allCustomers = new Set<string>();
+
+        (filteredData || []).forEach((row: any) => {
+          if (row.agg_month !== null && row.agg_month >= 1 && row.agg_month <= 12) {
+            aggregates[row.agg_month - 1] = {
+              month: row.agg_month - 1,
+              total: parseFloat(row.total_amount) || 0,
+              count: parseInt(row.payment_count) || 0
+            };
+            totalAmount += parseFloat(row.total_amount) || 0;
+            totalCount += parseInt(row.payment_count) || 0;
+          }
+        });
+
+        setMonthlyAggregates(aggregates);
+        setMonthlyTotal(totalAmount);
+        setMonthlyPaymentCount(totalCount);
+        setLoading(false);
+        setLoadingBatchInfo('');
+        return;
+      }
+
       const { data: cachedData, error: cacheError } = await supabase
         .from('cached_payment_analytics')
         .select('*')
@@ -693,7 +734,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       if (!cacheError && cachedData && cachedData.length > 0) {
         console.log(`Loaded ${cachedData.length} months from cache`);
 
-        // Deduplicate by month, keeping the most recent entry (first in sorted array)
         const seenMonths = new Set<number>();
         const uniqueData = cachedData.filter(cache => {
           if (cache.month === null) return false;
@@ -723,7 +763,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         return;
       }
 
-      // If no cache, populate it using the edge function
       console.log('No cached monthly data found, building cache...');
       setLoadingBatchInfo('Building analytics cache. This may take a minute...');
 
@@ -749,7 +788,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         console.log(`Cache populated: ${result.monthsCalculated} months, ${result.totalPayments} payments`);
         setLoadingBatchInfo('Cache built successfully! Loading data...');
 
-        // Now reload from cache
         const { data: newCachedData } = await supabase
           .from('cached_payment_analytics')
           .select('*')
@@ -758,7 +796,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           .order('calculated_at', { ascending: false });
 
         if (newCachedData && newCachedData.length > 0) {
-          // Deduplicate by month, keeping the most recent entry
           const seenMonths = new Set<number>();
           const uniqueData = newCachedData.filter(cache => {
             if (cache.month === null) return false;
@@ -803,6 +840,38 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     try {
       const currentYear = new Date().getFullYear();
 
+      if (hasActiveFilters) {
+        const excludedCustomerArray = Array.from(excludedCustomerIds);
+        const { data: filteredData, error: filteredError } = await supabase.rpc('get_filtered_payment_aggregates', {
+          p_period_type: 'yearly',
+          p_year: null,
+          p_status: filterStatus !== 'all' ? filterStatus : null,
+          p_type: filterType !== 'all' ? filterType : null,
+          p_payment_method: filterPaymentMethod !== 'all' ? filterPaymentMethod : null,
+          p_has_applications: filterInvoicePeriod !== 'all' ? filterInvoicePeriod : null,
+          p_excluded_customers: excludedCustomerArray
+        });
+
+        if (filteredError) throw filteredError;
+
+        const aggregates = (filteredData || []).map((row: any) => ({
+          year: row.agg_year,
+          total: parseFloat(row.total_amount) || 0,
+          count: parseInt(row.payment_count) || 0
+        })).sort((a: any, b: any) => b.year - a.year);
+
+        setYearlyAggregates(aggregates);
+
+        const totalAmount = aggregates.reduce((sum: number, a: any) => sum + a.total, 0);
+        const totalCount = aggregates.reduce((sum: number, a: any) => sum + a.count, 0);
+        setMonthlyTotal(totalAmount);
+        setMonthlyPaymentCount(totalCount);
+
+        setLoading(false);
+        setLoadingBatchInfo('');
+        return;
+      }
+
       const { data: cachedData, error: cacheError } = await supabase
         .from('cached_payment_analytics')
         .select('*')
@@ -815,7 +884,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       if (!cacheError && cachedData && cachedData.length > 0) {
         console.log(`Loaded ${cachedData.length} years from cache`);
 
-        // Deduplicate by year, keeping the most recent entry (first in sorted array)
         const seenYears = new Set<number>();
         const uniqueData = cachedData.filter(cache => {
           if (seenYears.has(cache.year)) {
@@ -829,7 +897,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           year: cache.year,
           total: parseFloat(cache.total_amount) || 0,
           count: cache.payment_count || 0
-        })).sort((a, b) => b.year - a.year); // Sort by year descending
+        })).sort((a, b) => b.year - a.year);
 
         setYearlyAggregates(aggregates);
         setLastRefreshTime(new Date(cachedData[0].calculated_at));
@@ -838,7 +906,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         return;
       }
 
-      // If no cache, populate it using the edge function
       console.log('No cached yearly data found, building cache...');
       setLoadingBatchInfo('Building analytics cache. This may take a minute...');
 
@@ -864,7 +931,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         console.log(`Cache populated: ${result.yearsCalculated} years, ${result.totalPayments} payments`);
         setLoadingBatchInfo('Cache built successfully! Loading data...');
 
-        // Now reload from cache
         const { data: newCachedData } = await supabase
           .from('cached_payment_analytics')
           .select('*')
@@ -875,7 +941,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           .order('year', { ascending: false });
 
         if (newCachedData && newCachedData.length > 0) {
-          // Deduplicate by year, keeping the most recent entry
           const seenYears = new Set<number>();
           const uniqueData = newCachedData.filter(cache => {
             if (seenYears.has(cache.year)) {
@@ -1341,9 +1406,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const monthName = selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  const uniqueStatuses = ['all', ...new Set(payments.map(p => p.status).filter(Boolean))];
-  const uniqueTypes = ['all', ...new Set(payments.map(p => p.type).filter(Boolean))];
-  const uniquePaymentMethods = ['all', ...new Set(payments.map(p => p.payment_method).filter(Boolean))];
+  const uniqueStatuses = ['all', 'Balanced', 'Closed', 'Open', 'Voided'];
+  const uniqueTypes = ['all', 'Balance WO', 'Credit Memo', 'Payment', 'Prepayment', 'Refund', 'Voided Payment', 'Voided Refund'];
+  const uniquePaymentMethods = ['all', 'CASH', 'CCOFFICE', 'CHECK', 'CHECK BOA', 'CHECKH BOA', 'CREDITCARD', 'SHOP RESP'];
 
   const applyFilters = () => {
     setFilterStatus(tempFilterStatus);
@@ -2772,6 +2837,14 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                       Clear All Filters
                     </button>
                   </div>
+
+                  {hasActiveFilters && (
+                    <div className="bg-amber-50 border border-amber-300 rounded-lg p-2">
+                      <p className="text-xs font-medium text-amber-700">
+                        Filters active — results in all views are filtered
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Selected Date Filter */}
