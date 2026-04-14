@@ -229,20 +229,56 @@ async function calculateAndStore(
   day: number | null,
   date: string | null
 ) {
-  // Calculate aggregates
   const totalAmount = payments.reduce((sum, p) => sum + (parseFloat(p.payment_amount) || 0), 0);
   const paymentCount = payments.length;
   const uniqueCustomers = new Set(payments.map(p => p.customer_id).filter(Boolean));
   const uniqueCustomerCount = uniqueCustomers.size;
 
-  // Calculate breakdowns
   const paymentTypes: Record<string, number> = {};
   const paymentMethods: Record<string, number> = {};
   const statusBreakdown: Record<string, number> = {};
+  const typeAmounts: Record<string, number> = {};
+
+  let paymentOnlyAmount = 0;
+  let paymentOnlyCount = 0;
+  let prepaymentAmount = 0;
+  let prepaymentCount = 0;
+  let creditMemoAmount = 0;
+  let creditMemoCount = 0;
+  let refundAmount = 0;
+  let refundCount = 0;
+  let voidedPaymentAmount = 0;
+  let voidedPaymentCount = 0;
 
   payments.forEach(p => {
+    const amount = parseFloat(p.payment_amount) || 0;
     if (p.type) {
       paymentTypes[p.type] = (paymentTypes[p.type] || 0) + 1;
+      typeAmounts[p.type] = (typeAmounts[p.type] || 0) + amount;
+
+      switch (p.type) {
+        case 'Payment':
+          paymentOnlyAmount += amount;
+          paymentOnlyCount++;
+          break;
+        case 'Prepayment':
+          prepaymentAmount += amount;
+          prepaymentCount++;
+          break;
+        case 'Credit Memo':
+          creditMemoAmount += amount;
+          creditMemoCount++;
+          break;
+        case 'Refund':
+          refundAmount += amount;
+          refundCount++;
+          break;
+        case 'Voided Payment':
+        case 'Voided Refund':
+          voidedPaymentAmount += amount;
+          voidedPaymentCount++;
+          break;
+      }
     }
     if (p.payment_method) {
       paymentMethods[p.payment_method] = (paymentMethods[p.payment_method] || 0) + 1;
@@ -252,7 +288,6 @@ async function calculateAndStore(
     }
   });
 
-  // Upsert into cache table
   const { error } = await supabase
     .from('cached_payment_analytics')
     .upsert({
@@ -264,6 +299,17 @@ async function calculateAndStore(
       total_amount: totalAmount,
       payment_count: paymentCount,
       unique_customer_count: uniqueCustomerCount,
+      payment_only_amount: paymentOnlyAmount,
+      payment_only_count: paymentOnlyCount,
+      prepayment_amount: prepaymentAmount,
+      prepayment_count: prepaymentCount,
+      credit_memo_amount: creditMemoAmount,
+      credit_memo_count: creditMemoCount,
+      refund_amount: refundAmount,
+      refund_count: refundCount,
+      voided_payment_amount: voidedPaymentAmount,
+      voided_payment_count: voidedPaymentCount,
+      type_amounts: typeAmounts,
       payment_types: paymentTypes,
       payment_methods: paymentMethods,
       status_breakdown: statusBreakdown,

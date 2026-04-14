@@ -112,6 +112,28 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [dateTo, setDateTo] = useState('');
 
   const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterPaymentMethod !== 'all' || filterInvoicePeriod !== 'all';
+  const isOnlyTypeFilter = filterType !== 'all' && filterStatus === 'all' && filterPaymentMethod === 'all' && filterInvoicePeriod === 'all' && excludedCustomerIds.size === 0;
+
+  const getCachedTypeData = (cache: any, type: string): { total: number; count: number } => {
+    switch (type) {
+      case 'Payment':
+        return { total: parseFloat(cache.payment_only_amount) || 0, count: cache.payment_only_count || 0 };
+      case 'Prepayment':
+        return { total: parseFloat(cache.prepayment_amount) || 0, count: cache.prepayment_count || 0 };
+      case 'Credit Memo':
+        return { total: parseFloat(cache.credit_memo_amount) || 0, count: cache.credit_memo_count || 0 };
+      case 'Refund':
+        return { total: parseFloat(cache.refund_amount) || 0, count: cache.refund_count || 0 };
+      case 'Voided Payment':
+      case 'Voided Refund':
+        return { total: parseFloat(cache.voided_payment_amount) || 0, count: cache.voided_payment_count || 0 };
+      default: {
+        const typeAmounts = cache.type_amounts || {};
+        const typeTypes = cache.payment_types || {};
+        return { total: typeAmounts[type] || 0, count: typeTypes[type] || 0 };
+      }
+    }
+  };
 
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(null);
@@ -685,7 +707,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     setLoading(true);
     setLoadingBatchInfo('');
     try {
-      if (hasActiveFilters) {
+      if (hasActiveFilters && !isOnlyTypeFilter) {
         const excludedCustomerArray = Array.from(excludedCustomerIds);
         const { data: filteredData, error: filteredError } = await supabase.rpc('get_filtered_payment_aggregates', {
           p_period_type: 'monthly',
@@ -745,18 +767,35 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         });
 
         const aggregates = Array.from({ length: 12 }, (_, month) => ({ month, total: 0, count: 0 }));
+        let totalAmount = 0;
+        let totalCount = 0;
 
         uniqueData.forEach(cache => {
           if (cache.month !== null && cache.month >= 1 && cache.month <= 12) {
-            aggregates[cache.month - 1] = {
-              month: cache.month - 1,
-              total: parseFloat(cache.total_amount) || 0,
-              count: cache.payment_count || 0
-            };
+            if (isOnlyTypeFilter) {
+              const typeData = getCachedTypeData(cache, filterType);
+              aggregates[cache.month - 1] = {
+                month: cache.month - 1,
+                total: typeData.total,
+                count: typeData.count
+              };
+              totalAmount += typeData.total;
+              totalCount += typeData.count;
+            } else {
+              aggregates[cache.month - 1] = {
+                month: cache.month - 1,
+                total: parseFloat(cache.total_amount) || 0,
+                count: cache.payment_count || 0
+              };
+              totalAmount += parseFloat(cache.total_amount) || 0;
+              totalCount += cache.payment_count || 0;
+            }
           }
         });
 
         setMonthlyAggregates(aggregates);
+        setMonthlyTotal(totalAmount);
+        setMonthlyPaymentCount(totalCount);
         setLastRefreshTime(new Date(cachedData[0].calculated_at));
         setLoading(false);
         setLoadingBatchInfo('');
@@ -807,18 +846,27 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           });
 
           const aggregates = Array.from({ length: 12 }, (_, month) => ({ month, total: 0, count: 0 }));
+          let totalAmount = 0;
+          let totalCount = 0;
 
           uniqueData.forEach(cache => {
             if (cache.month !== null && cache.month >= 1 && cache.month <= 12) {
-              aggregates[cache.month - 1] = {
-                month: cache.month - 1,
-                total: parseFloat(cache.total_amount) || 0,
-                count: cache.payment_count || 0
-              };
+              if (isOnlyTypeFilter) {
+                const typeData = getCachedTypeData(cache, filterType);
+                aggregates[cache.month - 1] = { month: cache.month - 1, total: typeData.total, count: typeData.count };
+                totalAmount += typeData.total;
+                totalCount += typeData.count;
+              } else {
+                aggregates[cache.month - 1] = { month: cache.month - 1, total: parseFloat(cache.total_amount) || 0, count: cache.payment_count || 0 };
+                totalAmount += parseFloat(cache.total_amount) || 0;
+                totalCount += cache.payment_count || 0;
+              }
             }
           });
 
           setMonthlyAggregates(aggregates);
+          setMonthlyTotal(totalAmount);
+          setMonthlyPaymentCount(totalCount);
           setLastRefreshTime(new Date(newCachedData[0].calculated_at));
         }
       } else {
@@ -840,7 +888,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     try {
       const currentYear = new Date().getFullYear();
 
-      if (hasActiveFilters) {
+      if (hasActiveFilters && !isOnlyTypeFilter) {
         const excludedCustomerArray = Array.from(excludedCustomerIds);
         const { data: filteredData, error: filteredError } = await supabase.rpc('get_filtered_payment_aggregates', {
           p_period_type: 'yearly',
@@ -893,13 +941,20 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           return true;
         });
 
-        const aggregates = uniqueData.map(cache => ({
-          year: cache.year,
-          total: parseFloat(cache.total_amount) || 0,
-          count: cache.payment_count || 0
-        })).sort((a, b) => b.year - a.year);
+        const aggregates = uniqueData.map(cache => {
+          if (isOnlyTypeFilter) {
+            const typeData = getCachedTypeData(cache, filterType);
+            return { year: cache.year, total: typeData.total, count: typeData.count };
+          }
+          return { year: cache.year, total: parseFloat(cache.total_amount) || 0, count: cache.payment_count || 0 };
+        }).sort((a, b) => b.year - a.year);
 
         setYearlyAggregates(aggregates);
+
+        const totalAmt = aggregates.reduce((sum, a) => sum + a.total, 0);
+        const totalCnt = aggregates.reduce((sum, a) => sum + a.count, 0);
+        setMonthlyTotal(totalAmt);
+        setMonthlyPaymentCount(totalCnt);
         setLastRefreshTime(new Date(cachedData[0].calculated_at));
         setLoading(false);
         setLoadingBatchInfo('');
@@ -950,13 +1005,20 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
             return true;
           });
 
-          const aggregates = uniqueData.map(cache => ({
-            year: cache.year,
-            total: parseFloat(cache.total_amount) || 0,
-            count: cache.payment_count || 0
-          })).sort((a, b) => b.year - a.year);
+          const aggregates = uniqueData.map(cache => {
+            if (isOnlyTypeFilter) {
+              const typeData = getCachedTypeData(cache, filterType);
+              return { year: cache.year, total: typeData.total, count: typeData.count };
+            }
+            return { year: cache.year, total: parseFloat(cache.total_amount) || 0, count: cache.payment_count || 0 };
+          }).sort((a, b) => b.year - a.year);
 
           setYearlyAggregates(aggregates);
+
+          const totalAmt = aggregates.reduce((sum, a) => sum + a.total, 0);
+          const totalCnt = aggregates.reduce((sum, a) => sum + a.count, 0);
+          setMonthlyTotal(totalAmt);
+          setMonthlyPaymentCount(totalCnt);
           setLastRefreshTime(new Date(newCachedData[0].calculated_at));
         }
       } else {
