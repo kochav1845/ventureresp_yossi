@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, Menu, X, ExternalLink, ArrowDown, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -1483,9 +1483,23 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const monthName = selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  const uniqueStatuses = ['all', 'Balanced', 'Closed', 'Open', 'Voided'];
-  const uniqueTypes = ['all', 'Balance WO', 'Credit Memo', 'Payment', 'Prepayment', 'Refund', 'Voided Payment', 'Voided Refund'];
-  const uniquePaymentMethods = ['all', 'CASH', 'CCOFFICE', 'CHECK', 'CHECK BOA', 'CHECKH BOA', 'CREDITCARD', 'SHOP RESP'];
+  const uniqueStatuses = useMemo(() => {
+    const fromData = new Set(payments.map(p => p.status).filter(Boolean));
+    const all = fromData.size > 0 ? Array.from(fromData).sort() : ['Balanced', 'Closed', 'Open', 'Voided'];
+    return ['all', ...all];
+  }, [payments]);
+
+  const uniqueTypes = useMemo(() => {
+    const fromData = new Set(payments.map(p => p.type).filter(Boolean));
+    const all = fromData.size > 0 ? Array.from(fromData).sort() : ['Balance WO', 'Credit Memo', 'Payment', 'Prepayment', 'Refund', 'Voided Payment', 'Voided Refund'];
+    return ['all', ...all];
+  }, [payments]);
+
+  const uniquePaymentMethods = useMemo(() => {
+    const fromData = new Set(payments.map(p => p.payment_method).filter(Boolean));
+    const all = fromData.size > 0 ? Array.from(fromData).sort() : ['CASH', 'CCOFFICE', 'CHECK', 'CHECK BOA', 'CREDITCARD', 'SHOP RESP'];
+    return ['all', ...all];
+  }, [payments]);
 
   const applyFilters = () => {
     setFilterStatus(tempFilterStatus);
