@@ -1131,24 +1131,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
       setPayments(paymentRows);
 
-      const excludedCustomerArray = Array.from(excludedCustomerIds);
-      const { data: statsData, error: statsError } = await supabase
-        .rpc('get_payment_summary_stats', {
-          p_start_date: startStr,
-          p_end_date: endStr,
-          p_excluded_customers: excludedCustomerArray,
-          p_type: filterType !== 'all' ? filterType : null,
-          p_exclude_credit_memos: filterType === 'all'
-        });
-
-      if (statsError) {
-        console.error('Error loading stats:', statsError);
-      } else if (statsData && statsData.length > 0) {
-        const stats = statsData[0];
-        setMonthlyTotal(parseFloat(stats.total_amount) || 0);
-        setMonthlyPaymentCount(parseInt(stats.payment_count) || 0);
-        setMonthlyCustomerCount(parseInt(stats.unique_customer_count) || 0);
-      }
     } catch (error) {
       console.error('Error loading monthly data:', error);
     } finally {
@@ -1340,7 +1322,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const getDayPayments = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
-    return payments.filter(p => p.type !== 'Credit Memo' && p.date.split('T')[0] === dateStr);
+    return filteredPayments.filter(p => p.type !== 'Credit Memo' && p.date.split('T')[0] === dateStr);
   };
 
   const getMonthlyData = () => {
