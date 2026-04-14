@@ -1423,9 +1423,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   }, [payments]);
 
   const uniqueTypes = useMemo(() => {
+    const defaults = ['Balance WO', 'Credit Memo', 'Debit Memo', 'Payment', 'Prepayment', 'Refund', 'Voided Payment', 'Voided Refund'];
     const fromData = new Set(payments.map(p => p.type).filter(Boolean));
-    const all = fromData.size > 0 ? Array.from(fromData).sort() : ['Balance WO', 'Credit Memo', 'Payment', 'Prepayment', 'Refund', 'Voided Payment', 'Voided Refund'];
-    return ['all', ...all];
+    const merged = new Set([...defaults, ...fromData]);
+    return ['all', ...Array.from(merged).sort()];
   }, [payments]);
 
   const uniquePaymentMethods = useMemo(() => {
