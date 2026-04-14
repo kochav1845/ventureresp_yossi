@@ -413,15 +413,15 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     filterAnalyticsData();
   }, [analyticsData, appliedPaymentDateFrom, appliedPaymentDateTo, appliedMinAmount, appliedMaxAmount, appliedCustomerFilter, appliedSelectedCustomers, appliedTimingFilter, appliedCustomDaysMin, appliedCustomDaysMax, appliedShowOnlyOverdue, excludedCustomerIds, analyticsSortField, analyticsSortDirection]);
 
-  // Update summary stats based on filtered payments (including date selection)
   useEffect(() => {
-    const total = filteredPayments.reduce((sum, p) => sum + p.payment_amount, 0);
-    const uniqueCustomers = new Set(filteredPayments.map(p => p.customer_id).filter(Boolean));
-
-    setMonthlyTotal(total);
-    setMonthlyPaymentCount(filteredPayments.length);
-    setMonthlyCustomerCount(uniqueCustomers.size);
-  }, [filteredPayments]);
+    if (calendarView === 'daily') {
+      const total = filteredPayments.reduce((sum, p) => sum + p.payment_amount, 0);
+      const uniqueCustomers = new Set(filteredPayments.map(p => p.customer_id).filter(Boolean));
+      setMonthlyTotal(total);
+      setMonthlyPaymentCount(filteredPayments.length);
+      setMonthlyCustomerCount(uniqueCustomers.size);
+    }
+  }, [filteredPayments, calendarView]);
 
   // Initialize temp filters with applied filter values on mount
   useEffect(() => {
@@ -725,7 +725,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         const aggregates = Array.from({ length: 12 }, (_, month) => ({ month, total: 0, count: 0 }));
         let totalAmount = 0;
         let totalCount = 0;
-        let allCustomers = new Set<string>();
+        let totalCustomers = 0;
 
         (filteredData || []).forEach((row: any) => {
           if (row.agg_month !== null && row.agg_month >= 1 && row.agg_month <= 12) {
@@ -736,12 +736,14 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
             };
             totalAmount += parseFloat(row.total_amount) || 0;
             totalCount += parseInt(row.payment_count) || 0;
+            totalCustomers += parseInt(row.unique_customers) || 0;
           }
         });
 
         setMonthlyAggregates(aggregates);
         setMonthlyTotal(totalAmount);
         setMonthlyPaymentCount(totalCount);
+        setMonthlyCustomerCount(totalCustomers);
         setLoading(false);
         setLoadingBatchInfo('');
         return;
@@ -770,6 +772,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         const aggregates = Array.from({ length: 12 }, (_, month) => ({ month, total: 0, count: 0 }));
         let totalAmount = 0;
         let totalCount = 0;
+        const allCustomerIds = new Set<string>();
 
         uniqueData.forEach(cache => {
           if (cache.month !== null && cache.month >= 1 && cache.month <= 12) {
@@ -797,6 +800,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         setMonthlyAggregates(aggregates);
         setMonthlyTotal(totalAmount);
         setMonthlyPaymentCount(totalCount);
+        const totalCustomers = uniqueData.reduce((sum, c) => sum + (c.unique_customer_count || 0), 0);
+        setMonthlyCustomerCount(totalCustomers);
         setLastRefreshTime(new Date(cachedData[0].calculated_at));
         setLoading(false);
         setLoadingBatchInfo('');
@@ -868,6 +873,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           setMonthlyAggregates(aggregates);
           setMonthlyTotal(totalAmount);
           setMonthlyPaymentCount(totalCount);
+          const totalCustomers = uniqueData.reduce((sum, c) => sum + (c.unique_customer_count || 0), 0);
+          setMonthlyCustomerCount(totalCustomers);
           setLastRefreshTime(new Date(newCachedData[0].calculated_at));
         }
       } else {
@@ -913,8 +920,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
         const totalAmount = aggregates.reduce((sum: number, a: any) => sum + a.total, 0);
         const totalCount = aggregates.reduce((sum: number, a: any) => sum + a.count, 0);
+        const totalCustomers = (filteredData || []).reduce((sum: number, row: any) => sum + (parseInt(row.unique_customers) || 0), 0);
         setMonthlyTotal(totalAmount);
         setMonthlyPaymentCount(totalCount);
+        setMonthlyCustomerCount(totalCustomers);
 
         setLoading(false);
         setLoadingBatchInfo('');
@@ -954,8 +963,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
         const totalAmt = aggregates.reduce((sum, a) => sum + a.total, 0);
         const totalCnt = aggregates.reduce((sum, a) => sum + a.count, 0);
+        const totalCustomers = uniqueData.reduce((sum, c) => sum + (c.unique_customer_count || 0), 0);
         setMonthlyTotal(totalAmt);
         setMonthlyPaymentCount(totalCnt);
+        setMonthlyCustomerCount(totalCustomers);
         setLastRefreshTime(new Date(cachedData[0].calculated_at));
         setLoading(false);
         setLoadingBatchInfo('');
@@ -1018,8 +1029,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
           const totalAmt = aggregates.reduce((sum, a) => sum + a.total, 0);
           const totalCnt = aggregates.reduce((sum, a) => sum + a.count, 0);
+          const totalCustomers = uniqueData.reduce((sum, c) => sum + (c.unique_customer_count || 0), 0);
           setMonthlyTotal(totalAmt);
           setMonthlyPaymentCount(totalCnt);
+          setMonthlyCustomerCount(totalCustomers);
           setLastRefreshTime(new Date(newCachedData[0].calculated_at));
         }
       } else {
