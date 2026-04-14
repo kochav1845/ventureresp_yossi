@@ -112,28 +112,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [dateTo, setDateTo] = useState('');
 
   const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterPaymentMethod !== 'all' || filterInvoicePeriod !== 'all';
-  const isOnlyTypeFilter = filterType !== 'all' && filterStatus === 'all' && filterPaymentMethod === 'all' && filterInvoicePeriod === 'all' && excludedCustomerIds.size === 0;
-
-  const getCachedTypeData = (cache: any, type: string): { total: number; count: number } => {
-    switch (type) {
-      case 'Payment':
-        return { total: parseFloat(cache.payment_only_amount) || 0, count: cache.payment_only_count || 0 };
-      case 'Prepayment':
-        return { total: parseFloat(cache.prepayment_amount) || 0, count: cache.prepayment_count || 0 };
-      case 'Credit Memo':
-        return { total: parseFloat(cache.credit_memo_amount) || 0, count: cache.credit_memo_count || 0 };
-      case 'Refund':
-        return { total: parseFloat(cache.refund_amount) || 0, count: cache.refund_count || 0 };
-      case 'Voided Payment':
-      case 'Voided Refund':
-        return { total: parseFloat(cache.voided_payment_amount) || 0, count: cache.voided_payment_count || 0 };
-      default: {
-        const typeAmounts = cache.type_amounts || {};
-        const typeTypes = cache.payment_types || {};
-        return { total: typeAmounts[type] || 0, count: typeTypes[type] || 0 };
-      }
-    }
-  };
 
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(null);
@@ -191,6 +169,29 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [excludedCustomerIds, setExcludedCustomerIds] = useState<Set<string>>(new Set());
   const [excludedCustomersWithReasons, setExcludedCustomersWithReasons] = useState<Map<string, { notes: string; excluded_at: string }>>(new Map());
   const [exclusionBannerDismissed, setExclusionBannerDismissed] = useState(false);
+
+  const isOnlyTypeFilter = filterType !== 'all' && filterStatus === 'all' && filterPaymentMethod === 'all' && filterInvoicePeriod === 'all' && excludedCustomerIds.size === 0;
+
+  const getCachedTypeData = (cache: any, type: string): { total: number; count: number } => {
+    switch (type) {
+      case 'Payment':
+        return { total: parseFloat(cache.payment_only_amount) || 0, count: cache.payment_only_count || 0 };
+      case 'Prepayment':
+        return { total: parseFloat(cache.prepayment_amount) || 0, count: cache.prepayment_count || 0 };
+      case 'Credit Memo':
+        return { total: parseFloat(cache.credit_memo_amount) || 0, count: cache.credit_memo_count || 0 };
+      case 'Refund':
+        return { total: parseFloat(cache.refund_amount) || 0, count: cache.refund_count || 0 };
+      case 'Voided Payment':
+      case 'Voided Refund':
+        return { total: parseFloat(cache.voided_payment_amount) || 0, count: cache.voided_payment_count || 0 };
+      default: {
+        const typeAmounts = cache.type_amounts || {};
+        const typeTypes = cache.payment_types || {};
+        return { total: typeAmounts[type] || 0, count: typeTypes[type] || 0 };
+      }
+    }
+  };
 
   // Payment applications cache
   const [paymentApplicationsCache, setPaymentApplicationsCache] = useState<Map<string, InvoiceApplication[]>>(new Map());
