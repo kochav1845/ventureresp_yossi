@@ -173,6 +173,23 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   // Payment applications cache
   const [paymentApplicationsCache, setPaymentApplicationsCache] = useState<Map<string, InvoiceApplication[]>>(new Map());
 
+  const dayGroups = useMemo(() => {
+    if (selectedDate || filteredPayments.length === 0) return null;
+    const groups: Map<string, { payments: PaymentRow[]; total: number; count: number }> = new Map();
+    for (const p of filteredPayments) {
+      const dayKey = p.date ? p.date.split('T')[0] : 'unknown';
+      const existing = groups.get(dayKey);
+      if (existing) {
+        existing.payments.push(p);
+        existing.total += p.payment_amount;
+        existing.count += 1;
+      } else {
+        groups.set(dayKey, { payments: [p], total: p.payment_amount, count: 1 });
+      }
+    }
+    return groups;
+  }, [filteredPayments, selectedDate]);
+
   const customerMapRef = useRef<Map<string, string>>(new Map());
   const customerMapLoadedRef = useRef(false);
 
@@ -3010,7 +3027,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                     return (
                       <button
                         key={idx}
-                        onClick={() => isCurrentMonth ? setSelectedDate(date) : null}
+                        onClick={() => isCurrentMonth ? setSelectedDate(isSelected ? null : date) : null}
                         className={`
                           relative p-2 rounded-lg border transition-all
                           ${isCurrentMonth ? 'bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300' : 'bg-white border-gray-200 opacity-40'}
@@ -3357,11 +3374,37 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                   </tr>
                 </thead>
                 <tbody className="bg-white">
-                  {filteredPayments.map((payment, index) => {
+                  {(() => {
+                    let lastDayKey = '';
+                    return filteredPayments.map((payment, index) => {
                     const applications = paymentApplicationsCache.get(payment.id) || [];
+                    const currentDayKey = payment.date ? payment.date.split('T')[0] : 'unknown';
+                    const showDayHeader = !selectedDate && dayGroups && currentDayKey !== lastDayKey;
+                    if (showDayHeader) lastDayKey = currentDayKey;
+                    const dayGroup = dayGroups?.get(currentDayKey);
 
                     return (
                       <Fragment key={payment.id}>
+                        {showDayHeader && dayGroup && (
+                          <tr className="bg-gradient-to-r from-blue-50 to-blue-100/50 border-y border-blue-200">
+                            <td colSpan={7} className="px-4 py-2.5">
+                              <div className="flex items-center gap-3">
+                                <Calendar className="w-4 h-4 text-blue-500" />
+                                <span className="text-sm font-bold text-blue-800">
+                                  {formatDateString(currentDayKey)}
+                                </span>
+                                <span className="text-xs text-blue-600 bg-blue-200/60 px-2 py-0.5 rounded-full font-medium">
+                                  {dayGroup.count} payment{dayGroup.count !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                            </td>
+                            <td colSpan={5} className="px-4 py-2.5 text-right">
+                              <span className="text-sm font-bold text-green-700">
+                                {formatCurrency(dayGroup.total)}
+                              </span>
+                            </td>
+                          </tr>
+                        )}
                         <tr
                           ref={index === filteredPayments.length - 1 ? lastPaymentRef : null}
                           className="hover:bg-gray-50 transition-colors border-b border-gray-200"
@@ -3492,7 +3535,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                         ))}
                       </Fragment>
                     );
-                  })}
+                  });
+                  })()}
                 </tbody>
                 <tfoot className="bg-gray-50 border-t-2 border-gray-300">
                   <tr>
