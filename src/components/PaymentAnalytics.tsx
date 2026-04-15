@@ -1061,7 +1061,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
             p_start_date: startStr,
             p_end_date: endStr,
             p_type: filterType !== 'all' ? filterType : null,
-            p_exclude_credit_memos: filterType === 'all'
+            p_exclude_credit_memos: true
           })
           .range(offset, offset + batchSize - 1);
 

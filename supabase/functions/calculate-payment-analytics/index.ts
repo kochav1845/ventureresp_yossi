@@ -246,8 +246,6 @@ async function calculateAndStore(
   let paymentOnlyCount = 0;
   let prepaymentAmount = 0;
   let prepaymentCount = 0;
-  let creditMemoAmount = 0;
-  let creditMemoCount = 0;
   let refundAmount = 0;
   let refundCount = 0;
   let voidedPaymentAmount = 0;
@@ -267,10 +265,6 @@ async function calculateAndStore(
         case 'Prepayment':
           prepaymentAmount += amount;
           prepaymentCount++;
-          break;
-        case 'Credit Memo':
-          creditMemoAmount += amount;
-          creditMemoCount++;
           break;
         case 'Refund':
           refundAmount += amount;
@@ -306,8 +300,8 @@ async function calculateAndStore(
       payment_only_count: paymentOnlyCount,
       prepayment_amount: prepaymentAmount,
       prepayment_count: prepaymentCount,
-      credit_memo_amount: creditMemoAmount,
-      credit_memo_count: creditMemoCount,
+      credit_memo_amount: 0,
+      credit_memo_count: 0,
       refund_amount: refundAmount,
       refund_count: refundCount,
       voided_payment_amount: voidedPaymentAmount,
