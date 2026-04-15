@@ -31,50 +31,41 @@ Deno.serve(async (req: Request) => {
 
     const { periodType, year, month, day, startDate, endDate }: CalculateRequest = await req.json().catch(() => ({}));
 
-    // If no parameters provided, calculate for current month
     const now = new Date();
     const targetYear = year || now.getFullYear();
-    const targetMonth = month; // Don't default month - let it be undefined for full year calculations
+    const targetMonth = month;
     const targetPeriodType = periodType || 'monthly';
 
     console.log(`Calculating ${targetPeriodType} analytics for year=${targetYear}, month=${targetMonth || 'all'}, day=${day}`);
 
     let queryStartDate: string;
     let queryEndDate: string;
-    let calculationDate: string | null = null;
 
-    // Determine date range based on period type
     if (startDate && endDate) {
       queryStartDate = startDate;
       queryEndDate = endDate;
     } else if (targetPeriodType === 'daily') {
-      // For daily, calculate for specific day or entire month of days
       if (day) {
-        const date = new Date(targetYear, targetMonth - 1, day);
+        const date = new Date(targetYear, targetMonth! - 1, day);
         queryStartDate = date.toISOString().split('T')[0];
         queryEndDate = queryStartDate;
-        calculationDate = queryStartDate;
       } else {
-        // Calculate for all days in the month
-        const firstDay = new Date(targetYear, targetMonth - 1, 1);
-        const lastDay = new Date(targetYear, targetMonth, 0);
+        const firstDay = new Date(targetYear, targetMonth! - 1, 1);
+        const lastDay = new Date(targetYear, targetMonth!, 0);
         queryStartDate = firstDay.toISOString().split('T')[0];
         queryEndDate = lastDay.toISOString().split('T')[0];
       }
     } else if (targetPeriodType === 'monthly') {
-      // For monthly, calculate for entire year or specific month
       if (targetMonth) {
         const firstDay = new Date(targetYear, targetMonth - 1, 1);
         const lastDay = new Date(targetYear, targetMonth, 0);
         queryStartDate = firstDay.toISOString().split('T')[0];
         queryEndDate = lastDay.toISOString().split('T')[0];
       } else {
-        // Calculate for entire year (all months)
         queryStartDate = `${targetYear}-01-01`;
         queryEndDate = `${targetYear}-12-31`;
       }
     } else {
-      // Yearly - calculate for last 6 years
       const currentYear = now.getFullYear();
       queryStartDate = `${currentYear - 5}-01-01`;
       queryEndDate = `${currentYear}-12-31`;
@@ -82,64 +73,39 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Query date range: ${queryStartDate} to ${queryEndDate}`);
 
-    // Fetch all payments in the date range in batches
-    const allPayments: any[] = [];
-    let offset = 0;
-    const batchSize = 1000;
-    let hasMore = true;
-
     const excludedTypes = ['Credit Memo', 'Balance WO', 'Cash Sale', 'Cash Return'];
 
-    while (hasMore) {
-      const { data, error } = await supabase
-        .from('acumatica_payments')
-        .select('application_date, doc_date, payment_amount, customer_id, type, payment_method, status')
-        .or(`and(doc_date.gte.${queryStartDate},doc_date.lte.${queryEndDate}),and(doc_date.is.null,application_date.gte.${queryStartDate},application_date.lte.${queryEndDate})`)
-        .not('type', 'in', `(${excludedTypes.map(t => `"${t}"`).join(',')})`)
-        .range(offset, offset + batchSize - 1);
+    const { data: fetchedPayments, error: fetchError } = await supabase.rpc('get_payments_for_analytics', {
+      p_start_date: queryStartDate,
+      p_end_date: queryEndDate,
+      p_excluded_types: excludedTypes
+    });
 
-      if (error) {
-        console.error('Error fetching payments:', error);
-        throw error;
-      }
-
-      if (!data || data.length === 0) {
-        hasMore = false;
-        break;
-      }
-
-      allPayments.push(...data);
-
-      if (data.length < batchSize) {
-        hasMore = false;
-      }
-
-      offset += batchSize;
+    if (fetchError) {
+      console.error('Error fetching payments:', fetchError);
+      throw fetchError;
     }
+
+    const allPayments: any[] = fetchedPayments || [];
 
     console.log(`Fetched ${allPayments.length} payments`);
 
-    // Process based on period type
     if (targetPeriodType === 'daily') {
-      // Group by day
       const dayGroups = new Map<string, any[]>();
 
       allPayments.forEach(payment => {
-        const effectiveDate = payment.doc_date || payment.application_date;
-        const date = effectiveDate?.split('T')[0] || effectiveDate;
+        const date = (payment.effective_date || payment.doc_date || payment.application_date || '').split('T')[0];
         if (!dayGroups.has(date)) {
           dayGroups.set(date, []);
         }
         dayGroups.get(date)!.push(payment);
       });
 
-      // Calculate and store for each day
       for (const [date, payments] of dayGroups.entries()) {
-        const dateObj = new Date(date);
+        const dateObj = new Date(date + 'T00:00:00');
         const dayYear = dateObj.getFullYear();
         const dayMonth = dateObj.getMonth() + 1;
         const dayDay = dateObj.getDate();
-
         await calculateAndStore(supabase, 'daily', payments, dayYear, dayMonth, dayDay, date);
       }
 
@@ -153,19 +119,18 @@ Deno.serve(async (req: Request) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } else if (targetPeriodType === 'monthly') {
-      // Group by month
       const monthGroups = new Map<string, any[]>();
 
       allPayments.forEach(payment => {
-        const date = new Date(payment.doc_date || payment.application_date);
-        const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`;
+        const dateStr = (payment.effective_date || payment.doc_date || payment.application_date || '').split('T')[0];
+        const parts = dateStr.split('-');
+        const monthKey = `${parseInt(parts[0])}-${parseInt(parts[1])}`;
         if (!monthGroups.has(monthKey)) {
           monthGroups.set(monthKey, []);
         }
         monthGroups.get(monthKey)!.push(payment);
       });
 
-      // Calculate and store for each month
       for (const [monthKey, payments] of monthGroups.entries()) {
         const [monthYear, monthNum] = monthKey.split('-').map(Number);
         await calculateAndStore(supabase, 'monthly', payments, monthYear, monthNum, null, null);
@@ -181,19 +146,17 @@ Deno.serve(async (req: Request) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } else {
-      // Yearly
       const yearGroups = new Map<number, any[]>();
 
       allPayments.forEach(payment => {
-        const date = new Date(payment.doc_date || payment.application_date);
-        const yearNum = date.getFullYear();
+        const dateStr = (payment.effective_date || payment.doc_date || payment.application_date || '').split('T')[0];
+        const yearNum = parseInt(dateStr.split('-')[0]);
         if (!yearGroups.has(yearNum)) {
           yearGroups.set(yearNum, []);
         }
         yearGroups.get(yearNum)!.push(payment);
       });
 
-      // Calculate and store for each year
       for (const [yearNum, payments] of yearGroups.entries()) {
         await calculateAndStore(supabase, 'yearly', payments, yearNum, null, null, null);
       }
@@ -285,13 +248,33 @@ async function calculateAndStore(
     }
   });
 
+  let deleteQuery = supabase
+    .from('cached_payment_analytics')
+    .delete()
+    .eq('period_type', periodType)
+    .eq('year', year);
+
+  if (month === null) {
+    deleteQuery = deleteQuery.is('month', null);
+  } else {
+    deleteQuery = deleteQuery.eq('month', month);
+  }
+
+  if (day === null) {
+    deleteQuery = deleteQuery.is('day', null);
+  } else {
+    deleteQuery = deleteQuery.eq('day', day);
+  }
+
+  await deleteQuery;
+
   const { error } = await supabase
     .from('cached_payment_analytics')
-    .upsert({
+    .insert({
       period_type: periodType,
       year,
-      month,
-      day,
+      month: month,
+      day: day,
       date,
       total_amount: totalAmount,
       payment_count: paymentCount,
@@ -311,8 +294,6 @@ async function calculateAndStore(
       payment_methods: paymentMethods,
       status_breakdown: statusBreakdown,
       calculated_at: new Date().toISOString()
-    }, {
-      onConflict: 'period_type,year,month,day'
     });
 
   if (error) {
