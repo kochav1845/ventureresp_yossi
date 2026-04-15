@@ -8,6 +8,60 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+async function fetchBulkDocDates(
+  sessionManager: AcumaticaSessionManager,
+  credentialsObj: any,
+  acumaticaUrl: string,
+  payments: { type: string; reference_number: string }[],
+  attempt = 0
+): Promise<{ results: any[]; failed: string[] }> {
+  const MAX_RETRIES = 3;
+  const failed: string[] = [];
+
+  const grouped: Record<string, { type: string; reference_number: string }[]> = {};
+  for (const p of payments) {
+    if (!grouped[p.type]) grouped[p.type] = [];
+    grouped[p.type].push(p);
+  }
+
+  const allResults: any[] = [];
+
+  for (const [paymentType, typePayments] of Object.entries(grouped)) {
+    const refFilters = typePayments
+      .map((p) => `ReferenceNbr eq '${p.reference_number}'`)
+      .join(" or ");
+
+    const filter = `Type eq '${paymentType}' and (${refFilters})`;
+    const url = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$filter=${encodeURIComponent(filter)}&$select=Type,ReferenceNbr&$custom=Document.DocDate,Document.FinPeriodID&$top=${typePayments.length}`;
+
+    const response = await sessionManager.makeAuthenticatedRequest(credentialsObj, url);
+
+    if (response.status === 429) {
+      if (attempt < MAX_RETRIES) {
+        const delay = Math.pow(2, attempt + 1) * 1000;
+        console.log(`[backfill-doc-dates] 429 on bulk fetch, retry ${attempt + 1} in ${delay}ms`);
+        await new Promise((r) => setTimeout(r, delay));
+        return fetchBulkDocDates(sessionManager, credentialsObj, acumaticaUrl, payments, attempt + 1);
+      }
+      for (const p of typePayments) failed.push(`${p.type} ${p.reference_number}: 429 after retries`);
+      continue;
+    }
+
+    if (!response.ok) {
+      const status = response.status;
+      for (const p of typePayments) failed.push(`${p.type} ${p.reference_number}: HTTP ${status}`);
+      continue;
+    }
+
+    const data = await response.json();
+    if (Array.isArray(data)) {
+      allResults.push(...data);
+    }
+  }
+
+  return { results: allResults, failed };
+}
+
 async function processBackfill(
   supabase: any,
   sessionManager: AcumaticaSessionManager,
@@ -58,7 +112,9 @@ async function processBackfill(
   let failed = 0;
   let processed = 0;
   const errors: string[] = [];
-  const BATCH_SIZE = 200;
+  const DB_BATCH_SIZE = 200;
+  const API_CHUNK_SIZE = 25;
+  const API_CONCURRENCY = 3;
 
   while (true) {
     const { data: job } = await supabase
@@ -78,7 +134,7 @@ async function processBackfill(
       .is("doc_date", null)
       .gte("application_date", `${startDate}T00:00:00`)
       .lte("application_date", `${endDate}T23:59:59`)
-      .limit(BATCH_SIZE);
+      .limit(DB_BATCH_SIZE);
 
     if (fetchErr) {
       errors.push(`DB fetch error: ${fetchErr.message}`);
@@ -92,89 +148,91 @@ async function processBackfill(
 
     console.log(`[backfill-doc-dates] Processing batch of ${batch.length} (${processed}/${totalMissing} done)`);
 
-    const CONCURRENCY = 10;
-    const MAX_RETRIES = 3;
+    const batchLookup = new Map<string, { type: string; reference_number: string }>();
+    for (const p of batch) {
+      batchLookup.set(`${p.type}|${p.reference_number}`, p);
+    }
 
-    async function fetchWithRetry(payment: { type: string; reference_number: string }, attempt = 0): Promise<{ status: "updated" | "failed" }> {
-      const url = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(payment.type)}/${encodeURIComponent(payment.reference_number)}?$custom=Document.DocDate,Document.FinPeriodID`;
+    const apiChunks: { type: string; reference_number: string }[][] = [];
+    for (let i = 0; i < batch.length; i += API_CHUNK_SIZE) {
+      apiChunks.push(batch.slice(i, i + API_CHUNK_SIZE));
+    }
 
-      const response = await sessionManager.makeAuthenticatedRequest(credentialsObj, url);
+    const matchedRefs = new Set<string>();
 
-      if (response.status === 429) {
-        if (attempt < MAX_RETRIES) {
-          const delay = Math.pow(2, attempt + 1) * 1000;
-          console.log(`[backfill-doc-dates] 429 for ${payment.reference_number}, retry ${attempt + 1} in ${delay}ms`);
-          await new Promise((r) => setTimeout(r, delay));
-          return fetchWithRetry(payment, attempt + 1);
+    for (let i = 0; i < apiChunks.length; i += API_CONCURRENCY) {
+      const concurrentChunks = apiChunks.slice(i, i + API_CONCURRENCY);
+
+      const chunkResults = await Promise.allSettled(
+        concurrentChunks.map((chunk) =>
+          fetchBulkDocDates(sessionManager, credentialsObj, acumaticaUrl, chunk)
+        )
+      );
+
+      for (const result of chunkResults) {
+        if (result.status === "rejected") {
+          errors.push(result.reason?.message || "Bulk fetch failed");
+          continue;
         }
-        errors.push(`Payment ${payment.reference_number}: 429 after ${MAX_RETRIES} retries`);
-        return { status: "failed" };
+
+        const { results, failed: chunkFailed } = result.value;
+        for (const errMsg of chunkFailed) {
+          errors.push(errMsg);
+        }
+
+        for (const item of results) {
+          const refNbr = item.ReferenceNbr?.value;
+          const type = item.Type?.value;
+          if (!refNbr || !type) continue;
+
+          matchedRefs.add(`${type}|${refNbr}`);
+
+          const docDate = item?.custom?.Document?.DocDate?.value || null;
+          const finPeriod = item?.custom?.Document?.FinPeriodID?.value || null;
+
+          if (docDate || finPeriod) {
+            const updateData: Record<string, any> = {};
+            if (docDate) updateData.doc_date = docDate;
+            if (finPeriod) updateData.financial_period = finPeriod;
+
+            const { error: updateErr } = await supabase
+              .from("acumatica_payments")
+              .update(updateData)
+              .eq("reference_number", refNbr)
+              .eq("type", type);
+
+            if (updateErr) {
+              errors.push(`${refNbr}: DB update failed`);
+              failed++;
+            } else {
+              updated++;
+            }
+          } else {
+            await supabase
+              .from("acumatica_payments")
+              .update({ doc_date: "1900-01-01" })
+              .eq("reference_number", refNbr)
+              .eq("type", type);
+            failed++;
+          }
+          processed++;
+        }
       }
 
-      if (!response.ok) {
-        if (response.status === 404 || response.status === 500) {
-          await supabase
-            .from("acumatica_payments")
-            .update({ doc_date: "1900-01-01" })
-            .eq("reference_number", payment.reference_number)
-            .eq("type", payment.type);
-        } else {
-          errors.push(`${payment.type} ${payment.reference_number}: HTTP ${response.status}`);
-        }
-        return { status: "failed" };
+      if (i + API_CONCURRENCY < apiChunks.length) {
+        await new Promise((r) => setTimeout(r, 300));
       }
+    }
 
-      const data = await response.json();
-      const docDate = data?.custom?.Document?.DocDate?.value || null;
-      const finPeriod = data?.custom?.Document?.FinPeriodID?.value || null;
-
-      if (docDate || finPeriod) {
-        const updateData: Record<string, any> = {};
-        if (docDate) updateData.doc_date = docDate;
-        if (finPeriod) updateData.financial_period = finPeriod;
-
-        const { error: updateErr } = await supabase
-          .from("acumatica_payments")
-          .update(updateData)
-          .eq("reference_number", payment.reference_number)
-          .eq("type", payment.type);
-
-        if (updateErr) {
-          errors.push(`${payment.reference_number}: DB update failed`);
-          return { status: "failed" };
-        }
-        return { status: "updated" };
-      } else {
+    for (const [key, payment] of batchLookup.entries()) {
+      if (!matchedRefs.has(key)) {
         await supabase
           .from("acumatica_payments")
           .update({ doc_date: "1900-01-01" })
           .eq("reference_number", payment.reference_number)
           .eq("type", payment.type);
-        return { status: "failed" };
-      }
-    }
-
-    for (let i = 0; i < batch.length; i += CONCURRENCY) {
-      const chunk = batch.slice(i, i + CONCURRENCY);
-
-      const results = await Promise.allSettled(
-        chunk.map((payment) => fetchWithRetry(payment))
-      );
-
-      for (const result of results) {
+        failed++;
         processed++;
-        if (result.status === "fulfilled" && result.value.status === "updated") {
-          updated++;
-        } else if (result.status === "rejected") {
-          errors.push(result.reason?.message || "Unknown error");
-          failed++;
-        } else {
-          failed++;
-        }
-      }
-
-      if (i + CONCURRENCY < batch.length) {
-        await new Promise((r) => setTimeout(r, 200));
       }
     }
 
