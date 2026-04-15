@@ -88,12 +88,15 @@ Deno.serve(async (req: Request) => {
     const batchSize = 1000;
     let hasMore = true;
 
+    const excludedTypes = ['Credit Memo', 'Balance WO', 'Cash Sale', 'Cash Return'];
+
     while (hasMore) {
       const { data, error } = await supabase
         .from('acumatica_payments')
         .select('application_date, payment_amount, customer_id, type, payment_method, status')
         .gte('application_date', queryStartDate)
         .lte('application_date', queryEndDate)
+        .not('type', 'in', `(${excludedTypes.map(t => `"${t}"`).join(',')})`)
         .range(offset, offset + batchSize - 1);
 
       if (error) {
