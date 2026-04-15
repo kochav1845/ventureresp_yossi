@@ -87,6 +87,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [monthlyTotal, setMonthlyTotal] = useState(0);
   const [monthlyPaymentCount, setMonthlyPaymentCount] = useState(0);
   const [monthlyCustomerCount, setMonthlyCustomerCount] = useState(0);
+  const [allFilteredPayments, setAllFilteredPayments] = useState<PaymentRow[]>([]);
 
   // Refresh analytics state
   const [refreshingAnalytics, setRefreshingAnalytics] = useState(false);
@@ -174,9 +175,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [paymentApplicationsCache, setPaymentApplicationsCache] = useState<Map<string, InvoiceApplication[]>>(new Map());
 
   const dayGroups = useMemo(() => {
-    if (selectedDate || filteredPayments.length === 0) return null;
+    const source = selectedDate ? filteredPayments : allFilteredPayments;
+    if (source.length === 0) return null;
     const groups: Map<string, { payments: PaymentRow[]; total: number; count: number }> = new Map();
-    for (const p of filteredPayments) {
+    for (const p of source) {
       const dayKey = p.date ? p.date.split('T')[0] : 'unknown';
       const existing = groups.get(dayKey);
       if (existing) {
@@ -188,7 +190,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       }
     }
     return groups;
-  }, [filteredPayments, selectedDate]);
+  }, [filteredPayments, allFilteredPayments, selectedDate]);
 
   const customerMapRef = useRef<Map<string, string>>(new Map());
   const customerMapLoadedRef = useRef(false);
@@ -409,13 +411,13 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   useEffect(() => {
     if (calendarView === 'daily') {
-      const total = filteredPayments.reduce((sum, p) => sum + p.payment_amount, 0);
-      const uniqueCustomers = new Set(filteredPayments.map(p => p.customer_id).filter(Boolean));
+      const total = allFilteredPayments.reduce((sum, p) => sum + p.payment_amount, 0);
+      const uniqueCustomers = new Set(allFilteredPayments.map(p => p.customer_id).filter(Boolean));
       setMonthlyTotal(total);
-      setMonthlyPaymentCount(filteredPayments.length);
+      setMonthlyPaymentCount(allFilteredPayments.length);
       setMonthlyCustomerCount(uniqueCustomers.size);
     }
-  }, [filteredPayments, calendarView]);
+  }, [allFilteredPayments, calendarView]);
 
   // Initialize temp filters with applied filter values on mount
   useEffect(() => {
@@ -1217,11 +1219,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       });
     }
 
-    if (selectedDate) {
-      const selectedDateStr = selectedDate.toISOString().split('T')[0];
-      filtered = filtered.filter(p => p.date.split('T')[0] === selectedDateStr);
-    }
-
     filtered.sort((a, b) => {
       const aVal = a[sortField];
       const bVal = b[sortField];
@@ -1239,6 +1236,13 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         return bStr.localeCompare(aStr);
       }
     });
+
+    setAllFilteredPayments(filtered);
+
+    if (selectedDate) {
+      const selectedDateStr = selectedDate.toISOString().split('T')[0];
+      filtered = filtered.filter(p => p.date.split('T')[0] === selectedDateStr);
+    }
 
     setFilteredPayments(filtered);
   };
@@ -1290,7 +1294,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const getDayPayments = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
-    return filteredPayments.filter(p => p.type !== 'Credit Memo' && p.date.split('T')[0] === dateStr);
+    return allFilteredPayments.filter(p => p.type !== 'Credit Memo' && p.date.split('T')[0] === dateStr);
   };
 
   const getMonthlyData = () => {
