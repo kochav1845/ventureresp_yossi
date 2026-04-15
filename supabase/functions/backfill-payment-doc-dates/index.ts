@@ -92,7 +92,7 @@ async function processBackfill(
 
     console.log(`[backfill-doc-dates] Processing batch of ${batch.length} (${processed}/${totalMissing} done)`);
 
-    const CONCURRENCY = 10;
+    const CONCURRENCY = 100;
     for (let i = 0; i < batch.length; i += CONCURRENCY) {
       const chunk = batch.slice(i, i + CONCURRENCY);
 
