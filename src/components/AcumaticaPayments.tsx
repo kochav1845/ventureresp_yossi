@@ -32,7 +32,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
   const [customerFilter, setCustomerFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [hasApplicationsFilter, setHasApplicationsFilter] = useState<boolean>(false);
-  const [sortBy, setSortBy] = useState<string>('application_date');
+  const [sortBy, setSortBy] = useState<string>('effective_date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [currentPage, setCurrentPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
@@ -81,7 +81,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
           .select('*', { count: 'exact', head: true }),
         supabase
           .from('acumatica_payments')
-          .select('id, reference_number, type, customer_id, status, application_date, payment_amount, available_balance, currency_id, description, payment_method, payment_ref, cash_account, hold, is_cc_payment, last_modified_datetime, synced_at, created_at, last_sync_timestamp')
+          .select('id, reference_number, type, customer_id, status, application_date, doc_date, payment_amount, available_balance, currency_id, description, payment_method, payment_ref, cash_account, hold, is_cc_payment, last_modified_datetime, synced_at, created_at, last_sync_timestamp')
           .order('application_date', { ascending: false })
           .range(page * pageSize, (page + 1) * pageSize - 1),
         ensureCustomerMap()
@@ -93,7 +93,8 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
 
       const paymentsWithCustomerNames = (dataResult.data || []).map(payment => ({
         ...payment,
-        customer_name: customerMap.get(payment.customer_id) || payment.customer_id
+        customer_name: customerMap.get(payment.customer_id) || payment.customer_id,
+        effective_date: payment.doc_date || payment.application_date
       }));
 
       setDisplayedPayments(paymentsWithCustomerNames);
@@ -139,7 +140,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
 
       let query = supabase
         .from('acumatica_payments')
-        .select('id, reference_number, type, customer_id, status, application_date, payment_amount, available_balance, currency_id, description, payment_method, payment_ref, cash_account, hold, is_cc_payment, last_modified_datetime, synced_at, created_at, last_sync_timestamp');
+        .select('id, reference_number, type, customer_id, status, application_date, doc_date, payment_amount, available_balance, currency_id, description, payment_method, payment_ref, cash_account, hold, is_cc_payment, last_modified_datetime, synced_at, created_at, last_sync_timestamp');
 
       if (hasSearchTerm) {
         // Build OR condition that includes customer IDs matching customer names
@@ -230,7 +231,8 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
 
       let paymentsWithCustomerNames = (data || []).map(payment => ({
         ...payment,
-        customer_name: customerMap.get(payment.customer_id) || payment.customer_id
+        customer_name: customerMap.get(payment.customer_id) || payment.customer_id,
+        effective_date: payment.doc_date || payment.application_date
       }));
 
       if (searchTerm.trim()) {
@@ -242,8 +244,8 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
           if (aRefMatch && !bRefMatch) return -1;
           if (!aRefMatch && bRefMatch) return 1;
 
-          const aDateVal = a.application_date || '';
-          const bDateVal = b.application_date || '';
+          const aDateVal = a.effective_date || '';
+          const bDateVal = b.effective_date || '';
           return bDateVal.localeCompare(aDateVal);
         });
       }
@@ -505,7 +507,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
           customer: payment.customer_name || payment.customer_id,
           type: payment.type,
           status: payment.status,
-          application_date: payment.application_date || '',
+          application_date: payment.effective_date || payment.application_date || '',
           payment_amount: parseFloat(payment.payment_amount || 0),
           available_balance: parseFloat(payment.available_balance || 0),
           currency: payment.currency_id || '',
@@ -530,7 +532,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
           { header: 'Customer', key: 'customer', width: 30 },
           { header: 'Type', key: 'type', width: 15 },
           { header: 'Status', key: 'status', width: 12 },
-          { header: 'Application Date', key: 'application_date', width: 15, format: formatDate },
+          { header: 'Document Date', key: 'application_date', width: 15, format: formatDate },
           { header: 'Payment Amount', key: 'payment_amount', width: 15, format: formatCurrency },
           { header: 'Available Balance', key: 'available_balance', width: 15, format: formatCurrency },
           { header: 'Currency', key: 'currency', width: 10 },
@@ -639,7 +641,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
     setCustomerFilter('all');
     setTypeFilter('all');
     setHasApplicationsFilter(false);
-    setSortBy('application_date');
+    setSortBy('effective_date');
     setSortOrder('desc');
     loadPayments(0);
   };
@@ -889,7 +891,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
                       onChange={(e) => setSortBy(e.target.value)}
                       className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     >
-                      <option value="application_date">Application Date</option>
+                      <option value="effective_date">Document Date</option>
                       <option value="reference_number">Reference Number</option>
                       <option value="customer_id">Customer</option>
                       <option value="payment_amount">Amount</option>
@@ -965,7 +967,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
                     <th className="text-left py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300">Customer</th>
                     <th className="text-left py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300">Type</th>
                     <th className="text-left py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300">Status</th>
-                    <th className="text-left py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300">Application Date</th>
+                    <th className="text-left py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300">Document Date</th>
                     <th className="text-left py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300">Payment Method</th>
                     <th className="text-left py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300">Payment Ref</th>
                     <th className="text-right py-3 px-4 text-gray-700 font-semibold text-sm border-r border-gray-300">Amount</th>
@@ -1009,7 +1011,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
                             </span>
                           </td>
                           <td className="py-3 px-4 text-gray-900 text-sm border-r border-gray-300">
-                            {formatDateUtil(payment.application_date)}
+                            {formatDateUtil(payment.effective_date || payment.application_date)}
                           </td>
                           <td className="py-3 px-4 text-gray-900 text-sm border-r border-gray-300">
                             {payment.payment_method || 'N/A'}

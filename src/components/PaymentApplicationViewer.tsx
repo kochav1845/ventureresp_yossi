@@ -281,9 +281,9 @@ export default function PaymentApplicationViewer() {
 
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div>
-                        <div className="text-slate-500 mb-1">Application Date</div>
+                        <div className="text-slate-500 mb-1">Document Date</div>
                         <div className="font-medium text-slate-700">
-                          {formatDateUtil(app.application_date)}
+                          {formatDateUtil(app.doc_date || app.application_date)}
                         </div>
                       </div>
                       <div>

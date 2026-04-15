@@ -93,9 +93,8 @@ Deno.serve(async (req: Request) => {
     while (hasMore) {
       const { data, error } = await supabase
         .from('acumatica_payments')
-        .select('application_date, payment_amount, customer_id, type, payment_method, status')
-        .gte('application_date', queryStartDate)
-        .lte('application_date', queryEndDate)
+        .select('application_date, doc_date, payment_amount, customer_id, type, payment_method, status')
+        .or(`and(doc_date.gte.${queryStartDate},doc_date.lte.${queryEndDate}),and(doc_date.is.null,application_date.gte.${queryStartDate},application_date.lte.${queryEndDate})`)
         .not('type', 'in', `(${excludedTypes.map(t => `"${t}"`).join(',')})`)
         .range(offset, offset + batchSize - 1);
 
@@ -126,7 +125,8 @@ Deno.serve(async (req: Request) => {
       const dayGroups = new Map<string, any[]>();
 
       allPayments.forEach(payment => {
-        const date = payment.application_date?.split('T')[0] || payment.application_date;
+        const effectiveDate = payment.doc_date || payment.application_date;
+        const date = effectiveDate?.split('T')[0] || effectiveDate;
         if (!dayGroups.has(date)) {
           dayGroups.set(date, []);
         }
@@ -157,7 +157,7 @@ Deno.serve(async (req: Request) => {
       const monthGroups = new Map<string, any[]>();
 
       allPayments.forEach(payment => {
-        const date = new Date(payment.application_date);
+        const date = new Date(payment.doc_date || payment.application_date);
         const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`;
         if (!monthGroups.has(monthKey)) {
           monthGroups.set(monthKey, []);
@@ -185,7 +185,7 @@ Deno.serve(async (req: Request) => {
       const yearGroups = new Map<number, any[]>();
 
       allPayments.forEach(payment => {
-        const date = new Date(payment.application_date);
+        const date = new Date(payment.doc_date || payment.application_date);
         const yearNum = date.getFullYear();
         if (!yearGroups.has(yearNum)) {
           yearGroups.set(yearNum, []);

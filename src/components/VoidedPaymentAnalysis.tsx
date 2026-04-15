@@ -81,7 +81,7 @@ export default function VoidedPaymentAnalysis({ onBack }: VoidedPaymentAnalysisP
           analysis.push({
             reference_number: refNumber,
             customer_name: payments[0].customer_name || 'Unknown',
-            application_date: payments[0].application_date,
+            application_date: payments[0].doc_date || payments[0].application_date,
             entries,
             net_amount: netAmount,
             is_balanced: Math.abs(netAmount) < 0.01

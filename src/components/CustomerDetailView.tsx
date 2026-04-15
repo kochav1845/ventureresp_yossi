@@ -396,7 +396,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       while (hasMorePayments) {
         const { data: chunk, error: paymentsError } = await supabase
           .from('acumatica_payments')
-          .select('id, reference_number, application_date, payment_method, status, payment_amount, available_balance, description, type')
+          .select('id, reference_number, application_date, doc_date, payment_method, status, payment_amount, available_balance, description, type')
           .eq('customer_id', acumaticaCustomerId)
           .order('application_date', { ascending: false })
           .range(offset, offset + CHUNK_SIZE - 1);
@@ -1669,7 +1669,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                             {payment.reference_number}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {formatDateUtil(payment.application_date)}
+                            {formatDateUtil(payment.doc_date || payment.application_date)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {payment.payment_method || 'N/A'}

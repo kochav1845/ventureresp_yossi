@@ -618,13 +618,13 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       const startDate = new Date(year, month - 1, 1);
       const endDate = new Date(year, month, 0);
 
-      // Get all payments for the selected month
+      // Get all payments for the selected month using doc_date (falls back to application_date)
       const { data: monthPayments, error } = await supabase
         .from('acumatica_payments')
-        .select('reference_number')
-        .gte('application_date', startDate.toISOString().split('T')[0])
-        .lte('application_date', endDate.toISOString().split('T')[0])
+        .select('reference_number, doc_date, application_date')
+        .or(`and(doc_date.gte.${startDate.toISOString().split('T')[0]},doc_date.lte.${endDate.toISOString().split('T')[0]}),and(doc_date.is.null,application_date.gte.${startDate.toISOString().split('T')[0]},application_date.lte.${endDate.toISOString().split('T')[0]})`)
         .order('application_date', { ascending: true });
+
 
       if (error) throw error;
 
@@ -1065,7 +1065,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
         return {
           id: payment.id,
-          date: payment.application_date || '',
+          date: payment.doc_date || payment.application_date || '',
           reference_number: payment.reference_number || '',
           customer_id: payment.customer_id || '',
           customer_name: payment.customer_name || 'N/A',
@@ -1518,10 +1518,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       while (hasMore) {
         const { data: batch, error: paymentsError } = await supabase
           .from('acumatica_payments')
-          .select('id, reference_number, customer_id, payment_method, type, payment_amount, application_date, status')
-          .gte('application_date', startStr)
-          .lte('application_date', endStr)
-          .not('application_date', 'is', null)
+          .select('id, reference_number, customer_id, payment_method, type, payment_amount, application_date, doc_date, status')
+          .or(`and(doc_date.gte.${startStr},doc_date.lte.${endStr}),and(doc_date.is.null,application_date.gte.${startStr},application_date.lte.${endStr})`)
           .range(offset, offset + batchSize - 1);
 
         if (paymentsError) {
@@ -1616,7 +1614,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         const invoiceRef = firstApp?.invoice_reference_number || null;
         const amountPaid = firstApp?.amount_paid || payment.payment_amount;
 
-        const paymentDate = payment.application_date;
+        const paymentDate = payment.doc_date || payment.application_date;
 
         if (index < 3) {
           console.log(`Processing payment ${index}:`, {

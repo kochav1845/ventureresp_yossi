@@ -112,7 +112,7 @@ export default function PaymentCheckImages({ onBack }: PaymentCheckImagesProps) 
 
       const { data, error } = await supabase
         .from('acumatica_payments')
-        .select('reference_number, type, customer_id, application_date, payment_amount, status')
+        .select('reference_number, type, customer_id, application_date, doc_date, payment_amount, status')
         .order('application_date', { ascending: false })
         .range(newOffset, newOffset + 99);
 
@@ -264,7 +264,7 @@ export default function PaymentCheckImages({ onBack }: PaymentCheckImagesProps) 
 
         const { data, error } = await supabase
           .from('acumatica_payments')
-          .select('reference_number, type, customer_id, application_date, payment_amount, status')
+          .select('reference_number, type, customer_id, application_date, doc_date, payment_amount, status')
           .order('application_date', { ascending: false })
           .range(currentOffset, currentOffset + 99);
 
@@ -470,7 +470,7 @@ export default function PaymentCheckImages({ onBack }: PaymentCheckImagesProps) 
                 {payments.map(payment => (
                   <option key={payment.reference_number} value={payment.reference_number}>
                     {payment.reference_number} - {payment.customer_id} - $
-                    {payment.payment_amount?.toFixed(2)} ({new Date(payment.application_date).toLocaleDateString()})
+                    {payment.payment_amount?.toFixed(2)} ({new Date(payment.doc_date || payment.application_date).toLocaleDateString()})
                   </option>
                 ))}
               </select>

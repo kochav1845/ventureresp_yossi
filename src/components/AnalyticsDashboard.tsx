@@ -158,9 +158,8 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
       while (hasMore) {
         const { data: payments, error: payError } = await supabase
           .from('acumatica_payments')
-          .select('payment_amount, id, application_date, type')
-          .gte('application_date', startStr)
-          .lte('application_date', endStr)
+          .select('payment_amount, id, application_date, doc_date, type')
+          .or(`and(doc_date.gte.${startStr},doc_date.lte.${endStr}),and(doc_date.is.null,application_date.gte.${startStr},application_date.lte.${endStr})`)
           .range(page * pageSize, (page + 1) * pageSize - 1);
 
         if (payError) {
@@ -305,7 +304,7 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
 
       const { data: payments, error: payError } = await supabase
         .from('acumatica_payments')
-        .select('application_date, payment_amount, id')
+        .select('application_date, doc_date, payment_amount, id')
         .limit(paymentLimit);
 
       if (payError) throw payError;
@@ -353,8 +352,9 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
       });
 
       payments?.forEach(pay => {
-        if (!pay.application_date) return;
-        const date = parseLocalDate(pay.application_date);
+        const effectiveDate = pay.doc_date || pay.application_date;
+        if (!effectiveDate) return;
+        const date = parseLocalDate(effectiveDate);
         const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         if (!monthMap.has(key)) {
           monthMap.set(key, {
@@ -421,9 +421,8 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
 
       const { data: payments } = await supabase
         .from('acumatica_payments')
-        .select('application_date, payment_amount, id')
-        .gte('application_date', startStr)
-        .lt('application_date', endStr);
+        .select('application_date, doc_date, payment_amount, id')
+        .or(`and(doc_date.gte.${startStr},doc_date.lt.${endStr}),and(doc_date.is.null,application_date.gte.${startStr},application_date.lt.${endStr})`);
 
       const paymentIds = payments?.map(p => p.id) || [];
       const applications = await batchedInQuery(
@@ -513,8 +512,9 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
       });
 
       payments?.forEach(pay => {
-        if (!pay.application_date) return;
-        const date = parseLocalDate(pay.application_date);
+        const effectiveDate = pay.doc_date || pay.application_date;
+        if (!effectiveDate) return;
+        const date = parseLocalDate(effectiveDate);
         const weekNum = getWeekNumber(date, weekBoundaries);
 
         const apps = paymentApplicationsMap.get(pay.id) || [];
@@ -591,9 +591,8 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
 
       const { data: payments } = await supabase
         .from('acumatica_payments')
-        .select('application_date, payment_amount, id, customer_id, reference_number')
-        .gte('application_date', startStr)
-        .lt('application_date', endStr);
+        .select('application_date, doc_date, payment_amount, id, customer_id, reference_number')
+        .or(`and(doc_date.gte.${startStr},doc_date.lt.${endStr}),and(doc_date.is.null,application_date.gte.${startStr},application_date.lt.${endStr})`);
 
       const paymentIds = payments?.map(p => p.id) || [];
       const applications = await batchedInQuery(

@@ -152,7 +152,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
       const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
       filtered = filtered.filter(app => {
-        const appDate = new Date(app.application_date);
+        const appDate = new Date((app as any).doc_date || app.application_date);
         return appDate >= lastMonth && appDate < currentMonth;
       });
     } else if (dateFilter === 'current-month') {
@@ -161,7 +161,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
       const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
       filtered = filtered.filter(app => {
-        const appDate = new Date(app.application_date);
+        const appDate = new Date((app as any).doc_date || app.application_date);
         return appDate >= currentMonth && appDate < nextMonth;
       });
     } else if (dateFilter === 'last-3-months') {
@@ -169,7 +169,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
       const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
 
       filtered = filtered.filter(app => {
-        const appDate = new Date(app.application_date);
+        const appDate = new Date((app as any).doc_date || app.application_date);
         return appDate >= threeMonthsAgo;
       });
     } else if (dateFilter === 'this-year') {
@@ -177,14 +177,14 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
       const yearStart = new Date(now.getFullYear(), 0, 1);
 
       filtered = filtered.filter(app => {
-        const appDate = new Date(app.application_date);
+        const appDate = new Date((app as any).doc_date || app.application_date);
         return appDate >= yearStart;
       });
     }
 
     if (selectedYear !== 'all') {
       filtered = filtered.filter(app => {
-        const year = new Date(app.application_date).getFullYear();
+        const year = new Date((app as any).doc_date || app.application_date).getFullYear();
         return year.toString() === selectedYear;
       });
     }
@@ -232,7 +232,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
           });
         } else {
           // Fallback to payment date if no invoice applications
-          const date = new Date(payment.application_date);
+          const date = new Date((payment as any).doc_date || payment.application_date);
           const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
           monthlyMap.set(monthKey, (monthlyMap.get(monthKey) || 0) + Number(payment.amount_paid || 0));
         }
@@ -240,7 +240,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
     } else {
       // Group by payment date (original behavior)
       filtered.forEach(app => {
-        const date = new Date(app.application_date);
+        const date = new Date((app as any).doc_date || app.application_date);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         monthlyMap.set(monthKey, (monthlyMap.get(monthKey) || 0) + Number(app.amount_paid || 0));
       });
@@ -278,7 +278,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
   const getAvailableYears = () => {
     const years = new Set<string>();
     applications.forEach(app => {
-      const year = new Date(app.application_date).getFullYear();
+      const year = new Date((app as any).doc_date || app.application_date).getFullYear();
       years.add(year.toString());
     });
     return Array.from(years).sort((a, b) => b.localeCompare(a));
@@ -317,7 +317,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
           }
         });
       } else {
-        const date = new Date(payment.application_date);
+        const date = new Date((payment as any).doc_date || payment.application_date);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         monthlyIncome.set(monthKey, (monthlyIncome.get(monthKey) || 0) + Number(payment.amount_paid || 0));
       }
@@ -349,7 +349,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
         payment.applications.forEach(app => {
           if (app.invoice_date) {
             const invoiceDate = new Date(app.invoice_date);
-            const paymentDate = new Date(payment.application_date);
+            const paymentDate = new Date((payment as any).doc_date || payment.application_date);
 
             const invoiceMonth = invoiceDate.getMonth();
             const invoiceYear = invoiceDate.getFullYear();
@@ -395,7 +395,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
     const [targetYear, targetMonth] = monthKey.split('-').map(Number);
 
     const paymentsInMonth = filtered.filter(app => {
-      const date = new Date(app.application_date);
+      const date = new Date((app as any).doc_date || app.application_date);
       return date.getFullYear() === targetYear && date.getMonth() + 1 === targetMonth;
     });
 
@@ -420,7 +420,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
         });
       } else {
         // For payments without invoice applications, group by payment date
-        const paymentDate = new Date(payment.application_date);
+        const paymentDate = new Date((payment as any).doc_date || payment.application_date);
         const paymentMonthKey = `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, '0')}`;
 
         if (!breakdown.has(paymentMonthKey)) {
@@ -444,8 +444,8 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
     const dailyBreakdown = new Map<string, { amount: number; invoiceCount: number; payments: PaymentApplication[] }>();
 
     paymentsInMonth.forEach(payment => {
-      const paymentDate = new Date(payment.application_date);
-      const dayKey = paymentDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+      const paymentDate = new Date((payment as any).doc_date || payment.application_date);
+      const dayKey = paymentDate.toISOString().split('T')[0];
 
       if (!dailyBreakdown.has(dayKey)) {
         dailyBreakdown.set(dayKey, { amount: 0, invoiceCount: 0, payments: [] });
@@ -482,7 +482,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
   const getDailyCustomers = (dayKey: string) => {
     const filtered = getFilteredApplications();
     const paymentsOnDay = filtered.filter(app => {
-      const paymentDate = new Date(app.application_date).toISOString().split('T')[0];
+      const paymentDate = new Date((app as any).doc_date || app.application_date).toISOString().split('T')[0];
       return paymentDate === dayKey;
     });
 
@@ -1080,7 +1080,7 @@ export default function InvoiceAnalytics({ onNavigate }: InvoiceAnalyticsProps) 
                                 {payment.customer_name}
                               </td>
                               <td className="py-3 px-4 text-sm text-gray-600">
-                                {new Date(payment.application_date).toLocaleDateString('en-US', {
+                                {new Date((payment as any).doc_date || payment.application_date).toLocaleDateString('en-US', {
                                   year: 'numeric',
                                   month: 'short',
                                   timeZone: 'UTC',

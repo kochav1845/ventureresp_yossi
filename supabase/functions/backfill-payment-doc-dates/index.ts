@@ -15,7 +15,9 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json().catch(() => ({}));
     const batchSize = body.batchSize || 100;
-    const paymentType = body.paymentType || "Payment";
+    const paymentType = body.paymentType || null;
+    const startDate = body.startDate || null;
+    const endDate = body.endDate || null;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -37,12 +39,22 @@ Deno.serve(async (req: Request) => {
       acumaticaUrl = `https://${acumaticaUrl}`;
     }
 
-    const { data: missingPayments, error: fetchErr } = await supabase
+    let query = supabase
       .from("acumatica_payments")
       .select("reference_number, type")
-      .is("doc_date", null)
-      .eq("type", paymentType)
-      .limit(batchSize);
+      .is("doc_date", null);
+
+    if (paymentType) {
+      query = query.eq("type", paymentType);
+    }
+    if (startDate) {
+      query = query.gte("application_date", startDate);
+    }
+    if (endDate) {
+      query = query.lte("application_date", endDate);
+    }
+
+    const { data: missingPayments, error: fetchErr } = await query.limit(batchSize);
 
     if (fetchErr) throw new Error(`DB fetch error: ${fetchErr.message}`);
     if (!missingPayments || missingPayments.length === 0) {
@@ -133,11 +145,22 @@ Deno.serve(async (req: Request) => {
       });
     } catch (_) {}
 
-    const { count: remaining } = await supabase
+    let remainingQuery = supabase
       .from("acumatica_payments")
       .select("*", { count: "exact", head: true })
-      .is("doc_date", null)
-      .eq("type", paymentType);
+      .is("doc_date", null);
+
+    if (paymentType) {
+      remainingQuery = remainingQuery.eq("type", paymentType);
+    }
+    if (startDate) {
+      remainingQuery = remainingQuery.gte("application_date", startDate);
+    }
+    if (endDate) {
+      remainingQuery = remainingQuery.lte("application_date", endDate);
+    }
+
+    const { count: remaining } = await remainingQuery;
 
     return new Response(
       JSON.stringify({

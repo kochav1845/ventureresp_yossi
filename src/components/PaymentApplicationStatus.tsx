@@ -328,7 +328,7 @@ export default function PaymentApplicationStatus({ onBack }: { onBack: () => voi
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm text-gray-600">
-                            {new Date(payment.application_date).toLocaleDateString()}
+                            {new Date(payment.doc_date || payment.application_date).toLocaleDateString()}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">

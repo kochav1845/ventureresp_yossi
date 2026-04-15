@@ -55,9 +55,8 @@ export default function RevenueAnalytics({ onBack, onNavigate }: RevenueAnalytic
 
       const { data: payments, error: paymentsError } = await supabase
         .from('acumatica_payments')
-        .select('application_date, payment_amount, id')
-        .gte('application_date', startStr)
-        .lte('application_date', endStr)
+        .select('application_date, doc_date, payment_amount, id')
+        .or(`and(doc_date.gte.${startStr},doc_date.lte.${endStr}),and(doc_date.is.null,application_date.gte.${startStr},application_date.lte.${endStr})`)
         .order('application_date', { ascending: true });
 
       if (paymentsError) throw paymentsError;
@@ -82,9 +81,10 @@ export default function RevenueAnalytics({ onBack, onNavigate }: RevenueAnalytic
       let totalCount = 0;
 
       payments?.forEach(payment => {
-        if (!payment.application_date || !payment.payment_amount) return;
+        const effectiveDate = payment.doc_date || payment.application_date;
+        if (!effectiveDate || !payment.payment_amount) return;
 
-        const date = new Date(payment.application_date);
+        const date = new Date(effectiveDate);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
         if (!monthMap.has(monthKey)) {

@@ -583,7 +583,7 @@ export default function UnifiedTicketingSystem({
               const batch = uniqueCustomerIds.slice(i, i + batchSize);
               const { data, error } = await supabase
                 .from('acumatica_payments')
-                .select('customer_id, payment_amount, application_date')
+                .select('customer_id, payment_amount, application_date, doc_date')
                 .in('customer_id', batch)
                 .in('type', ['Payment', 'Prepayment'])
                 .order('application_date', { ascending: false })
@@ -601,7 +601,7 @@ export default function UnifiedTicketingSystem({
               if (!customerLastPayment.has(p.customer_id)) {
                 customerLastPayment.set(p.customer_id, {
                   amount: p.payment_amount,
-                  date: p.application_date
+                  date: p.doc_date || p.application_date
                 });
               }
             });
