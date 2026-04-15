@@ -92,58 +92,73 @@ async function processBackfill(
 
     console.log(`[backfill-doc-dates] Processing batch of ${batch.length} (${processed}/${totalMissing} done)`);
 
-    const CONCURRENCY = 100;
+    const CONCURRENCY = 10;
+    const MAX_RETRIES = 3;
+
+    async function fetchWithRetry(payment: { type: string; reference_number: string }, attempt = 0): Promise<{ status: "updated" | "failed" }> {
+      const url = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(payment.type)}/${encodeURIComponent(payment.reference_number)}?$custom=Document.DocDate,Document.FinPeriodID`;
+
+      const response = await sessionManager.makeAuthenticatedRequest(credentialsObj, url);
+
+      if (response.status === 429) {
+        if (attempt < MAX_RETRIES) {
+          const delay = Math.pow(2, attempt + 1) * 1000;
+          console.log(`[backfill-doc-dates] 429 for ${payment.reference_number}, retry ${attempt + 1} in ${delay}ms`);
+          await new Promise((r) => setTimeout(r, delay));
+          return fetchWithRetry(payment, attempt + 1);
+        }
+        errors.push(`Payment ${payment.reference_number}: 429 after ${MAX_RETRIES} retries`);
+        return { status: "failed" };
+      }
+
+      if (!response.ok) {
+        if (response.status === 404 || response.status === 500) {
+          await supabase
+            .from("acumatica_payments")
+            .update({ doc_date: "1900-01-01" })
+            .eq("reference_number", payment.reference_number)
+            .eq("type", payment.type);
+        } else {
+          errors.push(`${payment.type} ${payment.reference_number}: HTTP ${response.status}`);
+        }
+        return { status: "failed" };
+      }
+
+      const data = await response.json();
+      const docDate = data?.custom?.Document?.DocDate?.value || null;
+      const finPeriod = data?.custom?.Document?.FinPeriodID?.value || null;
+
+      if (docDate || finPeriod) {
+        const updateData: Record<string, any> = {};
+        if (docDate) updateData.doc_date = docDate;
+        if (finPeriod) updateData.financial_period = finPeriod;
+
+        const { error: updateErr } = await supabase
+          .from("acumatica_payments")
+          .update(updateData)
+          .eq("reference_number", payment.reference_number)
+          .eq("type", payment.type);
+
+        if (updateErr) {
+          errors.push(`${payment.reference_number}: DB update failed`);
+          return { status: "failed" };
+        }
+        return { status: "updated" };
+      } else {
+        await supabase
+          .from("acumatica_payments")
+          .update({ doc_date: "1900-01-01" })
+          .eq("reference_number", payment.reference_number)
+          .eq("type", payment.type);
+        return { status: "failed" };
+      }
+    }
+
     for (let i = 0; i < batch.length; i += CONCURRENCY) {
       const chunk = batch.slice(i, i + CONCURRENCY);
 
       const results = await Promise.allSettled(
-        chunk.map(async (payment) => {
-          const url = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(payment.type)}/${encodeURIComponent(payment.reference_number)}?$custom=Document.DocDate,Document.FinPeriodID`;
-
-          const response = await sessionManager.makeAuthenticatedRequest(credentialsObj, url);
-
-          if (!response.ok) {
-            if (response.status === 404 || response.status === 500) {
-              await supabase
-                .from("acumatica_payments")
-                .update({ doc_date: "1900-01-01" })
-                .eq("reference_number", payment.reference_number)
-                .eq("type", payment.type);
-            } else {
-              errors.push(`${payment.type} ${payment.reference_number}: HTTP ${response.status}`);
-            }
-            return { status: "failed" as const };
-          }
-
-          const data = await response.json();
-          const docDate = data?.custom?.Document?.DocDate?.value || null;
-          const finPeriod = data?.custom?.Document?.FinPeriodID?.value || null;
-
-          if (docDate || finPeriod) {
-            const updateData: Record<string, any> = {};
-            if (docDate) updateData.doc_date = docDate;
-            if (finPeriod) updateData.financial_period = finPeriod;
-
-            const { error: updateErr } = await supabase
-              .from("acumatica_payments")
-              .update(updateData)
-              .eq("reference_number", payment.reference_number)
-              .eq("type", payment.type);
-
-            if (updateErr) {
-              errors.push(`${payment.reference_number}: DB update failed`);
-              return { status: "failed" as const };
-            }
-            return { status: "updated" as const };
-          } else {
-            await supabase
-              .from("acumatica_payments")
-              .update({ doc_date: "1900-01-01" })
-              .eq("reference_number", payment.reference_number)
-              .eq("type", payment.type);
-            return { status: "failed" as const };
-          }
-        })
+        chunk.map((payment) => fetchWithRetry(payment))
       );
 
       for (const result of results) {
@@ -156,6 +171,10 @@ async function processBackfill(
         } else {
           failed++;
         }
+      }
+
+      if (i + CONCURRENCY < batch.length) {
+        await new Promise((r) => setTimeout(r, 200));
       }
     }
 
