@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor, XCircle } from 'lucide-react';
+import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor, XCircle, Clock } from 'lucide-react';
 
 interface Tool {
   id: string;
@@ -15,6 +15,14 @@ export function DeveloperTools() {
   const navigate = useNavigate();
 
   const tools: Tool[] = [
+    {
+      id: 'backfill-doc-dates',
+      name: 'Backfill Payment Doc Dates',
+      description: 'Re-fetch doc_date from Acumatica for payments missing this field (2025)',
+      icon: Clock,
+      path: '/backfill-doc-dates',
+      category: 'payment'
+    },
     {
       id: 'payment-bulk-fetch',
       name: 'Payment Bulk Fetch',

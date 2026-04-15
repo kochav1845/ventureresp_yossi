@@ -66,6 +66,7 @@ import PaymentSyncHealthCheck from './components/PaymentSyncHealthCheck';
 import PaymentSyncDiagnostic from './components/PaymentSyncDiagnostic';
 import { DeveloperTools } from './components/DeveloperTools';
 import Refetch2024Payments from './components/Refetch2024Payments';
+import BackfillDocDates from './components/BackfillDocDates';
 import AcumaticaPaymentFetch from './components/AcumaticaPaymentFetch';
 import AdminCreateUser from './components/AdminCreateUser';
 import ResendTemporaryPassword from './components/ResendTemporaryPassword';
@@ -199,6 +200,7 @@ function AppContent() {
         <Route path="payment-sync-diagnostic" element={<PaymentSyncDiagnostic />} />
         <Route path="developer-tools" element={<DeveloperTools />} />
         <Route path="refetch-2024-payments" element={<Refetch2024Payments />} />
+        <Route path="backfill-doc-dates" element={<BackfillDocDates />} />
         <Route path="payment-bulk-fetch" element={<AcumaticaPaymentFetch onBack={() => window.history.back()} />} />
         <Route path="resend-temp-password" element={<ResendTemporaryPassword onBack={() => window.history.back()} />} />
         <Route path="force-delete-user" element={<ForceDeleteUser onBack={() => window.history.back()} />} />
