@@ -93,7 +93,7 @@ Deno.serve(async (req: Request) => {
       branch: config.branch || ''
     };
 
-    const paymentUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(paymentType)}/${encodeURIComponent(referenceNbr)}?$expand=ApplicationHistory`;
+    const paymentUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(paymentType)}/${encodeURIComponent(referenceNbr)}?$expand=ApplicationHistory&$custom=CurrentDocument.DocDate,CurrentDocument.FinPeriodID`;
     const paymentResponse = await sessionManager.makeAuthenticatedRequest(credentials, paymentUrl);
 
     if (!paymentResponse.ok) {
@@ -189,6 +189,14 @@ Deno.serve(async (req: Request) => {
         }
       }
     });
+
+    const customCurrentDoc = paymentData.custom?.CurrentDocument;
+    if (customCurrentDoc?.DocDate?.value) {
+      transformedPayment.doc_date = customCurrentDoc.DocDate.value;
+    }
+    if (customCurrentDoc?.FinPeriodID?.value) {
+      transformedPayment.financial_period = customCurrentDoc.FinPeriodID.value;
+    }
 
     const { data: existing } = await supabase
       .from('acumatica_payments')

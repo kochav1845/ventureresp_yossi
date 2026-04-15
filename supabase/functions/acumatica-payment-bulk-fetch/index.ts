@@ -139,7 +139,7 @@ Deno.serve(async (req: Request) => {
     console.log('Login successful');
 
     const orderBy = fetchNewestFirst ? 'CreatedDateTime desc' : 'CreatedDateTime';
-    const url = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$top=${count}&$skip=${skip}&$orderby=${orderBy}&$expand=DocumentsToApply&$filter=Type eq '${docType}'`;
+    const url = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$top=${count}&$skip=${skip}&$orderby=${orderBy}&$expand=DocumentsToApply&$filter=Type eq '${docType}'&$custom=Document.DocDate,Document.FinPeriodID`;
 
     console.log(`Fetching ${count} payments (skip ${skip})...`);
 
@@ -193,6 +193,7 @@ Deno.serve(async (req: Request) => {
           refNbr = refNbr.padStart(6, '0');
         }
 
+        const customDoc = payment.custom?.Document;
         const paymentData = {
           reference_number: refNbr,
           type: type,
@@ -208,6 +209,8 @@ Deno.serve(async (req: Request) => {
           description: payment.Description?.value || null,
           currency_id: payment.CurrencyID?.value || 'USD',
           last_modified_datetime: payment.LastModifiedDateTime?.value || null,
+          doc_date: customDoc?.DocDate?.value || null,
+          financial_period: customDoc?.FinPeriodID?.value || null,
           application_history: null,
           applied_to_documents: payment.DocumentsToApply || null,
           raw_data: payment,

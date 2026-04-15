@@ -46,7 +46,7 @@ async function getOrCreateSession(supabase: any, acumaticaUrl: string, credentia
   const setCookieHeader = loginResponse.headers.get("set-cookie");
   if (!setCookieHeader) throw new Error("No cookies received from Acumatica");
 
-  const cookies = setCookieHeader.split(",").map((c) => c.split(";")[0]).join("; ");
+  const cookies = setCookieHeader.split(",").map((c: string) => c.split(";")[0]).join("; ");
 
   await supabase
     .from("acumatica_session_cache")
@@ -70,16 +70,8 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { paymentRef, paymentType } = await req.json();
-
-    if (!paymentRef) {
-      return new Response(
-        JSON.stringify({ error: "paymentRef is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const type = paymentType || "Payment";
+    const body = await req.json();
+    const { paymentRef, paymentType, action } = body;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -103,7 +95,35 @@ Deno.serve(async (req: Request) => {
 
     const cookies = await getOrCreateSession(supabase, acumaticaUrl, credentials);
 
-    const url = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(type)}/${encodeURIComponent(paymentRef)}`;
+    if (action === "schema") {
+      const schemaUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment/$adHocSchema`;
+      const schemaResponse = await fetch(schemaUrl, {
+        headers: { Cookie: cookies, Accept: "application/json" },
+      });
+
+      if (!schemaResponse.ok) {
+        const errorText = await schemaResponse.text();
+        throw new Error(`Schema API error: ${schemaResponse.status} - ${errorText}`);
+      }
+
+      const schema = await schemaResponse.json();
+      return new Response(
+        JSON.stringify({ schema }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!paymentRef) {
+      return new Response(
+        JSON.stringify({ error: "paymentRef is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const type = paymentType || "Payment";
+
+    const customParam = encodeURIComponent("CurrentDocument.DocDate,CurrentDocument.FinPeriodID,CurrentDocument.BatchNbr");
+    const url = `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(type)}/${encodeURIComponent(paymentRef)}?$custom=${customParam}`;
 
     const response = await fetch(url, {
       headers: { Cookie: cookies, Accept: "application/json" },
@@ -116,15 +136,34 @@ Deno.serve(async (req: Request) => {
 
     const data = await response.json();
 
-    const docDate = data?.DocDate?.value || null;
-    const financialPeriod = data?.FinancialPeriod?.value || null;
-    const createdDateTime = data?.CreatedDateTime?.value || null;
+    const allFields: Record<string, any> = {};
+    for (const [key, val] of Object.entries(data)) {
+      if (val && typeof val === "object" && "value" in (val as any)) {
+        allFields[key] = (val as any).value;
+      }
+    }
 
-    if (docDate || financialPeriod) {
-      const updateData: any = {};
-      if (docDate) updateData.doc_date = docDate;
-      if (financialPeriod) updateData.financial_period = financialPeriod;
+    const customFields: Record<string, any> = {};
+    if (data?.custom) {
+      for (const [section, fields] of Object.entries(data.custom)) {
+        customFields[section] = {};
+        if (fields && typeof fields === "object") {
+          for (const [fieldName, fieldVal] of Object.entries(fields as Record<string, any>)) {
+            customFields[section][fieldName] = fieldVal?.value ?? null;
+          }
+        }
+      }
+    }
 
+    const docDate = data?.custom?.CurrentDocument?.DocDate?.value || null;
+    const finPeriodID = data?.custom?.CurrentDocument?.FinPeriodID?.value || null;
+    const applicationDate = data?.ApplicationDate?.value || null;
+
+    const updateData: Record<string, any> = {};
+    if (docDate) updateData.doc_date = docDate;
+    if (finPeriodID) updateData.financial_period = finPeriodID;
+
+    if (Object.keys(updateData).length > 0) {
       const { error: updateError } = await supabase
         .from("acumatica_payments")
         .update(updateData)
@@ -136,17 +175,14 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const allFields: Record<string, any> = {};
-    for (const [key, val] of Object.entries(data)) {
-      if (val && typeof val === "object" && "value" in (val as any)) {
-        allFields[key] = (val as any).value;
-      }
-    }
-
     return new Response(
       JSON.stringify({
         allFields,
-        dbUpdated: !!(docDate || financialPeriod),
+        customFields,
+        docDate,
+        finPeriodID,
+        applicationDate,
+        dbUpdated: Object.keys(updateData).length > 0,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
