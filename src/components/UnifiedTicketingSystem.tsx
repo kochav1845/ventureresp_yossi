@@ -728,15 +728,14 @@ export default function UnifiedTicketingSystem({
   const loadCustomerInvoices = async (customerId: string) => {
     try {
       const { data, error } = await supabase
-        .from('acumatica_invoices')
-        .select('reference_number, date, due_date, amount, balance, description')
-        .eq('customer', customerId)
-        .eq('status', 'Open')
-        .gt('balance', 0)
-        .order('date', { ascending: false });
+        .rpc('get_unpaid_invoices_for_customer', { p_customer_id: customerId });
 
       if (error) throw error;
-      setCustomerInvoices(data || []);
+      const mapped = (data || []).map((inv: any) => ({
+        ...inv,
+        balance: inv.effective_balance,
+      }));
+      setCustomerInvoices(mapped);
     } catch (error) {
       console.error('Error loading customer invoices:', error);
     }
