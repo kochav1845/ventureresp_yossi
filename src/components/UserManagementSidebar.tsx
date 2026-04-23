@@ -64,6 +64,8 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [showActivityLog, setShowActivityLog] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -272,6 +274,33 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
       alert(error.message || 'Failed to impersonate user');
     } finally {
       setImpersonating(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
+    if (selectedUser.id === profile?.id) {
+      alert('You cannot delete your own account');
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('force-delete-user', {
+        body: { email: selectedUser.email }
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setShowDeleteConfirm(false);
+      setSelectedUser(null);
+      await loadUsers();
+    } catch (error: any) {
+      console.error('Error deleting user:', error);
+      alert(error.message || 'Failed to delete user');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -501,7 +530,7 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
                   </label>
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
                   <button
                     onClick={resetToRoleDefaults}
                     disabled={saving}
@@ -509,6 +538,16 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
                   >
                     Reset to Role Defaults
                   </button>
+                  {selectedUser.id !== profile?.id && (
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      disabled={saving || deleting}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <Trash className="w-4 h-4" />
+                      Delete User
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -653,6 +692,54 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
           </>
         )}
       </div>
+
+      {showDeleteConfirm && selectedUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <Trash className="w-5 h-5 text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Delete User</h3>
+            </div>
+            <p className="text-sm text-gray-700 mb-2">
+              Are you sure you want to permanently delete this user?
+            </p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+              <p className="text-sm font-semibold text-red-800">{selectedUser.email}</p>
+              <p className="text-xs text-red-600 mt-1">
+                This will remove the user from Supabase Auth, their profile, pending records, and all associated data. This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteUser}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {deleting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash className="w-4 h-4" />
+                    Delete Permanently
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showActivityLog && selectedUser && (
         <UserActivityLog
