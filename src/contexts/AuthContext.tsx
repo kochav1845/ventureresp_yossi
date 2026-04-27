@@ -1,6 +1,9 @@
-import { createContext, useContext, useEffect, useState, ReactNode, useMemo } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, useCallback, ReactNode, useMemo } from 'react';
 import { User, AuthError } from '@supabase/supabase-js';
 import { supabase, UserProfile, logActivity, withTimeout, withRetry } from '../lib/supabase';
+
+const INACTIVITY_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
+const ACTIVITY_THROTTLE_MS = 60 * 1000; // Only update last-active once per minute
 
 interface AuthContextType {
   user: User | null;
@@ -23,6 +26,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [originalProfile, setOriginalProfile] = useState<UserProfile | null>(null);
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastActivityRef = useRef<number>(Date.now());
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
+    inactivityTimerRef.current = setTimeout(async () => {
+      const currentUser = await supabase.auth.getUser();
+      if (currentUser.data.user) {
+        try {
+          await supabase.rpc('log_user_logout', { p_user_id: currentUser.data.user.id });
+        } catch (_) {}
+        localStorage.removeItem('impersonation');
+        await supabase.auth.signOut();
+        setUser(null);
+        setProfile(null);
+        setIsImpersonating(false);
+        setOriginalProfile(null);
+        window.location.reload();
+      }
+    }, INACTIVITY_TIMEOUT_MS);
+  }, []);
+
+  useEffect(() => {
+    const handleActivity = () => {
+      const now = Date.now();
+      if (now - lastActivityRef.current < ACTIVITY_THROTTLE_MS) return;
+      lastActivityRef.current = now;
+      resetInactivityTimer();
+    };
+
+    const events = ['mousedown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
+    events.forEach(e => window.addEventListener(e, handleActivity, { passive: true }));
+
+    resetInactivityTimer();
+
+    return () => {
+      events.forEach(e => window.removeEventListener(e, handleActivity));
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    };
+  }, [resetInactivityTimer]);
 
   useEffect(() => {
     const initAuth = async () => {
