@@ -135,17 +135,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       (async () => {
         try {
-          setUser(session?.user ?? null);
           if (session?.user) {
-            // Check if we're in impersonation mode - if so, don't reload profile
+            setLoading(true);
+            setUser(session.user);
             const impersonationData = localStorage.getItem('impersonation');
             if (!impersonationData) {
-              // Not impersonating, load the actual user's profile
               await loadProfile(session.user.id);
             }
-            // If impersonating, the profile is already set correctly, don't overwrite it
           } else {
+            setUser(null);
             setProfile(null);
+            setLoading(false);
           }
         } catch (error) {
           console.error('Error in auth state change handler:', error);
@@ -262,8 +262,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-    // Log the login event if successful
     if (!error && data?.user) {
+      setLoading(true);
       try {
         await supabase.rpc('log_user_login', { p_user_id: data.user.id });
       } catch (logError) {
