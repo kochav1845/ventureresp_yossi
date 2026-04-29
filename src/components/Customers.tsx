@@ -205,7 +205,7 @@ export default function Customers({ onBack }: CustomersProps) {
 
   useEffect(() => {
     applyFilters();
-  }, [filters, allCustomers, excludeCreditMemos]);
+  }, [applyFilters]);
 
   const loadCustomersWithOpenTickets = async () => {
     try {
