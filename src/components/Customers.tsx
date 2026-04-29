@@ -201,7 +201,7 @@ export default function Customers({ onBack }: CustomersProps) {
     return () => {
       ticketSubscription.unsubscribe();
     };
-  }, [showTestCustomers]);
+  }, [showTestCustomers, excludeCreditMemos]);
 
   useEffect(() => {
     applyFilters();

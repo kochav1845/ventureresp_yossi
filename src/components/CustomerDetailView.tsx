@@ -179,7 +179,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     setHasMore(true);
     loadInvoices(0, false);
     loadFilteredStats();
-  }, [activeTab, JSON.stringify(advancedFilters)]);
+  }, [activeTab, JSON.stringify(advancedFilters), excludeCreditMemos]);
 
   // Load customer basic info first (fastest - shows immediately)
   const loadCustomerBasicInfo = async () => {
@@ -447,7 +447,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           p_amount_min: advancedFilters.amountMin ? parseFloat(advancedFilters.amountMin) : null,
           p_amount_max: advancedFilters.amountMax ? parseFloat(advancedFilters.amountMax) : null,
           p_color_status: advancedFilters.colorStatus || null,
-          p_invoice_status: advancedFilters.invoiceStatus || null
+          p_invoice_status: advancedFilters.invoiceStatus || null,
+          p_exclude_credit_memos: excludeCreditMemos
         });
 
       if (error) throw error;
@@ -477,7 +478,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           p_sort_by: advancedFilters.sortBy,
           p_sort_order: advancedFilters.sortOrder,
           p_limit: ITEMS_PER_PAGE,
-          p_offset: offset
+          p_offset: offset,
+          p_exclude_credit_memos: excludeCreditMemos
         });
 
       if (error) throw error;
