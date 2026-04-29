@@ -278,6 +278,7 @@ export default function Customers({ onBack }: CustomersProps) {
             balance: item.calculated_balance || 0,
             gross_balance: item.gross_balance || 0,
             filtered_gross_balance: item.filtered_gross_balance || 0,
+            filtered_net_balance: item.filtered_net_balance ?? item.filtered_gross_balance ?? 0,
             invoice_count: item.open_invoice_count || 0,
             filtered_invoice_count: item.filtered_invoice_count || 0,
             max_days_overdue: item.max_days_overdue || 0,
@@ -349,6 +350,7 @@ export default function Customers({ onBack }: CustomersProps) {
             balance: item.calculated_balance || 0,
             gross_balance: item.gross_balance || 0,
             filtered_gross_balance: item.filtered_gross_balance || 0,
+            filtered_net_balance: item.filtered_net_balance ?? item.filtered_gross_balance ?? 0,
             invoice_count: item.open_invoice_count || 0,
             filtered_invoice_count: item.filtered_invoice_count || 0,
             max_days_overdue: item.max_days_overdue || 0,
@@ -375,8 +377,8 @@ export default function Customers({ onBack }: CustomersProps) {
     const customers = filteredCustomers;
     const totalCustomers = customers.length;
     const activeCustomers = customers.filter(c => c.is_active).length;
-    const totalBalance = customers.reduce((sum: number, c: any) => sum + (c.filtered_gross_balance ?? c.gross_balance ?? c.balance ?? 0), 0);
-    const customersWithDebt = customers.filter((c: any) => (c.filtered_gross_balance ?? c.gross_balance ?? c.balance ?? 0) > 0).length;
+    const totalBalance = customers.reduce((sum: number, c: any) => sum + (c.filtered_net_balance ?? c.balance ?? 0), 0);
+    const customersWithDebt = customers.filter((c: any) => (c.filtered_net_balance ?? c.balance ?? 0) > 0).length;
     const totalOpenInvoices = customers.reduce((sum: number, c: any) => sum + (c.filtered_invoice_count ?? c.invoice_count ?? 0), 0);
     const customersWithOverdue = customers.filter((c: any) => (c.max_days_overdue || 0) > 0).length;
     const avgBalance = customersWithDebt > 0 ? totalBalance / customersWithDebt : 0;
@@ -456,6 +458,7 @@ export default function Customers({ onBack }: CustomersProps) {
             balance: item.calculated_balance || 0,
             gross_balance: item.gross_balance || 0,
             filtered_gross_balance: item.filtered_gross_balance || 0,
+            filtered_net_balance: item.filtered_net_balance ?? item.filtered_gross_balance ?? 0,
             invoice_count: item.open_invoice_count || 0,
             filtered_invoice_count: item.filtered_invoice_count || 0,
             max_days_overdue: item.max_days_overdue || 0,
