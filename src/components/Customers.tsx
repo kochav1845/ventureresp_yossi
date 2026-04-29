@@ -276,6 +276,7 @@ export default function Customers({ onBack }: CustomersProps) {
             updated_at: item.updated_at,
             customer_id: item.customer_id,
             balance: item.calculated_balance || 0,
+            gross_balance: item.gross_balance || 0,
             invoice_count: item.open_invoice_count || 0,
             max_days_overdue: item.max_days_overdue || 0,
             red_threshold_days: item.red_threshold_days || 30,
@@ -292,15 +293,7 @@ export default function Customers({ onBack }: CustomersProps) {
         setTotalCount(mergedData.length);
         loadAnalytics(mergedData);
       } else {
-        const [countResult, customerResult, analyticsResult] = await Promise.all([
-          supabase
-            .from('acumatica_customers')
-            .select('*', { count: 'exact', head: true })
-            .eq('is_test_customer', false),
-          supabase
-            .from('customers')
-            .select('*')
-            .order('created_at', { ascending: false }),
+        const [analyticsResult, customerTableResult] = await Promise.all([
           supabase
             .rpc('get_customers_with_balance', {
               p_search: null,
@@ -322,28 +315,39 @@ export default function Customers({ onBack }: CustomersProps) {
               p_exclude_credit_memos: excludeCreditMemos,
               p_calculate_avg_days: false,
               p_test_customers: false
-            })
+            }),
+          supabase
+            .from('customers')
+            .select('id, responded_this_month, postpone_until, postpone_reason, is_active')
         ]);
-
-        if (countResult.error) {
-          console.error('Error getting total count:', countResult.error);
-        } else {
-          setGrandTotalCustomers(countResult.count || 0);
-        }
-
-        if (customerResult.error) throw customerResult.error;
-
-        const customerData = customerResult.data;
-        const analyticsData = analyticsResult.data;
 
         if (analyticsResult.error) {
           console.error('Analytics error:', analyticsResult.error);
+          throw analyticsResult.error;
         }
 
-        const analyticsMap = new Map();
-        (analyticsData || []).forEach((item: CustomerAnalyticsData) => {
-          analyticsMap.set(item.customer_id, {
+        const analyticsData = analyticsResult.data || [];
+
+        const customerLookup = new Map<string, any>();
+        (customerTableResult.data || []).forEach((c: any) => {
+          customerLookup.set(c.id, c);
+        });
+
+        const mergedData = analyticsData.map((item: any) => {
+          const custRecord = customerLookup.get(item.customer_id);
+          return {
+            id: item.customer_id,
+            name: item.customer_name || '',
+            email: item.email_address || '',
+            is_active: custRecord?.is_active ?? true,
+            responded_this_month: custRecord?.responded_this_month ?? false,
+            postpone_until: custRecord?.postpone_until ?? null,
+            postpone_reason: custRecord?.postpone_reason ?? null,
+            created_at: item.created_at,
+            updated_at: item.updated_at,
+            customer_id: item.customer_id,
             balance: item.calculated_balance || 0,
+            gross_balance: item.gross_balance || 0,
             invoice_count: item.open_invoice_count || 0,
             max_days_overdue: item.max_days_overdue || 0,
             red_threshold_days: item.red_threshold_days || 30,
@@ -352,26 +356,10 @@ export default function Customers({ onBack }: CustomersProps) {
             green_count: item.green_count || 0,
             exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
             exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
-          });
-        });
-
-        const mergedData = (customerData || []).map(customer => {
-          const analytics = analyticsMap.get(customer.id);
-          return {
-            ...customer,
-            customer_id: customer.id,
-            balance: analytics?.balance || 0,
-            invoice_count: analytics?.invoice_count || 0,
-            max_days_overdue: analytics?.max_days_overdue || 0,
-            red_threshold_days: analytics?.red_threshold_days || 30,
-            red_count: analytics?.red_count || 0,
-            yellow_count: analytics?.yellow_count || 0,
-            green_count: analytics?.green_count || 0,
-            exclude_from_payment_analytics: analytics?.exclude_from_payment_analytics || false,
-            exclude_from_customer_analytics: analytics?.exclude_from_customer_analytics || false
           };
         });
 
+        setGrandTotalCustomers(mergedData.length);
         setAllCustomers(mergedData);
         setTotalCount(mergedData.length);
         loadAnalytics(mergedData);
@@ -383,12 +371,11 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
-  const loadAnalytics = useCallback((customers: Customer[]) => {
-    // Calculate analytics from the filtered customer data
+  const loadAnalytics = useCallback((customers: any[]) => {
     const totalCustomers = customers.length;
     const activeCustomers = customers.filter(c => c.is_active).length;
-    const totalBalance = customers.reduce((sum, c) => sum + (c.balance || 0), 0);
-    const customersWithDebt = customers.filter(c => (c.balance || 0) > 0).length;
+    const totalBalance = customers.reduce((sum, c) => sum + (c.gross_balance || c.balance || 0), 0);
+    const customersWithDebt = customers.filter(c => (c.gross_balance || c.balance || 0) > 0).length;
     const totalOpenInvoices = customers.reduce((sum, c) => sum + (c.invoice_count || 0), 0);
     const customersWithOverdue = customers.filter(c => (c.max_days_overdue || 0) > 0).length;
     const avgBalance = customersWithDebt > 0 ? totalBalance / customersWithDebt : 0;
@@ -405,11 +392,15 @@ export default function Customers({ onBack }: CustomersProps) {
   }, []);
 
   const applyFilters = useCallback(async () => {
-    // Check if invoice amount filter is applied - if so, we need to query the database
-    const hasInvoiceAmountFilter = filters.minInvoiceAmount > 0 || filters.maxInvoiceAmount !== Infinity;
+    const hasServerFilter =
+      filters.minInvoiceAmount > 0 || filters.maxInvoiceAmount !== Infinity ||
+      !!filters.dateFrom || !!filters.dateTo ||
+      !!searchQuery.trim() ||
+      filters.minBalance > 0 || filters.maxBalance !== Infinity ||
+      filters.minInvoiceCount > 0 || filters.maxInvoiceCount !== Infinity ||
+      filters.minDaysOverdue > 0 || filters.maxDaysOverdue !== Infinity;
 
-    if (hasInvoiceAmountFilter) {
-      // Query database with invoice amount filter
+    if (hasServerFilter) {
       setLoading(true);
       try {
         const { data: analyticsData, error: analyticsError } = await supabase
@@ -417,12 +408,13 @@ export default function Customers({ onBack }: CustomersProps) {
             p_search: searchQuery.trim() || null,
             p_status_filter: 'all',
             p_country_filter: 'all',
-            p_sort_by: 'customer_name',
-            p_sort_order: 'asc',
+            p_sort_by: filters.sortBy === 'name' ? 'customer_name' : filters.sortBy,
+            p_sort_order: filters.sortOrder,
             p_limit: 10000,
             p_offset: 0,
             p_date_from: filters.dateFrom || null,
             p_date_to: filters.dateTo || null,
+            p_date_context: (filters.dateFrom || filters.dateTo) ? 'invoice_date' : null,
             p_balance_filter: 'all',
             p_min_balance: filters.minBalance > 0 ? filters.minBalance : null,
             p_max_balance: filters.maxBalance !== Infinity ? filters.maxBalance : null,
@@ -431,7 +423,10 @@ export default function Customers({ onBack }: CustomersProps) {
             p_min_invoice_amount: filters.minInvoiceAmount > 0 ? filters.minInvoiceAmount : null,
             p_max_invoice_amount: filters.maxInvoiceAmount !== Infinity ? filters.maxInvoiceAmount : null,
             p_exclude_credit_memos: excludeCreditMemos,
-            p_calculate_avg_days: false
+            p_calculate_avg_days: false,
+            p_min_days_overdue: filters.minDaysOverdue > 0 ? filters.minDaysOverdue : null,
+            p_max_days_overdue: filters.maxDaysOverdue !== Infinity ? Math.round(filters.maxDaysOverdue) : null,
+            p_test_customers: showTestCustomers
           });
 
         if (analyticsError) throw analyticsError;
@@ -444,13 +439,12 @@ export default function Customers({ onBack }: CustomersProps) {
           custLookup.set(c.id, c);
         });
 
-        const filtered = (analyticsData || []).map((item: CustomerAnalyticsData) => {
-          const realId = item.customer_id?.startsWith('TEST-') ? item.customer_id.replace('TEST-', '') : null;
-          const custRecord = realId ? custLookup.get(realId) : null;
+        const filtered = (analyticsData || []).map((item: any) => {
+          const custRecord = custLookup.get(item.customer_id);
           return {
-            id: realId || item.customer_id,
+            id: item.customer_id,
             customer_id: item.customer_id,
-            name: item.customer_name,
+            name: item.customer_name || '',
             email: item.email_address || '',
             is_active: custRecord?.is_active ?? true,
             responded_this_month: custRecord?.responded_this_month ?? false,
@@ -459,10 +453,13 @@ export default function Customers({ onBack }: CustomersProps) {
             created_at: item.created_at,
             updated_at: item.updated_at,
             balance: item.calculated_balance || 0,
+            gross_balance: item.gross_balance || 0,
             invoice_count: item.open_invoice_count || 0,
             max_days_overdue: item.max_days_overdue || 0,
-            oldest_invoice_date: null,
-            newest_invoice_date: null,
+            red_threshold_days: item.red_threshold_days || 30,
+            red_count: item.red_count || 0,
+            yellow_count: item.yellow_count || 0,
+            green_count: item.green_count || 0,
             exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
             exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
           };
@@ -472,74 +469,19 @@ export default function Customers({ onBack }: CustomersProps) {
         setTotalCount(filtered.length);
         loadAnalytics(filtered);
 
-        // Paginate
         const start = currentPage * pageSize;
         const end = start + pageSize;
         setCustomers(filtered.slice(start, end));
       } catch (error) {
-        console.error('Error applying invoice amount filter:', error);
+        console.error('Error applying filters:', error);
       } finally {
         setLoading(false);
       }
       return;
     }
 
-    // Otherwise, use client-side filtering
+    // No active filters -- use the cached allCustomers list
     let filtered = [...allCustomers];
-
-    // Apply search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(c =>
-        c.name.toLowerCase().includes(query) ||
-        c.email.toLowerCase().includes(query) ||
-        c.id.toLowerCase().includes(query)
-      );
-    }
-
-    // Apply date filters
-    if (filters.dateFrom || filters.dateTo) {
-      filtered = filtered.filter(customer => {
-        if (!customer.oldest_invoice_date) return false;
-
-        const oldestDate = new Date(customer.oldest_invoice_date);
-        const fromDate = filters.dateFrom ? new Date(filters.dateFrom) : null;
-        const toDate = filters.dateTo ? new Date(filters.dateTo) : null;
-
-        if (fromDate && toDate) {
-          const newestDate = customer.newest_invoice_date ? new Date(customer.newest_invoice_date) : oldestDate;
-          return (oldestDate <= toDate && newestDate >= fromDate);
-        } else if (fromDate) {
-          return oldestDate >= fromDate;
-        } else if (toDate) {
-          return oldestDate <= toDate;
-        }
-        return true;
-      });
-    }
-
-    // Apply balance, invoice count, and days overdue filters with logic operator
-    if (filters.logicOperator === 'AND') {
-      filtered = filtered.filter(customer => {
-        const balanceMatch = (customer.balance || 0) >= filters.minBalance &&
-                            (filters.maxBalance === Infinity || (customer.balance || 0) <= filters.maxBalance);
-        const invoiceMatch = (customer.invoice_count || 0) >= filters.minInvoiceCount &&
-                            (filters.maxInvoiceCount === Infinity || (customer.invoice_count || 0) <= filters.maxInvoiceCount);
-        const overdueMatch = (customer.max_days_overdue || 0) >= filters.minDaysOverdue &&
-                            (filters.maxDaysOverdue === Infinity || (customer.max_days_overdue || 0) <= filters.maxDaysOverdue);
-        return balanceMatch && invoiceMatch && overdueMatch;
-      });
-    } else {
-      filtered = filtered.filter(customer => {
-        const balanceMatch = (customer.balance || 0) >= filters.minBalance &&
-                            (filters.maxBalance === Infinity || (customer.balance || 0) <= filters.maxBalance);
-        const invoiceMatch = (customer.invoice_count || 0) >= filters.minInvoiceCount &&
-                            (filters.maxInvoiceCount === Infinity || (customer.invoice_count || 0) <= filters.maxInvoiceCount);
-        const overdueMatch = (customer.max_days_overdue || 0) >= filters.minDaysOverdue &&
-                            (filters.maxDaysOverdue === Infinity || (customer.max_days_overdue || 0) <= filters.maxDaysOverdue);
-        return balanceMatch || invoiceMatch || overdueMatch;
-      });
-    }
 
     // Apply sorting
     filtered.sort((a, b) => {
@@ -567,11 +509,10 @@ export default function Customers({ onBack }: CustomersProps) {
     setTotalCount(filtered.length);
     loadAnalytics(filtered);
 
-    // Paginate
     const start = currentPage * pageSize;
     const end = start + pageSize;
     setCustomers(filtered.slice(start, end));
-  }, [allCustomers, filters, searchQuery, currentPage, pageSize, loadAnalytics]);
+  }, [allCustomers, filters, searchQuery, currentPage, pageSize, loadAnalytics, showTestCustomers, excludeCreditMemos]);
 
   const handleSearch = () => {
     setCurrentPage(0);
@@ -1334,7 +1275,7 @@ export default function Customers({ onBack }: CustomersProps) {
 
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-600 font-medium text-sm">Total Balance Owed</span>
+                <span className="text-gray-600 font-medium text-sm">Total Owed (Invoices)</span>
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
               <p className="text-3xl font-bold text-gray-900">
