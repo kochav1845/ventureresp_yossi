@@ -290,8 +290,6 @@ export default function Customers({ onBack }: CustomersProps) {
 
         setGrandTotalCustomers(mergedData.length);
         setAllCustomers(mergedData);
-        setTotalCount(mergedData.length);
-        loadAnalytics(mergedData);
       } else {
         const [analyticsResult, customerTableResult] = await Promise.all([
           supabase
@@ -361,8 +359,6 @@ export default function Customers({ onBack }: CustomersProps) {
 
         setGrandTotalCustomers(mergedData.length);
         setAllCustomers(mergedData);
-        setTotalCount(mergedData.length);
-        loadAnalytics(mergedData);
       }
     } catch (error) {
       console.error('Error loading customers:', error);
@@ -371,13 +367,14 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
-  const loadAnalytics = useCallback((customers: any[]) => {
+  useEffect(() => {
+    const customers = filteredCustomers;
     const totalCustomers = customers.length;
     const activeCustomers = customers.filter(c => c.is_active).length;
-    const totalBalance = customers.reduce((sum, c) => sum + (c.gross_balance || c.balance || 0), 0);
-    const customersWithDebt = customers.filter(c => (c.gross_balance || c.balance || 0) > 0).length;
-    const totalOpenInvoices = customers.reduce((sum, c) => sum + (c.invoice_count || 0), 0);
-    const customersWithOverdue = customers.filter(c => (c.max_days_overdue || 0) > 0).length;
+    const totalBalance = customers.reduce((sum: number, c: any) => sum + (c.gross_balance || c.balance || 0), 0);
+    const customersWithDebt = customers.filter((c: any) => (c.gross_balance || c.balance || 0) > 0).length;
+    const totalOpenInvoices = customers.reduce((sum: number, c: any) => sum + (c.invoice_count || 0), 0);
+    const customersWithOverdue = customers.filter((c: any) => (c.max_days_overdue || 0) > 0).length;
     const avgBalance = customersWithDebt > 0 ? totalBalance / customersWithDebt : 0;
 
     setStats({
@@ -389,7 +386,7 @@ export default function Customers({ onBack }: CustomersProps) {
       total_open_invoices: totalOpenInvoices,
       customers_with_overdue: customersWithOverdue
     });
-  }, []);
+  }, [filteredCustomers]);
 
   const applyFilters = useCallback(async () => {
     const hasServerFilter =
@@ -467,8 +464,6 @@ export default function Customers({ onBack }: CustomersProps) {
 
         setFilteredCustomers(filtered);
         setTotalCount(filtered.length);
-        loadAnalytics(filtered);
-
         const start = currentPage * pageSize;
         const end = start + pageSize;
         setCustomers(filtered.slice(start, end));
@@ -507,12 +502,11 @@ export default function Customers({ onBack }: CustomersProps) {
 
     setFilteredCustomers(filtered);
     setTotalCount(filtered.length);
-    loadAnalytics(filtered);
 
     const start = currentPage * pageSize;
     const end = start + pageSize;
     setCustomers(filtered.slice(start, end));
-  }, [allCustomers, filters, searchQuery, currentPage, pageSize, loadAnalytics, showTestCustomers, excludeCreditMemos]);
+  }, [allCustomers, filters, searchQuery, currentPage, pageSize, showTestCustomers, excludeCreditMemos]);
 
   const handleSearch = () => {
     setCurrentPage(0);
