@@ -203,7 +203,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         .from('acumatica_invoices')
         .select('balance, type')
         .eq('customer', customerId)
-        .in('status', ['Open', 'Balanced'])
+        .eq('status', 'Open')
         .gt('balance', 0);
 
       const { data: openInvoices, error: invError } = await balanceQuery;
@@ -215,7 +215,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
       if (!invError && openInvoices) {
         openInvoices.forEach((inv: any) => {
-          if (inv.type === 'Credit Memo' || inv.type === 'Credit WO') {
+          if (inv.type === 'Credit Memo') {
             creditMemoBalance += inv.balance;
           } else {
             grossBalance += inv.balance;
@@ -877,14 +877,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             </div>
             <p className="text-sm text-red-600 font-medium mb-1">Current Balance Owed</p>
             <p className="text-2xl font-bold text-red-900">{formatCurrency(currentBalance)}</p>
-            {customer?.credit_memo_balance ? (
-              <div className="text-xs text-red-700 mt-1 space-y-0.5">
-                <p>Gross: {formatCurrency(customer.gross_balance)}</p>
-                <p>Credits: -{formatCurrency(customer.credit_memo_balance)}</p>
-              </div>
-            ) : (
-              <p className="text-xs text-red-700 mt-1">{invoiceCounts.open} open invoice{invoiceCounts.open !== 1 ? 's' : ''}</p>
-            )}
+            <p className="text-xs text-red-700 mt-1">{invoiceCounts.open} open invoice{invoiceCounts.open !== 1 ? 's' : ''}</p>
           </div>
 
           <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6">
@@ -1246,9 +1239,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                           Reference
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
-                          Type
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
                           Date
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
@@ -1290,17 +1280,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                         >
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {invoice.reference_number}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              invoice.type === 'Credit Memo' || invoice.type === 'Credit WO'
-                                ? 'bg-green-100 text-green-800'
-                                : invoice.type === 'Debit Memo'
-                                ? 'bg-orange-100 text-orange-800'
-                                : 'bg-blue-100 text-blue-800'
-                            }`}>
-                              {invoice.type || 'Invoice'}
-                            </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {formatDateUtil(invoice.date)}
@@ -1386,14 +1365,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                               <span className="text-xs text-gray-400">-</span>
                             )}
                           </td>
-                          <td className={`px-6 py-4 whitespace-nowrap text-sm text-right ${
-                            invoice.amount < 0 ? 'text-green-700' : 'text-gray-900'
-                          }`}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
                             {formatCurrency(invoice.amount)}
                           </td>
-                          <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-bold ${
-                            invoice.balance < 0 ? 'text-green-700' : 'text-red-600'
-                          }`}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-red-600">
                             {formatCurrency(invoice.balance)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -1475,7 +1450,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                     <thead className="bg-gray-50 sticky top-0 z-10">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Reference</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Type</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Date</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Due Date</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Status</th>
@@ -1493,17 +1467,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                           className="bg-amber-50/30 hover:bg-amber-50"
                         >
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{invoice.reference_number}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              invoice.type === 'Credit Memo' || invoice.type === 'Credit WO'
-                                ? 'bg-green-100 text-green-800'
-                                : invoice.type === 'Debit Memo'
-                                ? 'bg-orange-100 text-orange-800'
-                                : 'bg-blue-100 text-blue-800'
-                            }`}>
-                              {invoice.type || 'Invoice'}
-                            </span>
-                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDateUtil(invoice.date)}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDateUtil(invoice.due_date)}</td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -1511,8 +1474,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                               {invoice.status}
                             </span>
                           </td>
-                          <td className={`px-6 py-4 whitespace-nowrap text-sm text-right ${invoice.amount < 0 ? 'text-green-700' : 'text-gray-900'}`}>{formatCurrency(invoice.amount)}</td>
-                          <td className={`px-6 py-4 whitespace-nowrap text-sm text-right ${invoice.balance < 0 ? 'text-green-700' : 'text-gray-900'}`}>{formatCurrency(invoice.balance)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">{formatCurrency(invoice.amount)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">{formatCurrency(invoice.balance)}</td>
                           <td className="px-6 py-4 text-sm text-gray-500">{invoice.description || '-'}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
                             <a
@@ -1568,9 +1531,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                         Reference
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
-                        Type
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
                         Date
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
@@ -1601,17 +1561,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           {invoice.reference_number}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            invoice.type === 'Credit Memo' || invoice.type === 'Credit WO'
-                              ? 'bg-green-100 text-green-800'
-                              : invoice.type === 'Debit Memo'
-                              ? 'bg-orange-100 text-orange-800'
-                              : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            {invoice.type || 'Invoice'}
-                          </span>
-                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {formatDateUtil(invoice.date)}
                         </td>
@@ -1623,7 +1572,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                             {invoice.status}
                           </span>
                         </td>
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm text-right ${invoice.amount < 0 ? 'text-green-700' : 'text-gray-900'}`}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
                           {formatCurrency(invoice.amount)}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">

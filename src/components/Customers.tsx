@@ -383,32 +383,26 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
-  const loadAnalytics = useCallback(async (_customers?: Customer[]) => {
-    try {
-      const { data, error } = await supabase
-        .rpc('get_customer_dashboard_stats', {
-          p_exclude_credit_memos: excludeCreditMemos,
-          p_test_customers: showTestCustomers
-        });
+  const loadAnalytics = useCallback((customers: Customer[]) => {
+    // Calculate analytics from the filtered customer data
+    const totalCustomers = customers.length;
+    const activeCustomers = customers.filter(c => c.is_active).length;
+    const totalBalance = customers.reduce((sum, c) => sum + (c.balance || 0), 0);
+    const customersWithDebt = customers.filter(c => (c.balance || 0) > 0).length;
+    const totalOpenInvoices = customers.reduce((sum, c) => sum + (c.invoice_count || 0), 0);
+    const customersWithOverdue = customers.filter(c => (c.max_days_overdue || 0) > 0).length;
+    const avgBalance = customersWithDebt > 0 ? totalBalance / customersWithDebt : 0;
 
-      if (error) throw error;
-
-      const row = data?.[0];
-      if (row) {
-        setStats({
-          total_customers: Number(row.total_customers) || 0,
-          active_customers: Number(row.total_customers) || 0,
-          total_balance: Number(row.total_balance) || 0,
-          avg_balance: Number(row.avg_balance) || 0,
-          customers_with_debt: Number(row.customers_with_debt) || 0,
-          total_open_invoices: Number(row.total_open_invoices) || 0,
-          customers_with_overdue: Number(row.customers_with_overdue) || 0
-        });
-      }
-    } catch (error) {
-      console.error('Error loading dashboard stats:', error);
-    }
-  }, [excludeCreditMemos, showTestCustomers]);
+    setStats({
+      total_customers: totalCustomers,
+      active_customers: activeCustomers,
+      total_balance: totalBalance,
+      avg_balance: avgBalance,
+      customers_with_debt: customersWithDebt,
+      total_open_invoices: totalOpenInvoices,
+      customers_with_overdue: customersWithOverdue
+    });
+  }, []);
 
   const applyFilters = useCallback(async () => {
     // Check if invoice amount filter is applied - if so, we need to query the database
