@@ -80,6 +80,7 @@ import VoidedPaymentsByDate from './components/VoidedPaymentsByDate';
 import Last15DaysPaymentFetch from './components/Last15DaysPaymentFetch';
 import ConnectionDiagnostic from './components/ConnectionDiagnostic';
 import PaymentBreakdown from './components/PaymentBreakdown';
+import InvoiceBreakdown from './components/InvoiceBreakdown';
 import EmailSettings from './components/EmailSettings';
 import TicketDetailPage from './components/TicketDetailPage';
 import CustomerStatements from './components/CustomerStatements';
@@ -146,6 +147,7 @@ function AppContent() {
         <Route path="invoice-analytics" element={<AnalyticsDashboard />} />
         <Route path="payment-analytics" element={<PaymentAnalytics />} />
         <Route path="payment-breakdown" element={<PaymentBreakdown />} />
+        <Route path="invoice-breakdown" element={<InvoiceBreakdown />} />
         <Route path="voided-payment-analysis" element={<VoidedPaymentAnalysis />} />
         <Route path="voided-payments-by-date" element={<VoidedPaymentsByDate />} />
         <Route path="webhooks" element={<WebhookConfiguration />} />

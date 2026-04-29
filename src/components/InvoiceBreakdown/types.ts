@@ -1,0 +1,65 @@
+export interface InvoiceMonthSummary {
+  month_key: string;
+  month_label: string;
+  total_invoices: number;
+  total_amount: number;
+  total_balance: number;
+  invoice_count: number;
+  invoice_amount: number;
+  invoice_balance: number;
+  credit_memo_count: number;
+  credit_memo_amount: number;
+  credit_memo_balance: number;
+  debit_memo_count: number;
+  debit_memo_amount: number;
+  debit_memo_balance: number;
+  credit_wo_count: number;
+  credit_wo_amount: number;
+  credit_wo_balance: number;
+  overdue_charge_count: number;
+  overdue_charge_amount: number;
+  overdue_charge_balance: number;
+}
+
+export interface InvoiceDateBreakdownRow {
+  day_date: string;
+  day_label: string;
+  invoice_type: string;
+  invoice_status: string;
+  invoice_count: number;
+  total_amount: number;
+  total_balance: number;
+  avg_amount: number;
+}
+
+export interface InvoiceDaySummary {
+  date: string;
+  label: string;
+  total_count: number;
+  total_amount: number;
+  total_balance: number;
+  types: Record<string, {
+    count: number;
+    amount: number;
+    balance: number;
+    statuses: Record<string, { count: number; amount: number; balance: number }>;
+  }>;
+}
+
+export type InvoiceTypeKey = 'Invoice' | 'Credit Memo' | 'Debit Memo' | 'Credit WO' | 'Overdue Charge';
+
+export const INVOICE_TYPE_CONFIG: Record<string, { label: string; color: string; bgColor: string; textColor: string }> = {
+  'Invoice': { label: 'Invoices', color: '#2563eb', bgColor: 'bg-blue-50', textColor: 'text-blue-700' },
+  'Credit Memo': { label: 'Credit Memos', color: '#059669', bgColor: 'bg-emerald-50', textColor: 'text-emerald-700' },
+  'Debit Memo': { label: 'Debit Memos', color: '#d97706', bgColor: 'bg-amber-50', textColor: 'text-amber-700' },
+  'Credit WO': { label: 'Credit W/O', color: '#6b7280', bgColor: 'bg-gray-50', textColor: 'text-gray-700' },
+  'Overdue Charge': { label: 'Overdue Charges', color: '#dc2626', bgColor: 'bg-red-50', textColor: 'text-red-700' },
+};
+
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+}
+
+export function formatNumber(num: number): string {
+  return new Intl.NumberFormat('en-US').format(num);
+}
