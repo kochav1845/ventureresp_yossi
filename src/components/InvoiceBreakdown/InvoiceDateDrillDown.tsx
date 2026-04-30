@@ -1,17 +1,26 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Calendar } from 'lucide-react';
-import { InvoiceDaySummary, INVOICE_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import { InvoiceDaySummary, ComparisonState, FetchState, INVOICE_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import InvoiceSyncCheckCell from './InvoiceSyncCheckCell';
 
 interface InvoiceDateDrillDownProps {
   days: InvoiceDaySummary[];
   monthLabel: string;
   onBack: () => void;
   showBalance: boolean;
+  comparisons: Record<string, ComparisonState>;
+  fetches: Record<string, FetchState>;
+  onCompare: (dateKey: string) => void;
+  onFetch: (dateKey: string) => void;
+  onCancel?: (dateKey: string) => void;
 }
 
 type SortField = 'date' | 'total' | 'invoice' | 'credit_memo' | 'debit_memo' | 'credit_wo' | 'overdue_charge';
 
-export default function InvoiceDateDrillDown({ days, monthLabel, onBack, showBalance }: InvoiceDateDrillDownProps) {
+export default function InvoiceDateDrillDown({
+  days, monthLabel, onBack, showBalance,
+  comparisons, fetches, onCompare, onFetch, onCancel,
+}: InvoiceDateDrillDownProps) {
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -130,6 +139,9 @@ export default function InvoiceDateDrillDown({ days, monthLabel, onBack, showBal
               <SortHeader field="debit_memo" className="text-right text-amber-600">Debit Memos</SortHeader>
               <SortHeader field="credit_wo" className="text-right text-gray-500">Credit W/O</SortHeader>
               <SortHeader field="overdue_charge" className="text-right text-red-600">Overdue Charges</SortHeader>
+              <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-center text-gray-600">
+                Sync Check
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -146,6 +158,11 @@ export default function InvoiceDateDrillDown({ days, monthLabel, onBack, showBal
                   onToggle={() => setExpandedDate(isExpanded ? null : day.date)}
                   showBalance={showBalance}
                   totalVal={totalVal}
+                  comparison={comparisons[day.date]}
+                  fetchState={fetches[day.date]}
+                  onCompare={() => onCompare(day.date)}
+                  onFetch={() => onFetch(day.date)}
+                  onCancel={onCancel ? () => onCancel(day.date) : undefined}
                 />
               );
             })}
@@ -156,13 +173,18 @@ export default function InvoiceDateDrillDown({ days, monthLabel, onBack, showBal
   );
 }
 
-function DateRow({ day, dayOfWeek, isExpanded, onToggle, showBalance, totalVal }: {
+function DateRow({ day, dayOfWeek, isExpanded, onToggle, showBalance, totalVal, comparison, fetchState, onCompare, onFetch, onCancel }: {
   day: InvoiceDaySummary;
   dayOfWeek: string;
   isExpanded: boolean;
   onToggle: () => void;
   showBalance: boolean;
   totalVal: number;
+  comparison: ComparisonState | undefined;
+  fetchState: FetchState | undefined;
+  onCompare: () => void;
+  onFetch: () => void;
+  onCancel?: () => void;
 }) {
   const allTypes = ['Invoice', 'Credit Memo', 'Debit Memo', 'Credit WO', 'Overdue Charge'];
 
@@ -190,10 +212,18 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle, showBalance, totalVal }
         {allTypes.map(type => (
           <TypeCell key={type} types={day.types} typeKey={type} showBalance={showBalance} />
         ))}
+        <InvoiceSyncCheckCell
+          cellKey={day.date}
+          comparison={comparison}
+          fetchState={fetchState}
+          onCompare={onCompare}
+          onFetch={onFetch}
+          onCancel={onCancel}
+        />
       </tr>
       {isExpanded && (
         <tr className="bg-blue-50/50">
-          <td colSpan={7} className="px-6 py-3">
+          <td colSpan={8} className="px-6 py-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {allTypes.filter(t => day.types[t]).map(type => {
                 const data = day.types[type];

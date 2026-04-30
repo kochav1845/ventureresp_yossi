@@ -1,18 +1,27 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { InvoiceMonthSummary, INVOICE_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import { InvoiceMonthSummary, ComparisonState, FetchState, INVOICE_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import InvoiceSyncCheckCell from './InvoiceSyncCheckCell';
 
 interface InvoiceMonthTableProps {
   months: InvoiceMonthSummary[];
   onMonthClick: (monthKey: string) => void;
   selectedMonth: string | null;
   showBalance: boolean;
+  comparisons: Record<string, ComparisonState>;
+  fetches: Record<string, FetchState>;
+  onCompare: (monthKey: string) => void;
+  onFetch: (monthKey: string) => void;
+  onCancel?: (monthKey: string) => void;
 }
 
 type SortField = 'month' | 'total' | 'invoices' | 'credit_memo' | 'debit_memo' | 'credit_wo' | 'overdue_charge';
 type SortDir = 'asc' | 'desc';
 
-export default function InvoiceMonthTable({ months, onMonthClick, selectedMonth, showBalance }: InvoiceMonthTableProps) {
+export default function InvoiceMonthTable({
+  months, onMonthClick, selectedMonth, showBalance,
+  comparisons, fetches, onCompare, onFetch, onCancel,
+}: InvoiceMonthTableProps) {
   const [sortField, setSortField] = useState<SortField>('month');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
@@ -26,7 +35,6 @@ export default function InvoiceMonthTable({ months, onMonthClick, selectedMonth,
   };
 
   const getVal = (m: InvoiceMonthSummary, field: SortField): number => {
-    const key = showBalance ? 'balance' : 'amount';
     switch (field) {
       case 'total': return showBalance ? m.total_balance : m.total_amount;
       case 'invoices': return showBalance ? m.invoice_balance : m.invoice_amount;
@@ -78,6 +86,9 @@ export default function InvoiceMonthTable({ months, onMonthClick, selectedMonth,
             <SortHeader field="debit_memo" className="text-right text-amber-600">Debit Memos</SortHeader>
             <SortHeader field="credit_wo" className="text-right text-gray-500">Credit W/O</SortHeader>
             <SortHeader field="overdue_charge" className="text-right text-red-600">Overdue Charges</SortHeader>
+            <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-center text-gray-600">
+              Sync Check
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -140,6 +151,14 @@ export default function InvoiceMonthTable({ months, onMonthClick, selectedMonth,
                   type="Overdue Charge"
                   prevAmount={prevMonth ? (showBalance ? prevMonth.overdue_charge_balance : prevMonth.overdue_charge_amount) : undefined}
                   getTrend={getTrend}
+                />
+                <InvoiceSyncCheckCell
+                  cellKey={month.month_key}
+                  comparison={comparisons[month.month_key]}
+                  fetchState={fetches[month.month_key]}
+                  onCompare={() => onCompare(month.month_key)}
+                  onFetch={() => onFetch(month.month_key)}
+                  onCancel={onCancel ? () => onCancel(month.month_key) : undefined}
                 />
               </tr>
             );

@@ -6,6 +6,7 @@ import { InvoiceMonthSummary, InvoiceDateBreakdownRow, InvoiceDaySummary } from 
 import InvoiceMonthTable from './InvoiceMonthTable';
 import InvoiceDateDrillDown from './InvoiceDateDrillDown';
 import InvoiceSummaryCards from './InvoiceSummaryCards';
+import { useInvoiceComparison } from './useInvoiceComparison';
 
 export default function InvoiceBreakdown() {
   const navigate = useNavigate();
@@ -33,6 +34,13 @@ export default function InvoiceBreakdown() {
       setLoading(false);
     }
   }, []);
+
+  const {
+    comparisons, fetches,
+    compareMonth, compareDay,
+    fetchMonth, fetchDay,
+    cancelFetch,
+  } = useInvoiceComparison(loadMonthSummaries);
 
   useEffect(() => {
     loadMonthSummaries();
@@ -300,6 +308,11 @@ export default function InvoiceBreakdown() {
                   monthLabel={selectedMonthData?.month_label || selectedMonth}
                   onBack={() => { setSelectedMonth(null); setDateDrillDown(null); }}
                   showBalance={showBalance}
+                  comparisons={comparisons}
+                  fetches={fetches}
+                  onCompare={compareDay}
+                  onFetch={fetchDay}
+                  onCancel={cancelFetch}
                 />
               </div>
             )}
@@ -323,6 +336,11 @@ export default function InvoiceBreakdown() {
                 onMonthClick={handleMonthClick}
                 selectedMonth={selectedMonth}
                 showBalance={showBalance}
+                comparisons={comparisons}
+                fetches={fetches}
+                onCompare={compareMonth}
+                onFetch={fetchMonth}
+                onCancel={cancelFetch}
               />
             </div>
           </>

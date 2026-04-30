@@ -63,3 +63,37 @@ export function formatCurrency(amount: number): string {
 export function formatNumber(num: number): string {
   return new Intl.NumberFormat('en-US').format(num);
 }
+
+export interface TypeCount {
+  acumatica: number;
+  db: number;
+  difference: number;
+}
+
+export interface ComparisonResult {
+  acumaticaCount: number;
+  dbCount: number;
+  difference: number;
+  byType: Record<string, TypeCount>;
+}
+
+export interface ComparisonState {
+  loading: boolean;
+  error: string | null;
+  result: ComparisonResult | null;
+}
+
+export interface FetchProgress {
+  current: number;
+  total: number;
+  created: number;
+  updated: number;
+}
+
+export interface FetchState {
+  loading: boolean;
+  error: string | null;
+  result: { created: number; updated: number } | null;
+  progress?: FetchProgress | null;
+  jobId?: string | null;
+}
