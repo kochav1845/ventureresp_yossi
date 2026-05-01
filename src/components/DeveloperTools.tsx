@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor, XCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor, XCircle, Clock, Key } from 'lucide-react';
 
 interface Tool {
   id: string;
@@ -8,7 +8,7 @@ interface Tool {
   description: string;
   icon: any;
   path: string;
-  category: 'payment' | 'invoice' | 'sync' | 'system';
+  category: 'payment' | 'invoice' | 'sync' | 'system' | 'api';
 }
 
 export function DeveloperTools() {
@@ -263,9 +263,18 @@ export function DeveloperTools() {
       path: '/force-delete-user',
       category: 'system'
     },
+    {
+      id: 'api-keys',
+      name: 'API Key Management',
+      description: 'Create and manage API keys for GPT and external integrations',
+      icon: Key,
+      path: '/api-keys',
+      category: 'api'
+    },
   ];
 
-  const categories = {
+  const categories: Record<string, string> = {
+    api: 'API & Integrations',
     payment: 'Payment Tools',
     invoice: 'Invoice Tools',
     sync: 'Sync Tools',
@@ -303,10 +312,12 @@ export function DeveloperTools() {
           </p>
         </div>
 
-        {Object.entries(groupedTools).map(([category, categoryTools]) => (
+        {Object.keys(categories).filter(cat => groupedTools[cat]).map((category) => {
+          const categoryTools = groupedTools[category];
+          return (
           <div key={category} className="bg-white rounded-lg shadow-lg p-6 mb-6">
             <h2 className="text-xl font-bold text-gray-900 mb-4">
-              {categories[category as keyof typeof categories]}
+              {categories[category]}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {categoryTools.map((tool) => {
@@ -331,7 +342,8 @@ export function DeveloperTools() {
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
