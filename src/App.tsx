@@ -84,6 +84,7 @@ import InvoiceBreakdown from './components/InvoiceBreakdown';
 import EmailSettings from './components/EmailSettings';
 import TicketDetailPage from './components/TicketDetailPage';
 import CustomerStatements from './components/CustomerStatements';
+import ApiKeyManagement from './components/ApiKeyManagement';
 
 function LoadingScreen() {
   return (
@@ -212,6 +213,7 @@ function AppContent() {
         <Route path="sync-health" element={<SyncHealthDashboard />} />
         <Route path="last-15-days-payments" element={<Last15DaysPaymentFetch />} />
         <Route path="email-settings" element={<EmailSettings />} />
+        <Route path="api-keys" element={<ApiKeyManagement />} />
       </Route>
 
       <Route path="*" element={<Navigate to={defaultRoute} replace />} />

@@ -752,13 +752,42 @@ async function handleGlobalSearch(
   if (!query || query.length < 2)
     return errorResponse("Query must be at least 2 characters");
 
-  const { data, error } = await supabase.rpc("global_search", {
-    search_query: query,
-    max_per_category: 15,
-  });
+  const limit = Math.min(parseInt(params.limit || "10"), 25);
+  const likePattern = `%${query}%`;
 
-  if (error) return errorResponse(error.message, 500);
-  return jsonResponse({ query, results: data });
+  // Run 4 fast, independent queries in parallel (each individually limited)
+  const [customers, invoices, payments, tickets] = await Promise.all([
+    supabase
+      .from("acumatica_customers")
+      .select("customer_id, customer_name, customer_class, balance, general_email, customer_status")
+      .or(`customer_name.ilike.${likePattern},customer_id.ilike.${likePattern},general_email.ilike.${likePattern}`)
+      .limit(limit),
+    supabase
+      .from("acumatica_invoices")
+      .select("reference_number, type, status, customer, customer_name, amount, balance, date")
+      .or(`reference_number.ilike.${likePattern},customer_name.ilike.${likePattern},customer.ilike.${likePattern}`)
+      .limit(limit),
+    supabase
+      .from("acumatica_payments")
+      .select("reference_number, type, status, customer_id, customer_name, payment_amount, application_date, payment_ref")
+      .or(`reference_number.ilike.${likePattern},customer_name.ilike.${likePattern},customer_id.ilike.${likePattern},payment_ref.ilike.${likePattern}`)
+      .limit(limit),
+    supabase
+      .from("collection_tickets")
+      .select("ticket_number, customer_id, customer_name, status, priority, ticket_type")
+      .or(`ticket_number.ilike.${likePattern},customer_name.ilike.${likePattern},customer_id.ilike.${likePattern}`)
+      .limit(limit),
+  ]);
+
+  return jsonResponse({
+    query,
+    results: {
+      customers: customers.data || [],
+      invoices: invoices.data || [],
+      payments: payments.data || [],
+      tickets: tickets.data || [],
+    },
+  });
 }
 
 // ── Route: POST /keys/generate ──────────────────────────────────────────
