@@ -83,10 +83,15 @@ async function handleCustomers(
   const sortBy = params.sort_by || "customer_name";
   const sortOrder = params.sort_order === "desc" ? false : true;
 
+  // For balance sorting, use the dedicated customer-balances endpoint
+  if (sortBy === "balance" || sortBy === "open_invoice_count") {
+    return handleCustomerBalances(supabase, params);
+  }
+
   let query = supabase
     .from("acumatica_customers")
     .select(
-      "customer_id, customer_name, customer_class, balance, credit_limit, general_email, billing_email, country, city, billing_state, terms, customer_status, parent_account, account_name, created_at",
+      "customer_id, customer_name, customer_class, credit_limit, general_email, billing_email, country, city, billing_state, terms, customer_status, parent_account, account_name",
       { count: "exact" }
     );
 
@@ -106,7 +111,13 @@ async function handleCustomers(
     .range(offset, offset + limit - 1);
 
   if (error) return errorResponse(error.message, 500);
-  return jsonResponse({ data, total: count, limit, offset });
+  return jsonResponse({
+    data,
+    total: count,
+    limit,
+    offset,
+    note: "Use sort_by=balance to see computed balances from open invoices, or use /analytics/customer-balances for balance-focused queries.",
+  });
 }
 
 // ── Route: GET /customers/:id ───────────────────────────────────────────
@@ -537,17 +548,24 @@ async function handleAnalyticsOverview(
     .eq("status", "closed")
     .gte("resolved_at", monthStart);
 
-  const { data: recentPayments } = await supabase
-    .from("acumatica_payments")
-    .select("payment_amount, type")
-    .eq("type", "Payment")
-    .gte("application_date", monthStart);
+  const [{ data: recentPayments }, { data: totals }] = await Promise.all([
+    supabase
+      .from("acumatica_payments")
+      .select("payment_amount, type")
+      .eq("type", "Payment")
+      .gte("application_date", monthStart),
+    supabase.rpc("get_api_total_outstanding"),
+  ]);
 
   const paymentsThisMonth =
     recentPayments?.reduce((s, p) => s + (p.payment_amount || 0), 0) || 0;
 
+  const outstanding = totals?.[0] || { total_balance: 0, customer_count: 0, invoice_count: 0 };
+
   return jsonResponse({
     total_customers: customerCount || 0,
+    total_outstanding_balance: parseFloat(outstanding.total_balance) || 0,
+    customers_with_outstanding_balance: outstanding.customer_count,
     invoice_counts_by_type: invoiceCountsByType || [],
     open_invoices: openInvoiceStats || {},
     open_tickets: openTicketCount || 0,
@@ -684,27 +702,25 @@ async function handleCustomerBalances(
   const sortBy = params.sort_by || "balance";
   const sortOrder = params.sort_order === "asc";
 
-  const { data: customers } = await supabase
-    .from("acumatica_customers")
-    .select(
-      "customer_id, customer_name, balance, credit_limit, terms, customer_status, general_email"
-    )
-    .gt("balance", 0)
-    .order(sortBy, { ascending: sortOrder })
-    .range(offset, offset + limit - 1);
+  const [{ data: customers }, { data: totals }] = await Promise.all([
+    supabase.rpc("get_api_customer_balances", {
+      p_search: params.search || "",
+      p_sort_by: sortBy,
+      p_sort_asc: sortOrder,
+      p_limit: limit,
+      p_offset: offset,
+    }),
+    supabase.rpc("get_api_total_outstanding"),
+  ]);
 
-  const { data: allWithBalance, count } = await supabase
-    .from("acumatica_customers")
-    .select("balance", { count: "exact" })
-    .gt("balance", 0);
-
-  const totalBalance =
-    allWithBalance?.reduce((s, c) => s + (c.balance || 0), 0) || 0;
+  const total = totals?.[0] || { total_balance: 0, customer_count: 0, invoice_count: 0 };
 
   return jsonResponse({
     data: customers || [],
-    total_customers_with_balance: count || 0,
-    total_outstanding_balance: Math.round(totalBalance * 100) / 100,
+    total_customers_with_balance: total.customer_count,
+    total_outstanding_balance: parseFloat(total.total_balance) || 0,
+    total_open_invoices: total.invoice_count,
+    note: "Balances are computed from open invoices in real-time, not the stale customer balance field.",
     limit,
     offset,
   });
