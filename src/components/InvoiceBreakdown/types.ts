@@ -97,3 +97,29 @@ export interface FetchState {
   progress?: FetchProgress | null;
   jobId?: string | null;
 }
+
+export interface ExtraInvoice {
+  reference_number: string;
+  type: string;
+  customer: string;
+  customer_name: string;
+  amount: number;
+  balance: number;
+  status: string;
+}
+
+export interface VerificationResult {
+  acumaticaCount: number;
+  dbCount: number;
+  extraCount: number;
+  extras: ExtraInvoice[];
+  deletedInvoices: { reference_number: string; type: string; customer_name: string }[];
+  deletedCount: number;
+}
+
+export interface VerificationState {
+  loading: boolean;
+  error: string | null;
+  result: VerificationResult | null;
+  mode?: 'verify' | 'delete';
+}

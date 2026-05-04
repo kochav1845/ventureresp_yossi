@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Calendar } from 'lucide-react';
-import { InvoiceDaySummary, ComparisonState, FetchState, INVOICE_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import { InvoiceDaySummary, ComparisonState, FetchState, VerificationState, INVOICE_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
 import InvoiceSyncCheckCell from './InvoiceSyncCheckCell';
 
 interface InvoiceDateDrillDownProps {
@@ -10,16 +10,21 @@ interface InvoiceDateDrillDownProps {
   showBalance: boolean;
   comparisons: Record<string, ComparisonState>;
   fetches: Record<string, FetchState>;
+  verifications: Record<string, VerificationState>;
   onCompare: (dateKey: string) => void;
   onFetch: (dateKey: string) => void;
   onCancel?: (dateKey: string) => void;
+  onVerify?: (dateKey: string, deleteExtras: boolean) => void;
+  onDeleteInvoice?: (dateKey: string, referenceNumber: string, type: string) => Promise<void>;
+  onDeleteAllExtra?: (dateKey: string, invoices: { reference_number: string; type: string }[]) => Promise<void>;
 }
 
 type SortField = 'date' | 'total' | 'invoice' | 'credit_memo' | 'debit_memo' | 'credit_wo' | 'overdue_charge';
 
 export default function InvoiceDateDrillDown({
   days, monthLabel, onBack, showBalance,
-  comparisons, fetches, onCompare, onFetch, onCancel,
+  comparisons, fetches, verifications, onCompare, onFetch, onCancel,
+  onVerify, onDeleteInvoice, onDeleteAllExtra,
 }: InvoiceDateDrillDownProps) {
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('date');
@@ -160,9 +165,13 @@ export default function InvoiceDateDrillDown({
                   totalVal={totalVal}
                   comparison={comparisons[day.date]}
                   fetchState={fetches[day.date]}
+                  verification={verifications[day.date]}
                   onCompare={() => onCompare(day.date)}
                   onFetch={() => onFetch(day.date)}
                   onCancel={onCancel ? () => onCancel(day.date) : undefined}
+                  onVerify={onVerify ? (del) => onVerify(day.date, del) : undefined}
+                  onDeleteInvoice={onDeleteInvoice ? (ref, type) => onDeleteInvoice(day.date, ref, type) : undefined}
+                  onDeleteAllExtra={onDeleteAllExtra ? (invs) => onDeleteAllExtra(day.date, invs) : undefined}
                 />
               );
             })}
@@ -173,7 +182,7 @@ export default function InvoiceDateDrillDown({
   );
 }
 
-function DateRow({ day, dayOfWeek, isExpanded, onToggle, showBalance, totalVal, comparison, fetchState, onCompare, onFetch, onCancel }: {
+function DateRow({ day, dayOfWeek, isExpanded, onToggle, showBalance, totalVal, comparison, fetchState, verification, onCompare, onFetch, onCancel, onVerify, onDeleteInvoice, onDeleteAllExtra }: {
   day: InvoiceDaySummary;
   dayOfWeek: string;
   isExpanded: boolean;
@@ -182,9 +191,13 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle, showBalance, totalVal, 
   totalVal: number;
   comparison: ComparisonState | undefined;
   fetchState: FetchState | undefined;
+  verification: VerificationState | undefined;
   onCompare: () => void;
   onFetch: () => void;
   onCancel?: () => void;
+  onVerify?: (deleteExtras: boolean) => void;
+  onDeleteInvoice?: (referenceNumber: string, type: string) => Promise<void>;
+  onDeleteAllExtra?: (invoices: { reference_number: string; type: string }[]) => Promise<void>;
 }) {
   const allTypes = ['Invoice', 'Credit Memo', 'Debit Memo', 'Credit WO', 'Overdue Charge'];
 
@@ -216,9 +229,13 @@ function DateRow({ day, dayOfWeek, isExpanded, onToggle, showBalance, totalVal, 
           cellKey={day.date}
           comparison={comparison}
           fetchState={fetchState}
+          verification={verification}
           onCompare={onCompare}
           onFetch={onFetch}
           onCancel={onCancel}
+          onVerify={onVerify}
+          onDeleteInvoice={onDeleteInvoice}
+          onDeleteAllExtra={onDeleteAllExtra}
         />
       </tr>
       {isExpanded && (

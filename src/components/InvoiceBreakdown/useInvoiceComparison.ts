@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ComparisonState, FetchState, ComparisonResult, TypeCount } from './types';
+import { ComparisonState, FetchState, ComparisonResult, TypeCount, VerificationState } from './types';
 
 const AUTO_EXPIRE_MINUTES = 30;
 const POLL_INTERVAL_MS = 4000;
@@ -17,6 +17,7 @@ function getMonthRange(monthKey: string): { startDate: string; endDate: string }
 export function useInvoiceComparison(onDataRefresh?: () => void) {
   const [comparisons, setComparisons] = useState<Record<string, ComparisonState>>({});
   const [fetches, setFetches] = useState<Record<string, FetchState>>({});
+  const [verifications, setVerifications] = useState<Record<string, VerificationState>>({});
   const pollingJobsRef = useRef<Set<string>>(new Set());
   const cancelledJobsRef = useRef<Set<string>>(new Set());
   const fetchingKeysRef = useRef<Set<string>>(new Set());
@@ -397,13 +398,141 @@ export function useInvoiceComparison(onDataRefresh?: () => void) {
     return runFetch(dateKey, dateKey, dateKey);
   }, [runFetch]);
 
+  const runVerify = useCallback(async (key: string, startDate: string, endDate: string, deleteExtras = false) => {
+    const mode = deleteExtras ? 'delete' : 'verify';
+    setVerifications(prev => ({
+      ...prev,
+      [key]: { loading: true, error: null, result: null, mode }
+    }));
+
+    try {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-invoice-extras`;
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ startDate, endDate, deleteExtras }),
+      });
+
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Verification failed');
+
+      setVerifications(prev => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          error: null,
+          result: {
+            acumaticaCount: data.acumaticaCount,
+            dbCount: data.dbCount,
+            extraCount: data.extraCount,
+            extras: data.extras || [],
+            deletedInvoices: data.deletedInvoices || [],
+            deletedCount: data.deletedCount || 0,
+          },
+          mode,
+        }
+      }));
+
+      if (deleteExtras && data.deletedCount > 0) {
+        await runComparison(key, startDate, endDate);
+        onDataRefresh?.();
+      }
+    } catch (err: any) {
+      setVerifications(prev => ({
+        ...prev,
+        [key]: { loading: false, error: err.message, result: null, mode }
+      }));
+    }
+  }, [runComparison, onDataRefresh]);
+
+  const verifyMonth = useCallback((monthKey: string, deleteExtras = false) => {
+    const { startDate, endDate } = getMonthRange(monthKey);
+    return runVerify(monthKey, startDate, endDate, deleteExtras);
+  }, [runVerify]);
+
+  const verifyDay = useCallback((dateKey: string, deleteExtras = false) => {
+    return runVerify(dateKey, dateKey, dateKey, deleteExtras);
+  }, [runVerify]);
+
+  const deleteExtraInvoice = useCallback(async (key: string, referenceNumber: string, type: string) => {
+    const { data, error } = await supabase.rpc('delete_extra_invoice', {
+      p_reference_number: referenceNumber,
+      p_type: type,
+    });
+
+    if (error) throw new Error(error.message);
+
+    setVerifications(prev => {
+      const current = prev[key];
+      if (!current?.result) return prev;
+      return {
+        ...prev,
+        [key]: {
+          ...current,
+          result: {
+            ...current.result,
+            extras: current.result.extras.filter(
+              e => !(e.reference_number === referenceNumber && e.type === type)
+            ),
+            extraCount: Math.max(0, current.result.extraCount - (data || 0)),
+          }
+        }
+      };
+    });
+
+    return data || 0;
+  }, []);
+
+  const deleteAllExtraInvoices = useCallback(async (key: string, invoices: { reference_number: string; type: string }[]) => {
+    let deleted = 0;
+    for (const inv of invoices) {
+      const { data, error } = await supabase.rpc('delete_extra_invoice', {
+        p_reference_number: inv.reference_number,
+        p_type: inv.type,
+      });
+      if (!error) deleted += (data || 0);
+    }
+
+    setVerifications(prev => {
+      const current = prev[key];
+      if (!current?.result) return prev;
+      const deletedKeys = new Set(invoices.map(i => `${i.type}:${i.reference_number}`));
+      return {
+        ...prev,
+        [key]: {
+          ...current,
+          result: {
+            ...current.result,
+            extras: current.result.extras.filter(
+              e => !deletedKeys.has(`${e.type}:${e.reference_number}`)
+            ),
+            extraCount: Math.max(0, current.result.extraCount - deleted),
+          }
+        }
+      };
+    });
+
+    return deleted;
+  }, []);
+
   return {
     comparisons,
     fetches,
+    verifications,
     compareMonth,
     compareDay,
     fetchMonth,
     fetchDay,
     cancelFetch,
+    verifyMonth,
+    verifyDay,
+    deleteExtraInvoice,
+    deleteAllExtraInvoices,
   };
 }

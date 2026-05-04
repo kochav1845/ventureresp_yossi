@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { InvoiceMonthSummary, ComparisonState, FetchState, INVOICE_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import { InvoiceMonthSummary, ComparisonState, FetchState, VerificationState, INVOICE_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
 import InvoiceSyncCheckCell from './InvoiceSyncCheckCell';
 
 interface InvoiceMonthTableProps {
@@ -10,9 +10,13 @@ interface InvoiceMonthTableProps {
   showBalance: boolean;
   comparisons: Record<string, ComparisonState>;
   fetches: Record<string, FetchState>;
+  verifications: Record<string, VerificationState>;
   onCompare: (monthKey: string) => void;
   onFetch: (monthKey: string) => void;
   onCancel?: (monthKey: string) => void;
+  onVerify?: (monthKey: string, deleteExtras: boolean) => void;
+  onDeleteInvoice?: (monthKey: string, referenceNumber: string, type: string) => Promise<void>;
+  onDeleteAllExtra?: (monthKey: string, invoices: { reference_number: string; type: string }[]) => Promise<void>;
 }
 
 type SortField = 'month' | 'total' | 'invoices' | 'credit_memo' | 'debit_memo' | 'credit_wo' | 'overdue_charge';
@@ -20,7 +24,8 @@ type SortDir = 'asc' | 'desc';
 
 export default function InvoiceMonthTable({
   months, onMonthClick, selectedMonth, showBalance,
-  comparisons, fetches, onCompare, onFetch, onCancel,
+  comparisons, fetches, verifications, onCompare, onFetch, onCancel,
+  onVerify, onDeleteInvoice, onDeleteAllExtra,
 }: InvoiceMonthTableProps) {
   const [sortField, setSortField] = useState<SortField>('month');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -156,9 +161,13 @@ export default function InvoiceMonthTable({
                   cellKey={month.month_key}
                   comparison={comparisons[month.month_key]}
                   fetchState={fetches[month.month_key]}
+                  verification={verifications[month.month_key]}
                   onCompare={() => onCompare(month.month_key)}
                   onFetch={() => onFetch(month.month_key)}
                   onCancel={onCancel ? () => onCancel(month.month_key) : undefined}
+                  onVerify={onVerify ? (del) => onVerify(month.month_key, del) : undefined}
+                  onDeleteInvoice={onDeleteInvoice ? (ref, type) => onDeleteInvoice(month.month_key, ref, type) : undefined}
+                  onDeleteAllExtra={onDeleteAllExtra ? (invs) => onDeleteAllExtra(month.month_key, invs) : undefined}
                 />
               </tr>
             );

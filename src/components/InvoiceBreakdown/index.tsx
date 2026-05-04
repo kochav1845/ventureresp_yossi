@@ -36,11 +36,25 @@ export default function InvoiceBreakdown() {
   }, []);
 
   const {
-    comparisons, fetches,
+    comparisons, fetches, verifications,
     compareMonth, compareDay,
     fetchMonth, fetchDay,
     cancelFetch,
+    verifyMonth, verifyDay,
+    deleteExtraInvoice, deleteAllExtraInvoices,
   } = useInvoiceComparison(loadMonthSummaries);
+
+  const handleDeleteInvoice = useCallback(async (key: string, referenceNumber: string, type: string) => {
+    await deleteExtraInvoice(key, referenceNumber, type);
+    compareMonth(key);
+    loadMonthSummaries();
+  }, [deleteExtraInvoice, compareMonth, loadMonthSummaries]);
+
+  const handleDeleteAllExtra = useCallback(async (key: string, invoices: { reference_number: string; type: string }[]) => {
+    await deleteAllExtraInvoices(key, invoices);
+    compareMonth(key);
+    loadMonthSummaries();
+  }, [deleteAllExtraInvoices, compareMonth, loadMonthSummaries]);
 
   useEffect(() => {
     loadMonthSummaries();
@@ -310,9 +324,13 @@ export default function InvoiceBreakdown() {
                   showBalance={showBalance}
                   comparisons={comparisons}
                   fetches={fetches}
+                  verifications={verifications}
                   onCompare={compareDay}
                   onFetch={fetchDay}
                   onCancel={cancelFetch}
+                  onVerify={(dateKey, del) => verifyDay(dateKey, del)}
+                  onDeleteInvoice={handleDeleteInvoice}
+                  onDeleteAllExtra={handleDeleteAllExtra}
                 />
               </div>
             )}
@@ -338,9 +356,13 @@ export default function InvoiceBreakdown() {
                 showBalance={showBalance}
                 comparisons={comparisons}
                 fetches={fetches}
+                verifications={verifications}
                 onCompare={compareMonth}
                 onFetch={fetchMonth}
                 onCancel={cancelFetch}
+                onVerify={(monthKey, del) => verifyMonth(monthKey, del)}
+                onDeleteInvoice={handleDeleteInvoice}
+                onDeleteAllExtra={handleDeleteAllExtra}
               />
             </div>
           </>
