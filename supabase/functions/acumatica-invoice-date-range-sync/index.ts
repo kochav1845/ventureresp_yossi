@@ -162,6 +162,13 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
       })
       .eq('id', jobId);
 
+    // Refresh the invoice month summary materialized view
+    try {
+      await supabase.rpc('refresh_invoice_month_summary');
+    } catch (refreshErr: any) {
+      console.warn('[invoice-sync] Matview refresh failed:', refreshErr.message);
+    }
+
     console.log(`[invoice-sync] Completed: ${created} created, ${updated} updated, ${errors.length} errors`);
   } catch (error: any) {
     console.error(`[invoice-sync] Job ${jobId} failed:`, error.message);

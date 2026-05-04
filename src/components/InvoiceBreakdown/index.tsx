@@ -24,7 +24,6 @@ export default function InvoiceBreakdown() {
   const loadMonthSummaries = useCallback(async () => {
     setLoading(true);
     try {
-      await supabase.rpc('refresh_invoice_month_summary');
       const { data, error } = await supabase.rpc('get_invoice_month_summary');
       if (error) throw error;
       setMonths(data || []);
