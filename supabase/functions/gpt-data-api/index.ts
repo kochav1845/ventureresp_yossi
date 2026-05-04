@@ -134,60 +134,72 @@ async function handleCustomerDetail(
   if (error) return errorResponse(error.message, 500);
   if (!customer) return errorResponse("Customer not found", 404);
 
-  // Invoices use "customer" column, not "customer_id"
-  const { data: invoiceSummary } = await supabase
-    .from("acumatica_invoices")
-    .select("status, type, amount, balance")
-    .eq("customer", customerId);
+  // Use SQL aggregation to avoid the 1000-row default limit
+  const [{ data: invoiceAgg }, { data: assignments }, { data: tickets }, { data: emailLogs }] =
+    await Promise.all([
+      supabase.rpc("get_api_customer_invoice_stats", { p_customer_id: customerId }),
+      supabase
+        .from("collector_customer_assignments")
+        .select("assigned_collector_id, assigned_at, notes")
+        .eq("customer_id", customerId),
+      supabase
+        .from("collection_tickets")
+        .select("id, ticket_number, status, priority, ticket_type, due_date, created_at, updated_at")
+        .eq("customer_id", customerId)
+        .order("created_at", { ascending: false })
+        .limit(10),
+      supabase
+        .from("customer_email_logs")
+        .select("id, subject, status, sent_at, open_count, template_name")
+        .eq("customer_id", customerId)
+        .order("sent_at", { ascending: false })
+        .limit(10),
+    ]);
 
-  const { data: assignments } = await supabase
-    .from("collector_customer_assignments")
-    .select("assigned_collector_id, assigned_at, notes")
-    .eq("customer_id", customerId);
-
-  const { data: tickets } = await supabase
-    .from("collection_tickets")
-    .select("id, ticket_number, status, priority, ticket_type, due_date, created_at, updated_at")
-    .eq("customer_id", customerId)
-    .order("created_at", { ascending: false })
-    .limit(10);
-
-  const { data: emailLogs } = await supabase
-    .from("customer_email_logs")
-    .select("id, subject, status, sent_at, open_count, template_name")
-    .eq("customer_id", customerId)
-    .order("sent_at", { ascending: false })
-    .limit(10);
-
+  const stats = invoiceAgg || [];
   const invoiceStats = {
-    total_invoices: invoiceSummary?.length || 0,
+    total_invoices: 0,
     total_amount: 0,
     total_balance: 0,
     by_status: {} as Record<string, { count: number; amount: number; balance: number }>,
     by_type: {} as Record<string, { count: number; amount: number; balance: number }>,
   };
 
-  for (const inv of invoiceSummary || []) {
-    invoiceStats.total_amount += inv.amount || 0;
-    invoiceStats.total_balance += inv.balance || 0;
+  let openInvoiceBalance = 0;
+  let openCreditMemoBalance = 0;
 
-    const s = inv.status || "Unknown";
+  for (const row of stats) {
+    const cnt = parseInt(row.cnt) || 0;
+    const amt = parseFloat(row.total_amount) || 0;
+    const bal = parseFloat(row.total_balance) || 0;
+
+    invoiceStats.total_invoices += cnt;
+    invoiceStats.total_amount += amt;
+    invoiceStats.total_balance += bal;
+
+    const s = row.status || "Unknown";
     if (!invoiceStats.by_status[s])
       invoiceStats.by_status[s] = { count: 0, amount: 0, balance: 0 };
-    invoiceStats.by_status[s].count++;
-    invoiceStats.by_status[s].amount += inv.amount || 0;
-    invoiceStats.by_status[s].balance += inv.balance || 0;
+    invoiceStats.by_status[s].count += cnt;
+    invoiceStats.by_status[s].amount += amt;
+    invoiceStats.by_status[s].balance += bal;
 
-    const t = inv.type || "Unknown";
+    const t = row.type || "Unknown";
     if (!invoiceStats.by_type[t])
       invoiceStats.by_type[t] = { count: 0, amount: 0, balance: 0 };
-    invoiceStats.by_type[t].count++;
-    invoiceStats.by_type[t].amount += inv.amount || 0;
-    invoiceStats.by_type[t].balance += inv.balance || 0;
+    invoiceStats.by_type[t].count += cnt;
+    invoiceStats.by_type[t].amount += amt;
+    invoiceStats.by_type[t].balance += bal;
+
+    if (s === "Open" && t !== "Credit Memo") openInvoiceBalance += bal;
+    if (s === "Open" && t === "Credit Memo") openCreditMemoBalance += bal;
   }
 
   return jsonResponse({
-    customer,
+    customer: { ...customer, balance: undefined },
+    outstanding_balance: Math.round((openInvoiceBalance - openCreditMemoBalance) * 100) / 100,
+    open_invoice_balance: Math.round(openInvoiceBalance * 100) / 100,
+    open_credit_memo_balance: Math.round(openCreditMemoBalance * 100) / 100,
     invoice_stats: invoiceStats,
     collector_assignments: assignments || [],
     recent_tickets: tickets || [],
