@@ -8,6 +8,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+function padRefNbr(refNbr: string): string {
+  if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) {
+    return refNbr.padStart(6, '0');
+  }
+  return refNbr;
+}
+
 async function updateProgress(supabase: any, jobId: string, progress: any) {
   await supabase
     .from('async_sync_jobs')
@@ -53,104 +60,168 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
 
     const dateFrom = `${startDate}T00:00:00`;
     const dateTo = `${endDate}T23:59:59`;
-    const filterParam = `$filter=Date ge datetimeoffset'${dateFrom}' and Date le datetimeoffset'${dateTo}'`;
-    const invoicesUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?${filterParam}`;
+    const dateFilter = `Date ge datetimeoffset'${dateFrom}' and Date le datetimeoffset'${dateTo}'`;
 
-    console.log(`[invoice-sync] Fetching invoices dated ${startDate} to ${endDate}`);
+    // Step 1: Get lightweight list of all invoice refs from Acumatica
+    const listUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${dateFilter}&$select=ReferenceNbr,Type`;
+    console.log(`[invoice-sync] Fetching invoice list for ${startDate} to ${endDate}`);
 
-    const invoicesResponse = await sessionManager.makeAuthenticatedRequest(creds, invoicesUrl, {
+    const listResponse = await sessionManager.makeAuthenticatedRequest(creds, listUrl, {
       method: "GET",
       headers: { "Content-Type": "application/json" },
     });
 
-    if (!invoicesResponse.ok) {
-      const errorText = await invoicesResponse.text();
-      throw new Error(`Failed to fetch invoices (${invoicesResponse.status}): ${errorText.substring(0, 500)}`);
+    if (!listResponse.ok) {
+      const errorText = await listResponse.text();
+      throw new Error(`Failed to fetch invoice list (${listResponse.status}): ${errorText.substring(0, 500)}`);
     }
 
-    const invoicesData = await invoicesResponse.json();
-    const invoices = Array.isArray(invoicesData) ? invoicesData : [];
+    const listData = await listResponse.json();
+    const acumaticaInvoices = Array.isArray(listData) ? listData : [];
 
-    console.log(`[invoice-sync] Found ${invoices.length} invoices in date range`);
+    // Step 2: Get all existing invoice refs from our DB for the same date range
+    const { data: dbInvoices, error: dbError } = await supabase
+      .from('acumatica_invoices')
+      .select('reference_number, type')
+      .gte('date', `${startDate}T00:00:00`)
+      .lte('date', `${endDate}T23:59:59`);
 
+    if (dbError) {
+      throw new Error(`Failed to query DB invoices: ${dbError.message}`);
+    }
+
+    const dbSet = new Set(
+      (dbInvoices || []).map((inv: any) => `${inv.type}:${inv.reference_number}`)
+    );
+
+    // Step 3: Find which invoices are missing from our DB
+    const missingInvoices = acumaticaInvoices.filter((inv: any) => {
+      const refNbr = padRefNbr(inv.ReferenceNbr?.value || '');
+      const type = inv.Type?.value || '';
+      if (!refNbr || !type) return false;
+      return !dbSet.has(`${type}:${refNbr}`);
+    });
+
+    console.log(`[invoice-sync] Acumatica has ${acumaticaInvoices.length}, DB has ${dbSet.size}, missing: ${missingInvoices.length}`);
+
+    if (missingInvoices.length === 0) {
+      await supabase
+        .from('async_sync_jobs')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          progress: { created: 0, updated: 0, total: 0, skipped: acumaticaInvoices.length, errors: [] },
+        })
+        .eq('id', jobId);
+
+      console.log('[invoice-sync] No missing invoices, nothing to sync');
+      return;
+    }
+
+    await updateProgress(supabase, jobId, { created: 0, updated: 0, total: missingInvoices.length, errors: [] });
+
+    // Step 4: Fetch full details only for missing invoices, in batches
     let created = 0;
     let updated = 0;
     const errors: string[] = [];
+    const BATCH_SIZE = 50;
 
-    await updateProgress(supabase, jobId, { created: 0, updated: 0, total: invoices.length, errors: [] });
+    for (let batchStart = 0; batchStart < missingInvoices.length; batchStart += BATCH_SIZE) {
+      const batch = missingInvoices.slice(batchStart, batchStart + BATCH_SIZE);
 
-    for (let i = 0; i < invoices.length; i++) {
-      const invoice = invoices[i];
-      try {
-        let refNbr = invoice.ReferenceNbr?.value;
-        const type = invoice.Type?.value;
+      // Build OR filter for this batch of missing invoices
+      const refFilters = batch.map((inv: any) => {
+        const refNbr = inv.ReferenceNbr?.value;
+        const type = inv.Type?.value;
+        return `(ReferenceNbr eq '${refNbr}' and Type eq '${type}')`;
+      });
 
-        if (!refNbr || !type) continue;
+      const batchFilter = refFilters.join(' or ');
+      const batchUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${batchFilter}`;
 
-        if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) {
-          refNbr = refNbr.padStart(6, '0');
-        }
+      console.log(`[invoice-sync] Fetching batch ${Math.floor(batchStart / BATCH_SIZE) + 1} (${batch.length} invoices)`);
 
-        const invoiceRow: any = {
-          reference_number: refNbr,
-          type,
-          status: invoice.Status?.value || null,
-          customer: invoice.CustomerID?.value || null,
-          customer_name: invoice.Customer?.value || null,
-          date: invoice.Date?.value || null,
-          due_date: invoice.DueDate?.value || null,
-          amount: invoice.Amount?.value || 0,
-          balance: invoice.Balance?.value || 0,
-          description: invoice.Description?.value || null,
-          currency: invoice.CurrencyID?.value || null,
-          last_modified_datetime: invoice.LastModifiedDateTime?.value || null,
-          raw_data: invoice,
-          last_sync_timestamp: new Date().toISOString(),
-        };
+      const batchResponse = await sessionManager.makeAuthenticatedRequest(creds, batchUrl, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
 
-        const { data: existing } = await supabase
-          .from('acumatica_invoices')
-          .select('id')
-          .eq('reference_number', refNbr)
-          .eq('type', type)
-          .maybeSingle();
+      if (!batchResponse.ok) {
+        const errorText = await batchResponse.text();
+        errors.push(`Batch fetch failed (${batchResponse.status}): ${errorText.substring(0, 200)}`);
+        continue;
+      }
 
-        if (existing) {
-          const { error } = await supabase
+      const batchData = await batchResponse.json();
+      const invoices = Array.isArray(batchData) ? batchData : [];
+
+      for (const invoice of invoices) {
+        try {
+          let refNbr = invoice.ReferenceNbr?.value;
+          const type = invoice.Type?.value;
+          if (!refNbr || !type) continue;
+
+          refNbr = padRefNbr(refNbr);
+
+          const invoiceRow: any = {
+            reference_number: refNbr,
+            type,
+            status: invoice.Status?.value || null,
+            customer: invoice.CustomerID?.value || null,
+            customer_name: invoice.Customer?.value || null,
+            date: invoice.Date?.value || null,
+            due_date: invoice.DueDate?.value || null,
+            amount: invoice.Amount?.value || 0,
+            balance: invoice.Balance?.value || 0,
+            description: invoice.Description?.value || null,
+            currency: invoice.CurrencyID?.value || null,
+            last_modified_datetime: invoice.LastModifiedDateTime?.value || null,
+            raw_data: invoice,
+            last_sync_timestamp: new Date().toISOString(),
+          };
+
+          const { data: existing } = await supabase
             .from('acumatica_invoices')
-            .update(invoiceRow)
+            .select('id')
             .eq('reference_number', refNbr)
-            .eq('type', type);
+            .eq('type', type)
+            .maybeSingle();
 
-          if (error) {
-            errors.push(`Update ${refNbr}: ${error.message}`);
-          } else {
-            updated++;
-          }
-        } else {
-          const { error } = await supabase
-            .from('acumatica_invoices')
-            .insert(invoiceRow);
+          if (existing) {
+            const { error } = await supabase
+              .from('acumatica_invoices')
+              .update(invoiceRow)
+              .eq('reference_number', refNbr)
+              .eq('type', type);
 
-          if (error) {
-            errors.push(`Insert ${refNbr}: ${error.message}`);
+            if (error) {
+              errors.push(`Update ${refNbr}: ${error.message}`);
+            } else {
+              updated++;
+            }
           } else {
-            created++;
+            const { error } = await supabase
+              .from('acumatica_invoices')
+              .insert(invoiceRow);
+
+            if (error) {
+              errors.push(`Insert ${refNbr}: ${error.message}`);
+            } else {
+              created++;
+            }
           }
+        } catch (error: any) {
+          errors.push(`Error ${invoice.ReferenceNbr?.value}: ${error.message}`);
         }
-      } catch (error: any) {
-        errors.push(`Error ${invoice.ReferenceNbr?.value}: ${error.message}`);
       }
 
-      if ((i + 1) % 10 === 0 || i === invoices.length - 1) {
-        await updateProgress(supabase, jobId, {
-          created,
-          updated,
-          total: invoices.length,
-          processed: created + updated,
-          errors: errors.slice(0, 10),
-        });
-      }
+      await updateProgress(supabase, jobId, {
+        created,
+        updated,
+        total: missingInvoices.length,
+        processed: created + updated + errors.length,
+        errors: errors.slice(0, 10),
+      });
     }
 
     await supabase
@@ -158,18 +229,23 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
       .update({
         status: 'completed',
         completed_at: new Date().toISOString(),
-        progress: { created, updated, total: invoices.length, errors: errors.slice(0, 10) },
+        progress: {
+          created,
+          updated,
+          total: missingInvoices.length,
+          skipped: acumaticaInvoices.length - missingInvoices.length,
+          errors: errors.slice(0, 10),
+        },
       })
       .eq('id', jobId);
 
-    // Refresh the invoice month summary materialized view
     try {
       await supabase.rpc('refresh_invoice_month_summary');
     } catch (refreshErr: any) {
       console.warn('[invoice-sync] Matview refresh failed:', refreshErr.message);
     }
 
-    console.log(`[invoice-sync] Completed: ${created} created, ${updated} updated, ${errors.length} errors`);
+    console.log(`[invoice-sync] Completed: ${created} created, ${updated} updated, ${errors.length} errors (skipped ${acumaticaInvoices.length - missingInvoices.length} existing)`);
   } catch (error: any) {
     console.error(`[invoice-sync] Job ${jobId} failed:`, error.message);
     await supabase
@@ -241,7 +317,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Run processing in background so request returns immediately
     EdgeRuntime.waitUntil(processSync(supabase, job.id, startDate, endDate));
 
     return new Response(
