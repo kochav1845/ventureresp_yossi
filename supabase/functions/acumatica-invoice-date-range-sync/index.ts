@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { AcumaticaSessionManager } from "../_shared/acumatica-session.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,177 +16,164 @@ async function updateProgress(supabase: any, jobId: string, progress: any) {
 }
 
 async function processSync(supabase: any, jobId: string, startDate: string, endDate: string) {
-  await supabase
-    .from('async_sync_jobs')
-    .update({ status: 'running', started_at: new Date().toISOString() })
-    .eq('id', jobId);
+  try {
+    await supabase
+      .from('async_sync_jobs')
+      .update({ status: 'running', started_at: new Date().toISOString() })
+      .eq('id', jobId);
 
-  const { data: credentials, error: credsError } = await supabase
-    .from('acumatica_sync_credentials')
-    .select('*')
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    const { data: credentials, error: credsError } = await supabase
+      .from('acumatica_sync_credentials')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-  if (credsError || !credentials) {
-    throw new Error(`Missing Acumatica credentials: ${credsError?.message || 'none found'}`);
-  }
+    if (credsError || !credentials) {
+      throw new Error(`Missing Acumatica credentials: ${credsError?.message || 'none found'}`);
+    }
 
-  let acumaticaUrl = credentials.acumatica_url;
-  if (!acumaticaUrl.startsWith("http://") && !acumaticaUrl.startsWith("https://")) {
-    acumaticaUrl = `https://${acumaticaUrl}`;
-  }
+    let acumaticaUrl = credentials.acumatica_url;
+    if (!acumaticaUrl.startsWith("http://") && !acumaticaUrl.startsWith("https://")) {
+      acumaticaUrl = `https://${acumaticaUrl}`;
+    }
 
-  const loginBody: any = { name: credentials.username, password: credentials.password };
-  if (credentials.company) loginBody.company = credentials.company;
-  if (credentials.branch) loginBody.branch = credentials.branch;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sessionManager = new AcumaticaSessionManager(supabaseUrl, supabaseKey);
 
-  console.log(`[invoice-sync] Logging into Acumatica at ${acumaticaUrl}...`);
+    const creds = {
+      acumaticaUrl,
+      username: credentials.username,
+      password: credentials.password,
+      company: credentials.company || '',
+      branch: credentials.branch || '',
+    };
 
-  const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(loginBody),
-  });
+    const dateFrom = `${startDate}T00:00:00`;
+    const dateTo = `${endDate}T23:59:59`;
+    const filterParam = `$filter=Date ge datetimeoffset'${dateFrom}' and Date le datetimeoffset'${dateTo}'`;
+    const invoicesUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?${filterParam}`;
 
-  if (!loginResponse.ok) {
-    const errorText = await loginResponse.text();
-    throw new Error(`Acumatica authentication failed (${loginResponse.status}): ${errorText}`);
-  }
+    console.log(`[invoice-sync] Fetching invoices dated ${startDate} to ${endDate}`);
 
-  const setCookieHeader = loginResponse.headers.get("set-cookie");
-  if (!setCookieHeader) {
-    throw new Error("No authentication cookies received from Acumatica");
-  }
+    const invoicesResponse = await sessionManager.makeAuthenticatedRequest(creds, invoicesUrl, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
 
-  const cookies = setCookieHeader.split(',').map((cookie: string) => cookie.split(';')[0]).join('; ');
-  console.log(`[invoice-sync] Authenticated successfully`);
+    if (!invoicesResponse.ok) {
+      const errorText = await invoicesResponse.text();
+      throw new Error(`Failed to fetch invoices (${invoicesResponse.status}): ${errorText.substring(0, 500)}`);
+    }
 
-  const filterStartDate = new Date(startDate).toISOString().split('.')[0];
-  const filterEndDate = new Date(endDate).toISOString().split('.')[0];
+    const invoicesData = await invoicesResponse.json();
+    const invoices = Array.isArray(invoicesData) ? invoicesData : [];
 
-  const invoicesUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=LastModifiedDateTime ge datetimeoffset'${filterStartDate}' and LastModifiedDateTime le datetimeoffset'${filterEndDate}'`;
+    console.log(`[invoice-sync] Found ${invoices.length} invoices in date range`);
 
-  console.log(`[invoice-sync] Fetching invoices from ${filterStartDate} to ${filterEndDate}`);
-  console.log(`[invoice-sync] URL: ${invoicesUrl}`);
+    let created = 0;
+    let updated = 0;
+    const errors: string[] = [];
 
-  const invoicesResponse = await fetch(invoicesUrl, {
-    method: "GET",
-    headers: { "Content-Type": "application/json", "Cookie": cookies },
-  });
+    await updateProgress(supabase, jobId, { created: 0, updated: 0, total: invoices.length, errors: [] });
 
-  console.log(`[invoice-sync] Response status: ${invoicesResponse.status}`);
+    for (let i = 0; i < invoices.length; i++) {
+      const invoice = invoices[i];
+      try {
+        let refNbr = invoice.ReferenceNbr?.value;
+        const type = invoice.Type?.value;
 
-  if (!invoicesResponse.ok) {
-    const errorText = await invoicesResponse.text();
-    await fetch(`${acumaticaUrl}/entity/auth/logout`, { method: "POST", headers: { "Cookie": cookies } }).catch(() => {});
-    throw new Error(`Failed to fetch invoices (${invoicesResponse.status}): ${errorText.substring(0, 500)}`);
-  }
+        if (!refNbr || !type) continue;
 
-  const responseText = await invoicesResponse.text();
-  if (responseText.trim().startsWith('<')) {
-    await fetch(`${acumaticaUrl}/entity/auth/logout`, { method: "POST", headers: { "Cookie": cookies } }).catch(() => {});
-    throw new Error("Received HTML response instead of JSON from Acumatica (session may have expired)");
-  }
+        if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) {
+          refNbr = refNbr.padStart(6, '0');
+        }
 
-  const invoicesData = JSON.parse(responseText);
-  const invoices = Array.isArray(invoicesData) ? invoicesData : [];
+        const invoiceRow: any = {
+          reference_number: refNbr,
+          type,
+          status: invoice.Status?.value || null,
+          customer: invoice.CustomerID?.value || null,
+          customer_name: invoice.Customer?.value || null,
+          date: invoice.Date?.value || null,
+          due_date: invoice.DueDate?.value || null,
+          amount: invoice.Amount?.value || 0,
+          balance: invoice.Balance?.value || 0,
+          description: invoice.Description?.value || null,
+          currency: invoice.CurrencyID?.value || null,
+          last_modified_datetime: invoice.LastModifiedDateTime?.value || null,
+          raw_data: invoice,
+          last_sync_timestamp: new Date().toISOString(),
+        };
 
-  console.log(`[invoice-sync] Found ${invoices.length} invoices in date range`);
-
-  await fetch(`${acumaticaUrl}/entity/auth/logout`, { method: "POST", headers: { "Cookie": cookies } }).catch(() => {});
-
-  let created = 0;
-  let updated = 0;
-  const errors: string[] = [];
-
-  await updateProgress(supabase, jobId, { created: 0, updated: 0, total: invoices.length, errors: [] });
-
-  for (let i = 0; i < invoices.length; i++) {
-    const invoice = invoices[i];
-    try {
-      let refNbr = invoice.ReferenceNbr?.value;
-      const type = invoice.Type?.value;
-
-      if (!refNbr || !type) continue;
-
-      if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) {
-        refNbr = refNbr.padStart(6, '0');
-      }
-
-      const invoiceData: any = {
-        reference_number: refNbr,
-        type: type,
-        status: invoice.Status?.value || null,
-        customer_id: invoice.CustomerID?.value || null,
-        customer_name: invoice.Customer?.value || null,
-        date: invoice.Date?.value || null,
-        due_date: invoice.DueDate?.value || null,
-        amount: invoice.Amount?.value || 0,
-        balance: invoice.Balance?.value || 0,
-        description: invoice.Description?.value || null,
-        currency: invoice.CurrencyID?.value || null,
-        last_modified_datetime: invoice.LastModifiedDateTime?.value || null,
-        raw_data: invoice,
-        last_sync_timestamp: new Date().toISOString()
-      };
-
-      const { data: existing } = await supabase
-        .from('acumatica_invoices')
-        .select('id')
-        .eq('reference_number', refNbr)
-        .eq('type', type)
-        .maybeSingle();
-
-      if (existing) {
-        const { error } = await supabase
+        const { data: existing } = await supabase
           .from('acumatica_invoices')
-          .update(invoiceData)
+          .select('id')
           .eq('reference_number', refNbr)
-          .eq('type', type);
+          .eq('type', type)
+          .maybeSingle();
 
-        if (error) {
-          errors.push(`Update failed for ${refNbr}: ${error.message}`);
-        } else {
-          updated++;
-        }
-      } else {
-        const { error } = await supabase
-          .from('acumatica_invoices')
-          .insert(invoiceData);
+        if (existing) {
+          const { error } = await supabase
+            .from('acumatica_invoices')
+            .update(invoiceRow)
+            .eq('reference_number', refNbr)
+            .eq('type', type);
 
-        if (error) {
-          errors.push(`Insert failed for ${refNbr}: ${error.message}`);
+          if (error) {
+            errors.push(`Update ${refNbr}: ${error.message}`);
+          } else {
+            updated++;
+          }
         } else {
-          created++;
+          const { error } = await supabase
+            .from('acumatica_invoices')
+            .insert(invoiceRow);
+
+          if (error) {
+            errors.push(`Insert ${refNbr}: ${error.message}`);
+          } else {
+            created++;
+          }
         }
+      } catch (error: any) {
+        errors.push(`Error ${invoice.ReferenceNbr?.value}: ${error.message}`);
       }
-    } catch (error: any) {
-      errors.push(`Error processing invoice: ${error.message}`);
+
+      if ((i + 1) % 10 === 0 || i === invoices.length - 1) {
+        await updateProgress(supabase, jobId, {
+          created,
+          updated,
+          total: invoices.length,
+          processed: created + updated,
+          errors: errors.slice(0, 10),
+        });
+      }
     }
 
-    if ((i + 1) % 10 === 0 || i === invoices.length - 1) {
-      await updateProgress(supabase, jobId, {
-        created,
-        updated,
-        total: invoices.length,
-        errors: errors.slice(0, 10)
-      });
-    }
+    await supabase
+      .from('async_sync_jobs')
+      .update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        progress: { created, updated, total: invoices.length, errors: errors.slice(0, 10) },
+      })
+      .eq('id', jobId);
+
+    console.log(`[invoice-sync] Completed: ${created} created, ${updated} updated, ${errors.length} errors`);
+  } catch (error: any) {
+    console.error(`[invoice-sync] Job ${jobId} failed:`, error.message);
+    await supabase
+      .from('async_sync_jobs')
+      .update({
+        status: 'failed',
+        error_message: error.message,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', jobId);
   }
-
-  await supabase
-    .from('async_sync_jobs')
-    .update({
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-      progress: { created, updated, total: invoices.length, errors: errors.slice(0, 10) }
-    })
-    .eq('id', jobId);
-
-  console.log(`[invoice-sync] Completed: ${created} created, ${updated} updated, ${errors.length} errors`);
-  return { created, updated, total: invoices.length, errors: errors.length };
 }
 
 Deno.serve(async (req: Request) => {
@@ -211,7 +199,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { startDate, endDate, jobId: existingJobId } = body;
+    const { startDate, endDate } = body;
 
     if (!startDate || !endDate) {
       return new Response(
@@ -220,43 +208,37 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    let jobId = existingJobId;
-
-    if (!jobId) {
-      let userId = null;
-      if (authHeader) {
-        const token = authHeader.replace("Bearer ", "");
-        const { data: { user } } = await supabase.auth.getUser(token);
-        userId = user?.id;
-      }
-
-      const { data: job, error: jobError } = await supabase
-        .from('async_sync_jobs')
-        .insert({
-          entity_type: 'invoice',
-          start_date: startDate,
-          end_date: endDate,
-          status: 'pending',
-          created_by: userId
-        })
-        .select()
-        .single();
-
-      if (jobError || !job) {
-        return new Response(
-          JSON.stringify({ error: "Failed to create sync job" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      jobId = job.id;
+    let userId = null;
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await supabase.auth.getUser(token);
+      userId = user?.id;
     }
 
-    console.log(`[invoice-sync] Processing job ${jobId} synchronously`);
+    const { data: job, error: jobError } = await supabase
+      .from('async_sync_jobs')
+      .insert({
+        entity_type: 'invoice',
+        start_date: startDate,
+        end_date: endDate,
+        status: 'pending',
+        created_by: userId,
+      })
+      .select()
+      .single();
 
-    const result = await processSync(supabase, jobId, startDate, endDate);
+    if (jobError || !job) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Failed to create sync job" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Run processing in background so request returns immediately
+    EdgeRuntime.waitUntil(processSync(supabase, job.id, startDate, endDate));
 
     return new Response(
-      JSON.stringify({ success: true, jobId, ...result }),
+      JSON.stringify({ success: true, async: true, jobId: job.id }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
