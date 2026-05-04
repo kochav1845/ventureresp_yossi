@@ -783,17 +783,25 @@ async function handleGlobalSearch(
   const limit = Math.min(parseInt(params.limit || "10"), 25);
   const likePattern = `%${query}%`;
 
-  // Run 4 fast, independent queries in parallel (each individually limited)
-  const [customers, invoices, payments, tickets] = await Promise.all([
+  // Run 5 fast, independent queries in parallel (each individually limited)
+  const [customers, customerBalances, invoices, payments, tickets] = await Promise.all([
     supabase
       .from("acumatica_customers")
-      .select("customer_id, customer_name, customer_class, balance, general_email, customer_status")
+      .select("customer_id, customer_name, customer_class, general_email, customer_status")
       .or(`customer_name.ilike.${likePattern},customer_id.ilike.${likePattern},general_email.ilike.${likePattern}`)
       .limit(limit),
+    supabase.rpc("get_api_customer_balances", {
+      p_search: query,
+      p_sort_by: "balance",
+      p_sort_asc: false,
+      p_limit: limit,
+      p_offset: 0,
+    }),
     supabase
       .from("acumatica_invoices")
-      .select("reference_number, type, status, customer, customer_name, amount, balance, date")
+      .select("reference_number, type, status, customer, customer_name, amount, balance, date, due_date")
       .or(`reference_number.ilike.${likePattern},customer_name.ilike.${likePattern},customer.ilike.${likePattern}`)
+      .order("balance", { ascending: false })
       .limit(limit),
     supabase
       .from("acumatica_payments")
@@ -807,14 +815,28 @@ async function handleGlobalSearch(
       .limit(limit),
   ]);
 
+  // Merge computed balances into customer results
+  const balanceMap = new Map(
+    (customerBalances.data || []).map((b: any) => [b.customer_id, b])
+  );
+  const enrichedCustomers = (customers.data || []).map((c: any) => {
+    const bal = balanceMap.get(c.customer_id);
+    return {
+      ...c,
+      outstanding_balance: bal ? parseFloat(bal.invoice_balance) : 0,
+      open_invoice_count: bal ? parseInt(bal.open_invoice_count) : 0,
+    };
+  });
+
   return jsonResponse({
     query,
     results: {
-      customers: customers.data || [],
+      customers: enrichedCustomers,
       invoices: invoices.data || [],
       payments: payments.data || [],
       tickets: tickets.data || [],
     },
+    tip: "Use GET /customers/{customer_id} for full detail including outstanding balance breakdown.",
   });
 }
 
