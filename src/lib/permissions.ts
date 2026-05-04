@@ -17,13 +17,19 @@ export function useUserPermissions() {
   const { profile, isImpersonating } = useAuth();
   const [permissions, setPermissions] = useState<UserPermission[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState<string>('');
+  const [userRole, setUserRole] = useState<string>(profile?.role || '');
   const loadingRef = useRef(false);
   const lastLoadedUserId = useRef<string | null>(null);
 
+  // Set role immediately from profile (available before permissions RPC completes)
+  useEffect(() => {
+    if (profile?.role && profile.role !== userRole) {
+      setUserRole(profile.role);
+    }
+  }, [profile?.role]);
+
   useEffect(() => {
     if (profile?.id) {
-      // Only load if we're not already loading and the user changed
       if (!loadingRef.current && lastLoadedUserId.current !== profile.id) {
         loadPermissions(profile.id);
       }
@@ -71,6 +77,8 @@ export function useUserPermissions() {
     permissionKey: string,
     action: 'view' | 'create' | 'edit' | 'delete' = 'view'
   ): boolean => {
+    // Show everything while permissions are still loading so the UI renders immediately
+    if (loading) return true;
     if (userRole === 'admin') return true;
 
     const permission = permissions.find(p => p.permission_key === permissionKey);
@@ -88,15 +96,17 @@ export function useUserPermissions() {
       default:
         return false;
     }
-  }, [userRole, permissions]);
+  }, [loading, userRole, permissions]);
 
   const hasAnyPermission = useCallback((permissionKeys: string[], action: 'view' | 'create' | 'edit' | 'delete' = 'view'): boolean => {
+    if (loading) return true;
     return permissionKeys.some(key => hasPermission(key, action));
-  }, [hasPermission]);
+  }, [loading, hasPermission]);
 
   const hasAllPermissions = useCallback((permissionKeys: string[], action: 'view' | 'create' | 'edit' | 'delete' = 'view'): boolean => {
+    if (loading) return true;
     return permissionKeys.every(key => hasPermission(key, action));
-  }, [hasPermission]);
+  }, [loading, hasPermission]);
 
   return {
     permissions,
