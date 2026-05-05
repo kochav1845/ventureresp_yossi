@@ -198,7 +198,11 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
           p_max_balance: maxBalance ? parseFloat(maxBalance) : null,
           p_min_open_invoices: minOpenInvoices ? parseInt(minOpenInvoices) : null,
           p_max_open_invoices: maxOpenInvoices ? parseInt(maxOpenInvoices) : null,
-          p_date_context: dateRangeContext
+          p_date_context: dateRangeContext,
+          p_min_days_overdue: minDaysOverdue ? parseInt(minDaysOverdue) : null,
+          p_max_days_overdue: maxDaysOverdue ? parseInt(maxDaysOverdue) : null,
+          p_exclude_credit_memos: excludeCreditMemos,
+          p_test_customers: showTestCustomers
         });
 
       if (error) {
@@ -231,7 +235,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     } catch (error) {
       console.error('Error loading analytics:', error);
     }
-  }, [searchTerm, statusFilter, countryFilter, dateFrom, dateTo, excludedCustomerIds, balanceFilter, minBalance, maxBalance, minOpenInvoices, maxOpenInvoices, dateRangeContext, totalCount]);
+  }, [searchTerm, statusFilter, countryFilter, dateFrom, dateTo, excludedCustomerIds, balanceFilter, minBalance, maxBalance, minOpenInvoices, maxOpenInvoices, dateRangeContext, totalCount, minDaysOverdue, maxDaysOverdue, excludeCreditMemos, showTestCustomers]);
 
   const loadExcludedCustomers = async () => {
     try {
