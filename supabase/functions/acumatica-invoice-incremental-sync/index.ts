@@ -203,6 +203,7 @@ Deno.serve(async (req: Request) => {
             .from('acumatica_invoices')
             .select('id, status')
             .eq('reference_number', mappedInvoice.reference_number)
+            .eq('type', mappedInvoice.type)
             .maybeSingle();
 
           if (existing) {
@@ -210,7 +211,8 @@ Deno.serve(async (req: Request) => {
             const { error } = await supabase
               .from('acumatica_invoices')
               .update(mappedInvoice)
-              .eq('reference_number', mappedInvoice.reference_number);
+              .eq('reference_number', mappedInvoice.reference_number)
+              .eq('type', mappedInvoice.type);
 
             if (error) {
               errors.push(`Update failed for ${mappedInvoice.reference_number}: ${error.message}`);

@@ -189,35 +189,17 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
             last_sync_timestamp: new Date().toISOString(),
           };
 
-          const { data: existing } = await supabase
+          const { error, count } = await supabase
             .from('acumatica_invoices')
-            .select('id')
-            .eq('reference_number', refNbr)
-            .eq('type', type)
-            .maybeSingle();
+            .upsert(invoiceRow, {
+              onConflict: 'reference_number,type',
+              count: 'exact',
+            });
 
-          if (existing) {
-            const { error } = await supabase
-              .from('acumatica_invoices')
-              .update(invoiceRow)
-              .eq('reference_number', refNbr)
-              .eq('type', type);
-
-            if (error) {
-              errors.push(`Update ${refNbr}: ${error.message}`);
-            } else {
-              updated++;
-            }
+          if (error) {
+            errors.push(`Upsert ${type} ${refNbr}: ${error.message}`);
           } else {
-            const { error } = await supabase
-              .from('acumatica_invoices')
-              .insert(invoiceRow);
-
-            if (error) {
-              errors.push(`Insert ${refNbr}: ${error.message}`);
-            } else {
-              created++;
-            }
+            created++;
           }
         } catch (error: any) {
           errors.push(`Error ${invoice.ReferenceNbr?.value}: ${error.message}`);

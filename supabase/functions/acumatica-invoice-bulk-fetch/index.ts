@@ -260,10 +260,12 @@ Deno.serve(async (req: Request) => {
         transformedInvoice.reference_number = refNbr.padStart(6, '0');
         const paddedRefNbr = transformedInvoice.reference_number;
 
+        const invoiceType = transformedInvoice.type || 'Invoice';
         const { data: existing } = await supabase
           .from('acumatica_invoices')
           .select('id')
           .eq('reference_number', paddedRefNbr)
+          .eq('type', invoiceType)
           .maybeSingle();
 
         let success = false;
@@ -279,7 +281,8 @@ Deno.serve(async (req: Request) => {
             const { error } = await supabase
               .from('acumatica_invoices')
               .update(transformedInvoice)
-              .eq('reference_number', paddedRefNbr);
+              .eq('reference_number', paddedRefNbr)
+              .eq('type', invoiceType);
 
             if (error) {
               lastError = error;
