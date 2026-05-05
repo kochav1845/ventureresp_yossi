@@ -129,90 +129,183 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
 
     await updateProgress(supabase, jobId, { created: 0, updated: 0, total: missingInvoices.length, errors: [] });
 
-    // Step 4: Fetch full details only for missing invoices, in batches
+    // Step 4: Fetch full details for missing invoices
     let created = 0;
     let updated = 0;
     const errors: string[] = [];
-    const BATCH_SIZE = 50;
+    const missingSet = new Set(missingInvoices.map((inv: any) => {
+      const refNbr = padRefNbr(inv.ReferenceNbr?.value || '');
+      const type = inv.Type?.value || '';
+      return `${type}:${refNbr}`;
+    }));
 
-    for (let batchStart = 0; batchStart < missingInvoices.length; batchStart += BATCH_SIZE) {
-      const batch = missingInvoices.slice(batchStart, batchStart + BATCH_SIZE);
+    // If more than 100 missing, fetch all invoices in the date range with pagination
+    // instead of building huge OR filters that exceed URL length limits
+    const USE_DATE_RANGE_THRESHOLD = 100;
 
-      // Build OR filter for this batch of missing invoices
-      const refFilters = batch.map((inv: any) => {
-        const refNbr = inv.ReferenceNbr?.value;
-        const type = inv.Type?.value;
-        return `(ReferenceNbr eq '${refNbr}' and Type eq '${type}')`;
-      });
+    if (missingInvoices.length > USE_DATE_RANGE_THRESHOLD) {
+      console.log(`[invoice-sync] ${missingInvoices.length} missing invoices, using paginated date range fetch`);
+      const PAGE_SIZE_API = 100;
+      let skip = 0;
+      let hasMore = true;
 
-      const batchFilter = refFilters.join(' or ');
-      const batchUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${batchFilter}`;
+      while (hasMore) {
+        const pageUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${dateFilter}&$top=${PAGE_SIZE_API}&$skip=${skip}`;
+        console.log(`[invoice-sync] Fetching page at skip=${skip}`);
 
-      console.log(`[invoice-sync] Fetching batch ${Math.floor(batchStart / BATCH_SIZE) + 1} (${batch.length} invoices)`);
+        const pageResponse = await sessionManager.makeAuthenticatedRequest(creds, pageUrl, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
 
-      const batchResponse = await sessionManager.makeAuthenticatedRequest(creds, batchUrl, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
+        if (!pageResponse.ok) {
+          const errorText = await pageResponse.text();
+          errors.push(`Page fetch failed at skip=${skip} (${pageResponse.status}): ${errorText.substring(0, 200)}`);
+          break;
+        }
 
-      if (!batchResponse.ok) {
-        const errorText = await batchResponse.text();
-        errors.push(`Batch fetch failed (${batchResponse.status}): ${errorText.substring(0, 200)}`);
-        continue;
-      }
+        const pageData = await pageResponse.json();
+        const invoices = Array.isArray(pageData) ? pageData : [];
 
-      const batchData = await batchResponse.json();
-      const invoices = Array.isArray(batchData) ? batchData : [];
+        for (const invoice of invoices) {
+          try {
+            let refNbr = invoice.ReferenceNbr?.value;
+            const type = invoice.Type?.value;
+            if (!refNbr || !type) continue;
 
-      for (const invoice of invoices) {
-        try {
-          let refNbr = invoice.ReferenceNbr?.value;
-          const type = invoice.Type?.value;
-          if (!refNbr || !type) continue;
+            refNbr = padRefNbr(refNbr);
+            if (!missingSet.has(`${type}:${refNbr}`)) continue;
 
-          refNbr = padRefNbr(refNbr);
+            const invoiceRow: any = {
+              reference_number: refNbr,
+              type,
+              status: invoice.Status?.value || null,
+              customer: invoice.CustomerID?.value || null,
+              customer_name: invoice.Customer?.value || null,
+              date: invoice.Date?.value || null,
+              due_date: invoice.DueDate?.value || null,
+              amount: invoice.Amount?.value || 0,
+              balance: invoice.Balance?.value || 0,
+              description: invoice.Description?.value || null,
+              currency: invoice.CurrencyID?.value || null,
+              last_modified_datetime: invoice.LastModifiedDateTime?.value || null,
+              raw_data: invoice,
+              last_sync_timestamp: new Date().toISOString(),
+            };
 
-          const invoiceRow: any = {
-            reference_number: refNbr,
-            type,
-            status: invoice.Status?.value || null,
-            customer: invoice.CustomerID?.value || null,
-            customer_name: invoice.Customer?.value || null,
-            date: invoice.Date?.value || null,
-            due_date: invoice.DueDate?.value || null,
-            amount: invoice.Amount?.value || 0,
-            balance: invoice.Balance?.value || 0,
-            description: invoice.Description?.value || null,
-            currency: invoice.CurrencyID?.value || null,
-            last_modified_datetime: invoice.LastModifiedDateTime?.value || null,
-            raw_data: invoice,
-            last_sync_timestamp: new Date().toISOString(),
-          };
+            const { error } = await supabase
+              .from('acumatica_invoices')
+              .upsert(invoiceRow, {
+                onConflict: 'reference_number,type',
+                count: 'exact',
+              });
 
-          const { error, count } = await supabase
-            .from('acumatica_invoices')
-            .upsert(invoiceRow, {
-              onConflict: 'reference_number,type',
-              count: 'exact',
-            });
-
-          if (error) {
-            errors.push(`Upsert ${type} ${refNbr}: ${error.message}`);
-          } else {
-            created++;
+            if (error) {
+              errors.push(`Upsert ${type} ${refNbr}: ${error.message}`);
+            } else {
+              created++;
+            }
+          } catch (error: any) {
+            errors.push(`Error ${invoice.ReferenceNbr?.value}: ${error.message}`);
           }
-        } catch (error: any) {
-          errors.push(`Error ${invoice.ReferenceNbr?.value}: ${error.message}`);
+        }
+
+        await updateProgress(supabase, jobId, {
+          created,
+          updated,
+          total: missingInvoices.length,
+          processed: created + updated + errors.length,
+          errors: errors.slice(0, 10),
+        });
+
+        if (invoices.length < PAGE_SIZE_API) {
+          hasMore = false;
+        } else {
+          skip += PAGE_SIZE_API;
         }
       }
+    } else {
+      // For smaller batches, use individual reference filters with smaller batch size
+      const BATCH_SIZE = 10;
 
-      await updateProgress(supabase, jobId, {
-        created,
-        updated,
-        total: missingInvoices.length,
-        processed: created + updated + errors.length,
-        errors: errors.slice(0, 10),
-      });
+      for (let batchStart = 0; batchStart < missingInvoices.length; batchStart += BATCH_SIZE) {
+        const batch = missingInvoices.slice(batchStart, batchStart + BATCH_SIZE);
+
+        const refFilters = batch.map((inv: any) => {
+          const refNbr = inv.ReferenceNbr?.value;
+          const type = inv.Type?.value;
+          return `(ReferenceNbr eq '${refNbr}' and Type eq '${type}')`;
+        });
+
+        const batchFilter = refFilters.join(' or ');
+        const batchUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${batchFilter}`;
+
+        console.log(`[invoice-sync] Fetching batch ${Math.floor(batchStart / BATCH_SIZE) + 1} (${batch.length} invoices)`);
+
+        const batchResponse = await sessionManager.makeAuthenticatedRequest(creds, batchUrl, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (!batchResponse.ok) {
+          const errorText = await batchResponse.text();
+          errors.push(`Batch fetch failed (${batchResponse.status}): ${errorText.substring(0, 200)}`);
+          continue;
+        }
+
+        const batchData = await batchResponse.json();
+        const invoices = Array.isArray(batchData) ? batchData : [];
+
+        for (const invoice of invoices) {
+          try {
+            let refNbr = invoice.ReferenceNbr?.value;
+            const type = invoice.Type?.value;
+            if (!refNbr || !type) continue;
+
+            refNbr = padRefNbr(refNbr);
+
+            const invoiceRow: any = {
+              reference_number: refNbr,
+              type,
+              status: invoice.Status?.value || null,
+              customer: invoice.CustomerID?.value || null,
+              customer_name: invoice.Customer?.value || null,
+              date: invoice.Date?.value || null,
+              due_date: invoice.DueDate?.value || null,
+              amount: invoice.Amount?.value || 0,
+              balance: invoice.Balance?.value || 0,
+              description: invoice.Description?.value || null,
+              currency: invoice.CurrencyID?.value || null,
+              last_modified_datetime: invoice.LastModifiedDateTime?.value || null,
+              raw_data: invoice,
+              last_sync_timestamp: new Date().toISOString(),
+            };
+
+            const { error } = await supabase
+              .from('acumatica_invoices')
+              .upsert(invoiceRow, {
+                onConflict: 'reference_number,type',
+                count: 'exact',
+              });
+
+            if (error) {
+              errors.push(`Upsert ${type} ${refNbr}: ${error.message}`);
+            } else {
+              created++;
+            }
+          } catch (error: any) {
+            errors.push(`Error ${invoice.ReferenceNbr?.value}: ${error.message}`);
+          }
+        }
+
+        await updateProgress(supabase, jobId, {
+          created,
+          updated,
+          total: missingInvoices.length,
+          processed: created + updated + errors.length,
+          errors: errors.slice(0, 10),
+        });
+      }
     }
 
     await supabase
