@@ -21,9 +21,12 @@ export default function InvoiceBreakdown() {
   const [showFilters, setShowFilters] = useState(false);
   const [showBalance, setShowBalance] = useState(false);
 
-  const loadMonthSummaries = useCallback(async () => {
+  const loadMonthSummaries = useCallback(async (refreshMatview = false) => {
     setLoading(true);
     try {
+      if (refreshMatview) {
+        await supabase.rpc('refresh_invoice_month_summary');
+      }
       const { data, error } = await supabase.rpc('get_invoice_month_summary');
       if (error) throw error;
       setMonths(data || []);
@@ -210,7 +213,7 @@ export default function InvoiceBreakdown() {
             Export CSV
           </button>
           <button
-            onClick={loadMonthSummaries}
+            onClick={() => loadMonthSummaries(true)}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
           >
