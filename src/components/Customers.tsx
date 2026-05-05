@@ -115,16 +115,6 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   }, [invoiceParam, customerIdParam, navigate]);
 
-  // If a specific customer is requested, show CustomerDetailView
-  if (customerIdParam) {
-    return (
-      <CustomerDetailView
-        customerId={customerIdParam}
-        onBack={() => navigate('/customers')}
-      />
-    );
-  }
-
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
@@ -516,6 +506,16 @@ export default function Customers({ onBack }: CustomersProps) {
     const end = start + pageSize;
     setCustomers(filtered.slice(start, end));
   }, [allCustomers, filters, searchQuery, currentPage, pageSize, showTestCustomers, excludeCreditMemos]);
+
+  // If a specific customer is requested, show CustomerDetailView
+  if (customerIdParam) {
+    return (
+      <CustomerDetailView
+        customerId={customerIdParam}
+        onBack={() => navigate('/customers')}
+      />
+    );
+  }
 
   const handleSearch = () => {
     setCurrentPage(0);
