@@ -21,6 +21,7 @@ export function useInvoiceComparison(onDataRefresh?: () => void) {
   const pollingJobsRef = useRef<Set<string>>(new Set());
   const cancelledJobsRef = useRef<Set<string>>(new Set());
   const fetchingKeysRef = useRef<Set<string>>(new Set());
+  const jobIdsRef = useRef<Record<string, string>>({});
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -108,28 +109,30 @@ export function useInvoiceComparison(onDataRefresh?: () => void) {
   }, [runComparison]);
 
   const cancelFetch = useCallback(async (key: string) => {
-    const currentState = fetches[key];
-    if (!currentState?.loading || !currentState?.jobId) return;
+    const jobId = jobIdsRef.current[key];
+    if (!jobId || !fetchingKeysRef.current.has(key)) return;
 
-    cancelledJobsRef.current.add(currentState.jobId);
-    pollingJobsRef.current.delete(currentState.jobId);
+    cancelledJobsRef.current.add(jobId);
+    pollingJobsRef.current.delete(jobId);
     fetchingKeysRef.current.delete(key);
+    delete jobIdsRef.current[key];
 
     await supabase.from('async_sync_jobs').update({
       status: 'failed',
       error_message: 'Cancelled by user',
       completed_at: new Date().toISOString()
-    }).eq('id', currentState.jobId);
+    }).eq('id', jobId);
 
     setFetches(prev => ({
       ...prev,
       [key]: { loading: false, error: 'Cancelled', result: null, progress: null, jobId: null }
     }));
-  }, [fetches]);
+  }, []);
 
   const pollJobStatus = useCallback(async (jobId: string, key: string, startDate: string, endDate: string) => {
     if (pollingJobsRef.current.has(jobId)) return;
     pollingJobsRef.current.add(jobId);
+    jobIdsRef.current[key] = jobId;
 
     setFetches(prev => ({
       ...prev,
@@ -311,10 +314,11 @@ export function useInvoiceComparison(onDataRefresh?: () => void) {
 
   const runFetch = useCallback(async (key: string, startDate: string, endDate: string) => {
     if (fetchingKeysRef.current.has(key)) {
-      const currentState = fetches[key];
-      if (currentState?.jobId) {
-        cancelledJobsRef.current.add(currentState.jobId);
-        pollingJobsRef.current.delete(currentState.jobId);
+      const existingJobId = jobIdsRef.current[key];
+      if (existingJobId) {
+        cancelledJobsRef.current.add(existingJobId);
+        pollingJobsRef.current.delete(existingJobId);
+        delete jobIdsRef.current[key];
       }
       fetchingKeysRef.current.delete(key);
     }
@@ -387,7 +391,7 @@ export function useInvoiceComparison(onDataRefresh?: () => void) {
       }));
       fetchingKeysRef.current.delete(key);
     }
-  }, [runComparison, onDataRefresh, pollJobStatus, fetches]);
+  }, [runComparison, onDataRefresh, pollJobStatus]);
 
   const fetchMonth = useCallback((monthKey: string) => {
     const { startDate, endDate } = getMonthRange(monthKey);
