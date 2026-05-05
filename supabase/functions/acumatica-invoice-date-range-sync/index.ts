@@ -79,20 +79,29 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
     const listData = await listResponse.json();
     const acumaticaInvoices = Array.isArray(listData) ? listData : [];
 
-    // Step 2: Get all existing invoice refs from our DB for the same date range
-    const { data: dbInvoices, error: dbError } = await supabase
-      .from('acumatica_invoices')
-      .select('reference_number, type')
-      .gte('date', `${startDate}T00:00:00`)
-      .lte('date', `${endDate}T23:59:59`);
+    // Step 2: Get ALL existing invoice refs from our DB (paginate past 1000-row default limit)
+    const dbSet = new Set<string>();
+    const PAGE_SIZE = 1000;
+    let offset = 0;
+    while (true) {
+      const { data: page, error: dbError } = await supabase
+        .from('acumatica_invoices')
+        .select('reference_number, type')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .range(offset, offset + PAGE_SIZE - 1);
 
-    if (dbError) {
-      throw new Error(`Failed to query DB invoices: ${dbError.message}`);
+      if (dbError) {
+        throw new Error(`Failed to query DB invoices: ${dbError.message}`);
+      }
+
+      for (const inv of (page || [])) {
+        dbSet.add(`${inv.type}:${inv.reference_number}`);
+      }
+
+      if (!page || page.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
     }
-
-    const dbSet = new Set(
-      (dbInvoices || []).map((inv: any) => `${inv.type}:${inv.reference_number}`)
-    );
 
     // Step 3: Find which invoices are missing from our DB
     const missingInvoices = acumaticaInvoices.filter((inv: any) => {
