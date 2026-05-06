@@ -131,9 +131,11 @@ async function reconcile(supabase: any, jobId: string) {
 
     let updated = 0;
     let deleted = 0;
+    let skipped = 0;
     let processed = 0;
     const updatedList: { ref: string; type: string; newStatus: string }[] = [];
     const deletedList: { ref: string; type: string }[] = [];
+    const skippedList: { ref: string; type: string; reason: string }[] = [];
     const errors: string[] = [];
 
     // Step 4: For each no-longer-balanced invoice, check if it now exists as Open/Closed
@@ -178,18 +180,11 @@ async function reconcile(supabase: any, jobId: string) {
         });
 
         if (!response.ok) {
-          // If we get 500/404 for a non-balanced invoice, it was likely deleted
-          const { error: deleteErr } = await supabase
-            .from("acumatica_invoices")
-            .delete()
-            .eq("id", dbInv.id);
-
-          if (deleteErr) {
-            errors.push(`Delete ${dbInv.reference_number}: ${deleteErr.message}`);
-          } else {
-            deleted++;
-            deletedList.push({ ref: dbInv.reference_number, type: dbInv.type });
-          }
+          // API error -- do NOT delete. This could be a transient Acumatica error.
+          const errText = await response.text().catch(() => "");
+          errors.push(`Fetch ${dbInv.reference_number} (${response.status}): ${errText.substring(0, 100)}`);
+          skipped++;
+          skippedList.push({ ref: dbInv.reference_number, type: dbInv.type, reason: `API ${response.status}` });
           continue;
         }
 
@@ -197,18 +192,11 @@ async function reconcile(supabase: any, jobId: string) {
         const results = Array.isArray(data) ? data : [];
 
         if (results.length === 0) {
-          // Deleted from Acumatica
-          const { error: deleteErr } = await supabase
-            .from("acumatica_invoices")
-            .delete()
-            .eq("id", dbInv.id);
-
-          if (deleteErr) {
-            errors.push(`Delete ${dbInv.reference_number}: ${deleteErr.message}`);
-          } else {
-            deleted++;
-            deletedList.push({ ref: dbInv.reference_number, type: dbInv.type });
-          }
+          // Invoice not found in Acumatica at all -- mark it but do NOT auto-delete.
+          // It might have been voided or truly deleted. Flag for manual review.
+          skipped++;
+          skippedList.push({ ref: dbInv.reference_number, type: dbInv.type, reason: "Not found in Acumatica" });
+          errors.push(`${dbInv.reference_number}: not found in Acumatica (skipped, not deleted)`);
         } else {
           // Invoice exists with a new status -- update our record
           const acuInv = results[0];
@@ -255,8 +243,10 @@ async function reconcile(supabase: any, jobId: string) {
             processed,
             updated,
             deleted,
+            skipped,
             updatedList: updatedList.slice(0, 200),
             deletedList: deletedList.slice(0, 200),
+            skippedList: skippedList.slice(0, 200),
             errors: errors.slice(0, 20),
           },
         }).eq("id", jobId);
@@ -283,9 +273,11 @@ async function reconcile(supabase: any, jobId: string) {
         processed,
         updated,
         deleted,
+        skipped,
         still_balanced: dbBalanced.length - noLongerBalanced.length,
         updatedList: updatedList.slice(0, 200),
         deletedList: deletedList.slice(0, 200),
+        skippedList: skippedList.slice(0, 200),
         errors: errors.slice(0, 20),
       },
     }).eq("id", jobId);
