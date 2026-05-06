@@ -13,31 +13,34 @@ export default function InvoiceSummaryCards({ months }: InvoiceSummaryCardsProps
     invoices: acc.invoices + m.invoice_amount,
     invoiceCount: acc.invoiceCount + m.invoice_count,
     invoiceBalance: acc.invoiceBalance + m.invoice_balance,
+    invoiceOpenBalance: acc.invoiceOpenBalance + (m.invoice_open_balance || 0),
     creditMemos: acc.creditMemos + m.credit_memo_amount,
     creditMemoCount: acc.creditMemoCount + m.credit_memo_count,
     creditMemoBalance: acc.creditMemoBalance + m.credit_memo_balance,
+    creditMemoOpenBalance: acc.creditMemoOpenBalance + (m.credit_memo_open_balance || 0),
     debitMemos: acc.debitMemos + m.debit_memo_amount,
     debitMemoCount: acc.debitMemoCount + m.debit_memo_count,
     debitMemoBalance: acc.debitMemoBalance + m.debit_memo_balance,
+    debitMemoOpenBalance: acc.debitMemoOpenBalance + (m.debit_memo_open_balance || 0),
     creditWo: acc.creditWo + m.credit_wo_amount,
     creditWoCount: acc.creditWoCount + m.credit_wo_count,
     overdueCharges: acc.overdueCharges + m.overdue_charge_amount,
     overdueChargeCount: acc.overdueChargeCount + m.overdue_charge_count,
   }), {
     totalCount: 0, totalAmount: 0, totalBalance: 0,
-    invoices: 0, invoiceCount: 0, invoiceBalance: 0,
-    creditMemos: 0, creditMemoCount: 0, creditMemoBalance: 0,
-    debitMemos: 0, debitMemoCount: 0, debitMemoBalance: 0,
+    invoices: 0, invoiceCount: 0, invoiceBalance: 0, invoiceOpenBalance: 0,
+    creditMemos: 0, creditMemoCount: 0, creditMemoBalance: 0, creditMemoOpenBalance: 0,
+    debitMemos: 0, debitMemoCount: 0, debitMemoBalance: 0, debitMemoOpenBalance: 0,
     creditWo: 0, creditWoCount: 0,
     overdueCharges: 0, overdueChargeCount: 0,
   });
 
-  const netOutstanding = totals.invoiceBalance + totals.debitMemoBalance - totals.creditMemoBalance;
+  const netOutstanding = totals.invoiceOpenBalance + totals.debitMemoOpenBalance - totals.creditMemoOpenBalance;
 
   const cards = [
-    { label: 'Net Outstanding', amount: netOutstanding, subtitle: `${formatNumber(totals.totalCount)} total docs`, icon: DollarSign, gradient: 'from-emerald-500 to-teal-600', description: 'Invoices + Debit Memos - Credit Memos' },
-    { label: 'Invoices', amount: totals.invoices, subtitle: `${formatNumber(totals.invoiceCount)} docs | ${formatCurrency(totals.invoiceBalance)} open`, icon: FileText, gradient: 'from-blue-500 to-blue-600' },
-    { label: 'Credit Memos', amount: totals.creditMemos, subtitle: `${formatNumber(totals.creditMemoCount)} docs | ${formatCurrency(totals.creditMemoBalance)} open`, icon: FileMinus, gradient: 'from-emerald-500 to-emerald-600' },
+    { label: 'Net Outstanding (Open)', amount: netOutstanding, subtitle: `${formatNumber(totals.totalCount)} total docs`, icon: DollarSign, gradient: 'from-emerald-500 to-teal-600', description: 'Open Invoices + Open Debit Memos - Open Credit Memos' },
+    { label: 'Invoices', amount: totals.invoices, subtitle: `${formatNumber(totals.invoiceCount)} docs | ${formatCurrency(totals.invoiceOpenBalance)} open`, icon: FileText, gradient: 'from-blue-500 to-blue-600' },
+    { label: 'Credit Memos', amount: totals.creditMemos, subtitle: `${formatNumber(totals.creditMemoCount)} docs | ${formatCurrency(totals.creditMemoOpenBalance)} open`, icon: FileMinus, gradient: 'from-emerald-500 to-emerald-600' },
     { label: 'Debit Memos', amount: totals.debitMemos, subtitle: `${formatNumber(totals.debitMemoCount)} docs | ${formatCurrency(totals.debitMemoBalance)} open`, icon: FilePlus, gradient: 'from-amber-500 to-amber-600' },
     { label: 'Credit W/O', amount: totals.creditWo, subtitle: `${formatNumber(totals.creditWoCount)} docs`, icon: FileX, gradient: 'from-gray-500 to-gray-600' },
     { label: 'Overdue Charges', amount: totals.overdueCharges, subtitle: `${formatNumber(totals.overdueChargeCount)} docs`, icon: AlertTriangle, gradient: 'from-red-500 to-red-600' },
