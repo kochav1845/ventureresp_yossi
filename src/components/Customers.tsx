@@ -1,28 +1,11 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import CustomerDetailView from './CustomerDetailView';
-import { batchedInQuery } from '../lib/batchedQuery';
 import { ArrowLeft, Plus, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, Lock, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket } from 'lucide-react';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import CustomerFiles from './CustomerFiles';
-import { exportToExcel as exportExcel, formatDate, formatCurrency } from '../lib/excelExport';
 import * as XLSX from 'xlsx';
-
-interface CustomerAnalyticsData {
-  customer_id: string;
-  calculated_balance: number;
-  gross_balance: number;
-  credit_memo_balance: number;
-  open_invoice_count: number;
-  max_days_overdue: number;
-  red_count: number;
-  yellow_count: number;
-  green_count: number;
-  red_threshold_days: number;
-  exclude_from_payment_analytics: boolean;
-  exclude_from_customer_analytics: boolean;
-}
 
 type Customer = {
   id: string;
@@ -34,7 +17,6 @@ type Customer = {
   postpone_reason: string | null;
   created_at: string;
   updated_at: string;
-  // Analytics fields
   customer_id?: string;
   balance?: number;
   invoice_count?: number;
@@ -45,9 +27,13 @@ type Customer = {
   red_count?: number;
   yellow_count?: number;
   green_count?: number;
-  // Exclusion fields
   exclude_from_payment_analytics?: boolean;
   exclude_from_customer_analytics?: boolean;
+  avg_days_to_collect?: number | null;
+  filtered_gross_balance?: number;
+  filtered_net_balance?: number;
+  filtered_invoice_count?: number;
+  gross_balance?: number;
 };
 
 type ScheduledEmail = {
@@ -70,7 +56,7 @@ type FilterConfig = {
   dateFrom: string;
   dateTo: string;
   logicOperator: 'AND' | 'OR';
-  sortBy: 'name' | 'email' | 'balance' | 'invoice_count' | 'max_days_overdue' | 'created_at';
+  sortBy: 'name' | 'email' | 'balance' | 'invoice_count' | 'max_days_overdue' | 'avg_days_to_collect' | 'created_at';
   sortOrder: 'asc' | 'desc';
 };
 
@@ -132,7 +118,6 @@ export default function Customers({ onBack }: CustomersProps) {
   const [grandTotalCustomers, setGrandTotalCustomers] = useState(0); // Unfiltered total
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(true);
   const [excludeCreditMemos, setExcludeCreditMemos] = useState(false);
