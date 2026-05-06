@@ -210,6 +210,7 @@ export default function Customers({ onBack }: CustomersProps) {
             p_offset: 0,
             p_date_from: null,
             p_date_to: null,
+            p_date_context: null,
             p_balance_filter: 'all',
             p_min_balance: null,
             p_max_balance: null,
@@ -217,6 +218,8 @@ export default function Customers({ onBack }: CustomersProps) {
             p_max_open_invoices: null,
             p_min_invoice_amount: null,
             p_max_invoice_amount: null,
+            p_min_days_overdue: null,
+            p_max_days_overdue: null,
             p_exclude_credit_memos: excludeCreditMemos,
             p_calculate_avg_days: false,
             p_test_customers: true
@@ -277,6 +280,7 @@ export default function Customers({ onBack }: CustomersProps) {
               p_offset: 0,
               p_date_from: null,
               p_date_to: null,
+              p_date_context: null,
               p_balance_filter: 'all',
               p_min_balance: null,
               p_max_balance: null,
@@ -284,6 +288,8 @@ export default function Customers({ onBack }: CustomersProps) {
               p_max_open_invoices: null,
               p_min_invoice_amount: null,
               p_max_invoice_amount: null,
+              p_min_days_overdue: null,
+              p_max_days_overdue: null,
               p_exclude_credit_memos: excludeCreditMemos,
               p_calculate_avg_days: false,
               p_test_customers: false
