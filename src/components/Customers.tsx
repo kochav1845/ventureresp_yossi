@@ -60,6 +60,23 @@ type FilterConfig = {
   sortOrder: 'asc' | 'desc';
 };
 
+const BATCH_SIZE = 1000;
+
+async function batchFetchCustomers(params: Record<string, any>): Promise<any[]> {
+  let allData: any[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .rpc('get_customers_with_balance', { ...params, p_limit: BATCH_SIZE, p_offset: offset });
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < BATCH_SIZE) break;
+    offset += BATCH_SIZE;
+  }
+  return allData;
+}
+
 const PRESET_FILTERS = [
   { label: 'High Balance (>$10k)', filter: { minBalance: 10000, maxBalance: Infinity, minInvoiceCount: 0, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
   { label: 'Medium Balance ($5k-$10k)', filter: { minBalance: 5000, maxBalance: 10000, minInvoiceCount: 0, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
@@ -199,33 +216,28 @@ export default function Customers({ onBack }: CustomersProps) {
     setIsSearching(false);
     try {
       if (showTestCustomers) {
-        const { data: testData, error: testError } = await supabase
-          .rpc('get_customers_with_balance', {
-            p_search: null,
-            p_status_filter: 'all',
-            p_country_filter: 'all',
-            p_sort_by: 'customer_name',
-            p_sort_order: 'asc',
-            p_limit: 100,
-            p_offset: 0,
-            p_date_from: null,
-            p_date_to: null,
-            p_date_context: null,
-            p_balance_filter: 'all',
-            p_min_balance: null,
-            p_max_balance: null,
-            p_min_open_invoices: null,
-            p_max_open_invoices: null,
-            p_min_invoice_amount: null,
-            p_max_invoice_amount: null,
-            p_min_days_overdue: null,
-            p_max_days_overdue: null,
-            p_exclude_credit_memos: excludeCreditMemos,
-            p_calculate_avg_days: false,
-            p_test_customers: true
-          });
-
-        if (testError) throw testError;
+        const testData = await batchFetchCustomers({
+          p_search: null,
+          p_status_filter: 'all',
+          p_country_filter: 'all',
+          p_sort_by: 'customer_name',
+          p_sort_order: 'asc',
+          p_date_from: null,
+          p_date_to: null,
+          p_date_context: null,
+          p_balance_filter: 'all',
+          p_min_balance: null,
+          p_max_balance: null,
+          p_min_open_invoices: null,
+          p_max_open_invoices: null,
+          p_min_invoice_amount: null,
+          p_max_invoice_amount: null,
+          p_min_days_overdue: null,
+          p_max_days_overdue: null,
+          p_exclude_credit_memos: excludeCreditMemos,
+          p_calculate_avg_days: false,
+          p_test_customers: true
+        });
 
         const { data: customerTableData } = await supabase
           .from('customers')
@@ -268,43 +280,33 @@ export default function Customers({ onBack }: CustomersProps) {
         setGrandTotalCustomers(mergedData.length);
         setAllCustomers(mergedData);
       } else {
-        const [analyticsResult, customerTableResult] = await Promise.all([
-          supabase
-            .rpc('get_customers_with_balance', {
-              p_search: null,
-              p_status_filter: 'all',
-              p_country_filter: 'all',
-              p_sort_by: 'customer_name',
-              p_sort_order: 'asc',
-              p_limit: 10000,
-              p_offset: 0,
-              p_date_from: null,
-              p_date_to: null,
-              p_date_context: null,
-              p_balance_filter: 'all',
-              p_min_balance: null,
-              p_max_balance: null,
-              p_min_open_invoices: null,
-              p_max_open_invoices: null,
-              p_min_invoice_amount: null,
-              p_max_invoice_amount: null,
-              p_min_days_overdue: null,
-              p_max_days_overdue: null,
-              p_exclude_credit_memos: excludeCreditMemos,
-              p_calculate_avg_days: false,
-              p_test_customers: false
-            }),
+        const [analyticsData, customerTableResult] = await Promise.all([
+          batchFetchCustomers({
+            p_search: null,
+            p_status_filter: 'all',
+            p_country_filter: 'all',
+            p_sort_by: 'customer_name',
+            p_sort_order: 'asc',
+            p_date_from: null,
+            p_date_to: null,
+            p_date_context: null,
+            p_balance_filter: 'all',
+            p_min_balance: null,
+            p_max_balance: null,
+            p_min_open_invoices: null,
+            p_max_open_invoices: null,
+            p_min_invoice_amount: null,
+            p_max_invoice_amount: null,
+            p_min_days_overdue: null,
+            p_max_days_overdue: null,
+            p_exclude_credit_memos: excludeCreditMemos,
+            p_calculate_avg_days: false,
+            p_test_customers: false
+          }),
           supabase
             .from('customers')
             .select('id, responded_this_month, postpone_until, postpone_reason, is_active')
         ]);
-
-        if (analyticsResult.error) {
-          console.error('Analytics error:', analyticsResult.error);
-          throw analyticsResult.error;
-        }
-
-        const analyticsData = analyticsResult.data || [];
 
         const customerLookup = new Map<string, any>();
         (customerTableResult.data || []).forEach((c: any) => {
@@ -383,33 +385,28 @@ export default function Customers({ onBack }: CustomersProps) {
     if (hasServerFilter) {
       setLoading(true);
       try {
-        const { data: analyticsData, error: analyticsError } = await supabase
-          .rpc('get_customers_with_balance', {
-            p_search: searchQuery.trim() || null,
-            p_status_filter: 'all',
-            p_country_filter: 'all',
-            p_sort_by: filters.sortBy === 'name' ? 'customer_name' : filters.sortBy,
-            p_sort_order: filters.sortOrder,
-            p_limit: 10000,
-            p_offset: 0,
-            p_date_from: filters.dateFrom || null,
-            p_date_to: filters.dateTo || null,
-            p_date_context: (filters.dateFrom || filters.dateTo) ? 'invoice_date' : null,
-            p_balance_filter: 'all',
-            p_min_balance: filters.minBalance > 0 ? filters.minBalance : null,
-            p_max_balance: filters.maxBalance !== Infinity ? filters.maxBalance : null,
-            p_min_open_invoices: filters.minInvoiceCount > 0 ? filters.minInvoiceCount : null,
-            p_max_open_invoices: filters.maxInvoiceCount !== Infinity ? filters.maxInvoiceCount : null,
-            p_min_invoice_amount: filters.minInvoiceAmount > 0 ? filters.minInvoiceAmount : null,
-            p_max_invoice_amount: filters.maxInvoiceAmount !== Infinity ? filters.maxInvoiceAmount : null,
-            p_exclude_credit_memos: excludeCreditMemos,
-            p_calculate_avg_days: false,
-            p_min_days_overdue: filters.minDaysOverdue > 0 ? filters.minDaysOverdue : null,
-            p_max_days_overdue: filters.maxDaysOverdue !== Infinity ? Math.round(filters.maxDaysOverdue) : null,
-            p_test_customers: showTestCustomers
-          });
-
-        if (analyticsError) throw analyticsError;
+        const analyticsData = await batchFetchCustomers({
+          p_search: searchQuery.trim() || null,
+          p_status_filter: 'all',
+          p_country_filter: 'all',
+          p_sort_by: filters.sortBy === 'name' ? 'customer_name' : filters.sortBy,
+          p_sort_order: filters.sortOrder,
+          p_date_from: filters.dateFrom || null,
+          p_date_to: filters.dateTo || null,
+          p_date_context: (filters.dateFrom || filters.dateTo) ? 'invoice_date' : null,
+          p_balance_filter: 'all',
+          p_min_balance: filters.minBalance > 0 ? filters.minBalance : null,
+          p_max_balance: filters.maxBalance !== Infinity ? filters.maxBalance : null,
+          p_min_open_invoices: filters.minInvoiceCount > 0 ? filters.minInvoiceCount : null,
+          p_max_open_invoices: filters.maxInvoiceCount !== Infinity ? filters.maxInvoiceCount : null,
+          p_min_invoice_amount: filters.minInvoiceAmount > 0 ? filters.minInvoiceAmount : null,
+          p_max_invoice_amount: filters.maxInvoiceAmount !== Infinity ? filters.maxInvoiceAmount : null,
+          p_exclude_credit_memos: excludeCreditMemos,
+          p_calculate_avg_days: false,
+          p_min_days_overdue: filters.minDaysOverdue > 0 ? filters.minDaysOverdue : null,
+          p_max_days_overdue: filters.maxDaysOverdue !== Infinity ? Math.round(filters.maxDaysOverdue) : null,
+          p_test_customers: showTestCustomers
+        });
 
         const { data: custTableData } = await supabase
           .from('customers')
