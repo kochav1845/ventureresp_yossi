@@ -178,10 +178,6 @@ export default function Customers({ onBack }: CustomersProps) {
     };
   }, [showTestCustomers, excludeCreditMemos]);
 
-  useEffect(() => {
-    applyFilters();
-  }, [applyFilters]);
-
   const loadCustomersWithOpenTickets = async () => {
     try {
       const { data, error } = await supabase
@@ -491,6 +487,10 @@ export default function Customers({ onBack }: CustomersProps) {
     const end = start + pageSize;
     setCustomers(filtered.slice(start, end));
   }, [allCustomers, filters, searchQuery, currentPage, pageSize, showTestCustomers, excludeCreditMemos]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
 
   // If a specific customer is requested, show CustomerDetailView
   if (customerIdParam) {
