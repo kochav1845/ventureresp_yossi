@@ -211,140 +211,65 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
+  const mapCustomerRow = (item: any, customerLookup: Map<string, any>, isTest = false) => {
+    const custId = isTest && item.customer_id?.startsWith('TEST-')
+      ? item.customer_id.replace('TEST-', '')
+      : item.customer_id;
+    const custRecord = customerLookup.get(custId);
+    return {
+      id: custId || item.id,
+      name: item.customer_name || '',
+      email: item.email_address || '',
+      is_active: custRecord?.is_active ?? true,
+      responded_this_month: custRecord?.responded_this_month ?? false,
+      postpone_until: custRecord?.postpone_until ?? null,
+      postpone_reason: custRecord?.postpone_reason ?? null,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+      customer_id: item.customer_id,
+      balance: item.calculated_balance || 0,
+      gross_balance: item.gross_balance || 0,
+      filtered_gross_balance: item.filtered_gross_balance || 0,
+      filtered_net_balance: item.filtered_net_balance ?? item.filtered_gross_balance ?? 0,
+      invoice_count: item.open_invoice_count || 0,
+      filtered_invoice_count: item.filtered_invoice_count || 0,
+      max_days_overdue: item.max_days_overdue || 0,
+      red_threshold_days: item.red_threshold_days || 30,
+      red_count: item.red_count || 0,
+      yellow_count: item.yellow_count || 0,
+      green_count: item.green_count || 0,
+      exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
+      exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
+    };
+  };
+
   const loadCustomersWithAnalytics = async () => {
     setLoading(true);
     setIsSearching(false);
     try {
-      if (showTestCustomers) {
-        const testData = await batchFetchCustomers({
-          p_search: null,
-          p_status_filter: 'all',
-          p_country_filter: 'all',
-          p_sort_by: 'customer_name',
-          p_sort_order: 'asc',
-          p_date_from: null,
-          p_date_to: null,
-          p_date_context: null,
-          p_balance_filter: 'all',
-          p_min_balance: null,
-          p_max_balance: null,
-          p_min_open_invoices: null,
-          p_max_open_invoices: null,
-          p_min_invoice_amount: null,
-          p_max_invoice_amount: null,
-          p_min_days_overdue: null,
-          p_max_days_overdue: null,
-          p_exclude_credit_memos: excludeCreditMemos,
-          p_calculate_avg_days: false,
-          p_test_customers: true
-        });
-
-        const { data: customerTableData } = await supabase
+      const [fastResult, customerTableResult] = await Promise.all([
+        supabase.rpc('get_customers_with_balance_fast', {
+          p_test_customers: showTestCustomers,
+          p_exclude_credit_memos: excludeCreditMemos
+        }),
+        supabase
           .from('customers')
-          .select('id, responded_this_month, postpone_until, postpone_reason, is_active');
-        const customerLookup = new Map<string, any>();
-        (customerTableData || []).forEach((c: any) => {
-          customerLookup.set(c.id, c);
-        });
+          .select('id, responded_this_month, postpone_until, postpone_reason, is_active')
+      ]);
 
-        const mergedData = (testData || []).map((item: any) => {
-          const realId = item.customer_id?.startsWith('TEST-') ? item.customer_id.replace('TEST-', '') : null;
-          const custRecord = realId ? customerLookup.get(realId) : null;
-          return {
-            id: realId || item.id,
-            name: item.customer_name || '',
-            email: item.email_address || '',
-            is_active: custRecord?.is_active ?? true,
-            responded_this_month: custRecord?.responded_this_month ?? false,
-            postpone_until: custRecord?.postpone_until ?? null,
-            postpone_reason: custRecord?.postpone_reason ?? null,
-            created_at: item.created_at,
-            updated_at: item.updated_at,
-            customer_id: item.customer_id,
-            balance: item.calculated_balance || 0,
-            gross_balance: item.gross_balance || 0,
-            filtered_gross_balance: item.filtered_gross_balance || 0,
-            filtered_net_balance: item.filtered_net_balance ?? item.filtered_gross_balance ?? 0,
-            invoice_count: item.open_invoice_count || 0,
-            filtered_invoice_count: item.filtered_invoice_count || 0,
-            max_days_overdue: item.max_days_overdue || 0,
-            red_threshold_days: item.red_threshold_days || 30,
-            red_count: item.red_count || 0,
-            yellow_count: item.yellow_count || 0,
-            green_count: item.green_count || 0,
-            exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
-            exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
-          };
-        });
+      if (fastResult.error) throw fastResult.error;
 
-        setGrandTotalCustomers(mergedData.length);
-        setAllCustomers(mergedData);
-      } else {
-        const [analyticsData, customerTableResult] = await Promise.all([
-          batchFetchCustomers({
-            p_search: null,
-            p_status_filter: 'all',
-            p_country_filter: 'all',
-            p_sort_by: 'customer_name',
-            p_sort_order: 'asc',
-            p_date_from: null,
-            p_date_to: null,
-            p_date_context: null,
-            p_balance_filter: 'all',
-            p_min_balance: null,
-            p_max_balance: null,
-            p_min_open_invoices: null,
-            p_max_open_invoices: null,
-            p_min_invoice_amount: null,
-            p_max_invoice_amount: null,
-            p_min_days_overdue: null,
-            p_max_days_overdue: null,
-            p_exclude_credit_memos: excludeCreditMemos,
-            p_calculate_avg_days: false,
-            p_test_customers: false
-          }),
-          supabase
-            .from('customers')
-            .select('id, responded_this_month, postpone_until, postpone_reason, is_active')
-        ]);
+      const customerLookup = new Map<string, any>();
+      (customerTableResult.data || []).forEach((c: any) => {
+        customerLookup.set(c.id, c);
+      });
 
-        const customerLookup = new Map<string, any>();
-        (customerTableResult.data || []).forEach((c: any) => {
-          customerLookup.set(c.id, c);
-        });
+      const mergedData = (fastResult.data || []).map((item: any) =>
+        mapCustomerRow(item, customerLookup, showTestCustomers)
+      );
 
-        const mergedData = analyticsData.map((item: any) => {
-          const custRecord = customerLookup.get(item.customer_id);
-          return {
-            id: item.customer_id,
-            name: item.customer_name || '',
-            email: item.email_address || '',
-            is_active: custRecord?.is_active ?? true,
-            responded_this_month: custRecord?.responded_this_month ?? false,
-            postpone_until: custRecord?.postpone_until ?? null,
-            postpone_reason: custRecord?.postpone_reason ?? null,
-            created_at: item.created_at,
-            updated_at: item.updated_at,
-            customer_id: item.customer_id,
-            balance: item.calculated_balance || 0,
-            gross_balance: item.gross_balance || 0,
-            filtered_gross_balance: item.filtered_gross_balance || 0,
-            filtered_net_balance: item.filtered_net_balance ?? item.filtered_gross_balance ?? 0,
-            invoice_count: item.open_invoice_count || 0,
-            filtered_invoice_count: item.filtered_invoice_count || 0,
-            max_days_overdue: item.max_days_overdue || 0,
-            red_threshold_days: item.red_threshold_days || 30,
-            red_count: item.red_count || 0,
-            yellow_count: item.yellow_count || 0,
-            green_count: item.green_count || 0,
-            exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
-            exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
-          };
-        });
-
-        setGrandTotalCustomers(mergedData.length);
-        setAllCustomers(mergedData);
-      }
+      setGrandTotalCustomers(mergedData.length);
+      setAllCustomers(mergedData);
     } catch (error) {
       console.error('Error loading customers:', error);
     } finally {
@@ -416,34 +341,9 @@ export default function Customers({ onBack }: CustomersProps) {
           custLookup.set(c.id, c);
         });
 
-        const filtered = (analyticsData || []).map((item: any) => {
-          const custRecord = custLookup.get(item.customer_id);
-          return {
-            id: item.customer_id,
-            customer_id: item.customer_id,
-            name: item.customer_name || '',
-            email: item.email_address || '',
-            is_active: custRecord?.is_active ?? true,
-            responded_this_month: custRecord?.responded_this_month ?? false,
-            postpone_until: custRecord?.postpone_until ?? null,
-            postpone_reason: custRecord?.postpone_reason ?? null,
-            created_at: item.created_at,
-            updated_at: item.updated_at,
-            balance: item.calculated_balance || 0,
-            gross_balance: item.gross_balance || 0,
-            filtered_gross_balance: item.filtered_gross_balance || 0,
-            filtered_net_balance: item.filtered_net_balance ?? item.filtered_gross_balance ?? 0,
-            invoice_count: item.open_invoice_count || 0,
-            filtered_invoice_count: item.filtered_invoice_count || 0,
-            max_days_overdue: item.max_days_overdue || 0,
-            red_threshold_days: item.red_threshold_days || 30,
-            red_count: item.red_count || 0,
-            yellow_count: item.yellow_count || 0,
-            green_count: item.green_count || 0,
-            exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
-            exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
-          };
-        });
+        const filtered = (analyticsData || []).map((item: any) =>
+          mapCustomerRow(item, custLookup)
+        );
 
         setFilteredCustomers(filtered);
         setTotalCount(filtered.length);
@@ -1008,12 +908,12 @@ export default function Customers({ onBack }: CustomersProps) {
     );
   }
 
-  if (permissionsLoading) {
+  if (permissionsLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-blue-600">Loading permissions...</p>
+          <p className="text-gray-600">Loading customers...</p>
         </div>
       </div>
     );
