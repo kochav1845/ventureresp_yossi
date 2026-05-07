@@ -168,10 +168,12 @@ export default function UnifiedTicketingSystem({
 
   useEffect(() => {
     if (user && profile) {
-      loadStatusOptions();
-      loadColorOptions();
-      loadTicketTypeOptions();
-      loadTickets();
+      Promise.all([
+        loadStatusOptions(),
+        loadColorOptions(),
+        loadTicketTypeOptions(),
+        loadTickets()
+      ]);
     }
   }, [user, profile, showOnlyAssigned]);
 
@@ -393,266 +395,115 @@ export default function UnifiedTicketingSystem({
         }
 
         const ticketGroupsArray = Array.from(ticketGroups.values());
-        await Promise.all(ticketGroupsArray.map(async (ticket) => {
-          const { data: ticketData } = await supabase
-            .from('collection_tickets')
-            .select('promise_date, promise_by_user_id, created_at, resolved_at')
-            .eq('id', ticket.ticket_id)
-            .maybeSingle();
-
-          if (ticketData) {
-            ticket.promise_date = ticketData.promise_date;
-            ticket.ticket_created_at = ticketData.created_at;
-            ticket.ticket_closed_at = ticketData.resolved_at;
-
-            if (ticketData.promise_by_user_id) {
-              const { data: userData } = await supabase
-                .from('user_profiles')
-                .select('full_name, email')
-                .eq('id', ticketData.promise_by_user_id)
-                .maybeSingle();
-
-              if (userData) {
-                ticket.promise_by_user_name = userData.full_name || userData.email;
-              }
-            }
-          }
-
-          const { data: statusChange } = await supabase
-            .from('ticket_activity_log')
-            .select(`
-              description,
-              created_at,
-              created_by:user_profiles!ticket_activity_log_created_by_fkey(full_name, email)
-            `)
-            .eq('ticket_id', ticket.ticket_id)
-            .eq('activity_type', 'status_change')
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (statusChange) {
-            const statusMatch = statusChange.description.match(/Changed ticket status to "(.+?)"/);
-            ticket.last_status_change = {
-              status: statusMatch ? statusMatch[1] : ticket.ticket_status,
-              changed_at: statusChange.created_at,
-              changed_by_name: statusChange.created_by?.full_name || statusChange.created_by?.email || 'Unknown'
-            };
-          }
-
-          const { data: activity } = await supabase
-            .from('ticket_activity_log')
-            .select(`
-              description,
-              created_at,
-              created_by:user_profiles!ticket_activity_log_created_by_fkey(full_name, email)
-            `)
-            .eq('ticket_id', ticket.ticket_id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (activity) {
-            ticket.last_activity = {
-              description: activity.description,
-              created_at: activity.created_at,
-              created_by_name: activity.created_by?.full_name || activity.created_by?.email || 'Unknown'
-            };
-          }
-
-          const { data: noteData } = await supabase
-            .from('ticket_notes')
-            .select('note_text, created_at, document_urls, has_voice_note, has_image')
-            .eq('ticket_id', ticket.ticket_id)
-            .order('created_at', { ascending: false });
-
-          if (noteData && noteData.length > 0) {
-            ticket.note_count = noteData.length;
-            ticket.has_attachments = noteData.some(note =>
-              (note.document_urls && note.document_urls.length > 0) ||
-              note.has_voice_note ||
-              note.has_image
-            );
-            ticket.has_images = noteData.some(note => note.has_image);
-            ticket.has_documents = noteData.some(note =>
-              (note.document_urls && note.document_urls.length > 0)
-            );
-            ticket.last_note = {
-              note_text: noteData[0].note_text,
-              created_at: noteData[0].created_at
-            };
-          }
-
-          const { data: memoData } = await supabase
-            .from('ticket_memos')
-            .select('memo_text, created_at, document_urls, has_voice_note, has_image')
-            .eq('ticket_id', ticket.ticket_id)
-            .order('created_at', { ascending: false });
-
-          if (memoData && memoData.length > 0) {
-            ticket.memo_count = memoData.length;
-            ticket.has_memo_attachments = memoData.some(m =>
-              (m.document_urls && m.document_urls.length > 0) ||
-              m.has_voice_note ||
-              m.has_image
-            );
-            ticket.has_memo_images = memoData.some(m => m.has_image);
-            ticket.has_memo_documents = memoData.some(m =>
-              (m.document_urls && m.document_urls.length > 0)
-            );
-            ticket.last_memo = {
-              memo_text: memoData[0].memo_text,
-              created_at: memoData[0].created_at
-            };
-          }
-        }));
-
-        // Fetch real-time customer balance data for all unique customers
+        const ticketIds = ticketGroupsArray.map(t => t.ticket_id);
         const uniqueCustomerIds = [...new Set(ticketGroupsArray.map(t => t.customer_id))];
-
-        if (uniqueCustomerIds.length > 0) {
-          const fetchAllInvoiceBalances = async () => {
-            const all: any[] = [];
-            const batchSize = 200;
-            for (let i = 0; i < uniqueCustomerIds.length; i += batchSize) {
-              const batch = uniqueCustomerIds.slice(i, i + batchSize);
-              let from = 0;
-              let keepFetching = true;
-              while (keepFetching) {
-                const { data, error } = await supabase
-                  .from('acumatica_invoices')
-                  .select('customer, date, balance, status')
-                  .in('customer', batch)
-                  .neq('status', 'Closed')
-                  .range(from, from + 4999);
-                if (error || !data || data.length === 0) {
-                  keepFetching = false;
-                } else {
-                  all.push(...data);
-                  from += data.length;
-                  keepFetching = data.length === 5000;
-                }
-              }
-            }
-            return all;
-          };
-
-          const customerBalances = await fetchAllInvoiceBalances();
-
-          if (customerBalances.length > 0) {
-            const customerStats = new Map<string, {
-              balance: number;
-              invoice_count: number;
-              oldest_date: string | null;
-            }>();
-
-            customerBalances.forEach((inv: any) => {
-              if (!customerStats.has(inv.customer)) {
-                customerStats.set(inv.customer, {
-                  balance: 0,
-                  invoice_count: 0,
-                  oldest_date: null
-                });
-              }
-
-              const stats = customerStats.get(inv.customer)!;
-              stats.balance += inv.balance || 0;
-              stats.invoice_count += 1;
-
-              if (!stats.oldest_date || (inv.date && inv.date < stats.oldest_date)) {
-                stats.oldest_date = inv.date;
-              }
-            });
-
-            ticketGroupsArray.forEach(ticket => {
-              const stats = customerStats.get(ticket.customer_id);
-              if (stats) {
-                ticket.customer_balance = stats.balance;
-                ticket.open_invoice_count = stats.invoice_count;
-                ticket.oldest_invoice_date = stats.oldest_date;
-              }
-            });
-          }
-        }
-
-        if (uniqueCustomerIds.length > 0) {
-          const fetchAllPayments = async () => {
-            const all: any[] = [];
-            const batchSize = 200;
-            for (let i = 0; i < uniqueCustomerIds.length; i += batchSize) {
-              const batch = uniqueCustomerIds.slice(i, i + batchSize);
-              const { data, error } = await supabase
-                .from('acumatica_payments')
-                .select('customer_id, payment_amount, application_date, doc_date')
-                .in('customer_id', batch)
-                .in('type', ['Payment', 'Prepayment'])
-                .order('application_date', { ascending: false })
-                .limit(5000);
-              if (!error && data) all.push(...data);
-            }
-            return all;
-          };
-
-          const lastPayments = await fetchAllPayments();
-
-          if (lastPayments.length > 0) {
-            const customerLastPayment = new Map<string, { amount: number; date: string }>();
-            lastPayments.forEach((p: any) => {
-              if (!customerLastPayment.has(p.customer_id)) {
-                customerLastPayment.set(p.customer_id, {
-                  amount: p.payment_amount,
-                  date: p.doc_date || p.application_date
-                });
-              }
-            });
-
-            ticketGroupsArray.forEach(ticket => {
-              const lp = customerLastPayment.get(ticket.customer_id);
-              if (lp) {
-                ticket.last_payment_amount = lp.amount;
-                ticket.last_payment_date = lp.date;
-              }
-            });
-          }
-        }
-
         const allInvoiceRefs = ticketGroupsArray.flatMap(t => t.invoices.map(inv => inv.invoice_reference_number));
-        if (allInvoiceRefs.length > 0) {
-          const fetchAllApps = async () => {
-            const all: any[] = [];
-            const batchSize = 300;
-            for (let i = 0; i < allInvoiceRefs.length; i += batchSize) {
-              const batch = allInvoiceRefs.slice(i, i + batchSize);
-              const { data } = await supabase
+
+        // Run ALL enrichment queries in parallel instead of per-ticket
+        const [enrichmentResult, customerStatsResult, appResult] = await Promise.all([
+          ticketIds.length > 0
+            ? supabase.rpc('get_ticket_enrichment_bulk', { p_ticket_ids: ticketIds })
+            : { data: [], error: null },
+          uniqueCustomerIds.length > 0
+            ? supabase.rpc('get_ticket_customer_stats_bulk', { p_customer_ids: uniqueCustomerIds })
+            : { data: [], error: null },
+          allInvoiceRefs.length > 0
+            ? supabase
                 .from('payment_invoice_applications')
                 .select('invoice_reference_number, application_date, amount_paid')
-                .in('invoice_reference_number', batch)
+                .in('invoice_reference_number', allInvoiceRefs)
                 .gt('amount_paid', 0)
                 .order('application_date', { ascending: false })
-                .limit(5000);
-              if (data) all.push(...data);
-            }
-            return all;
-          };
-          const appData = await fetchAllApps();
+            : { data: [], error: null }
+        ]);
 
-          if (appData.length > 0) {
-            const invoiceCollectionDate = new Map<string, string>();
-            appData.forEach((a: any) => {
-              if (!invoiceCollectionDate.has(a.invoice_reference_number) && a.application_date) {
-                invoiceCollectionDate.set(a.invoice_reference_number, a.application_date);
+        // Apply ticket enrichment data
+        if (enrichmentResult.data) {
+          const enrichMap = new Map<string, any>();
+          enrichmentResult.data.forEach((e: any) => enrichMap.set(e.ticket_id, e));
+
+          ticketGroupsArray.forEach(ticket => {
+            const e = enrichMap.get(ticket.ticket_id);
+            if (!e) return;
+
+            ticket.promise_date = e.promise_date;
+            ticket.promise_by_user_name = e.promise_by_user_name;
+            ticket.ticket_created_at = e.ticket_created_at;
+            ticket.ticket_closed_at = e.ticket_resolved_at;
+
+            if (e.last_status_change_status) {
+              const statusMatch = e.last_status_change_status.match(/Changed ticket status to "(.+?)"/);
+              ticket.last_status_change = {
+                status: statusMatch ? statusMatch[1] : ticket.ticket_status,
+                changed_at: e.last_status_change_at,
+                changed_by_name: e.last_status_change_by || 'Unknown'
+              };
+            }
+
+            if (e.last_activity_description) {
+              ticket.last_activity = {
+                description: e.last_activity_description,
+                created_at: e.last_activity_at,
+                created_by_name: e.last_activity_by || 'Unknown'
+              };
+            }
+
+            if (e.note_count > 0) {
+              ticket.note_count = Number(e.note_count);
+              ticket.has_attachments = e.has_note_attachments;
+              ticket.has_images = e.has_note_images;
+              ticket.has_documents = e.has_note_documents;
+              if (e.last_note_text) {
+                ticket.last_note = { note_text: e.last_note_text, created_at: e.last_note_at };
+              }
+            }
+
+            if (e.memo_count > 0) {
+              ticket.memo_count = Number(e.memo_count);
+              ticket.has_memo_attachments = e.has_memo_attachments;
+              ticket.has_memo_images = e.has_memo_images;
+              ticket.has_memo_documents = e.has_memo_documents;
+              if (e.last_memo_text) {
+                ticket.last_memo = { memo_text: e.last_memo_text, created_at: e.last_memo_at };
+              }
+            }
+          });
+        }
+
+        // Apply customer balance + last payment stats
+        if (customerStatsResult.data) {
+          const statsMap = new Map<string, any>();
+          customerStatsResult.data.forEach((s: any) => statsMap.set(s.customer_id, s));
+
+          ticketGroupsArray.forEach(ticket => {
+            const stats = statsMap.get(ticket.customer_id);
+            if (stats) {
+              ticket.customer_balance = Number(stats.total_balance) || 0;
+              ticket.open_invoice_count = Number(stats.open_invoice_count) || 0;
+              ticket.oldest_invoice_date = stats.oldest_invoice_date;
+              ticket.last_payment_amount = stats.last_payment_amount ? Number(stats.last_payment_amount) : undefined;
+              ticket.last_payment_date = stats.last_payment_date;
+            }
+          });
+        }
+
+        // Apply invoice collection dates
+        if (appResult.data && appResult.data.length > 0) {
+          const invoiceCollectionDate = new Map<string, string>();
+          appResult.data.forEach((a: any) => {
+            if (!invoiceCollectionDate.has(a.invoice_reference_number) && a.application_date) {
+              invoiceCollectionDate.set(a.invoice_reference_number, a.application_date);
+            }
+          });
+
+          ticketGroupsArray.forEach(ticket => {
+            ticket.invoices.forEach(inv => {
+              const colDate = invoiceCollectionDate.get(inv.invoice_reference_number);
+              if (colDate) {
+                inv.collection_date = colDate;
               }
             });
-
-            ticketGroupsArray.forEach(ticket => {
-              ticket.invoices.forEach(inv => {
-                const colDate = invoiceCollectionDate.get(inv.invoice_reference_number);
-                if (colDate) {
-                  inv.collection_date = colDate;
-                }
-              });
-            });
-          }
+          });
         }
 
         const sortedTickets = sortTicketsByPriority(ticketGroupsArray);
