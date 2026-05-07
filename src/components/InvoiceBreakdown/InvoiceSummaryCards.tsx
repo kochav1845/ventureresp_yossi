@@ -38,10 +38,10 @@ export default function InvoiceSummaryCards({ months }: InvoiceSummaryCardsProps
   const netOutstanding = totals.invoiceOpenBalance + totals.debitMemoOpenBalance - totals.creditMemoOpenBalance;
 
   const cards = [
-    { label: 'Net Outstanding (Open)', amount: netOutstanding, subtitle: `${formatNumber(totals.totalCount)} total docs`, icon: DollarSign, gradient: 'from-emerald-500 to-teal-600', description: 'Open Invoices + Open Debit Memos - Open Credit Memos' },
-    { label: 'Invoices', amount: totals.invoices, subtitle: `${formatNumber(totals.invoiceCount)} docs | ${formatCurrency(totals.invoiceOpenBalance)} open`, icon: FileText, gradient: 'from-blue-500 to-blue-600' },
-    { label: 'Credit Memos', amount: totals.creditMemos, subtitle: `${formatNumber(totals.creditMemoCount)} docs | ${formatCurrency(totals.creditMemoOpenBalance)} open`, icon: FileMinus, gradient: 'from-emerald-500 to-emerald-600' },
-    { label: 'Debit Memos', amount: totals.debitMemos, subtitle: `${formatNumber(totals.debitMemoCount)} docs | ${formatCurrency(totals.debitMemoBalance)} open`, icon: FilePlus, gradient: 'from-amber-500 to-amber-600' },
+    { label: 'Net Outstanding', amount: netOutstanding, subtitle: `${formatNumber(totals.totalCount)} total docs`, icon: DollarSign, gradient: 'from-emerald-500 to-teal-600', description: 'Invoices + Debit Memos - Credit Memos (Open & Balanced)' },
+    { label: 'Invoices', amount: totals.invoices, subtitle: `${formatNumber(totals.invoiceCount)} docs | ${formatCurrency(totals.invoiceOpenBalance)} outstanding`, icon: FileText, gradient: 'from-blue-500 to-blue-600' },
+    { label: 'Credit Memos', amount: totals.creditMemos, subtitle: `${formatNumber(totals.creditMemoCount)} docs | ${formatCurrency(totals.creditMemoOpenBalance)} outstanding`, icon: FileMinus, gradient: 'from-emerald-500 to-emerald-600' },
+    { label: 'Debit Memos', amount: totals.debitMemos, subtitle: `${formatNumber(totals.debitMemoCount)} docs | ${formatCurrency(totals.debitMemoOpenBalance)} outstanding`, icon: FilePlus, gradient: 'from-amber-500 to-amber-600' },
     { label: 'Credit W/O', amount: totals.creditWo, subtitle: `${formatNumber(totals.creditWoCount)} docs`, icon: FileX, gradient: 'from-gray-500 to-gray-600' },
     { label: 'Overdue Charges', amount: totals.overdueCharges, subtitle: `${formatNumber(totals.overdueChargeCount)} docs`, icon: AlertTriangle, gradient: 'from-red-500 to-red-600' },
   ];
