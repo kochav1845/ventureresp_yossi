@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, FileText, User, ChevronLeft, ChevronRight, MessageSquare, Lock, ArrowUpDown, ArrowUp, ArrowDown, Download } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, FileText, User, ChevronLeft, ChevronRight, MessageSquare, Lock, ArrowUpDown, ArrowUp, ArrowDown, Download, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
@@ -8,6 +8,11 @@ import AcumaticaInvoiceFetch from './AcumaticaInvoiceFetch';
 import InvoiceMemoModal from './InvoiceMemoModal';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { exportToExcel as exportExcel, formatDate, formatCurrency } from '../lib/excelExport';
+import { InvoiceMonthSummary, InvoiceDateBreakdownRow, InvoiceDaySummary } from './InvoiceBreakdown/types';
+import InvoiceMonthTable from './InvoiceBreakdown/InvoiceMonthTable';
+import InvoiceDateDrillDown from './InvoiceBreakdown/InvoiceDateDrillDown';
+import InvoiceSummaryCards from './InvoiceBreakdown/InvoiceSummaryCards';
+import { useInvoiceComparison } from './InvoiceBreakdown/useInvoiceComparison';
 
 interface AcumaticaInvoicesProps {
   onBack?: () => void;
@@ -51,6 +56,128 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   const [exporting, setExporting] = useState(false);
   const searchAbortController = useRef<AbortController | null>(null);
   const pageSize = 50;
+
+  // Invoice Breakdown analytics state
+  const [showAnalytics, setShowAnalytics] = useState(true);
+  const [breakdownMonths, setBreakdownMonths] = useState<InvoiceMonthSummary[]>([]);
+  const [filteredBreakdownMonths, setFilteredBreakdownMonths] = useState<InvoiceMonthSummary[]>([]);
+  const [selectedBreakdownMonth, setSelectedBreakdownMonth] = useState<string | null>(null);
+  const [breakdownDrillDown, setBreakdownDrillDown] = useState<InvoiceDaySummary[] | null>(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(true);
+  const [drillDownLoading, setDrillDownLoading] = useState(false);
+  const [breakdownSearch, setBreakdownSearch] = useState('');
+  const [breakdownDateRange, setBreakdownDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  const [showBreakdownFilters, setShowBreakdownFilters] = useState(false);
+  const [showBalance, setShowBalance] = useState(false);
+
+  const loadBreakdownSummaries = useCallback(async (refreshMatview = false) => {
+    setBreakdownLoading(true);
+    try {
+      if (refreshMatview) {
+        await supabase.rpc('refresh_invoice_month_summary');
+      }
+      const { data, error } = await supabase.rpc('get_invoice_month_summary');
+      if (error) throw error;
+      setBreakdownMonths(data || []);
+      setFilteredBreakdownMonths(data || []);
+    } catch (err) {
+      console.error('Failed to load invoice month summaries:', err);
+    } finally {
+      setBreakdownLoading(false);
+    }
+  }, []);
+
+  const {
+    comparisons, fetches, verifications,
+    compareMonth, compareDay,
+    fetchMonth, fetchDay,
+    cancelFetch,
+    verifyMonth, verifyDay,
+    deleteExtraInvoice, deleteAllExtraInvoices,
+  } = useInvoiceComparison(loadBreakdownSummaries);
+
+  const handleDeleteInvoice = useCallback(async (key: string, referenceNumber: string, type: string) => {
+    await deleteExtraInvoice(key, referenceNumber, type);
+    compareMonth(key);
+    loadBreakdownSummaries();
+  }, [deleteExtraInvoice, compareMonth, loadBreakdownSummaries]);
+
+  const handleDeleteAllExtra = useCallback(async (key: string, invoices: { reference_number: string; type: string }[]) => {
+    await deleteAllExtraInvoices(key, invoices);
+    compareMonth(key);
+    loadBreakdownSummaries();
+  }, [deleteAllExtraInvoices, compareMonth, loadBreakdownSummaries]);
+
+  // Filter breakdown months by search/date range
+  useEffect(() => {
+    let result = [...breakdownMonths];
+    if (breakdownSearch) {
+      const q = breakdownSearch.toLowerCase();
+      result = result.filter(m =>
+        m.month_label.toLowerCase().includes(q) || m.month_key.includes(q)
+      );
+    }
+    if (breakdownDateRange.start) {
+      result = result.filter(m => m.month_key >= breakdownDateRange.start.substring(0, 7));
+    }
+    if (breakdownDateRange.end) {
+      result = result.filter(m => m.month_key <= breakdownDateRange.end.substring(0, 7));
+    }
+    setFilteredBreakdownMonths(result);
+  }, [breakdownMonths, breakdownSearch, breakdownDateRange]);
+
+  const handleBreakdownMonthClick = async (monthKey: string) => {
+    if (selectedBreakdownMonth === monthKey) {
+      setSelectedBreakdownMonth(null);
+      setBreakdownDrillDown(null);
+      return;
+    }
+    setSelectedBreakdownMonth(monthKey);
+    setDrillDownLoading(true);
+    try {
+      const [year, month] = monthKey.split('-').map(Number);
+      const { data, error } = await supabase.rpc('get_invoice_breakdown_by_date', {
+        p_year: year,
+        p_month: month,
+      });
+      if (error) throw error;
+      const dayMap = new Map<string, InvoiceDaySummary>();
+      (data as InvoiceDateBreakdownRow[]).forEach(row => {
+        const existing = dayMap.get(row.day_date) || {
+          date: row.day_date,
+          label: row.day_label,
+          total_count: 0,
+          total_amount: 0,
+          total_balance: 0,
+          types: {},
+        };
+        existing.total_count += row.invoice_count;
+        existing.total_amount += Number(row.total_amount);
+        existing.total_balance += Number(row.total_balance);
+        if (!existing.types[row.invoice_type]) {
+          existing.types[row.invoice_type] = { count: 0, amount: 0, balance: 0, statuses: {} };
+        }
+        existing.types[row.invoice_type].count += row.invoice_count;
+        existing.types[row.invoice_type].amount += Number(row.total_amount);
+        existing.types[row.invoice_type].balance += Number(row.total_balance);
+        if (!existing.types[row.invoice_type].statuses[row.invoice_status]) {
+          existing.types[row.invoice_type].statuses[row.invoice_status] = { count: 0, amount: 0, balance: 0 };
+        }
+        existing.types[row.invoice_type].statuses[row.invoice_status].count += row.invoice_count;
+        existing.types[row.invoice_type].statuses[row.invoice_status].amount += Number(row.total_amount);
+        existing.types[row.invoice_type].statuses[row.invoice_status].balance += Number(row.total_balance);
+        dayMap.set(row.day_date, existing);
+      });
+      setBreakdownDrillDown(Array.from(dayMap.values()));
+    } catch (err) {
+      console.error('Failed to load date breakdown:', err);
+    } finally {
+      setDrillDownLoading(false);
+    }
+  };
+
+  const selectedBreakdownMonthData = breakdownMonths.find(m => m.month_key === selectedBreakdownMonth);
+  const hasBreakdownActiveFilters = breakdownSearch || breakdownDateRange.start || breakdownDateRange.end;
 
   const enrichInvoicesWithUserColors = async (invoices: any[]) => {
     if (invoices.length === 0) return invoices;
@@ -268,7 +395,8 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     await Promise.all([
       loadInvoices(),
       loadAvailableCustomers(),
-      loadAvailableColors()
+      loadAvailableColors(),
+      loadBreakdownSummaries()
     ]);
   };
 
@@ -623,12 +751,12 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     return <AcumaticaInvoiceFetch onBack={() => setShowFetchPage(false)} />;
   }
 
-  if (permissionsLoading) {
+  if (permissionsLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-blue-600">Loading permissions...</p>
+          <p className="text-gray-600">Loading invoices...</p>
         </div>
       </div>
     );
@@ -712,6 +840,181 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Invoice Breakdown Analytics Section */}
+        <div className="mb-6">
+          <button
+            onClick={() => setShowAnalytics(!showAnalytics)}
+            className="w-full flex items-center justify-between px-5 py-3.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 shadow-sm">
+                <BarChart3 size={18} className="text-white" />
+              </div>
+              <div className="text-left">
+                <h2 className="text-sm font-semibold text-gray-900">Invoice Analytics & Breakdown</h2>
+                <p className="text-xs text-gray-500">Summary cards, monthly comparison, and daily drill-down</p>
+              </div>
+            </div>
+            {showAnalytics ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
+          </button>
+
+          {showAnalytics && (
+            <div className="mt-3 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              {/* Breakdown filters bar */}
+              <div className="p-4 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-1 max-w-md">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search month (e.g., Jan 2025, 2024-12)..."
+                      value={breakdownSearch}
+                      onChange={(e) => setBreakdownSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setShowBreakdownFilters(!showBreakdownFilters)}
+                    className={`flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg transition-colors ${
+                      showBreakdownFilters || hasBreakdownActiveFilters
+                        ? 'bg-blue-50 border-blue-200 text-blue-700'
+                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Filter size={16} />
+                    Date Range
+                    {hasBreakdownActiveFilters && <span className="w-2 h-2 rounded-full bg-blue-600"></span>}
+                  </button>
+                  <button
+                    onClick={() => setShowBalance(!showBalance)}
+                    className={`flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg transition-colors ${
+                      showBalance
+                        ? 'bg-teal-50 border-teal-200 text-teal-700'
+                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors ${
+                      showBalance ? 'bg-teal-500 border-teal-500' : 'border-gray-300'
+                    }`}>
+                      {showBalance && (
+                        <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M2 6l3 3 5-5" />
+                        </svg>
+                      )}
+                    </div>
+                    Show Open Balance
+                  </button>
+                  <button
+                    onClick={() => loadBreakdownSummaries(true)}
+                    disabled={breakdownLoading}
+                    className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
+                  >
+                    <RefreshCw size={14} className={breakdownLoading ? 'animate-spin' : ''} />
+                    Refresh
+                  </button>
+                  {hasBreakdownActiveFilters && (
+                    <button
+                      onClick={() => { setBreakdownSearch(''); setBreakdownDateRange({ start: '', end: '' }); }}
+                      className="flex items-center gap-1 px-2 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                    >
+                      <X size={14} />
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                {showBreakdownFilters && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Calendar size={14} className="text-gray-400" />
+                      <label className="text-xs font-medium text-gray-500">From:</label>
+                      <input
+                        type="month"
+                        value={breakdownDateRange.start}
+                        onChange={(e) => setBreakdownDateRange(prev => ({ ...prev, start: e.target.value }))}
+                        className="px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-medium text-gray-500">To:</label>
+                      <input
+                        type="month"
+                        value={breakdownDateRange.end}
+                        onChange={(e) => setBreakdownDateRange(prev => ({ ...prev, end: e.target.value }))}
+                        className="px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {breakdownLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw size={24} className="animate-spin text-blue-500 mr-2" />
+                  <span className="text-sm text-gray-500">Loading analytics...</span>
+                </div>
+              ) : (
+                <>
+                  <div className="p-4">
+                    <InvoiceSummaryCards months={filteredBreakdownMonths} />
+                  </div>
+
+                  {selectedBreakdownMonth && breakdownDrillDown && !drillDownLoading && (
+                    <div className="px-4 pb-4">
+                      <InvoiceDateDrillDown
+                        days={breakdownDrillDown}
+                        monthLabel={selectedBreakdownMonthData?.month_label || selectedBreakdownMonth}
+                        onBack={() => { setSelectedBreakdownMonth(null); setBreakdownDrillDown(null); }}
+                        showBalance={showBalance}
+                        comparisons={comparisons}
+                        fetches={fetches}
+                        verifications={verifications}
+                        onCompare={compareDay}
+                        onFetch={fetchDay}
+                        onCancel={cancelFetch}
+                        onVerify={(dateKey, del) => verifyDay(dateKey, del)}
+                        onDeleteInvoice={handleDeleteInvoice}
+                        onDeleteAllExtra={handleDeleteAllExtra}
+                      />
+                    </div>
+                  )}
+
+                  {drillDownLoading && (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw size={20} className="animate-spin text-blue-500 mr-2" />
+                      <span className="text-sm text-gray-500">Loading daily breakdown...</span>
+                    </div>
+                  )}
+
+                  <div className="border-t border-gray-100">
+                    <div className="px-4 py-3 flex items-center justify-between bg-gray-50/50">
+                      <h3 className="text-sm font-semibold text-gray-700">
+                        Month Comparison ({filteredBreakdownMonths.length} months)
+                      </h3>
+                      <p className="text-xs text-gray-500">Click a month to see daily breakdown</p>
+                    </div>
+                    <InvoiceMonthTable
+                      months={filteredBreakdownMonths}
+                      onMonthClick={handleBreakdownMonthClick}
+                      selectedMonth={selectedBreakdownMonth}
+                      showBalance={showBalance}
+                      comparisons={comparisons}
+                      fetches={fetches}
+                      verifications={verifications}
+                      onCompare={compareMonth}
+                      onFetch={fetchMonth}
+                      onCancel={cancelFetch}
+                      onVerify={(monthKey, del) => verifyMonth(monthKey, del)}
+                      onDeleteInvoice={handleDeleteInvoice}
+                      onDeleteAllExtra={handleDeleteAllExtra}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="mb-6 space-y-4">
