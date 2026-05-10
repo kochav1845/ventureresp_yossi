@@ -215,7 +215,7 @@ export default function Customers({ onBack }: CustomersProps) {
     const custId = isTest && item.customer_id?.startsWith('TEST-')
       ? item.customer_id.replace('TEST-', '')
       : item.customer_id;
-    const custRecord = customerLookup.get(custId);
+    const custRecord = customerLookup.get(item.customer_id) || customerLookup.get(custId);
     return {
       id: custId || item.id,
       name: item.customer_name || '',
@@ -253,15 +253,15 @@ export default function Customers({ onBack }: CustomersProps) {
           p_exclude_credit_memos: excludeCreditMemos
         }),
         supabase
-          .from('customers')
-          .select('id, responded_this_month, postpone_until, postpone_reason, is_active')
+          .from('acumatica_customers')
+          .select('customer_id, responded_this_month, postpone_until, postpone_reason, is_active')
       ]);
 
       if (fastResult.error) throw fastResult.error;
 
       const customerLookup = new Map<string, any>();
       (customerTableResult.data || []).forEach((c: any) => {
-        customerLookup.set(c.id, c);
+        customerLookup.set(c.customer_id, c);
       });
 
       const mergedData = (fastResult.data || []).map((item: any) =>
@@ -334,11 +334,11 @@ export default function Customers({ onBack }: CustomersProps) {
         });
 
         const { data: custTableData } = await supabase
-          .from('customers')
-          .select('id, responded_this_month, postpone_until, postpone_reason, is_active');
+          .from('acumatica_customers')
+          .select('customer_id, responded_this_month, postpone_until, postpone_reason, is_active');
         const custLookup = new Map<string, any>();
         (custTableData || []).forEach((c: any) => {
-          custLookup.set(c.id, c);
+          custLookup.set(c.customer_id, c);
         });
 
         const filtered = (analyticsData || []).map((item: any) =>
@@ -514,9 +514,9 @@ export default function Customers({ onBack }: CustomersProps) {
     setUpdating(id);
     try {
       const { error } = await supabase
-        .from('customers')
+        .from('acumatica_customers')
         .update({ is_active: !currentValue })
-        .eq('id', id);
+        .eq('customer_id', id);
 
       if (error) throw error;
 
@@ -533,9 +533,9 @@ export default function Customers({ onBack }: CustomersProps) {
     setUpdating(id);
     try {
       const { error } = await supabase
-        .from('customers')
+        .from('acumatica_customers')
         .update({ responded_this_month: !currentValue })
-        .eq('id', id);
+        .eq('customer_id', id);
 
       if (error) throw error;
 
@@ -554,12 +554,12 @@ export default function Customers({ onBack }: CustomersProps) {
     setUpdating(id);
     try {
       const { error } = await supabase
-        .from('customers')
+        .from('acumatica_customers')
         .update({
           postpone_until: null,
           postpone_reason: null
         })
-        .eq('id', id);
+        .eq('customer_id', id);
 
       if (error) throw error;
 
