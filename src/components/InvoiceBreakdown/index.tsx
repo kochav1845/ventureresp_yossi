@@ -60,7 +60,7 @@ export default function InvoiceBreakdown() {
   }, [deleteAllExtraInvoices, compareMonth, loadMonthSummaries]);
 
   useEffect(() => {
-    loadMonthSummaries();
+    loadMonthSummaries(true);
   }, [loadMonthSummaries]);
 
   useEffect(() => {
