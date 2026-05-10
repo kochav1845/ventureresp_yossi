@@ -423,7 +423,7 @@ export default function Customers({ onBack }: CustomersProps) {
   }, [applyFilters]);
 
   // If a specific customer is requested, show CustomerDetailView
-  if (customerIdParam) {
+  if (customerIdParam && customerIdParam !== 'null' && customerIdParam !== 'undefined') {
     return (
       <CustomerDetailView
         customerId={customerIdParam}
@@ -1628,8 +1628,9 @@ export default function Customers({ onBack }: CustomersProps) {
                               <span
                                 className="text-gray-900 font-semibold cursor-pointer hover:text-blue-600 hover:underline"
                                 onClick={() => {
-                                  if (customer.customer_id) {
-                                    navigate(`/customers?customer=${customer.customer_id}`);
+                                  const cid = customer.customer_id || customer.id;
+                                  if (cid) {
+                                    navigate(`/customers?customer=${cid}`);
                                   }
                                 }}
                               >{customer.name}</span>

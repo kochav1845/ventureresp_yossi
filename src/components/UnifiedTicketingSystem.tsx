@@ -341,7 +341,7 @@ export default function UnifiedTicketingSystem({
                 ticket_due_date: assignment.ticket_due_date,
                 assigned_collector_id: assignment.assigned_collector_id || null,
                 assigned_collector_name: assignment.collector_name || assignment.collector_email || null,
-                customer_id: assignment.customer,
+                customer_id: assignment.customer || assignment.ticket_customer_id,
                 customer_name: assignment.customer_name,
                 invoices: []
               });

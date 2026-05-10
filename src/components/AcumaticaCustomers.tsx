@@ -1013,7 +1013,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
     );
   }
 
-  if (selectedCustomer) {
+  if (selectedCustomer && selectedCustomer !== 'null' && selectedCustomer !== 'undefined') {
     return <CustomerDetailView customerId={selectedCustomer} onBack={() => setSearchParams({})} />;
   }
 

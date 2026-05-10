@@ -534,14 +534,16 @@ export default function TicketCard({
 
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <a
-              href={`/acumatica-customers?customer=${ticket.customer_id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-base font-bold text-blue-600 hover:text-blue-800 hover:underline truncate"
+            <span
+              onClick={() => {
+                if (ticket.customer_id) {
+                  navigate(`/customers?customer=${ticket.customer_id}`);
+                }
+              }}
+              className="text-base font-bold text-blue-600 hover:text-blue-800 hover:underline truncate cursor-pointer"
             >
               {ticket.customer_name}
-            </a>
+            </span>
             <span className="text-[10px] text-gray-400 flex-shrink-0">{ticket.customer_id}</span>
             <a
               href={getAcumaticaCustomerUrl(ticket.customer_id)}
