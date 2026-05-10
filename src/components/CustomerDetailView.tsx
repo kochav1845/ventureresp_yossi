@@ -44,6 +44,8 @@ interface CustomerData {
   gross_balance: number | null;
   credit_memo_balance: number | null;
   open_invoice_count: number | null;
+  balanced_invoice_count: number | null;
+  balanced_invoice_balance: number | null;
   red_count: number | null;
   yellow_count: number | null;
   green_count: number | null;
@@ -199,27 +201,32 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         return;
       }
 
-      const balanceQuery = supabase
+      const { data: outstandingInvoices, error: invError } = await supabase
         .from('acumatica_invoices')
-        .select('balance, type')
+        .select('balance, type, status')
         .eq('customer', customerId)
-        .eq('status', 'Open')
+        .in('status', ['Open', 'Balanced'])
         .gt('balance', 0);
-
-      const { data: openInvoices, error: invError } = await balanceQuery;
 
       let calculatedBalance = 0;
       let grossBalance = 0;
       let creditMemoBalance = 0;
       let openInvoiceCount = 0;
+      let balancedInvoiceCount = 0;
+      let balancedInvoiceBalance = 0;
 
-      if (!invError && openInvoices) {
-        openInvoices.forEach((inv: any) => {
+      if (!invError && outstandingInvoices) {
+        outstandingInvoices.forEach((inv: any) => {
           if (inv.type === 'Credit Memo') {
             creditMemoBalance += inv.balance;
           } else {
             grossBalance += inv.balance;
-            openInvoiceCount++;
+            if (inv.status === 'Balanced') {
+              balancedInvoiceCount++;
+              balancedInvoiceBalance += inv.balance;
+            } else {
+              openInvoiceCount++;
+            }
           }
         });
         calculatedBalance = excludeCreditMemos ? grossBalance : grossBalance - creditMemoBalance;
@@ -245,6 +252,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         gross_balance: grossBalance,
         credit_memo_balance: creditMemoBalance,
         open_invoice_count: openInvoiceCount,
+        balanced_invoice_count: balancedInvoiceCount,
+        balanced_invoice_balance: balancedInvoiceBalance,
         red_count: null,
         yellow_count: null,
         green_count: null,
@@ -879,7 +888,34 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             </div>
             <p className="text-sm text-red-600 font-medium mb-1">Current Balance Owed</p>
             <p className="text-2xl font-bold text-red-900">{formatCurrency(currentBalance)}</p>
-            <p className="text-xs text-red-700 mt-1">{invoiceCounts.open} open invoice{invoiceCounts.open !== 1 ? 's' : ''}</p>
+            <div className="mt-2 space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-red-700 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                  Open ({customer?.open_invoice_count || 0})
+                </span>
+                <span className="font-medium text-red-800">
+                  {formatCurrency((customer?.gross_balance || 0) - (customer?.balanced_invoice_balance || 0))}
+                </span>
+              </div>
+              {(customer?.balanced_invoice_count || 0) > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-amber-700 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                    Balanced ({customer.balanced_invoice_count})
+                  </span>
+                  <span className="font-medium text-amber-800">
+                    {formatCurrency(customer.balanced_invoice_balance || 0)}
+                  </span>
+                </div>
+              )}
+              {!excludeCreditMemos && (customer?.credit_memo_balance || 0) > 0 && (
+                <div className="flex justify-between text-xs border-t border-red-200 pt-1">
+                  <span className="text-red-600">Credit Memos applied</span>
+                  <span className="font-medium text-red-600">-{formatCurrency(customer.credit_memo_balance || 0)}</span>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6">
@@ -1123,7 +1159,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             >
               <div className="flex items-center">
                 <FileText className="w-4 h-4 mr-2" />
-                Open Invoices ({displayedInvoices.length} / {invoiceCounts.open})
+                Open ({displayedInvoices.length} / {invoiceCounts.open})
               </div>
             </button>
             <button
