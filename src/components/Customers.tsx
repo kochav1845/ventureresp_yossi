@@ -62,12 +62,45 @@ type FilterConfig = {
 
 const BATCH_SIZE = 1000;
 
-async function batchFetchCustomers(params: Record<string, any>): Promise<any[]> {
+async function batchFetchRpc(rpcName: string, params: Record<string, any>): Promise<any[]> {
   let allData: any[] = [];
   let offset = 0;
   while (true) {
     const { data, error } = await supabase
-      .rpc('get_customers_with_balance', { ...params, p_limit: BATCH_SIZE, p_offset: offset });
+      .rpc(rpcName, params)
+      .range(offset, offset + BATCH_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < BATCH_SIZE) break;
+    offset += BATCH_SIZE;
+  }
+  return allData;
+}
+
+async function batchFetchRpcWithParams(rpcName: string, params: Record<string, any>): Promise<any[]> {
+  let allData: any[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .rpc(rpcName, { ...params, p_limit: BATCH_SIZE, p_offset: offset });
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < BATCH_SIZE) break;
+    offset += BATCH_SIZE;
+  }
+  return allData;
+}
+
+async function batchFetchTable(table: string, selectCols: string): Promise<any[]> {
+  let allData: any[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(selectCols)
+      .range(offset, offset + BATCH_SIZE - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
     allData = allData.concat(data);
@@ -247,24 +280,20 @@ export default function Customers({ onBack }: CustomersProps) {
     setLoading(true);
     setIsSearching(false);
     try {
-      const [fastResult, customerTableResult] = await Promise.all([
-        supabase.rpc('get_customers_with_balance_fast', {
+      const [fastData, trackingData] = await Promise.all([
+        batchFetchRpc('get_customers_with_balance_fast', {
           p_test_customers: showTestCustomers,
           p_exclude_credit_memos: excludeCreditMemos
         }),
-        supabase
-          .from('acumatica_customers')
-          .select('customer_id, responded_this_month, postpone_until, postpone_reason, is_active')
+        batchFetchTable('acumatica_customers', 'customer_id, responded_this_month, postpone_until, postpone_reason, is_active')
       ]);
 
-      if (fastResult.error) throw fastResult.error;
-
       const customerLookup = new Map<string, any>();
-      (customerTableResult.data || []).forEach((c: any) => {
+      trackingData.forEach((c: any) => {
         customerLookup.set(c.customer_id, c);
       });
 
-      const mergedData = (fastResult.data || []).map((item: any) =>
+      const mergedData = fastData.map((item: any) =>
         mapCustomerRow(item, customerLookup, showTestCustomers)
       );
 
@@ -310,7 +339,7 @@ export default function Customers({ onBack }: CustomersProps) {
     if (hasServerFilter) {
       setLoading(true);
       try {
-        const analyticsData = await batchFetchCustomers({
+        const analyticsData = await batchFetchRpcWithParams('get_customers_with_balance', {
           p_search: searchQuery.trim() || null,
           p_status_filter: 'all',
           p_country_filter: 'all',
@@ -333,11 +362,9 @@ export default function Customers({ onBack }: CustomersProps) {
           p_test_customers: showTestCustomers
         });
 
-        const { data: custTableData } = await supabase
-          .from('acumatica_customers')
-          .select('customer_id, responded_this_month, postpone_until, postpone_reason, is_active');
+        const custTableData = await batchFetchTable('acumatica_customers', 'customer_id, responded_this_month, postpone_until, postpone_reason, is_active');
         const custLookup = new Map<string, any>();
-        (custTableData || []).forEach((c: any) => {
+        custTableData.forEach((c: any) => {
           custLookup.set(c.customer_id, c);
         });
 
