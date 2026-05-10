@@ -1599,9 +1599,9 @@ export default function Customers({ onBack }: CustomersProps) {
                           <div>
                             <div className="flex items-center gap-2">
                               <span
-                                className={`text-gray-900 font-semibold ${showTestCustomers ? 'cursor-pointer hover:text-blue-600 hover:underline' : ''}`}
+                                className="text-gray-900 font-semibold cursor-pointer hover:text-blue-600 hover:underline"
                                 onClick={() => {
-                                  if (showTestCustomers && customer.customer_id) {
+                                  if (customer.customer_id) {
                                     navigate(`/customers?customer=${customer.customer_id}`);
                                   }
                                 }}
