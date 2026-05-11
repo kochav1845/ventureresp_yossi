@@ -62,6 +62,8 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
     const dateTo = `${endDate}T23:59:59`;
     const dateFilter = `Date ge datetimeoffset'${dateFrom}' and Date le datetimeoffset'${dateTo}'`;
 
+    const selectFields = '$select=ReferenceNbr,Type,Status,CustomerID,Customer,Date,DueDate,Amount,Balance,Description,CurrencyID,LastModifiedDateTime';
+
     // Step 1: Get lightweight list of all invoice refs from Acumatica
     const listUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${dateFilter}&$select=ReferenceNbr,Type`;
     console.log(`[invoice-sync] Fetching invoice list for ${startDate} to ${endDate}`);
@@ -150,7 +152,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
       let hasMore = true;
 
       while (hasMore) {
-        const pageUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${dateFilter}&$top=${PAGE_SIZE_API}&$skip=${skip}`;
+        const pageUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${dateFilter}&${selectFields}&$top=${PAGE_SIZE_API}&$skip=${skip}`;
         console.log(`[invoice-sync] Fetching page at skip=${skip}`);
 
         const pageResponse = await sessionManager.makeAuthenticatedRequest(creds, pageUrl, {
@@ -238,7 +240,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
         });
 
         const batchFilter = refFilters.join(' or ');
-        const batchUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${batchFilter}`;
+        const batchUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${batchFilter}&${selectFields}`;
 
         console.log(`[invoice-sync] Fetching batch ${Math.floor(batchStart / BATCH_SIZE) + 1} (${batch.length} invoices)`);
 
