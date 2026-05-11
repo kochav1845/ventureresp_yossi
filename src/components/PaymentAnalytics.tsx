@@ -157,6 +157,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [appliedShowOnlyOverdue, setAppliedShowOnlyOverdue] = useState(true);
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
 
+  // Expanded invoice applications per payment
+  const [expandedPaymentIds, setExpandedPaymentIds] = useState<Set<string>>(new Set());
+
   // View mode state
   const [viewMode, setViewMode] = useState<'payment' | 'application'>('payment');
   const [applicationRows, setApplicationRows] = useState<any[]>([]);
@@ -3460,15 +3463,29 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-600 max-w-md">
                             {applications.length > 0 ? (
-                              <span className="text-blue-600 font-medium">
+                              <button
+                                onClick={() => {
+                                  setExpandedPaymentIds(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(payment.id)) {
+                                      next.delete(payment.id);
+                                    } else {
+                                      next.add(payment.id);
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                className="flex items-center gap-1.5 text-blue-600 font-medium hover:text-blue-800 transition-colors"
+                              >
+                                <ChevronRight className={`w-4 h-4 transition-transform ${expandedPaymentIds.has(payment.id) ? 'rotate-90' : ''}`} />
                                 {applications.length} invoice{applications.length !== 1 ? 's' : ''} applied
-                              </span>
+                              </button>
                             ) : (
                               <span className="text-gray-400 italic">No applications</span>
                             )}
                           </td>
                         </tr>
-                        {applications.length > 0 && applications.map((app, appIndex) => (
+                        {applications.length > 0 && expandedPaymentIds.has(payment.id) && applications.map((app, appIndex) => (
                           <tr
                             key={`${payment.id}-invoice-${appIndex}`}
                             className="bg-blue-50/40 border-b border-blue-100 hover:bg-blue-100/40 transition-colors"
