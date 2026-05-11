@@ -83,6 +83,8 @@ export default function InvoiceAnalyticsPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
+
   const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all';
 
   const monthName = `${MONTH_NAMES[selectedMonth.getMonth()]} ${selectedMonth.getFullYear()}`;
@@ -106,6 +108,33 @@ export default function InvoiceAnalyticsPage() {
     }
     return groups;
   }, [filteredInvoices, allFilteredInvoices, selectedDate]);
+
+  // Customer-grouped data for the table
+  const customerGroups = useMemo(() => {
+    const source = filteredInvoices;
+    if (source.length === 0) return [];
+    const map = new Map<string, { customerName: string; customerId: string; invoices: InvoiceRow[]; totalAmount: number; totalBalance: number }>();
+    for (const inv of source) {
+      const key = inv.customer || 'unknown';
+      const existing = map.get(key);
+      if (existing) {
+        existing.invoices.push(inv);
+        existing.totalAmount += inv.amount;
+        existing.totalBalance += inv.balance;
+      } else {
+        map.set(key, {
+          customerName: inv.customer_name || 'Unknown',
+          customerId: key,
+          invoices: [inv],
+          totalAmount: inv.amount,
+          totalBalance: inv.balance,
+        });
+      }
+    }
+    const groups = Array.from(map.values());
+    groups.sort((a, b) => b.totalAmount - a.totalAmount);
+    return groups;
+  }, [filteredInvoices]);
 
   // Unique filter values
   const uniqueStatuses = useMemo(() => {
@@ -513,23 +542,43 @@ export default function InvoiceAnalyticsPage() {
   };
 
   const exportToExcel = () => {
-    const source = selectedDate ? filteredInvoices : allFilteredInvoices;
-    const exportData = source.map(inv => ({
-      Date: formatDateString(inv.date),
-      Reference: inv.reference_number,
-      Type: inv.type,
-      Status: inv.status,
-      Customer_ID: inv.customer,
-      Customer_Name: inv.customer_name,
-      Amount: inv.amount,
-      Balance: inv.balance,
-      Due_Date: formatDateString(inv.due_date),
-      Description: inv.description,
-    }));
+    const rows: Record<string, any>[] = [];
+    for (const group of customerGroups) {
+      rows.push({
+        Customer_ID: group.customerId,
+        Customer_Name: group.customerName,
+        Invoice_Count: group.invoices.length,
+        Total_Amount: group.totalAmount,
+        Total_Balance: group.totalBalance,
+        Date: '',
+        Reference: '',
+        Type: '',
+        Status: '',
+        Due_Date: '',
+        Description: '',
+      });
+      for (const inv of group.invoices) {
+        rows.push({
+          Customer_ID: '',
+          Customer_Name: '',
+          Invoice_Count: '',
+          Total_Amount: '',
+          Total_Balance: '',
+          Date: formatDateString(inv.date),
+          Reference: inv.reference_number,
+          Type: inv.type,
+          Status: inv.status,
+          Due_Date: formatDateString(inv.due_date),
+          Description: inv.description,
+          Amount: inv.amount,
+          Balance: inv.balance,
+        });
+      }
+    }
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
+    const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Invoices');
+    XLSX.utils.book_append_sheet(wb, ws, 'Customer Invoices');
     XLSX.writeFile(wb, `invoice_analytics_${selectedMonth.getFullYear()}_${selectedMonth.getMonth() + 1}.xlsx`);
   };
 
@@ -1020,7 +1069,7 @@ export default function InvoiceAnalyticsPage() {
             </button>
           </div>
 
-          {/* Invoice Table */}
+          {/* Customer-Grouped Invoice Table */}
           <div className="bg-white border border-gray-200 shadow-lg rounded-xl overflow-hidden max-w-full">
             <div className="max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
               {loading && filteredInvoices.length === 0 ? (
@@ -1030,115 +1079,159 @@ export default function InvoiceAnalyticsPage() {
                     <p className="text-gray-500">{loadingBatchInfo || 'Loading invoices...'}</p>
                   </div>
                 </div>
-              ) : filteredInvoices.length === 0 && !loading ? (
+              ) : customerGroups.length === 0 && !loading ? (
                 <div className="text-center text-gray-500 py-12">
                   {searchTerm ? 'No invoices found matching your search.' : 'No invoices found for this period.'}
                 </div>
               ) : (
-                <table className="divide-y divide-gray-200" style={{ minWidth: '1200px', width: 'max-content' }}>
+                <table className="divide-y divide-gray-200 w-full" style={{ minWidth: '1000px' }}>
                   <thead>
-                    <tr>
-                      <SortableHeader field="date" label="Date" />
-                      <SortableHeader field="reference_number" label="Reference" />
-                      <SortableHeader field="type" label="Type" />
-                      <SortableHeader field="customer_name" label="Customer" />
-                      <SortableHeader field="amount" label="Amount" />
-                      <SortableHeader field="balance" label="Balance" />
-                      <SortableHeader field="due_date" label="Due Date" />
-                      <SortableHeader field="status" label="Status" />
-                      <SortableHeader field="description" label="Description" />
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 sticky top-0 z-10">
-                        Actions
-                      </th>
+                    <tr className="bg-gray-50">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-10 bg-gray-50 w-10"></th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-10 bg-gray-50">Customer</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-10 bg-gray-50">Invoices</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-10 bg-gray-50">Total Amount</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-10 bg-gray-50">Open Balance</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-10 bg-gray-50">Paid %</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white">
-                    {(() => {
-                      let lastDayKey = '';
-                      return filteredInvoices.map((invoice, index) => {
-                        const currentDayKey = invoice.date ? invoice.date.split('T')[0] : 'unknown';
-                        const showDayHeader = !selectedDate && dayGroups && currentDayKey !== lastDayKey;
-                        if (showDayHeader) lastDayKey = currentDayKey;
-                        const dayGroup = dayGroups?.get(currentDayKey);
-                        const colorDot = getColorDot(invoice.color_status);
+                    {customerGroups.map((group) => {
+                      const isExpanded = expandedCustomers.has(group.customerId);
+                      const paidPct = group.totalAmount > 0 ? Math.round(((group.totalAmount - group.totalBalance) / group.totalAmount) * 100) : 100;
 
-                        return (
-                          <Fragment key={invoice.id || index}>
-                            {showDayHeader && dayGroup && (
-                              <tr className="bg-gradient-to-r from-slate-100 to-blue-50">
-                                <td colSpan={10} className="px-4 py-2">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                      <Calendar className="w-4 h-4 text-blue-500" />
-                                      <span className="font-semibold text-gray-800">
-                                        {new Date(currentDayKey + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                                      </span>
-                                      <span className="text-sm text-gray-500">
-                                        {dayGroup.count} invoice{dayGroup.count !== 1 ? 's' : ''}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                      <span className="text-sm font-semibold text-blue-600">{formatCurrencyFull(dayGroup.total)}</span>
-                                      {dayGroup.balance > 0 && (
-                                        <span className="text-sm font-semibold text-amber-600">{formatCurrencyFull(dayGroup.balance)} bal</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                            <tr className="hover:bg-gray-50 transition-colors border-b border-gray-100">
-                              <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap border-r border-gray-100">
-                                {formatDateString(invoice.date)}
-                              </td>
-                              <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap border-r border-gray-100">
-                                <div className="flex items-center gap-2">
-                                  {colorDot && <div className={`w-2.5 h-2.5 rounded-full ${colorDot}`} />}
-                                  {invoice.reference_number}
+                      return (
+                        <Fragment key={group.customerId}>
+                          <tr
+                            onClick={() => {
+                              setExpandedCustomers(prev => {
+                                const next = new Set(prev);
+                                if (next.has(group.customerId)) {
+                                  next.delete(group.customerId);
+                                } else {
+                                  next.add(group.customerId);
+                                }
+                                return next;
+                              });
+                            }}
+                            className="cursor-pointer hover:bg-blue-50/50 transition-colors border-b border-gray-200"
+                          >
+                            <td className="px-4 py-3.5">
+                              <ChevronRight className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <div className="font-semibold text-gray-800">{group.customerName}</div>
+                              <div className="text-xs text-gray-500">{group.customerId}</div>
+                            </td>
+                            <td className="px-4 py-3.5 text-center">
+                              <span className="inline-flex items-center justify-center min-w-[28px] h-7 px-2 text-sm font-bold text-blue-700 bg-blue-100 rounded-full">
+                                {group.invoices.length}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 text-right font-semibold text-gray-900">
+                              {formatCurrencyFull(group.totalAmount)}
+                            </td>
+                            <td className={`px-4 py-3.5 text-right font-semibold ${group.totalBalance > 0 ? 'text-amber-600' : 'text-green-600'}`}>
+                              {formatCurrencyFull(group.totalBalance)}
+                            </td>
+                            <td className="px-4 py-3.5 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${paidPct === 100 ? 'bg-green-500' : paidPct >= 50 ? 'bg-blue-500' : 'bg-amber-500'}`}
+                                    style={{ width: `${paidPct}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-medium text-gray-600 w-9 text-right">{paidPct}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr>
+                              <td colSpan={6} className="p-0">
+                                <div className="bg-slate-50 border-y border-slate-200">
+                                  <table className="w-full">
+                                    <thead>
+                                      <tr className="bg-slate-100/80">
+                                        <th className="px-6 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Date</th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Reference</th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
+                                        <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase">Amount</th>
+                                        <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase">Balance</th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Due Date</th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
+                                        <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600 uppercase w-10"></th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {group.invoices
+                                        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+                                        .map((invoice, idx) => {
+                                          const colorDot = getColorDot(invoice.color_status);
+                                          return (
+                                            <tr key={invoice.id || idx} className="hover:bg-slate-100/60 transition-colors border-b border-slate-200/60 last:border-b-0">
+                                              <td className="px-6 py-2.5 text-sm text-gray-700 whitespace-nowrap">{formatDateString(invoice.date)}</td>
+                                              <td className="px-4 py-2.5 text-sm font-medium text-gray-900 whitespace-nowrap">
+                                                <div className="flex items-center gap-2">
+                                                  {colorDot && <div className={`w-2 h-2 rounded-full ${colorDot}`} />}
+                                                  {invoice.reference_number}
+                                                </div>
+                                              </td>
+                                              <td className="px-4 py-2.5 text-sm whitespace-nowrap">
+                                                <span className={`px-2 py-0.5 text-xs font-medium rounded ${getTypeBadge(invoice.type)}`}>{invoice.type}</span>
+                                              </td>
+                                              <td className="px-4 py-2.5 text-sm font-semibold text-gray-900 whitespace-nowrap text-right">{formatCurrencyFull(invoice.amount)}</td>
+                                              <td className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap text-right ${invoice.balance > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                                                {formatCurrencyFull(invoice.balance)}
+                                              </td>
+                                              <td className="px-4 py-2.5 text-sm text-gray-700 whitespace-nowrap">{formatDateString(invoice.due_date)}</td>
+                                              <td className="px-4 py-2.5 text-sm whitespace-nowrap">
+                                                <span className={`px-2 py-0.5 text-xs font-medium rounded border ${getStatusBadge(invoice.status)}`}>{invoice.status}</span>
+                                              </td>
+                                              <td className="px-4 py-2.5 text-sm text-gray-600 max-w-[180px] truncate" title={invoice.description}>{invoice.description || '-'}</td>
+                                              <td className="px-4 py-2.5 text-center">
+                                                <a
+                                                  href={getAcumaticaInvoiceUrl(invoice.reference_number)}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="inline-flex items-center text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded p-1 transition-colors"
+                                                  title="Open in Acumatica"
+                                                >
+                                                  <ExternalLink className="w-3.5 h-3.5" />
+                                                </a>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                    </tbody>
+                                  </table>
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-sm whitespace-nowrap border-r border-gray-100">
-                                <span className={`px-2 py-1 text-xs font-medium rounded ${getTypeBadge(invoice.type)}`}>
-                                  {invoice.type}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-100 max-w-[200px] truncate" title={`${invoice.customer_name} (${invoice.customer})`}>
-                                {invoice.customer_name}
-                              </td>
-                              <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap text-right border-r border-gray-100">
-                                {formatCurrencyFull(invoice.amount)}
-                              </td>
-                              <td className={`px-4 py-3 text-sm font-semibold whitespace-nowrap text-right border-r border-gray-100 ${invoice.balance > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
-                                {formatCurrencyFull(invoice.balance)}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap border-r border-gray-100">
-                                {formatDateString(invoice.due_date)}
-                              </td>
-                              <td className="px-4 py-3 text-sm whitespace-nowrap border-r border-gray-100">
-                                <span className={`px-2 py-1 text-xs font-medium rounded border ${getStatusBadge(invoice.status)}`}>
-                                  {invoice.status}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-600 max-w-[200px] truncate border-r border-gray-100" title={invoice.description}>
-                                {invoice.description || '-'}
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                <a
-                                  href={getAcumaticaInvoiceUrl(invoice.reference_number)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
-                                  title="Open in Acumatica"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
-                              </td>
                             </tr>
-                          </Fragment>
-                        );
-                      });
-                    })()}
+                          )}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
+                  <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                    <tr>
+                      <td className="px-4 py-3"></td>
+                      <td className="px-4 py-3 text-sm font-bold text-gray-700">
+                        TOTAL ({customerGroups.length} customers)
+                      </td>
+                      <td className="px-4 py-3 text-center text-sm font-bold text-gray-700">
+                        {filteredInvoices.length}
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm font-bold text-gray-900">
+                        {formatCurrencyFull(customerGroups.reduce((sum, g) => sum + g.totalAmount, 0))}
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm font-bold text-amber-600">
+                        {formatCurrencyFull(customerGroups.reduce((sum, g) => sum + g.totalBalance, 0))}
+                      </td>
+                      <td className="px-4 py-3"></td>
+                    </tr>
+                  </tfoot>
                 </table>
               )}
             </div>
