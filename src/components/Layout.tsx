@@ -157,14 +157,14 @@ export default function Layout() {
     {
       title: 'Invoice Management',
       items: [
-        ...(hasPermission(PERMISSION_KEYS.INVOICES_VIEW) ? [{ id: 'acumatica-invoices', name: 'Invoices', icon: FileText, permission: PERMISSION_KEYS.INVOICES_VIEW }] : []),
+        ...(hasPermission(PERMISSION_KEYS.INVOICES_VIEW) ? [{ id: 'invoice-analytics', name: 'Invoice Analytics', icon: FileText, permission: PERMISSION_KEYS.INVOICES_VIEW }] : []),
         ...(hasPermission(PERMISSION_KEYS.INVOICES_STATUS) ? [{ id: 'invoice-status-admin', name: 'Invoice Status', icon: Shield, permission: PERMISSION_KEYS.INVOICES_STATUS }] : []),
       ]
     },
     {
       title: 'Payment Management',
       items: [
-        ...(hasPermission(PERMISSION_KEYS.PAYMENTS_VIEW) ? [{ id: 'acumatica-payments', name: 'Payments', icon: DollarSign, permission: PERMISSION_KEYS.PAYMENTS_VIEW }] : []),
+        ...(hasPermission(PERMISSION_KEYS.PAYMENTS_VIEW) ? [{ id: 'payment-analytics', name: 'Payment Analytics', icon: DollarSign, permission: PERMISSION_KEYS.PAYMENTS_VIEW }] : []),
       ]
     },
     {
