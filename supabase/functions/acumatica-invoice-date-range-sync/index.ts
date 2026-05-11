@@ -22,6 +22,55 @@ async function updateProgress(supabase: any, jobId: string, progress: any) {
     .eq('id', jobId);
 }
 
+async function fetchWithRetry(
+  sessionManager: any,
+  creds: any,
+  url: string,
+  retryUrls: string[] = []
+): Promise<Response> {
+  const response = await sessionManager.makeAuthenticatedRequest(creds, url, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (response.ok) return response;
+
+  for (const retryUrl of retryUrls) {
+    const retryResponse = await sessionManager.makeAuthenticatedRequest(creds, retryUrl, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (retryResponse.ok) return retryResponse;
+  }
+
+  return response;
+}
+
+function extractInvoiceRow(invoice: any): any {
+  let refNbr = invoice.ReferenceNbr?.value;
+  const type = invoice.Type?.value;
+  if (!refNbr || !type) return null;
+
+  refNbr = padRefNbr(refNbr);
+
+  return {
+    reference_number: refNbr,
+    type,
+    status: invoice.Status?.value || null,
+    customer: invoice.CustomerID?.value || invoice.Customer?.value || null,
+    customer_name: invoice.CustomerName?.value || invoice.Customer?.value || null,
+    date: invoice.Date?.value || null,
+    due_date: invoice.DueDate?.value || null,
+    amount: invoice.Amount?.value || 0,
+    balance: invoice.Balance?.value || 0,
+    description: invoice.Description?.value || null,
+    currency: invoice.CurrencyID?.value || null,
+    last_modified_datetime: invoice.LastModifiedDateTime?.value || null,
+    raw_data: invoice,
+    last_sync_timestamp: new Date().toISOString(),
+  };
+}
+
 async function processSync(supabase: any, jobId: string, startDate: string, endDate: string) {
   try {
     await supabase
@@ -62,10 +111,11 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
     const dateTo = `${endDate}T23:59:59`;
     const dateFilter = `Date ge datetimeoffset'${dateFrom}' and Date le datetimeoffset'${dateTo}'`;
 
-    const selectFields = '$select=ReferenceNbr,Type,Status,CustomerID,Customer,Date,DueDate,Amount,Balance,Description,CurrencyID,LastModifiedDateTime';
+    const API_V24 = 'entity/Default/24.200.001/Invoice';
+    const API_V23 = 'entity/Default/23.200.001/Invoice';
 
     // Step 1: Get lightweight list of all invoice refs from Acumatica
-    const listUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${dateFilter}&$select=ReferenceNbr,Type`;
+    const listUrl = `${acumaticaUrl}/${API_V24}?$filter=${dateFilter}&$select=ReferenceNbr,Type`;
     console.log(`[invoice-sync] Fetching invoice list for ${startDate} to ${endDate}`);
 
     const listResponse = await sessionManager.makeAuthenticatedRequest(creds, listUrl, {
@@ -81,7 +131,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
     const listData = await listResponse.json();
     const acumaticaInvoices = Array.isArray(listData) ? listData : [];
 
-    // Step 2: Get ALL existing invoice refs from our DB (paginate past 1000-row default limit)
+    // Step 2: Get ALL existing invoice refs from our DB
     const dbSet = new Set<string>();
     const PAGE_SIZE = 1000;
     let offset = 0;
@@ -141,8 +191,59 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
       return `${type}:${refNbr}`;
     }));
 
-    // If more than 100 missing, fetch all invoices in the date range with pagination
-    // instead of building huge OR filters that exceed URL length limits
+    // Try fetching one invoice first to detect which API version / fields work
+    const safeSelect = 'ReferenceNbr,Type,Status,Date,DueDate,Amount,Balance,Description,CurrencyID,LastModifiedDateTime';
+    const fullSelect = `${safeSelect},CustomerID,Customer`;
+
+    let workingApiPath = API_V24;
+    let workingSelect = fullSelect;
+
+    // Probe with a single invoice to find working combination
+    const probeRef = missingInvoices[0].ReferenceNbr?.value;
+    const probeType = missingInvoices[0].Type?.value;
+    if (probeRef && probeType) {
+      const probeFilter = `ReferenceNbr eq '${probeRef}' and Type eq '${probeType}'`;
+      const combos = [
+        { api: API_V24, select: fullSelect, label: 'v24+full' },
+        { api: API_V24, select: safeSelect, label: 'v24+safe' },
+        { api: API_V24, select: '', label: 'v24+noselect' },
+        { api: API_V23, select: fullSelect, label: 'v23+full' },
+        { api: API_V23, select: safeSelect, label: 'v23+safe' },
+        { api: API_V23, select: '', label: 'v23+noselect' },
+      ];
+
+      for (const combo of combos) {
+        const selectParam = combo.select ? `&$select=${combo.select}` : '';
+        const probeUrl = `${acumaticaUrl}/${combo.api}?$filter=${probeFilter}${selectParam}`;
+        console.log(`[invoice-sync] Probing ${combo.label}...`);
+
+        try {
+          const probeResponse = await sessionManager.makeAuthenticatedRequest(creds, probeUrl, {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          });
+
+          if (probeResponse.ok) {
+            const probeData = await probeResponse.json();
+            if (Array.isArray(probeData) && probeData.length > 0) {
+              workingApiPath = combo.api;
+              workingSelect = combo.select;
+              console.log(`[invoice-sync] Probe succeeded with ${combo.label}`);
+              break;
+            }
+          } else {
+            const errText = await probeResponse.text();
+            console.log(`[invoice-sync] Probe ${combo.label} failed (${probeResponse.status}): ${errText.substring(0, 100)}`);
+          }
+        } catch (e: any) {
+          console.log(`[invoice-sync] Probe ${combo.label} error: ${e.message}`);
+        }
+      }
+    }
+
+    const selectParam = workingSelect ? `&$select=${workingSelect}` : '';
+    console.log(`[invoice-sync] Using API: ${workingApiPath}, select: ${workingSelect || '(all fields)'}`);
+
     const USE_DATE_RANGE_THRESHOLD = 100;
 
     if (missingInvoices.length > USE_DATE_RANGE_THRESHOLD) {
@@ -152,7 +253,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
       let hasMore = true;
 
       while (hasMore) {
-        const pageUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${dateFilter}&${selectFields}&$top=${PAGE_SIZE_API}&$skip=${skip}`;
+        const pageUrl = `${acumaticaUrl}/${workingApiPath}?$filter=${dateFilter}${selectParam}&$top=${PAGE_SIZE_API}&$skip=${skip}`;
         console.log(`[invoice-sync] Fetching page at skip=${skip}`);
 
         const pageResponse = await sessionManager.makeAuthenticatedRequest(creds, pageUrl, {
@@ -171,39 +272,19 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
 
         for (const invoice of invoices) {
           try {
-            let refNbr = invoice.ReferenceNbr?.value;
-            const type = invoice.Type?.value;
-            if (!refNbr || !type) continue;
-
-            refNbr = padRefNbr(refNbr);
-            if (!missingSet.has(`${type}:${refNbr}`)) continue;
-
-            const invoiceRow: any = {
-              reference_number: refNbr,
-              type,
-              status: invoice.Status?.value || null,
-              customer: invoice.CustomerID?.value || null,
-              customer_name: invoice.Customer?.value || null,
-              date: invoice.Date?.value || null,
-              due_date: invoice.DueDate?.value || null,
-              amount: invoice.Amount?.value || 0,
-              balance: invoice.Balance?.value || 0,
-              description: invoice.Description?.value || null,
-              currency: invoice.CurrencyID?.value || null,
-              last_modified_datetime: invoice.LastModifiedDateTime?.value || null,
-              raw_data: invoice,
-              last_sync_timestamp: new Date().toISOString(),
-            };
+            const row = extractInvoiceRow(invoice);
+            if (!row) continue;
+            if (!missingSet.has(`${row.type}:${row.reference_number}`)) continue;
 
             const { error } = await supabase
               .from('acumatica_invoices')
-              .upsert(invoiceRow, {
+              .upsert(row, {
                 onConflict: 'reference_number,type',
                 count: 'exact',
               });
 
             if (error) {
-              errors.push(`Upsert ${type} ${refNbr}: ${error.message}`);
+              errors.push(`Upsert ${row.type} ${row.reference_number}: ${error.message}`);
             } else {
               created++;
             }
@@ -227,7 +308,6 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
         }
       }
     } else {
-      // For smaller batches, use individual reference filters with smaller batch size
       const BATCH_SIZE = 10;
 
       for (let batchStart = 0; batchStart < missingInvoices.length; batchStart += BATCH_SIZE) {
@@ -240,7 +320,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
         });
 
         const batchFilter = refFilters.join(' or ');
-        const batchUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${batchFilter}&${selectFields}`;
+        const batchUrl = `${acumaticaUrl}/${workingApiPath}?$filter=${batchFilter}${selectParam}`;
 
         console.log(`[invoice-sync] Fetching batch ${Math.floor(batchStart / BATCH_SIZE) + 1} (${batch.length} invoices)`);
 
@@ -260,38 +340,18 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
 
         for (const invoice of invoices) {
           try {
-            let refNbr = invoice.ReferenceNbr?.value;
-            const type = invoice.Type?.value;
-            if (!refNbr || !type) continue;
-
-            refNbr = padRefNbr(refNbr);
-
-            const invoiceRow: any = {
-              reference_number: refNbr,
-              type,
-              status: invoice.Status?.value || null,
-              customer: invoice.CustomerID?.value || null,
-              customer_name: invoice.Customer?.value || null,
-              date: invoice.Date?.value || null,
-              due_date: invoice.DueDate?.value || null,
-              amount: invoice.Amount?.value || 0,
-              balance: invoice.Balance?.value || 0,
-              description: invoice.Description?.value || null,
-              currency: invoice.CurrencyID?.value || null,
-              last_modified_datetime: invoice.LastModifiedDateTime?.value || null,
-              raw_data: invoice,
-              last_sync_timestamp: new Date().toISOString(),
-            };
+            const row = extractInvoiceRow(invoice);
+            if (!row) continue;
 
             const { error } = await supabase
               .from('acumatica_invoices')
-              .upsert(invoiceRow, {
+              .upsert(row, {
                 onConflict: 'reference_number,type',
                 count: 'exact',
               });
 
             if (error) {
-              errors.push(`Upsert ${type} ${refNbr}: ${error.message}`);
+              errors.push(`Upsert ${row.type} ${row.reference_number}: ${error.message}`);
             } else {
               created++;
             }
@@ -321,6 +381,8 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
           total: missingInvoices.length,
           skipped: acumaticaInvoices.length - missingInvoices.length,
           errors: errors.slice(0, 10),
+          apiVersion: workingApiPath,
+          selectFields: workingSelect || '(all)',
         },
       })
       .eq('id', jobId);
