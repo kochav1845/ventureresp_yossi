@@ -417,14 +417,20 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const authHeader = req.headers.get("Authorization");
+    let userId: string | null = null;
     if (authHeader) {
       const token = authHeader.replace("Bearer ", "");
-      const { data: { user } } = await supabase.auth.getUser(token);
-      if (!user) {
-        return new Response(
-          JSON.stringify({ error: "Unauthorized" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || '';
+      const isInternalCall = token === supabaseKey || token === anonKey;
+      if (!isInternalCall) {
+        const { data: { user } } = await supabase.auth.getUser(token);
+        if (!user) {
+          return new Response(
+            JSON.stringify({ error: "Unauthorized" }),
+            { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        userId = user.id;
       }
     }
 
@@ -436,13 +442,6 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "Start date and end date are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-    }
-
-    let userId = null;
-    if (authHeader) {
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user } } = await supabase.auth.getUser(token);
-      userId = user?.id;
     }
 
     const { data: job, error: jobError } = await supabase
