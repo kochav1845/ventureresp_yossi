@@ -346,9 +346,9 @@ export default function InvoiceAnalyticsPage() {
         });
 
         setMonthlyAggregates(aggregates);
-        setMonthlyTotal(totalAmount);
+        setMonthlyTotal(totalAmount - totalCMAmount);
         setMonthlyBalance(totalBalance);
-        setMonthlyInvoiceCount(totalCount);
+        setMonthlyInvoiceCount(totalCount - totalCMCount);
         setMonthlyCustomerCount(totalCustomers);
         setMonthlyCreditMemoTotal(totalCMAmount);
         setMonthlyCreditMemoCount(totalCMCount);
@@ -395,8 +395,8 @@ export default function InvoiceAnalyticsPage() {
         const totalCount = aggregates.reduce((s, a) => s + a.count, 0);
         const totalCM = aggregates.reduce((s, a) => s + a.creditMemoAmount, 0);
         const totalCMCnt = aggregates.reduce((s, a) => s + a.creditMemoCount, 0);
-        setMonthlyTotal(totalAmount);
-        setMonthlyInvoiceCount(totalCount);
+        setMonthlyTotal(totalAmount - totalCM);
+        setMonthlyInvoiceCount(totalCount - totalCMCnt);
         setMonthlyBalance(aggregates.reduce((s, a) => s + a.openBalance, 0));
         setMonthlyCustomerCount(0);
         setMonthlyCreditMemoTotal(totalCM);
@@ -1020,7 +1020,7 @@ export default function InvoiceAnalyticsPage() {
                       <div className="text-base font-bold text-gray-700 mb-3">{monthData.name}</div>
                       {(monthData.count > 0 || monthData.creditMemoCount > 0) ? (
                         <div className="space-y-1">
-                          <div className="text-xl font-bold text-blue-600">{formatCurrency(monthData.total - monthData.creditMemoAmount)}</div>
+                          <div className="text-xl font-bold text-blue-600">{formatCurrency(monthData.total - 2 * monthData.creditMemoAmount)}</div>
                           {monthData.creditMemoAmount > 0 && (
                             <div className="text-xs font-medium text-red-500">CM: -{formatCurrency(monthData.creditMemoAmount)} ({monthData.creditMemoCount})</div>
                           )}
@@ -1058,7 +1058,7 @@ export default function InvoiceAnalyticsPage() {
                       <div className="text-3xl font-bold text-gray-700 mb-4">{yearData.year}</div>
                       {(yearData.count > 0 || yearData.creditMemoCount > 0) ? (
                         <div className="space-y-2">
-                          <div className="text-3xl font-bold text-blue-600">{formatCurrency(yearData.total - yearData.creditMemoAmount)}</div>
+                          <div className="text-3xl font-bold text-blue-600">{formatCurrency(yearData.total - 2 * yearData.creditMemoAmount)}</div>
                           {yearData.creditMemoAmount > 0 && (
                             <div className="text-sm font-medium text-red-500">CM: -{formatCurrency(yearData.creditMemoAmount)} ({yearData.creditMemoCount})</div>
                           )}
