@@ -56,13 +56,15 @@ export default function InvoiceAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [loadingBatchInfo, setLoadingBatchInfo] = useState('');
 
-  const [monthlyAggregates, setMonthlyAggregates] = useState<{ month: number; total: number; count: number; balance: number; openBalance: number; customers: number }[]>([]);
-  const [yearlyAggregates, setYearlyAggregates] = useState<{ year: number; total: number; count: number; balance: number; openBalance: number; customers: number }[]>([]);
+  const [monthlyAggregates, setMonthlyAggregates] = useState<{ month: number; total: number; count: number; balance: number; openBalance: number; customers: number; creditMemoAmount: number; creditMemoCount: number }[]>([]);
+  const [yearlyAggregates, setYearlyAggregates] = useState<{ year: number; total: number; count: number; balance: number; openBalance: number; customers: number; creditMemoAmount: number; creditMemoCount: number }[]>([]);
 
   const [monthlyTotal, setMonthlyTotal] = useState(0);
   const [monthlyBalance, setMonthlyBalance] = useState(0);
   const [monthlyInvoiceCount, setMonthlyInvoiceCount] = useState(0);
   const [monthlyCustomerCount, setMonthlyCustomerCount] = useState(0);
+  const [monthlyCreditMemoTotal, setMonthlyCreditMemoTotal] = useState(0);
+  const [monthlyCreditMemoCount, setMonthlyCreditMemoCount] = useState(0);
 
   const [refreshingAnalytics, setRefreshingAnalytics] = useState(false);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
@@ -170,13 +172,18 @@ export default function InvoiceAnalyticsPage() {
 
   useEffect(() => {
     if (calendarView === 'daily') {
-      const total = allFilteredInvoices.reduce((sum, i) => sum + i.amount, 0);
+      const nonCM = allFilteredInvoices.filter(i => i.type !== 'Credit Memo');
+      const cms = allFilteredInvoices.filter(i => i.type === 'Credit Memo');
+      const total = nonCM.reduce((sum, i) => sum + i.amount, 0);
+      const cmTotal = cms.reduce((sum, i) => sum + i.amount, 0);
       const balance = allFilteredInvoices.reduce((sum, i) => sum + i.balance, 0);
       const customers = new Set(allFilteredInvoices.map(i => i.customer).filter(Boolean));
       setMonthlyTotal(total);
       setMonthlyBalance(balance);
-      setMonthlyInvoiceCount(allFilteredInvoices.length);
+      setMonthlyInvoiceCount(nonCM.length);
       setMonthlyCustomerCount(customers.size);
+      setMonthlyCreditMemoTotal(cmTotal);
+      setMonthlyCreditMemoCount(cms.length);
     }
   }, [allFilteredInvoices, calendarView]);
 
@@ -267,11 +274,15 @@ export default function InvoiceAnalyticsPage() {
           balance: 0,
           openBalance: 0,
           customers: 0,
+          creditMemoAmount: 0,
+          creditMemoCount: 0,
         }));
         let totalAmount = 0;
         let totalBalance = 0;
         let totalCount = 0;
         let totalCustomers = 0;
+        let totalCMAmount = 0;
+        let totalCMCount = 0;
 
         cachedData.forEach((row: any) => {
           if (row.month >= 1 && row.month <= 12) {
@@ -279,6 +290,8 @@ export default function InvoiceAnalyticsPage() {
             const bal = parseFloat(row.total_open_balance) || 0;
             const cnt = row.invoice_count || 0;
             const cust = row.unique_customer_count || 0;
+            const cmAmt = parseFloat(row.credit_memo_amount) || 0;
+            const cmCnt = row.credit_memo_count || 0;
             aggregates[row.month - 1] = {
               month: row.month - 1,
               total: amt,
@@ -286,11 +299,15 @@ export default function InvoiceAnalyticsPage() {
               balance: parseFloat(row.total_balance) || 0,
               openBalance: bal,
               customers: cust,
+              creditMemoAmount: cmAmt,
+              creditMemoCount: cmCnt,
             };
             totalAmount += amt;
             totalBalance += bal;
             totalCount += cnt;
             totalCustomers += cust;
+            totalCMAmount += cmAmt;
+            totalCMCount += cmCnt;
           }
         });
 
@@ -299,6 +316,8 @@ export default function InvoiceAnalyticsPage() {
         setMonthlyBalance(totalBalance);
         setMonthlyInvoiceCount(totalCount);
         setMonthlyCustomerCount(totalCustomers);
+        setMonthlyCreditMemoTotal(totalCMAmount);
+        setMonthlyCreditMemoCount(totalCMCount);
         if (cachedData[0].calculated_at) {
           setLastRefreshTime(new Date(cachedData[0].calculated_at));
         }
@@ -333,15 +352,21 @@ export default function InvoiceAnalyticsPage() {
           balance: parseFloat(row.total_balance) || 0,
           openBalance: parseFloat(row.total_open_balance) || 0,
           customers: row.unique_customer_count || 0,
+          creditMemoAmount: parseFloat(row.credit_memo_amount) || 0,
+          creditMemoCount: row.credit_memo_count || 0,
         }));
 
         setYearlyAggregates(aggregates);
         const totalAmount = aggregates.reduce((s, a) => s + a.total, 0);
         const totalCount = aggregates.reduce((s, a) => s + a.count, 0);
+        const totalCM = aggregates.reduce((s, a) => s + a.creditMemoAmount, 0);
+        const totalCMCnt = aggregates.reduce((s, a) => s + a.creditMemoCount, 0);
         setMonthlyTotal(totalAmount);
         setMonthlyInvoiceCount(totalCount);
         setMonthlyBalance(aggregates.reduce((s, a) => s + a.openBalance, 0));
         setMonthlyCustomerCount(0);
+        setMonthlyCreditMemoTotal(totalCM);
+        setMonthlyCreditMemoCount(totalCMCnt);
         if (cachedData[0].calculated_at) {
           setLastRefreshTime(new Date(cachedData[0].calculated_at));
         }
@@ -523,6 +548,8 @@ export default function InvoiceAnalyticsPage() {
         balance: agg.balance,
         openBalance: agg.openBalance,
         customers: agg.customers,
+        creditMemoAmount: agg.creditMemoAmount,
+        creditMemoCount: agg.creditMemoCount,
       }));
     }
     return Array.from({ length: 12 }, (_, i) => ({
@@ -533,6 +560,8 @@ export default function InvoiceAnalyticsPage() {
       balance: 0,
       openBalance: 0,
       customers: 0,
+      creditMemoAmount: 0,
+      creditMemoCount: 0,
     }));
   };
 
@@ -669,8 +698,11 @@ export default function InvoiceAnalyticsPage() {
                     Summary
                   </h3>
                   <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-lg p-3">
-                    <p className="text-xs text-gray-500">Total Amount</p>
-                    <p className="text-xl font-bold text-gray-700">{formatCurrency(monthlyTotal)}</p>
+                    <p className="text-xs text-gray-500">Net Amount</p>
+                    <p className="text-xl font-bold text-gray-700">{formatCurrency(monthlyTotal - monthlyCreditMemoTotal)}</p>
+                    {monthlyCreditMemoTotal > 0 && (
+                      <p className="text-xs text-red-500 mt-1">CM: -{formatCurrency(monthlyCreditMemoTotal)}</p>
+                    )}
                   </div>
                   <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-lg p-3">
                     <p className="text-xs text-gray-500">Open Balance</p>
@@ -679,6 +711,9 @@ export default function InvoiceAnalyticsPage() {
                   <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-lg p-3">
                     <p className="text-xs text-gray-500">Invoices</p>
                     <p className="text-xl font-bold text-gray-700">{monthlyInvoiceCount.toLocaleString()}</p>
+                    {monthlyCreditMemoCount > 0 && (
+                      <p className="text-xs text-red-500 mt-1">{monthlyCreditMemoCount} CM{monthlyCreditMemoCount !== 1 ? 's' : ''}</p>
+                    )}
                   </div>
                   <div className="bg-gradient-to-br from-teal-500/20 to-teal-600/10 border border-teal-500/30 rounded-lg p-3">
                     <p className="text-xs text-gray-500">Customers</p>
@@ -891,7 +926,11 @@ export default function InvoiceAnalyticsPage() {
                     const isCurrentMonth = date.getMonth() === selectedMonth.getMonth();
                     const isToday = date.toDateString() === new Date().toDateString();
                     const isSelected = selectedDate?.toDateString() === date.toDateString();
-                    const dayTotal = dayInvoices.reduce((sum, i) => sum + i.amount, 0);
+                    const cms = dayInvoices.filter(i => i.type === 'Credit Memo');
+                    const nonCMs = dayInvoices.filter(i => i.type !== 'Credit Memo');
+                    const cmTotal = cms.reduce((sum, i) => sum + i.amount, 0);
+                    const invoiceTotal = nonCMs.reduce((sum, i) => sum + i.amount, 0);
+                    const netTotal = invoiceTotal - cmTotal;
                     const dayBalance = dayInvoices.reduce((sum, i) => sum + i.balance, 0);
 
                     return (
@@ -910,11 +949,14 @@ export default function InvoiceAnalyticsPage() {
                         <div className="text-xs font-semibold text-gray-700 mb-1">{date.getDate()}</div>
                         {dayInvoices.length > 0 && isCurrentMonth && (
                           <div className="space-y-0.5">
-                            <div className="text-xs text-blue-600 font-medium">{formatCurrency(dayTotal)}</div>
+                            <div className="text-xs text-blue-600 font-bold">{formatCurrency(netTotal)}</div>
+                            {cmTotal > 0 && (
+                              <div className="text-xs text-red-500 font-medium">CM: -{formatCurrency(cmTotal)}</div>
+                            )}
                             {dayBalance > 0 && (
                               <div className="text-xs text-amber-600 font-medium">{formatCurrency(dayBalance)} bal</div>
                             )}
-                            <div className="text-xs text-gray-500">{dayInvoices.length} inv</div>
+                            <div className="text-xs text-gray-500">{nonCMs.length} inv{cms.length > 0 ? `, ${cms.length} CM` : ''}</div>
                           </div>
                         )}
                       </button>
@@ -942,9 +984,12 @@ export default function InvoiceAnalyticsPage() {
                       `}
                     >
                       <div className="text-base font-bold text-gray-700 mb-3">{monthData.name}</div>
-                      {monthData.count > 0 ? (
+                      {(monthData.count > 0 || monthData.creditMemoCount > 0) ? (
                         <div className="space-y-1">
-                          <div className="text-xl font-semibold text-blue-600">{formatCurrency(monthData.total)}</div>
+                          <div className="text-xl font-bold text-blue-600">{formatCurrency(monthData.total - monthData.creditMemoAmount)}</div>
+                          {monthData.creditMemoAmount > 0 && (
+                            <div className="text-xs font-medium text-red-500">CM: -{formatCurrency(monthData.creditMemoAmount)} ({monthData.creditMemoCount})</div>
+                          )}
                           {monthData.openBalance > 0 && (
                             <div className="text-sm font-medium text-amber-600">{formatCurrency(monthData.openBalance)} open</div>
                           )}
@@ -977,9 +1022,12 @@ export default function InvoiceAnalyticsPage() {
                       `}
                     >
                       <div className="text-3xl font-bold text-gray-700 mb-4">{yearData.year}</div>
-                      {yearData.count > 0 ? (
+                      {(yearData.count > 0 || yearData.creditMemoCount > 0) ? (
                         <div className="space-y-2">
-                          <div className="text-3xl font-bold text-blue-600">{formatCurrency(yearData.total)}</div>
+                          <div className="text-3xl font-bold text-blue-600">{formatCurrency(yearData.total - yearData.creditMemoAmount)}</div>
+                          {yearData.creditMemoAmount > 0 && (
+                            <div className="text-sm font-medium text-red-500">CM: -{formatCurrency(yearData.creditMemoAmount)} ({yearData.creditMemoCount})</div>
+                          )}
                           {yearData.openBalance > 0 && (
                             <div className="text-lg font-medium text-amber-600">{formatCurrency(yearData.openBalance)} open</div>
                           )}
@@ -1005,8 +1053,11 @@ export default function InvoiceAnalyticsPage() {
                   <DollarSign className="w-5 h-5 text-blue-600" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-gray-500 text-xs mb-1">Total Invoiced</p>
-                  <p className="text-base font-bold text-gray-700 break-words">{formatCurrency(monthlyTotal)}</p>
+                  <p className="text-gray-500 text-xs mb-1">Net Invoiced</p>
+                  <p className="text-base font-bold text-gray-700 break-words">{formatCurrency(monthlyTotal - monthlyCreditMemoTotal)}</p>
+                  {monthlyCreditMemoTotal > 0 && (
+                    <p className="text-xs text-red-500 mt-0.5">CM: -{formatCurrency(monthlyCreditMemoTotal)}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1031,6 +1082,9 @@ export default function InvoiceAnalyticsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="text-gray-500 text-xs mb-1">Total Invoices</p>
                   <p className="text-base font-bold text-gray-700 break-words">{monthlyInvoiceCount.toLocaleString()}</p>
+                  {monthlyCreditMemoCount > 0 && (
+                    <p className="text-xs text-red-500 mt-0.5">{monthlyCreditMemoCount} Credit Memo{monthlyCreditMemoCount !== 1 ? 's' : ''}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1241,3 +1295,6 @@ export default function InvoiceAnalyticsPage() {
     </div>
   );
 }
+
+
+export default InvoiceAnalyticsPage
