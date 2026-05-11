@@ -1,23 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, Mail, Download, Filter, DollarSign, Calendar, CheckSquare, Square, CreditCard, Search, X, ArrowUpDown, FileSpreadsheet, Edit } from 'lucide-react';
+import { ArrowLeft, FileText, Mail, Download, Filter, DollarSign, Calendar, CheckSquare, Square, CreditCard, Search, X, ArrowUpDown, FileSpreadsheet, Edit, ChevronDown, ChevronRight, RefreshCw, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { generateCustomerInvoicePDF } from '../lib/pdfGenerator';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
-import { exportToExcel as exportExcel, formatDate, formatCurrency } from '../lib/excelExport';
+import { exportToExcel as exportExcel, formatDate, formatCurrency as excelFormatCurrency } from '../lib/excelExport';
 
 interface CustomerReportsMonthlyProps {
   onBack?: () => void;
 }
 
-interface Customer {
-  id: string;
+interface CustomerSummary {
   customer_id: string;
   customer_name: string;
   email: string;
   total_balance: number;
-  unpaid_invoices: Invoice[];
+  total_amount: number;
+  invoice_count: number;
 }
 
 interface Invoice {
@@ -44,14 +44,17 @@ interface ReportTemplate {
 
 type DateFilter = 'current_month' | 'all' | 'custom';
 
+const PAGE_SIZE = 50;
+
 export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthlyProps) {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<CustomerSummary[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [dateFilter, setDateFilter] = useState<DateFilter>('current_month');
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [minBalance, setMinBalance] = useState<number>(0);
@@ -67,6 +70,10 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
   const [exportingExcel, setExportingExcel] = useState(false);
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
+  const [customerInvoices, setCustomerInvoices] = useState<Map<string, Invoice[]>>(new Map());
+  const [loadingInvoices, setLoadingInvoices] = useState<Set<string>>(new Set());
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleBack = () => {
     if (onBack) {
@@ -76,10 +83,125 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
     }
   };
 
+  const getDateRange = useCallback((): { from: string | null; to: string | null } => {
+    if (dateFilter === 'current_month') {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
+      const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
+      return { from: firstDay, to: lastDay };
+    }
+    if (dateFilter === 'custom' && customStartDate && customEndDate) {
+      return { from: customStartDate, to: customEndDate };
+    }
+    return { from: null, to: null };
+  }, [dateFilter, customStartDate, customEndDate]);
+
+  const loadCustomers = useCallback(async (offset = 0, append = false) => {
+    if (offset === 0) setLoading(true);
+    else setLoadingMore(true);
+
+    try {
+      const { from, to } = getDateRange();
+
+      const [{ data, error }, { data: countData, error: countError }] = await Promise.all([
+        supabase.rpc('get_customers_unpaid_summary', {
+          p_date_from: from,
+          p_date_to: to,
+          p_search: searchTerm.trim() || null,
+          p_min_balance: minBalance || 0,
+          p_sort_by: sortBy,
+          p_sort_order: sortOrder,
+          p_limit: PAGE_SIZE,
+          p_offset: offset,
+        }),
+        supabase.rpc('get_customers_unpaid_summary_count', {
+          p_date_from: from,
+          p_date_to: to,
+          p_search: searchTerm.trim() || null,
+          p_min_balance: minBalance || 0,
+        }),
+      ]);
+
+      if (error) throw error;
+      if (countError) throw countError;
+
+      const mapped = (data || []).map((c: any) => ({
+        customer_id: c.customer_id,
+        customer_name: c.customer_name,
+        email: c.email || '',
+        total_balance: Number(c.total_balance) || 0,
+        total_amount: Number(c.total_amount) || 0,
+        invoice_count: Number(c.invoice_count) || 0,
+      }));
+
+      if (append) {
+        setCustomers(prev => [...prev, ...mapped]);
+      } else {
+        setCustomers(mapped);
+      }
+      setTotalCount(Number(countData) || 0);
+    } catch (error) {
+      console.error('Error loading customers:', error);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [getDateRange, searchTerm, minBalance, sortBy, sortOrder]);
+
+  const loadCustomerInvoices = async (customerId: string): Promise<Invoice[]> => {
+    setLoadingInvoices(prev => new Set(prev).add(customerId));
+    try {
+      const { from, to } = getDateRange();
+      const { data, error } = await supabase.rpc('get_customer_unpaid_invoices', {
+        p_customer_id: customerId,
+        p_date_from: from,
+        p_date_to: to,
+      });
+
+      if (error) throw error;
+
+      const invoices: Invoice[] = (data || []).map((inv: any) => ({
+        id: inv.id,
+        reference_number: inv.reference_number,
+        invoice_date: inv.invoice_date,
+        due_date: inv.due_date,
+        amount: Number(inv.amount) || 0,
+        balance: Number(inv.balance) || 0,
+        status: inv.status,
+        description: inv.description || '',
+      }));
+
+      setCustomerInvoices(prev => new Map(prev).set(customerId, invoices));
+      return invoices;
+    } catch (error) {
+      console.error('Error loading invoices for', customerId, error);
+      return [];
+    } finally {
+      setLoadingInvoices(prev => {
+        const next = new Set(prev);
+        next.delete(customerId);
+        return next;
+      });
+    }
+  };
+
   useEffect(() => {
-    loadCustomersWithInvoices();
     loadTemplates();
   }, []);
+
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      loadCustomers(0, false);
+    }, 300);
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, [loadCustomers]);
 
   const loadTemplates = async () => {
     try {
@@ -104,163 +226,17 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
     }
   };
 
-  useEffect(() => {
-    applyFilters();
-  }, [customers, dateFilter, customStartDate, customEndDate, minBalance, searchTerm, sortBy, sortOrder]);
-
-  const loadCustomersWithInvoices = async () => {
-    setLoading(true);
-    try {
-      let allInvoices: any[] = [];
-      let from = 0;
-      const pageSize = 1000;
-      let hasMore = true;
-
-      while (hasMore) {
-        const { data: invoices, error } = await supabase
-          .from('acumatica_invoices')
-          .select('id, customer, reference_number, date, due_date, dac_total, balance, status, description')
-          .gt('balance', 0)
-          .order('customer')
-          .range(from, from + pageSize - 1);
-
-        if (error) throw error;
-
-        if (invoices && invoices.length > 0) {
-          allInvoices = [...allInvoices, ...invoices];
-          from += pageSize;
-          hasMore = invoices.length === pageSize;
-        } else {
-          hasMore = false;
-        }
+  const toggleExpand = async (customerId: string) => {
+    const next = new Set(expandedCustomers);
+    if (next.has(customerId)) {
+      next.delete(customerId);
+    } else {
+      next.add(customerId);
+      if (!customerInvoices.has(customerId)) {
+        await loadCustomerInvoices(customerId);
       }
-
-      let allCustomers: any[] = [];
-      let customerFrom = 0;
-      let hasMoreCustomers = true;
-
-      while (hasMoreCustomers) {
-        const { data: acumaticaCustomers, error: custError } = await supabase
-          .from('acumatica_customers')
-          .select('customer_id, customer_name, billing_email, general_email')
-          .range(customerFrom, customerFrom + pageSize - 1);
-
-        if (custError) throw custError;
-
-        if (acumaticaCustomers && acumaticaCustomers.length > 0) {
-          allCustomers = [...allCustomers, ...acumaticaCustomers];
-          customerFrom += pageSize;
-          hasMoreCustomers = acumaticaCustomers.length === pageSize;
-        } else {
-          hasMoreCustomers = false;
-        }
-      }
-
-      const customerInfoMap = new Map(
-        allCustomers.map((c: any) => [c.customer_id, {
-          name: c.customer_name,
-          email: c.billing_email || c.general_email || ''
-        }])
-      );
-
-      const customerMap = new Map<string, Customer>();
-
-      allInvoices.forEach((inv: any) => {
-        const customerId = inv.customer;
-        const customerInfo = customerInfoMap.get(customerId);
-
-        if (!customerMap.has(customerId)) {
-          customerMap.set(customerId, {
-            id: customerId,
-            customer_id: customerId,
-            customer_name: customerInfo?.name || `Customer ${customerId}`,
-            email: customerInfo?.email || '',
-            total_balance: 0,
-            unpaid_invoices: []
-          });
-        }
-
-        const customer = customerMap.get(customerId)!;
-        customer.total_balance += Number(inv.balance) || 0;
-        customer.unpaid_invoices.push({
-          id: inv.id,
-          reference_number: inv.reference_number,
-          invoice_date: inv.date,
-          due_date: inv.due_date,
-          amount: Number(inv.dac_total) || 0,
-          balance: Number(inv.balance) || 0,
-          status: inv.status,
-          description: inv.description || ''
-        });
-      });
-
-      const customersArray = Array.from(customerMap.values());
-      setCustomers(customersArray);
-    } catch (error) {
-      console.error('Error loading customers:', error);
-    } finally {
-      setLoading(false);
     }
-  };
-
-  const applyFilters = () => {
-    let filtered = [...customers];
-
-    filtered = filtered.filter(c => c.total_balance >= minBalance);
-
-    if (dateFilter !== 'all') {
-      filtered = filtered.map(customer => {
-        const filteredInvoices = customer.unpaid_invoices.filter(inv => {
-          const invDate = new Date(inv.invoice_date);
-
-          if (dateFilter === 'current_month') {
-            const now = new Date();
-            return invDate.getMonth() === now.getMonth() &&
-                   invDate.getFullYear() === now.getFullYear();
-          } else if (dateFilter === 'custom' && customStartDate && customEndDate) {
-            const start = new Date(customStartDate);
-            const end = new Date(customEndDate);
-            return invDate >= start && invDate <= end;
-          }
-          return true;
-        });
-
-        return {
-          ...customer,
-          unpaid_invoices: filteredInvoices,
-          total_balance: filteredInvoices.reduce((sum, inv) => sum + inv.balance, 0)
-        };
-      }).filter(c => c.unpaid_invoices.length > 0);
-    }
-
-    if (searchTerm.trim()) {
-      const searchLower = searchTerm.toLowerCase().trim();
-      filtered = filtered.filter(customer => {
-        const nameMatch = customer.customer_name.toLowerCase().includes(searchLower);
-        const emailMatch = customer.email.toLowerCase().includes(searchLower);
-        const balanceMatch = customer.total_balance.toString().includes(searchLower);
-        const invoiceCountMatch = customer.unpaid_invoices.length.toString().includes(searchLower);
-        const customerIdMatch = customer.customer_id.toLowerCase().includes(searchLower);
-
-        return nameMatch || emailMatch || balanceMatch || invoiceCountMatch || customerIdMatch;
-      });
-    }
-
-    filtered.sort((a, b) => {
-      let comparison = 0;
-
-      if (sortBy === 'name') {
-        comparison = a.customer_name.localeCompare(b.customer_name);
-      } else if (sortBy === 'balance') {
-        comparison = a.total_balance - b.total_balance;
-      } else if (sortBy === 'invoices') {
-        comparison = a.unpaid_invoices.length - b.unpaid_invoices.length;
-      }
-
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
-
-    setFilteredCustomers(filtered);
+    setExpandedCustomers(next);
   };
 
   const toggleCustomer = (customerId: string) => {
@@ -274,15 +250,32 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
   };
 
   const selectAll = () => {
-    setSelectedCustomers(new Set(filteredCustomers.map(c => c.customer_id)));
+    setSelectedCustomers(new Set(customers.map(c => c.customer_id)));
   };
 
   const deselectAll = () => {
     setSelectedCustomers(new Set());
   };
 
+  const loadMore = () => {
+    if (customers.length < totalCount) {
+      loadCustomers(customers.length, true);
+    }
+  };
+
+  const getCustomerWithInvoices = async (customer: CustomerSummary) => {
+    let invoices = customerInvoices.get(customer.customer_id);
+    if (!invoices) {
+      invoices = await loadCustomerInvoices(customer.customer_id);
+    }
+    return {
+      ...customer,
+      unpaid_invoices: invoices,
+    };
+  };
+
   const generatePDFs = async () => {
-    const toGenerate = filteredCustomers.filter(c => selectedCustomers.has(c.customer_id));
+    const toGenerate = customers.filter(c => selectedCustomers.has(c.customer_id));
     if (toGenerate.length === 0) return;
 
     setGeneratingPDFs(true);
@@ -297,11 +290,12 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
       ]);
 
       try {
-        const pdfBlob = await generateCustomerInvoicePDF(customer);
+        const fullCustomer = await getCustomerWithInvoices(customer);
+        const pdfBlob = await generateCustomerInvoicePDF(fullCustomer);
         newPDFs.set(customer.customer_id, pdfBlob);
-        setProgress(prev => [...prev, `✓ ${customer.customer_name} - PDF ready`]);
+        setProgress(prev => [...prev, `Done - ${customer.customer_name} - PDF ready`]);
       } catch (error) {
-        setProgress(prev => [...prev, `✗ ${customer.customer_name} - Failed`]);
+        setProgress(prev => [...prev, `Failed - ${customer.customer_name}`]);
         console.error('PDF generation error:', error);
       }
 
@@ -309,7 +303,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
     }
 
     setGeneratedPDFs(newPDFs);
-    setProgress(prev => [...prev, `\n✓ Generated ${newPDFs.size} PDFs successfully!`]);
+    setProgress(prev => [...prev, `\nGenerated ${newPDFs.size} PDFs successfully!`]);
 
     setTimeout(() => {
       setGeneratingPDFs(false);
@@ -324,7 +318,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
     }
 
     generatedPDFs.forEach((blob, customerId) => {
-      const customer = filteredCustomers.find(c => c.customer_id === customerId);
+      const customer = customers.find(c => c.customer_id === customerId);
       if (!customer) return;
 
       const url = URL.createObjectURL(blob);
@@ -338,8 +332,8 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
     });
   };
 
-  const handleExportToExcel = () => {
-    if (filteredCustomers.length === 0) {
+  const handleExportToExcel = async () => {
+    if (customers.length === 0) {
       alert('No customers to export');
       return;
     }
@@ -348,8 +342,9 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
     try {
       const exportData: any[] = [];
 
-      filteredCustomers.forEach(customer => {
-        customer.unpaid_invoices.forEach(invoice => {
+      for (const customer of customers) {
+        const fullCustomer = await getCustomerWithInvoices(customer);
+        for (const invoice of fullCustomer.unpaid_invoices) {
           exportData.push({
             customer_name: customer.customer_name,
             customer_email: customer.email || '',
@@ -361,22 +356,22 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
             status: invoice.status,
             description: invoice.description || ''
           });
-        });
-      });
+        }
+      }
 
       exportExcel({
         filename: `customer_unpaid_invoices_${new Date().toISOString().split('T')[0]}`,
         sheetName: 'Customer Invoices',
         title: 'Customer Unpaid Invoices Report',
-        subtitle: `Generated on ${new Date().toLocaleDateString()} - ${filteredCustomers.length} customers, ${exportData.length} invoices`,
+        subtitle: `Generated on ${new Date().toLocaleDateString()} - ${customers.length} customers, ${exportData.length} invoices`,
         columns: [
           { header: 'Customer Name', key: 'customer_name', width: 30 },
           { header: 'Customer Email', key: 'customer_email', width: 30 },
           { header: 'Invoice Reference', key: 'invoice_reference', width: 20 },
           { header: 'Invoice Date', key: 'invoice_date', width: 15, format: formatDate },
           { header: 'Due Date', key: 'due_date', width: 15, format: formatDate },
-          { header: 'Amount', key: 'amount', width: 15, format: formatCurrency },
-          { header: 'Balance', key: 'balance', width: 15, format: formatCurrency },
+          { header: 'Amount', key: 'amount', width: 15, format: excelFormatCurrency },
+          { header: 'Balance', key: 'balance', width: 15, format: excelFormatCurrency },
           { header: 'Status', key: 'status', width: 12 },
           { header: 'Description', key: 'description', width: 30 }
         ],
@@ -407,7 +402,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
       return;
     }
 
-    const toSend = filteredCustomers.filter(c =>
+    const toSend = customers.filter(c =>
       selectedCustomers.has(c.customer_id) && c.email
     );
 
@@ -419,8 +414,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
     setSendingEmails(true);
     setEmailProgress([]);
 
-    const dateFrom = dateFilter === 'custom' ? customStartDate : '';
-    const dateTo = dateFilter === 'custom' ? customEndDate : new Date().toISOString().split('T')[0];
+    const { from: dateFrom, to: dateTo } = getDateRange();
 
     for (let i = 0; i < toSend.length; i++) {
       const customer = toSend[i];
@@ -430,6 +424,9 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
       ]);
 
       try {
+        const fullCustomer = await getCustomerWithInvoices(customer);
+        const invoices = fullCustomer.unpaid_invoices;
+
         let base64PDF: string | undefined;
 
         if (selectedTemplate.include_pdf_attachment) {
@@ -449,9 +446,9 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
 
         const customerPaymentUrl = paymentUrl ? `${paymentUrl}?customer_id=${encodeURIComponent(customer.customer_id)}&customer_email=${encodeURIComponent(customer.email)}` : '';
 
-        const oldestInvoice = customer.unpaid_invoices.reduce((oldest, inv) =>
+        const oldestInvoice = invoices.length > 0 ? invoices.reduce((oldest, inv) =>
           new Date(inv.invoice_date) < new Date(oldest.invoice_date) ? inv : oldest
-        , customer.unpaid_invoices[0]);
+        , invoices[0]) : null;
 
         const daysOverdue = oldestInvoice?.due_date ?
           Math.max(0, Math.floor((new Date().getTime() - new Date(oldestInvoice.due_date).getTime()) / (1000 * 60 * 60 * 24))) : 0;
@@ -478,10 +475,10 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
                 customer_id: customer.customer_id,
                 customer_email: customer.email,
                 balance: customer.total_balance,
-                total_invoices: customer.unpaid_invoices.length,
-                invoices: customer.unpaid_invoices,
-                date_from: dateFrom,
-                date_to: dateTo,
+                total_invoices: invoices.length,
+                invoices: invoices,
+                date_from: dateFrom || '',
+                date_to: dateTo || new Date().toISOString().split('T')[0],
                 oldest_invoice_date: oldestInvoice?.invoice_date || '',
                 days_overdue: daysOverdue,
                 payment_url: customerPaymentUrl,
@@ -494,23 +491,23 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
         );
 
         if (response.ok) {
-          setEmailProgress(prev => [...prev, `✓ ${customer.customer_name} - Email sent`]);
+          setEmailProgress(prev => [...prev, `Done - ${customer.customer_name} - Email sent`]);
         } else {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
           const errorMessage = errorData.error || errorData.details || 'Failed to send';
-          setEmailProgress(prev => [...prev, `✗ ${customer.customer_name} - ${errorMessage}`]);
+          setEmailProgress(prev => [...prev, `Failed - ${customer.customer_name} - ${errorMessage}`]);
           console.error('Email error for', customer.customer_name, errorData);
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        setEmailProgress(prev => [...prev, `✗ ${customer.customer_name} - ${errorMsg}`]);
+        setEmailProgress(prev => [...prev, `Failed - ${customer.customer_name} - ${errorMsg}`]);
         console.error('Email error:', error);
       }
 
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
-    setEmailProgress(prev => [...prev, `\n✓ Email batch completed!`]);
+    setEmailProgress(prev => [...prev, `\nEmail batch completed!`]);
 
     setTimeout(() => {
       setSendingEmails(false);
@@ -524,14 +521,8 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
     }).format(amount);
   };
 
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-slate-950">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
+  const totalBalance = customers.reduce((sum, c) => sum + c.total_balance, 0);
+  const totalInvoices = customers.reduce((sum, c) => sum + c.invoice_count, 0);
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6">
@@ -549,18 +540,23 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
             <div className="text-slate-400 text-sm mb-1">Total Customers</div>
-            <div className="text-2xl font-bold text-white">{filteredCustomers.length}</div>
+            <div className="text-2xl font-bold text-white">
+              {totalCount}
+              {customers.length < totalCount && (
+                <span className="text-sm font-normal text-slate-500 ml-2">({customers.length} loaded)</span>
+              )}
+            </div>
           </div>
           <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
             <div className="text-slate-400 text-sm mb-1">Total Unpaid Balance</div>
             <div className="text-2xl font-bold text-red-400">
-              {formatCurrency(filteredCustomers.reduce((sum, c) => sum + c.total_balance, 0))}
+              {formatCurrency(totalBalance)}
             </div>
           </div>
           <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
             <div className="text-slate-400 text-sm mb-1">Total Invoices</div>
             <div className="text-2xl font-bold text-white">
-              {filteredCustomers.reduce((sum, c) => sum + c.unpaid_invoices.length, 0)}
+              {totalInvoices.toLocaleString()}
             </div>
           </div>
           <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
@@ -585,7 +581,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by name, email, customer ID, balance, or invoice count..."
+                placeholder="Search by name, email, or customer ID..."
                 className="w-full px-4 py-3 pr-10 bg-slate-800 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 placeholder-slate-500"
               />
               {searchTerm && (
@@ -598,16 +594,12 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
                 </button>
               )}
             </div>
-            <div className="flex items-center justify-between mt-1">
-              <p className="text-xs text-slate-500">
-                Try searching: customer name, email address, balance amount (e.g., "1500"), or number of invoices (e.g., "5")
-              </p>
-              {searchTerm && (
-                <p className="text-xs text-blue-400 font-medium">
-                  Found {filteredCustomers.length} result{filteredCustomers.length !== 1 ? 's' : ''}
-                </p>
-              )}
-            </div>
+            {loading && (
+              <div className="flex items-center gap-2 mt-2 text-xs text-blue-400">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Searching...
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3 mb-4 p-3 bg-slate-800 rounded-lg">
@@ -643,8 +635,8 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
                 onChange={(e) => setDateFilter(e.target.value as DateFilter)}
                 className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500"
               >
-                <option value="current_month">Current Month</option>
                 <option value="all">All Unpaid</option>
+                <option value="current_month">Current Month</option>
                 <option value="custom">Custom Date Range</option>
               </select>
             </div>
@@ -720,7 +712,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
             </button>
             <div className="flex-1"></div>
             <div className="text-slate-400">
-              {selectedCustomers.size} of {filteredCustomers.length} selected
+              {selectedCustomers.size} of {totalCount} selected
             </div>
           </div>
         </div>
@@ -781,7 +773,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
             </button>
             <button
               onClick={handleExportToExcel}
-              disabled={exportingExcel || filteredCustomers.length === 0}
+              disabled={exportingExcel || customers.length === 0}
               className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
             >
               <FileSpreadsheet className={`w-5 h-5 ${exportingExcel ? 'animate-bounce' : ''}`} />
@@ -806,80 +798,124 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
           )}
         </div>
 
-        <div className="space-y-4">
-          {filteredCustomers.map((customer) => (
-            <div
-              key={customer.customer_id}
-              className={`bg-slate-900 rounded-lg border transition-all ${
-                selectedCustomers.has(customer.customer_id)
-                  ? 'border-blue-500 bg-slate-800'
-                  : 'border-slate-800'
-              }`}
-            >
-              <div
-                onClick={() => toggleCustomer(customer.customer_id)}
-                className="p-6 cursor-pointer hover:bg-slate-800 transition-colors"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="mt-1">
-                    {selectedCustomers.has(customer.customer_id) ? (
-                      <CheckSquare className="w-6 h-6 text-blue-500" />
-                    ) : (
-                      <Square className="w-6 h-6 text-slate-600" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <h3 className="text-xl font-bold text-white">{customer.customer_name}</h3>
-                        <p className="text-slate-400">{customer.customer_id}</p>
-                        {customer.email && (
-                          <p className="text-sm text-slate-500">{customer.email}</p>
+        {loading && customers.length === 0 ? (
+          <div className="flex items-center justify-center py-20">
+            <RefreshCw size={32} className="animate-spin text-blue-500 mr-3" />
+            <span className="text-slate-400">Loading customers...</span>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {customers.map((customer) => {
+              const isExpanded = expandedCustomers.has(customer.customer_id);
+              const invoices = customerInvoices.get(customer.customer_id);
+              const isLoadingInv = loadingInvoices.has(customer.customer_id);
+
+              return (
+                <div
+                  key={customer.customer_id}
+                  className={`bg-slate-900 rounded-lg border transition-all ${
+                    selectedCustomers.has(customer.customer_id)
+                      ? 'border-blue-500 bg-slate-800'
+                      : 'border-slate-800'
+                  }`}
+                >
+                  <div className="p-6">
+                    <div className="flex items-start gap-4">
+                      <div
+                        className="mt-1 cursor-pointer"
+                        onClick={() => toggleCustomer(customer.customer_id)}
+                      >
+                        {selectedCustomers.has(customer.customer_id) ? (
+                          <CheckSquare className="w-6 h-6 text-blue-500" />
+                        ) : (
+                          <Square className="w-6 h-6 text-slate-600" />
                         )}
                       </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold text-red-400">
-                          {formatCurrency(customer.total_balance)}
-                        </div>
-                        <div className="text-sm text-slate-400">
-                          {customer.unpaid_invoices.length} unpaid invoice{customer.unpaid_invoices.length !== 1 ? 's' : ''}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 space-y-2">
-                      {customer.unpaid_invoices.map((invoice) => (
-                        <div
-                          key={invoice.id}
-                          className="flex items-center justify-between p-3 bg-slate-800 rounded-lg"
-                        >
+                      <div className="flex-1">
+                        <div className="flex items-start justify-between mb-2">
                           <div>
-                            <div className="font-medium">{invoice.reference_number}</div>
-                            <div className="text-sm text-slate-400">
-                              Invoice Date: {formatDateUtil(invoice.invoice_date)} | Due: {formatDateUtil(invoice.due_date)}
-                            </div>
+                            <h3 className="text-xl font-bold text-white">{customer.customer_name}</h3>
+                            <p className="text-slate-400">{customer.customer_id}</p>
+                            {customer.email && (
+                              <p className="text-sm text-slate-500">{customer.email}</p>
+                            )}
                           </div>
                           <div className="text-right">
-                            <div className="font-bold">{formatCurrency(invoice.balance)}</div>
+                            <div className="text-2xl font-bold text-red-400">
+                              {formatCurrency(customer.total_balance)}
+                            </div>
                             <div className="text-sm text-slate-400">
-                              of {formatCurrency(invoice.amount)}
+                              {customer.invoice_count} unpaid invoice{customer.invoice_count !== 1 ? 's' : ''}
                             </div>
                           </div>
                         </div>
-                      ))}
+
+                        <button
+                          onClick={() => toggleExpand(customer.customer_id)}
+                          className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mt-2"
+                        >
+                          {isLoadingInv ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : isExpanded ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          {isExpanded ? 'Hide invoices' : 'Show invoices'}
+                        </button>
+
+                        {isExpanded && invoices && (
+                          <div className="mt-4 space-y-2">
+                            {invoices.map((invoice) => (
+                              <div
+                                key={invoice.id}
+                                className="flex items-center justify-between p-3 bg-slate-800 rounded-lg"
+                              >
+                                <div>
+                                  <div className="font-medium">{invoice.reference_number}</div>
+                                  <div className="text-sm text-slate-400">
+                                    Invoice Date: {formatDateUtil(invoice.invoice_date)} | Due: {formatDateUtil(invoice.due_date)}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="font-bold">{formatCurrency(invoice.balance)}</div>
+                                  <div className="text-sm text-slate-400">
+                                    of {formatCurrency(invoice.amount)}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          ))}
+              );
+            })}
 
-          {filteredCustomers.length === 0 && (
-            <div className="text-center py-12 text-slate-400">
-              No customers found matching the current filters
-            </div>
-          )}
-        </div>
+            {customers.length < totalCount && (
+              <div className="flex justify-center py-4">
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="flex items-center gap-2 px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-lg font-medium transition-colors disabled:opacity-50"
+                >
+                  {loadingMore ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : null}
+                  {loadingMore ? 'Loading...' : `Load More (${customers.length} of ${totalCount})`}
+                </button>
+              </div>
+            )}
+
+            {!loading && customers.length === 0 && (
+              <div className="text-center py-12 text-slate-400">
+                No customers found matching the current filters
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
