@@ -56,35 +56,26 @@ export function useInvoiceComparison(onDataRefresh?: () => void) {
       if (!acumaticaData.success) throw new Error(acumaticaData.error || 'Failed to get Acumatica count');
 
       const acumaticaByType: Record<string, number> = acumaticaData.byType || {};
-
-      const { data: dbTypeCounts, error: dbError } = await supabase
-        .rpc('get_invoice_counts_by_type', {
-          p_start_date: startDate,
-          p_end_date: endDate,
-        });
-
-      if (dbError) throw new Error(dbError.message);
-
-      const dbByType: Record<string, number> = {};
-      let totalDbCount = 0;
-      for (const row of (dbTypeCounts || [])) {
-        dbByType[row.invoice_type] = row.type_count;
-        totalDbCount += row.type_count;
-      }
+      const dbByType: Record<string, number> = acumaticaData.dbByType || {};
+      const dbExistsCount: number = acumaticaData.dbExistsCount ?? 0;
+      const trulyMissing: number = acumaticaData.trulyMissing ?? 0;
+      const missingByType: Record<string, number> = acumaticaData.missingByType || {};
 
       const allTypes = new Set([...Object.keys(acumaticaByType), ...Object.keys(dbByType)]);
       const byType: Record<string, TypeCount> = {};
       for (const t of allTypes) {
         const a = acumaticaByType[t] || 0;
         const d = dbByType[t] || 0;
-        byType[t] = { acumatica: a, db: d, difference: a - d };
+        byType[t] = { acumatica: a, db: d, difference: missingByType[t] || 0 };
       }
 
       const result: ComparisonResult = {
         acumaticaCount: acumaticaData.count,
-        dbCount: totalDbCount,
-        difference: acumaticaData.count - totalDbCount,
+        dbCount: dbExistsCount,
+        difference: trulyMissing,
         byType,
+        trulyMissing,
+        missingByType,
       };
 
       setComparisons(prev => ({

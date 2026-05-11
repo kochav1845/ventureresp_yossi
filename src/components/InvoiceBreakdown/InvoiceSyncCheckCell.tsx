@@ -168,10 +168,11 @@ export default function InvoiceSyncCheckCell({
   }
 
   if (comparison?.result) {
-    const { acumaticaCount, dbCount, difference, byType } = comparison.result;
-    const inSync = difference === 0;
-    const missing = difference > 0;
-    const hasExtra = difference < 0;
+    const { acumaticaCount, dbCount, difference, byType, trulyMissing } = comparison.result;
+    const actualMissing = trulyMissing ?? difference;
+    const inSync = actualMissing === 0;
+    const missing = actualMissing > 0;
+    const hasExtra = false;
     const verifyResult = verification?.result;
 
     const typeOrder = ['Invoice', 'Credit Memo', 'Debit Memo', 'Credit WO', 'Overdue Charge'];
@@ -209,7 +210,7 @@ export default function InvoiceSyncCheckCell({
               <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center">
                 <AlertTriangle size={12} className="text-amber-600" />
               </div>
-              <span className="text-xs font-semibold text-amber-600">Missing {difference}</span>
+              <span className="text-xs font-semibold text-amber-600">Missing {actualMissing}</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5">
@@ -221,7 +222,7 @@ export default function InvoiceSyncCheckCell({
           )}
 
           <div className="text-[10px] text-gray-400 leading-tight text-center">
-            Acumatica: {acumaticaCount} | DB: {dbCount}
+            Acumatica: {acumaticaCount} | In DB: {dbCount}
           </div>
 
           {typeEntries.length > 0 && (
@@ -261,9 +262,9 @@ export default function InvoiceSyncCheckCell({
                         <span className="text-right tabular-nums text-gray-600">{counts.acumatica}</span>
                         <span className="text-right tabular-nums text-gray-600">{counts.db}</span>
                         <span className={`text-right tabular-nums font-semibold ${
-                          typeInSync ? 'text-emerald-600' : typeMissing ? 'text-amber-600' : 'text-blue-600'
+                          typeInSync ? 'text-emerald-600' : typeMissing ? 'text-amber-600' : 'text-emerald-600'
                         }`}>
-                          {typeInSync ? '0' : typeMissing ? `-${counts.difference}` : `+${Math.abs(counts.difference)}`}
+                          {counts.difference === 0 ? '0' : `-${counts.difference}`}
                         </span>
                       </div>
                     );

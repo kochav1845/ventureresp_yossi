@@ -73,19 +73,59 @@ Deno.serve(async (req: Request) => {
     const data = await response.json();
     const items = Array.isArray(data) ? data : [];
 
+    const refs: { ref: string; type: string }[] = [];
     for (const item of items) {
       const t = item.Type?.value || 'Unknown';
+      const refNbr = (item.ReferenceNbr?.value || '').trim();
+      const paddedRef = refNbr.padStart(6, '0');
       byType[t] = (byType[t] || 0) + 1;
       totalCount++;
+      refs.push({ ref: paddedRef, type: t });
     }
 
-    console.log(`Invoice count result: ${totalCount}, byType:`, byType);
+    // Check which refs actually exist in the DB (regardless of date)
+    let dbExistsCount = 0;
+    const dbByType: Record<string, number> = {};
+    const missingRefs: { ref: string; type: string }[] = [];
+    const BATCH_SIZE = 300;
+
+    for (let i = 0; i < refs.length; i += BATCH_SIZE) {
+      const batch = refs.slice(i, i + BATCH_SIZE);
+      const batchRefs = batch.map(r => r.ref);
+      const { data: found } = await supabase
+        .from('acumatica_invoices')
+        .select('reference_number, type')
+        .in('reference_number', batchRefs);
+
+      const foundSet = new Set((found || []).map(f => `${f.type}:${f.reference_number}`));
+      for (const r of batch) {
+        const key = `${r.type}:${r.ref}`;
+        if (foundSet.has(key)) {
+          dbExistsCount++;
+          dbByType[r.type] = (dbByType[r.type] || 0) + 1;
+        } else {
+          missingRefs.push(r);
+        }
+      }
+    }
+
+    const missingByType: Record<string, number> = {};
+    for (const m of missingRefs) {
+      missingByType[m.type] = (missingByType[m.type] || 0) + 1;
+    }
+
+    console.log(`Invoice count: ${totalCount} from Acumatica, ${dbExistsCount} exist in DB, ${missingRefs.length} truly missing`);
 
     return new Response(
       JSON.stringify({
         success: true,
         count: totalCount,
         byType,
+        dbExistsCount,
+        dbByType,
+        trulyMissing: missingRefs.length,
+        missingByType,
+        missingRefs: missingRefs.slice(0, 100),
         filters: { dateFrom, dateTo }
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

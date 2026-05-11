@@ -95,6 +95,8 @@ export interface ComparisonResult {
   dbCount: number;
   difference: number;
   byType: Record<string, TypeCount>;
+  trulyMissing: number;
+  missingByType: Record<string, number>;
 }
 
 export interface ComparisonState {
