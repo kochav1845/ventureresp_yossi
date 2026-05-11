@@ -149,6 +149,7 @@ export default function TicketDetailPage() {
       if (invoiceRefs.length > 0) {
         const { data: invoices } = await supabase
           .from('acumatica_invoices')
+          .neq('status', 'On Hold')
           .select('reference_number, date, due_date, amount, balance, description, status, type')
           .in('reference_number', invoiceRefs);
 
@@ -285,6 +286,7 @@ export default function TicketDetailPage() {
 
       const { data: balanceData } = await supabase
         .from('acumatica_invoices')
+        .neq('status', 'On Hold')
         .select('customer, date, balance, status')
         .eq('customer', ticketData.customer_id)
         .neq('status', 'Closed');
@@ -561,6 +563,7 @@ export default function TicketDetailPage() {
       const currentRefs = ticket.invoices.map(inv => inv.invoice_reference_number);
       const { data, error } = await supabase
         .from('acumatica_invoices')
+        .neq('status', 'On Hold')
         .select('reference_number, date, due_date, amount, balance, description')
         .eq('customer', ticket.customer_id)
         .eq('status', 'Open')

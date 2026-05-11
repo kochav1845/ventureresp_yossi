@@ -753,6 +753,7 @@ export default function UnifiedTicketingSystem({
     try {
       const { data: invoice } = await supabase
         .from('acumatica_invoices')
+        .neq('status', 'On Hold')
         .select('id')
         .eq('reference_number', invoiceRefNumber)
         .single();
@@ -766,6 +767,7 @@ export default function UnifiedTicketingSystem({
 
       await supabase
         .from('acumatica_invoices')
+        .neq('status', 'On Hold')
         .update({ color_status: newColor })
         .eq('reference_number', invoiceRefNumber);
 
@@ -792,6 +794,7 @@ export default function UnifiedTicketingSystem({
     try {
       const { data: invoice } = await supabase
         .from('acumatica_invoices')
+        .neq('status', 'On Hold')
         .select('id, reference_number, customer_name')
         .eq('reference_number', promiseDateModalInvoice)
         .maybeSingle();
@@ -800,6 +803,7 @@ export default function UnifiedTicketingSystem({
 
       await supabase
         .from('acumatica_invoices')
+        .neq('status', 'On Hold')
         .update({
           color_status: 'green',
           promise_date: promiseDate,
@@ -1119,6 +1123,7 @@ export default function UnifiedTicketingSystem({
       const notePromises = Array.from(selectedInvoices).map(async (refNumber) => {
         const { data: invoice } = await supabase
           .from('acumatica_invoices')
+          .neq('status', 'On Hold')
           .select('id')
           .eq('reference_number', refNumber)
           .single();
@@ -1172,6 +1177,7 @@ export default function UnifiedTicketingSystem({
     try {
       const { data: invoiceData, error } = await supabase
         .from('acumatica_invoices')
+        .neq('status', 'On Hold')
         .select('id, reference_number, customer, customer_name, date, balance, status')
         .eq('reference_number', invoice.invoice_reference_number)
         .maybeSingle();

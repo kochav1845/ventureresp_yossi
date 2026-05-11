@@ -99,6 +99,7 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
         if (directRefNumbers.length > 0) {
           const { data: directInvoices } = await supabase
             .from('acumatica_invoices')
+            .neq('status', 'On Hold')
             .select('color_status')
             .in('reference_number', directRefNumbers)
             .eq('status', 'Open');
@@ -108,6 +109,7 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
         if (customerIds.length > 0) {
           const { data: customerInvoices } = await supabase
             .from('acumatica_invoices')
+            .neq('status', 'On Hold')
             .select('color_status')
             .in('customer', customerIds)
             .eq('status', 'Open');

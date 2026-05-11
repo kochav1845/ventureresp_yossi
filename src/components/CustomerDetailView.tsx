@@ -203,6 +203,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
       const { data: outstandingInvoices, error: invError } = await supabase
         .from('acumatica_invoices')
+        .neq('status', 'On Hold')
         .select('balance, type, status')
         .eq('customer', customerId)
         .in('status', ['Open', 'Balanced'])
@@ -287,6 +288,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       // Load color status counts
       const { data: colorCounts, error: colorCountsError } = await supabase
         .from('acumatica_invoices')
+        .neq('status', 'On Hold')
         .select('color_status')
         .eq('customer', customerId)
         .gt('balance', 0);

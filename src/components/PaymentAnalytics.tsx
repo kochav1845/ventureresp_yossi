@@ -1734,6 +1734,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       while (hasMore) {
         const { data: batch, error } = await supabase
           .from('acumatica_invoices')
+          .neq('status', 'On Hold')
           .select('reference_number, customer, customer_name, date, due_date, balance, amount, status')
           .gte('date', startStr)
           .lte('date', endStr)
@@ -1883,6 +1884,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
         const { data: invoices } = await supabase
           .from('acumatica_invoices')
+          .neq('status', 'On Hold')
           .select('reference_number, date, balance, amount, status, due_date')
           .in('reference_number', invoiceRefs);
 

@@ -139,6 +139,7 @@ export default function Customers({ onBack }: CustomersProps) {
       const lookupInvoiceCustomer = async () => {
         const { data, error } = await supabase
           .from('acumatica_invoices')
+          .neq('status', 'On Hold')
           .select('customer')
           .eq('reference_number', invoiceParam)
           .maybeSingle();

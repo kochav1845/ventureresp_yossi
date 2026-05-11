@@ -18,6 +18,7 @@ const MAX_PER_CATEGORY = 6;
 async function searchInvoices(pattern: string): Promise<SearchResult[]> {
   const { data } = await supabase
     .from('acumatica_invoices')
+    .neq('status', 'On Hold')
     .select('id, reference_number, customer_name, type, amount, balance, status')
     .or(`reference_number.ilike.%${pattern}%,customer_name.ilike.%${pattern}%,customer.ilike.%${pattern}%`)
     .limit(MAX_PER_CATEGORY);

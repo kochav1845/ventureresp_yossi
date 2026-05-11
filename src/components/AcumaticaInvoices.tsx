@@ -303,6 +303,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     try {
       const { data, error } = await supabase
         .from('acumatica_invoices')
+        .neq('status', 'On Hold')
         .select('*')
         .eq('id', invoiceId)
         .maybeSingle();
@@ -461,7 +462,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   const buildInvoiceQuery = (offset: number, searchTermTrimmed: string | null) => {
     const selectCols = 'id, customer, customer_name, reference_number, type, status, color_status, date, due_date, amount, balance, terms, last_modified_by_color, customer_order, description';
 
-    let query = supabase.from('acumatica_invoices').select(selectCols);
+    let query = supabase.from('acumatica_invoices').neq('status', 'On Hold').select(selectCols);
 
     if (searchTermTrimmed) {
       const isNumeric = /^\d+$/.test(searchTermTrimmed);

@@ -282,6 +282,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
         if (customerIds.length > 0) {
           const { data: invoiceData, error: invError } = await supabase
             .from('acumatica_invoices')
+            .neq('status', 'On Hold')
             .select('customer')
             .eq('type', 'Invoice')
             .gt('balance', 0)

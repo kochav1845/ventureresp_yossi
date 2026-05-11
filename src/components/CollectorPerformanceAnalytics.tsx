@@ -106,6 +106,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
         if (directRefNumbers.length > 0) {
           const { data: directInvoices, error: directInvError } = await supabase
             .from('acumatica_invoices')
+            .neq('status', 'On Hold')
             .select('color_status')
             .in('reference_number', directRefNumbers)
             .eq('status', 'Open');
@@ -121,6 +122,7 @@ export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerfo
         if (customerIds.length > 0) {
           const { data: customerInvoices, error: customerInvError } = await supabase
             .from('acumatica_invoices')
+            .neq('status', 'On Hold')
             .select('color_status')
             .in('customer', customerIds)
             .eq('status', 'Open');

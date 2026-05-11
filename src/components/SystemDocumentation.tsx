@@ -50,9 +50,9 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
         remindersResult
       ] = await Promise.all([
         supabase.from('acumatica_customers').select('*', { count: 'exact', head: true }),
-        supabase.from('acumatica_invoices').select('amount'),
+        supabase.from('acumatica_invoices').neq('status', 'On Hold').select('amount'),
         supabase.from('acumatica_payments').select('amount'),
-        supabase.from('acumatica_invoices').select('balance').gt('balance', 0),
+        supabase.from('acumatica_invoices').neq('status', 'On Hold').select('balance').gt('balance', 0),
         supabase.from('email_formulas').select('*', { count: 'exact', head: true }),
         supabase.from('email_templates').select('*', { count: 'exact', head: true }),
         supabase.from('invoice_reminders').select('*', { count: 'exact', head: true }).is('completed_at', null)
