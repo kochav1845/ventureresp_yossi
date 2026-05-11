@@ -219,32 +219,66 @@ export default function InvoiceAnalyticsPage() {
         endStr = new Date(year, month + 1, 1).toISOString().split('T')[0];
       }
 
-      setLoadingBatchInfo('Loading invoices...');
+      const batchSize = 500;
+      let offset = 0;
+      let hasMore = true;
+      let accumulated: InvoiceRow[] = [];
+      let isFirstBatch = true;
 
-      const { data, error } = await supabase.rpc('get_invoices_for_date_range', {
-        p_start_date: startStr,
-        p_end_date: endStr,
-        p_type: filterType !== 'all' ? filterType : null,
-      });
+      while (hasMore) {
+        setLoadingBatchInfo(isFirstBatch ? 'Loading invoices...' : `Loading invoices... (${accumulated.length} loaded)`);
 
-      if (error) throw error;
+        let query = supabase
+          .from('acumatica_invoices')
+          .select('id, reference_number, type, status, date, due_date, amount, balance, customer, customer_name, description, color_status')
+          .gte('date', startStr)
+          .lt('date', endStr)
+          .neq('status', 'On Hold')
+          .order('date', { ascending: false })
+          .order('reference_number', { ascending: false })
+          .range(offset, offset + batchSize - 1);
 
-      const rows: InvoiceRow[] = (data || []).map((inv: any) => ({
-        id: inv.id,
-        reference_number: inv.reference_number || '',
-        type: inv.type || '',
-        status: inv.status || '',
-        date: inv.date || '',
-        due_date: inv.due_date || '',
-        amount: parseFloat(inv.amount) || 0,
-        balance: parseFloat(inv.balance) || 0,
-        customer: inv.customer || '',
-        customer_name: inv.customer_name || 'N/A',
-        description: inv.description || '',
-        color_status: inv.color_status || '',
-      }));
+        if (filterType !== 'all') {
+          query = query.eq('type', filterType);
+        }
 
-      setInvoices(rows);
+        const { data: batch, error } = await query;
+        if (error) throw error;
+
+        if (batch && batch.length > 0) {
+          const rows: InvoiceRow[] = batch.map((inv: any) => ({
+            id: inv.id,
+            reference_number: inv.reference_number || '',
+            type: inv.type || '',
+            status: inv.status || '',
+            date: inv.date || '',
+            due_date: inv.due_date || '',
+            amount: parseFloat(inv.amount) || 0,
+            balance: parseFloat(inv.balance) || 0,
+            customer: inv.customer || '',
+            customer_name: inv.customer_name || 'N/A',
+            description: inv.description || '',
+            color_status: inv.color_status || '',
+          }));
+
+          accumulated = [...accumulated, ...rows];
+          setInvoices(accumulated);
+
+          if (isFirstBatch) {
+            setLoading(false);
+            isFirstBatch = false;
+          }
+
+          offset += batchSize;
+          hasMore = batch.length === batchSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      if (isFirstBatch) {
+        setInvoices([]);
+      }
     } catch (error) {
       console.error('Error loading daily invoice data:', error);
     } finally {
@@ -1133,7 +1167,7 @@ export default function InvoiceAnalyticsPage() {
                     <p className="text-gray-500">{loadingBatchInfo || 'Loading invoices...'}</p>
                   </div>
                 </div>
-              ) : customerGroups.length === 0 && !loading ? (
+              ) : customerGroups.length === 0 && !loading && !loadingBatchInfo ? (
                 <div className="text-center text-gray-500 py-12">
                   {searchTerm ? 'No invoices found matching your search.' : 'No invoices found for this period.'}
                 </div>
@@ -1269,6 +1303,16 @@ export default function InvoiceAnalyticsPage() {
                     })}
                   </tbody>
                   <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                    {loadingBatchInfo && (
+                      <tr className="bg-blue-50/50">
+                        <td colSpan={6} className="px-4 py-2 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-500" />
+                            <span className="text-xs text-blue-600 font-medium">{loadingBatchInfo}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                     <tr>
                       <td className="px-4 py-3"></td>
                       <td className="px-4 py-3 text-sm font-bold text-gray-700">
@@ -1295,6 +1339,3 @@ export default function InvoiceAnalyticsPage() {
     </div>
   );
 }
-
-
-export default InvoiceAnalyticsPage
