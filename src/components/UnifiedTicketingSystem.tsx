@@ -166,13 +166,16 @@ export default function UnifiedTicketingSystem({
     ticket.ticket_due_date && isDatePast(ticket.ticket_due_date.split('T')[0])
   );
 
+  const initialLoadDone = useRef(false);
   useEffect(() => {
     if (user && profile) {
+      const isFirst = !initialLoadDone.current;
+      initialLoadDone.current = true;
       Promise.all([
         loadStatusOptions(),
         loadColorOptions(),
         loadTicketTypeOptions(),
-        loadTickets()
+        loadTickets(isFirst)
       ]);
     }
   }, [user, profile, showOnlyAssigned]);
@@ -307,10 +310,10 @@ export default function UnifiedTicketingSystem({
     }
   };
 
-  const loadTickets = async () => {
+  const loadTickets = async (isInitialLoad = false) => {
     if (!user || !profile) return;
 
-    setLoading(true);
+    if (isInitialLoad) setLoading(true);
     try {
       let query = supabase
         .from('collector_assignment_details')
