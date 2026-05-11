@@ -112,7 +112,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
-  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterPaymentMethod !== 'all' || filterInvoicePeriod !== 'all';
+  const [filterCustomer, setFilterCustomer] = useState<string>('all');
+  const [tempFilterCustomer, setTempFilterCustomer] = useState<string>('all');
+  const [customerFilterSearch, setCustomerFilterSearch] = useState('');
+
+  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterPaymentMethod !== 'all' || filterInvoicePeriod !== 'all' || filterCustomer !== 'all';
 
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(null);
@@ -353,11 +357,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       }
     };
     loadViewData();
-  }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, excludedCustomerIds, filterStatus, filterType, filterPaymentMethod, filterInvoicePeriod]);
+  }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, excludedCustomerIds, filterStatus, filterType, filterPaymentMethod, filterInvoicePeriod, filterCustomer]);
 
   useEffect(() => {
     filterAndSortPayments();
-  }, [payments, searchTerm, sortField, sortDirection, filterStatus, filterType, filterPaymentMethod, filterInvoicePeriod, selectedDate, excludedCustomerIds]);
+  }, [payments, searchTerm, sortField, sortDirection, filterStatus, filterType, filterPaymentMethod, filterInvoicePeriod, filterCustomer, selectedDate, excludedCustomerIds]);
 
   // Create application rows when filtered payments change
   useEffect(() => {
@@ -1209,6 +1213,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       filtered = filtered.filter(p => p.payment_method === filterPaymentMethod);
     }
 
+    if (filterCustomer !== 'all') {
+      filtered = filtered.filter(p => p.customer_name === filterCustomer);
+    }
+
     if (filterInvoicePeriod !== 'all') {
       filtered = filtered.filter(p => {
         // Filter by invoice applications containing invoices from specific period
@@ -1461,29 +1469,48 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     return ['all', ...all];
   }, [payments]);
 
+  const uniqueCustomers = useMemo(() => {
+    const customerMap = new Map<string, string>();
+    payments.forEach(p => {
+      if (p.customer_name && !customerMap.has(p.customer_name)) {
+        customerMap.set(p.customer_name, p.customer_id);
+      }
+    });
+    return Array.from(customerMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]));
+  }, [payments]);
+
+  const filteredCustomerOptions = useMemo(() => {
+    if (!customerFilterSearch) return uniqueCustomers;
+    const search = customerFilterSearch.toLowerCase();
+    return uniqueCustomers.filter(([name]) => name.toLowerCase().includes(search));
+  }, [uniqueCustomers, customerFilterSearch]);
+
   const applyFilters = () => {
     setFilterStatus(tempFilterStatus);
     setFilterType(tempFilterType);
     setFilterPaymentMethod(tempFilterPaymentMethod);
     setFilterInvoicePeriod(tempFilterInvoicePeriod);
+    setFilterCustomer(tempFilterCustomer);
     setDateFrom(tempDateFrom);
     setDateTo(tempDateTo);
   };
 
   const clearFilters = () => {
-    // Clear temp filters
     setTempFilterStatus('all');
     setTempFilterType('all');
     setTempFilterPaymentMethod('all');
     setTempFilterInvoicePeriod('all');
+    setTempFilterCustomer('all');
     setTempDateFrom('');
     setTempDateTo('');
+    setCustomerFilterSearch('');
 
-    // Clear applied filters
     setFilterStatus('all');
     setFilterType('all');
     setFilterPaymentMethod('all');
     setFilterInvoicePeriod('all');
+    setFilterCustomer('all');
     setSearchTerm('');
     setSelectedDate(null);
     setDateFrom('');
@@ -2835,6 +2862,57 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                     </select>
                   </div>
 
+                  {/* Customer Filter */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-2">Customer</label>
+                    {tempFilterCustomer !== 'all' ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 px-3 py-2 bg-blue-50 border border-blue-300 rounded-lg text-sm text-blue-800 font-medium truncate" title={tempFilterCustomer}>
+                          {tempFilterCustomer}
+                        </div>
+                        <button
+                          onClick={() => { setTempFilterCustomer('all'); setCustomerFilterSearch(''); }}
+                          className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search customers..."
+                          value={customerFilterSearch}
+                          onChange={(e) => setCustomerFilterSearch(e.target.value)}
+                          className="w-full pl-8 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        {customerFilterSearch && filteredCustomerOptions.length > 0 && (
+                          <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            {filteredCustomerOptions.map(([name]) => (
+                              <button
+                                key={name}
+                                onClick={() => {
+                                  setTempFilterCustomer(name);
+                                  setCustomerFilterSearch('');
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors truncate"
+                                title={name}
+                              >
+                                {name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {customerFilterSearch && filteredCustomerOptions.length === 0 && (
+                          <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3">
+                            <p className="text-xs text-gray-400 italic">No customers found</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Date Range Filter */}
                   <div className="space-y-3 pt-3 border-t border-gray-200">
                     <h4 className="text-xs font-semibold text-gray-700 flex items-center gap-2">
@@ -3191,30 +3269,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                 className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <button
-              onClick={fetchMonthApplications}
-              disabled={fetchingApplications}
-              className={`flex items-center gap-2 px-6 py-2 rounded-lg font-semibold transition-all shadow-sm ${
-                fetchingApplications
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-              }`}
-            >
-              <RefreshCw className={`w-5 h-5 ${fetchingApplications ? 'animate-spin' : ''}`} />
-              {fetchingApplications ? 'Fetching...' : 'Fetch Applications'}
-            </button>
-            <button
-              onClick={fetchMonthAttachments}
-              disabled={fetchingAttachments}
-              className={`flex items-center gap-2 px-6 py-2 rounded-lg font-semibold transition-all shadow-sm ${
-                fetchingAttachments
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-orange-600 hover:bg-orange-700 text-white'
-              }`}
-            >
-              <RefreshCw className={`w-5 h-5 ${fetchingAttachments ? 'animate-spin' : ''}`} />
-              {fetchingAttachments ? 'Fetching...' : 'Fetch Attachments'}
-            </button>
             <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1 border border-gray-300">
               <button
                 onClick={() => setViewMode('payment')}
