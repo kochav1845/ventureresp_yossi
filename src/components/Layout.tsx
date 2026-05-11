@@ -209,6 +209,7 @@ export default function Layout() {
     { id: 'customer-report-templates', name: 'Report Templates', icon: Mail },
     { id: 'customer-email-tracking', name: 'Email Tracking', icon: Eye },
     { id: 'customer-analytics', name: 'Customer Analytics', icon: Users },
+    { id: 'invoice-analytics', name: 'Invoice Analytics', icon: FileText },
     { id: 'payment-analytics', name: 'Payment Analytics', icon: DollarSign },
     { id: 'payment-breakdown', name: 'Payment Breakdown', icon: CreditCard },
     { id: 'invoice-breakdown', name: 'Invoice Breakdown', icon: FileText },

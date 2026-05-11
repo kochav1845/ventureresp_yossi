@@ -1,0 +1,1150 @@
+import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, X, ExternalLink } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
+import * as XLSX from 'xlsx';
+
+interface InvoiceRow {
+  id: string;
+  reference_number: string;
+  type: string;
+  status: string;
+  date: string;
+  due_date: string;
+  amount: number;
+  balance: number;
+  customer: string;
+  customer_name: string;
+  description: string;
+  color_status: string;
+}
+
+type SortField = keyof InvoiceRow;
+type SortDirection = 'asc' | 'desc';
+
+const formatDateString = (dateString: string): string => {
+  if (!dateString) return 'N/A';
+  try {
+    if (dateString.includes('T') || dateString.includes(' ')) {
+      const date = new Date(dateString);
+      return `${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()}`;
+    }
+    const [year, month, day] = dateString.split('-');
+    return `${parseInt(month)}/${parseInt(day)}/${year}`;
+  } catch {
+    return dateString;
+  }
+};
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+
+const formatCurrencyFull = (amount: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+export default function InvoiceAnalyticsPage() {
+  const navigate = useNavigate();
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [calendarView, setCalendarView] = useState<'daily' | 'monthly' | 'yearly'>('daily');
+  const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+  const [filteredInvoices, setFilteredInvoices] = useState<InvoiceRow[]>([]);
+  const [allFilteredInvoices, setAllFilteredInvoices] = useState<InvoiceRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingBatchInfo, setLoadingBatchInfo] = useState('');
+
+  const [monthlyAggregates, setMonthlyAggregates] = useState<{ month: number; total: number; count: number; balance: number; openBalance: number; customers: number }[]>([]);
+  const [yearlyAggregates, setYearlyAggregates] = useState<{ year: number; total: number; count: number; balance: number; openBalance: number; customers: number }[]>([]);
+
+  const [monthlyTotal, setMonthlyTotal] = useState(0);
+  const [monthlyBalance, setMonthlyBalance] = useState(0);
+  const [monthlyInvoiceCount, setMonthlyInvoiceCount] = useState(0);
+  const [monthlyCustomerCount, setMonthlyCustomerCount] = useState(0);
+
+  const [refreshingAnalytics, setRefreshingAnalytics] = useState(false);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterType, setFilterType] = useState('all');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const [tempFilterStatus, setTempFilterStatus] = useState('all');
+  const [tempFilterType, setTempFilterType] = useState('all');
+  const [tempDateFrom, setTempDateFrom] = useState('');
+  const [tempDateTo, setTempDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all';
+
+  const monthName = `${MONTH_NAMES[selectedMonth.getMonth()]} ${selectedMonth.getFullYear()}`;
+
+  // Day groups for headers in the table
+  const dayGroups = useMemo(() => {
+    const source = selectedDate ? filteredInvoices : allFilteredInvoices;
+    if (source.length === 0) return null;
+    const groups = new Map<string, { invoices: InvoiceRow[]; total: number; balance: number; count: number }>();
+    for (const inv of source) {
+      const dayKey = inv.date ? inv.date.split('T')[0] : 'unknown';
+      const existing = groups.get(dayKey);
+      if (existing) {
+        existing.invoices.push(inv);
+        existing.total += inv.amount;
+        existing.balance += inv.balance;
+        existing.count += 1;
+      } else {
+        groups.set(dayKey, { invoices: [inv], total: inv.amount, balance: inv.balance, count: 1 });
+      }
+    }
+    return groups;
+  }, [filteredInvoices, allFilteredInvoices, selectedDate]);
+
+  // Unique filter values
+  const uniqueStatuses = useMemo(() => {
+    const set = new Set(invoices.map(i => i.status).filter(Boolean));
+    return ['all', ...Array.from(set).sort()];
+  }, [invoices]);
+
+  const uniqueTypes = useMemo(() => {
+    const set = new Set(invoices.map(i => i.type).filter(Boolean));
+    return ['all', ...Array.from(set).sort()];
+  }, [invoices]);
+
+  // Load data based on view
+  useEffect(() => {
+    if (calendarView === 'monthly') {
+      setYearlyAggregates([]);
+      setInvoices([]);
+      loadMonthlyAggregates(selectedYear);
+    } else if (calendarView === 'yearly') {
+      setMonthlyAggregates([]);
+      setInvoices([]);
+      loadYearlyAggregates();
+    } else {
+      setMonthlyAggregates([]);
+      setYearlyAggregates([]);
+      loadDailyData();
+    }
+  }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, filterStatus, filterType]);
+
+  useEffect(() => {
+    filterAndSortInvoices();
+  }, [invoices, searchTerm, sortField, sortDirection, filterStatus, filterType, selectedDate]);
+
+  useEffect(() => {
+    if (calendarView === 'daily') {
+      const total = allFilteredInvoices.reduce((sum, i) => sum + i.amount, 0);
+      const balance = allFilteredInvoices.reduce((sum, i) => sum + i.balance, 0);
+      const customers = new Set(allFilteredInvoices.map(i => i.customer).filter(Boolean));
+      setMonthlyTotal(total);
+      setMonthlyBalance(balance);
+      setMonthlyInvoiceCount(allFilteredInvoices.length);
+      setMonthlyCustomerCount(customers.size);
+    }
+  }, [allFilteredInvoices, calendarView]);
+
+  useEffect(() => {
+    setTempFilterStatus(filterStatus);
+    setTempFilterType(filterType);
+    setTempDateFrom(dateFrom);
+    setTempDateTo(dateTo);
+  }, []);
+
+  const loadDailyData = async () => {
+    setLoading(true);
+    setLoadingBatchInfo('');
+    setInvoices([]);
+    try {
+      let startStr: string;
+      let endStr: string;
+
+      if (dateFrom && dateTo) {
+        startStr = dateFrom;
+        const endDate = new Date(dateTo);
+        endDate.setDate(endDate.getDate() + 1);
+        endStr = endDate.toISOString().split('T')[0];
+      } else if (dateFrom) {
+        startStr = dateFrom;
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        endStr = tomorrow.toISOString().split('T')[0];
+      } else {
+        const year = selectedMonth.getFullYear();
+        const month = selectedMonth.getMonth();
+        startStr = new Date(year, month, 1).toISOString().split('T')[0];
+        endStr = new Date(year, month + 1, 1).toISOString().split('T')[0];
+      }
+
+      setLoadingBatchInfo('Loading invoices...');
+
+      const { data, error } = await supabase.rpc('get_invoices_for_date_range', {
+        p_start_date: startStr,
+        p_end_date: endStr,
+        p_type: filterType !== 'all' ? filterType : null,
+      });
+
+      if (error) throw error;
+
+      const rows: InvoiceRow[] = (data || []).map((inv: any) => ({
+        id: inv.id,
+        reference_number: inv.reference_number || '',
+        type: inv.type || '',
+        status: inv.status || '',
+        date: inv.date || '',
+        due_date: inv.due_date || '',
+        amount: parseFloat(inv.amount) || 0,
+        balance: parseFloat(inv.balance) || 0,
+        customer: inv.customer || '',
+        customer_name: inv.customer_name || 'N/A',
+        description: inv.description || '',
+        color_status: inv.color_status || '',
+      }));
+
+      setInvoices(rows);
+    } catch (error) {
+      console.error('Error loading daily invoice data:', error);
+    } finally {
+      setLoading(false);
+      setLoadingBatchInfo('');
+    }
+  };
+
+  const loadMonthlyAggregates = async (year: number) => {
+    setLoading(true);
+    setLoadingBatchInfo('');
+    try {
+      const { data: cachedData, error } = await supabase
+        .from('cached_invoice_analytics')
+        .select('*')
+        .eq('period_type', 'monthly')
+        .eq('year', year)
+        .order('month', { ascending: true });
+
+      if (error) throw error;
+
+      if (cachedData && cachedData.length > 0) {
+        const aggregates = Array.from({ length: 12 }, (_, idx) => ({
+          month: idx,
+          total: 0,
+          count: 0,
+          balance: 0,
+          openBalance: 0,
+          customers: 0,
+        }));
+        let totalAmount = 0;
+        let totalBalance = 0;
+        let totalCount = 0;
+        let totalCustomers = 0;
+
+        cachedData.forEach((row: any) => {
+          if (row.month >= 1 && row.month <= 12) {
+            const amt = parseFloat(row.total_amount) || 0;
+            const bal = parseFloat(row.total_open_balance) || 0;
+            const cnt = row.invoice_count || 0;
+            const cust = row.unique_customer_count || 0;
+            aggregates[row.month - 1] = {
+              month: row.month - 1,
+              total: amt,
+              count: cnt,
+              balance: parseFloat(row.total_balance) || 0,
+              openBalance: bal,
+              customers: cust,
+            };
+            totalAmount += amt;
+            totalBalance += bal;
+            totalCount += cnt;
+            totalCustomers += cust;
+          }
+        });
+
+        setMonthlyAggregates(aggregates);
+        setMonthlyTotal(totalAmount);
+        setMonthlyBalance(totalBalance);
+        setMonthlyInvoiceCount(totalCount);
+        setMonthlyCustomerCount(totalCustomers);
+        if (cachedData[0].calculated_at) {
+          setLastRefreshTime(new Date(cachedData[0].calculated_at));
+        }
+      } else {
+        setLoadingBatchInfo('Building analytics cache...');
+        await refreshAnalyticsCache('monthly', year);
+      }
+    } catch (error) {
+      console.error('Error loading monthly aggregates:', error);
+    } finally {
+      setLoading(false);
+      setLoadingBatchInfo('');
+    }
+  };
+
+  const loadYearlyAggregates = async () => {
+    setLoading(true);
+    try {
+      const { data: cachedData, error } = await supabase
+        .from('cached_invoice_analytics')
+        .select('*')
+        .eq('period_type', 'yearly')
+        .order('year', { ascending: false });
+
+      if (error) throw error;
+
+      if (cachedData && cachedData.length > 0) {
+        const aggregates = cachedData.map((row: any) => ({
+          year: row.year,
+          total: parseFloat(row.total_amount) || 0,
+          count: row.invoice_count || 0,
+          balance: parseFloat(row.total_balance) || 0,
+          openBalance: parseFloat(row.total_open_balance) || 0,
+          customers: row.unique_customer_count || 0,
+        }));
+
+        setYearlyAggregates(aggregates);
+        const totalAmount = aggregates.reduce((s, a) => s + a.total, 0);
+        const totalCount = aggregates.reduce((s, a) => s + a.count, 0);
+        setMonthlyTotal(totalAmount);
+        setMonthlyInvoiceCount(totalCount);
+        setMonthlyBalance(aggregates.reduce((s, a) => s + a.openBalance, 0));
+        setMonthlyCustomerCount(0);
+        if (cachedData[0].calculated_at) {
+          setLastRefreshTime(new Date(cachedData[0].calculated_at));
+        }
+      } else {
+        await refreshAnalyticsCache('yearly');
+      }
+    } catch (error) {
+      console.error('Error loading yearly aggregates:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshAnalyticsCache = async (periodType = 'monthly', year?: number) => {
+    setRefreshingAnalytics(true);
+    try {
+      const targetYear = year || (periodType === 'monthly' ? selectedYear : undefined);
+
+      const { data, error } = await supabase.rpc('refresh_cached_invoice_analytics', {
+        p_period_type: periodType,
+        p_year: targetYear || null,
+        p_month: periodType === 'daily' ? (selectedMonth.getMonth() + 1) : null,
+      });
+
+      if (error) throw error;
+
+      setLastRefreshTime(new Date());
+
+      if (periodType === 'monthly') {
+        await loadMonthlyAggregates(targetYear || selectedYear);
+      } else if (periodType === 'yearly') {
+        await loadYearlyAggregates();
+      } else {
+        await loadDailyData();
+      }
+    } catch (error: any) {
+      console.error('Error refreshing analytics:', error);
+      alert('Error refreshing analytics: ' + error.message);
+    } finally {
+      setRefreshingAnalytics(false);
+    }
+  };
+
+  const refreshCurrentView = async () => {
+    if (calendarView === 'monthly') {
+      await refreshAnalyticsCache('monthly', selectedYear);
+    } else if (calendarView === 'yearly') {
+      await refreshAnalyticsCache('yearly');
+    } else {
+      await refreshAnalyticsCache('daily');
+    }
+  };
+
+  const filterAndSortInvoices = () => {
+    let filtered = [...invoices];
+
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      filtered = filtered.filter(i =>
+        i.reference_number.toLowerCase().includes(search) ||
+        i.customer_name.toLowerCase().includes(search) ||
+        i.customer.toLowerCase().includes(search) ||
+        i.type.toLowerCase().includes(search) ||
+        i.description.toLowerCase().includes(search)
+      );
+    }
+
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter(i => i.status === filterStatus);
+    }
+    if (filterType !== 'all') {
+      filtered = filtered.filter(i => i.type === filterType);
+    }
+
+    filtered.sort((a, b) => {
+      const aVal = a[sortField];
+      const bVal = b[sortField];
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      const aStr = String(aVal).toLowerCase();
+      const bStr = String(bVal).toLowerCase();
+      return sortDirection === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+    });
+
+    setAllFilteredInvoices(filtered);
+
+    if (selectedDate) {
+      const selectedDateStr = selectedDate.toISOString().split('T')[0];
+      filtered = filtered.filter(i => i.date.split('T')[0] === selectedDateStr);
+    }
+
+    setFilteredInvoices(filtered);
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const applyFilters = () => {
+    setFilterStatus(tempFilterStatus);
+    setFilterType(tempFilterType);
+    setDateFrom(tempDateFrom);
+    setDateTo(tempDateTo);
+  };
+
+  const clearFilters = () => {
+    setTempFilterStatus('all');
+    setTempFilterType('all');
+    setTempDateFrom('');
+    setTempDateTo('');
+    setFilterStatus('all');
+    setFilterType('all');
+    setDateFrom('');
+    setDateTo('');
+    setSelectedDate(null);
+  };
+
+  const previousPeriod = () => {
+    if (calendarView === 'daily') {
+      setSelectedMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+    } else if (calendarView === 'monthly') {
+      setSelectedYear(prev => prev - 1);
+    } else {
+      setSelectedYear(prev => prev - 6);
+    }
+  };
+
+  const nextPeriod = () => {
+    if (calendarView === 'daily') {
+      setSelectedMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+    } else if (calendarView === 'monthly') {
+      setSelectedYear(prev => prev + 1);
+    } else {
+      setSelectedYear(prev => prev + 6);
+    }
+  };
+
+  const getCalendarDays = () => {
+    const year = selectedMonth.getFullYear();
+    const month = selectedMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const days: Date[] = [];
+
+    const startPadding = firstDay.getDay();
+    for (let i = startPadding - 1; i >= 0; i--) {
+      days.push(new Date(year, month, -i));
+    }
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      days.push(new Date(year, month, d));
+    }
+    const remaining = 7 - (days.length % 7);
+    if (remaining < 7) {
+      for (let i = 1; i <= remaining; i++) {
+        days.push(new Date(year, month + 1, i));
+      }
+    }
+    return days;
+  };
+
+  const getDayInvoices = (date: Date) => {
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return allFilteredInvoices.filter(inv => inv.date.split('T')[0] === dateStr);
+  };
+
+  const getMonthlyData = () => {
+    if (monthlyAggregates.length > 0) {
+      return monthlyAggregates.map(agg => ({
+        month: agg.month,
+        name: MONTH_NAMES[agg.month],
+        total: agg.total,
+        count: agg.count,
+        balance: agg.balance,
+        openBalance: agg.openBalance,
+        customers: agg.customers,
+      }));
+    }
+    return Array.from({ length: 12 }, (_, i) => ({
+      month: i,
+      name: MONTH_NAMES[i],
+      total: 0,
+      count: 0,
+      balance: 0,
+      openBalance: 0,
+      customers: 0,
+    }));
+  };
+
+  const getYearlyData = () => {
+    if (yearlyAggregates.length > 0) return yearlyAggregates;
+    return [];
+  };
+
+  const exportToExcel = () => {
+    const source = selectedDate ? filteredInvoices : allFilteredInvoices;
+    const exportData = source.map(inv => ({
+      Date: formatDateString(inv.date),
+      Reference: inv.reference_number,
+      Type: inv.type,
+      Status: inv.status,
+      Customer_ID: inv.customer,
+      Customer_Name: inv.customer_name,
+      Amount: inv.amount,
+      Balance: inv.balance,
+      Due_Date: formatDateString(inv.due_date),
+      Description: inv.description,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Invoices');
+    XLSX.writeFile(wb, `invoice_analytics_${selectedMonth.getFullYear()}_${selectedMonth.getMonth() + 1}.xlsx`);
+  };
+
+  const SortableHeader = ({ field, label }: { field: SortField; label: string }) => (
+    <th
+      onClick={() => handleSort(field)}
+      className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10 cursor-pointer hover:bg-gray-100 transition-colors"
+    >
+      <div className="flex items-center gap-1">
+        {label}
+        <ArrowUpDown className={`w-3 h-3 ${sortField === field ? 'text-blue-500' : 'text-gray-400'}`} />
+      </div>
+    </th>
+  );
+
+  const getStatusBadge = (status: string) => {
+    const colors: Record<string, string> = {
+      Open: 'bg-amber-100 text-amber-700 border-amber-200',
+      Closed: 'bg-green-100 text-green-700 border-green-200',
+      Balanced: 'bg-blue-100 text-blue-700 border-blue-200',
+    };
+    return colors[status] || 'bg-gray-100 text-gray-700 border-gray-200';
+  };
+
+  const getTypeBadge = (type: string) => {
+    const colors: Record<string, string> = {
+      Invoice: 'bg-blue-50 text-blue-700',
+      'Credit Memo': 'bg-emerald-50 text-emerald-700',
+      'Debit Memo': 'bg-amber-50 text-amber-700',
+    };
+    return colors[type] || 'bg-gray-50 text-gray-700';
+  };
+
+  const getColorDot = (colorStatus: string) => {
+    if (!colorStatus || colorStatus === 'none') return null;
+    const colors: Record<string, string> = {
+      red: 'bg-red-500',
+      yellow: 'bg-yellow-500',
+      green: 'bg-green-500',
+      blue: 'bg-blue-500',
+      orange: 'bg-orange-500',
+    };
+    return colors[colorStatus] || null;
+  };
+
+  return (
+    <div className="min-h-screen bg-white">
+      {/* Header */}
+      <div className="bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg transition-colors shadow-sm"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              Back
+            </button>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+                <FileText className="w-8 h-8 text-blue-600" />
+                Invoice Analytics
+              </h1>
+              <p className="text-gray-600 mt-1">Monthly invoice tracking and analysis</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex">
+        {/* Sidebar */}
+        <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-gray-50 border-r border-gray-200 transition-all duration-300 overflow-hidden flex-shrink-0`}>
+          <div className="p-4">
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="w-full flex items-center justify-between px-3 py-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors mb-4"
+            >
+              {!sidebarCollapsed && <span className="font-semibold">Filters</span>}
+              {sidebarCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+            </button>
+
+            {!sidebarCollapsed && (
+              <div className="space-y-6">
+                {/* Summary Stats */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4" />
+                    Summary
+                  </h3>
+                  <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Total Amount</p>
+                    <p className="text-xl font-bold text-gray-700">{formatCurrency(monthlyTotal)}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Open Balance</p>
+                    <p className="text-xl font-bold text-gray-700">{formatCurrency(monthlyBalance)}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Invoices</p>
+                    <p className="text-xl font-bold text-gray-700">{monthlyInvoiceCount.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-teal-500/20 to-teal-600/10 border border-teal-500/30 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Customers</p>
+                    <p className="text-xl font-bold text-gray-700">{monthlyCustomerCount.toLocaleString()}</p>
+                  </div>
+                </div>
+
+                {/* Filters */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <Filter className="w-4 h-4" />
+                    Filter Options
+                  </h3>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-2">Status</label>
+                    <select
+                      value={tempFilterStatus}
+                      onChange={(e) => setTempFilterStatus(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {uniqueStatuses.map(s => (
+                        <option key={s} value={s}>{s === 'all' ? 'All Statuses' : s}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-2">Type</label>
+                    <select
+                      value={tempFilterType}
+                      onChange={(e) => setTempFilterType(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {uniqueTypes.map(t => (
+                        <option key={t} value={t}>{t === 'all' ? 'All Types' : t}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Date Range */}
+                  <div className="space-y-3 pt-3 border-t border-gray-200">
+                    <h4 className="text-xs font-semibold text-gray-700 flex items-center gap-2">
+                      <Calendar className="w-3.5 h-3.5" />
+                      Date Range Filter
+                    </h4>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">From Date</label>
+                      <input
+                        type="date"
+                        value={tempDateFrom}
+                        onChange={(e) => setTempDateFrom(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">To Date</label>
+                      <input
+                        type="date"
+                        value={tempDateTo}
+                        onChange={(e) => setTempDateTo(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    {(tempDateFrom || tempDateTo) && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                        <p className="text-xs text-blue-600">
+                          Will show invoices {tempDateFrom && tempDateTo
+                            ? `from ${formatDateString(tempDateFrom)} to ${formatDateString(tempDateTo)}`
+                            : tempDateFrom
+                            ? `from ${formatDateString(tempDateFrom)}`
+                            : `up to ${formatDateString(tempDateTo)}`
+                          }
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <button
+                      onClick={applyFilters}
+                      className="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Apply Filters
+                    </button>
+                    <button
+                      onClick={clearFilters}
+                      className="w-full px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Clear All Filters
+                    </button>
+                  </div>
+
+                  {hasActiveFilters && (
+                    <div className="bg-amber-50 border border-amber-300 rounded-lg p-2">
+                      <p className="text-xs font-medium text-amber-700">
+                        Filters active -- results in all views are filtered
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {selectedDate && (
+                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 mb-1">Selected Date</p>
+                    <p className="text-sm font-semibold text-blue-600">
+                      {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                    <button onClick={() => setSelectedDate(null)} className="text-xs text-blue-500 hover:text-blue-400 mt-2">
+                      Clear
+                    </button>
+                  </div>
+                )}
+
+                <div className="bg-white rounded-lg p-3 border border-gray-300 shadow-sm">
+                  <p className="text-xs text-gray-500 mb-1">Showing</p>
+                  <p className="text-lg font-bold text-gray-700">{filteredInvoices.length.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500">
+                    {(dateFrom || dateTo)
+                      ? `in selected date range (${invoices.length.toLocaleString()} total loaded)`
+                      : `of ${invoices.length.toLocaleString()} invoices`
+                    }
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 p-6 overflow-x-hidden max-w-full">
+          {/* View Toggle */}
+          <div className="flex justify-center mb-6">
+            <div className="inline-flex bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden">
+              <button
+                onClick={() => setCalendarView('daily')}
+                className={`px-6 py-2 text-sm font-medium transition-colors ${
+                  calendarView === 'daily' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Daily
+              </button>
+              <button
+                onClick={() => setCalendarView('monthly')}
+                className={`px-6 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                  calendarView === 'monthly' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setCalendarView('yearly')}
+                className={`px-6 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                  calendarView === 'yearly' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Yearly
+              </button>
+            </div>
+          </div>
+
+          {/* Period Navigation */}
+          <div className="flex items-center justify-between mb-6">
+            <button onClick={previousPeriod} className="p-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-gray-700 flex items-center gap-2 justify-center">
+                  <Calendar className="w-6 h-6 text-blue-400" />
+                  {calendarView === 'daily' ? monthName : calendarView === 'monthly' ? selectedYear : `${selectedYear - 5} - ${selectedYear}`}
+                </h2>
+                {selectedDate && calendarView === 'daily' && (
+                  <button onClick={() => setSelectedDate(null)} className="text-xs text-blue-400 hover:text-blue-300 mt-1">
+                    Clear date filter
+                  </button>
+                )}
+                {lastRefreshTime && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Last updated: {lastRefreshTime.toLocaleTimeString()}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={refreshCurrentView}
+                disabled={refreshingAnalytics}
+                className={`p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors ${refreshingAnalytics ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title="Refresh analytics data"
+              >
+                <RefreshCw className={`w-5 h-5 ${refreshingAnalytics ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+            <button onClick={nextPeriod} className="p-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors">
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Calendar Grid */}
+          <div className="mb-6 max-w-full">
+            {calendarView === 'daily' ? (
+              <>
+                <div className="grid grid-cols-7 gap-2 mb-2">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                    <div key={day} className="text-center text-xs font-semibold text-gray-500 py-2">{day}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-2">
+                  {getCalendarDays().map((date, idx) => {
+                    const dayInvoices = getDayInvoices(date);
+                    const isCurrentMonth = date.getMonth() === selectedMonth.getMonth();
+                    const isToday = date.toDateString() === new Date().toDateString();
+                    const isSelected = selectedDate?.toDateString() === date.toDateString();
+                    const dayTotal = dayInvoices.reduce((sum, i) => sum + i.amount, 0);
+                    const dayBalance = dayInvoices.reduce((sum, i) => sum + i.balance, 0);
+
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => isCurrentMonth ? setSelectedDate(isSelected ? null : date) : null}
+                        className={`
+                          relative p-2 rounded-lg border transition-all min-h-[80px]
+                          ${isCurrentMonth ? 'bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300' : 'bg-white border-gray-200 opacity-40'}
+                          ${isSelected ? 'ring-2 ring-blue-500 bg-blue-500/20' : ''}
+                          ${isToday ? 'border-blue-400' : ''}
+                          ${isCurrentMonth ? 'cursor-pointer' : 'cursor-not-allowed'}
+                        `}
+                        disabled={!isCurrentMonth}
+                      >
+                        <div className="text-xs font-semibold text-gray-700 mb-1">{date.getDate()}</div>
+                        {dayInvoices.length > 0 && isCurrentMonth && (
+                          <div className="space-y-0.5">
+                            <div className="text-xs text-blue-600 font-medium">{formatCurrency(dayTotal)}</div>
+                            {dayBalance > 0 && (
+                              <div className="text-xs text-amber-600 font-medium">{formatCurrency(dayBalance)} bal</div>
+                            )}
+                            <div className="text-xs text-gray-500">{dayInvoices.length} inv</div>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : calendarView === 'monthly' ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {getMonthlyData().map((monthData) => {
+                  const isCurrentMonth = monthData.month === new Date().getMonth() && selectedYear === new Date().getFullYear();
+                  return (
+                    <button
+                      key={monthData.month}
+                      onClick={() => {
+                        setInvoices([]);
+                        setFilteredInvoices([]);
+                        setLoading(true);
+                        setSelectedMonth(new Date(selectedYear, monthData.month, 1));
+                        setCalendarView('daily');
+                      }}
+                      className={`
+                        p-5 rounded-lg border transition-all hover:shadow-lg cursor-pointer text-left
+                        ${isCurrentMonth ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-400' : 'bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-200'}
+                      `}
+                    >
+                      <div className="text-base font-bold text-gray-700 mb-3">{monthData.name}</div>
+                      {monthData.count > 0 ? (
+                        <div className="space-y-1">
+                          <div className="text-xl font-semibold text-blue-600">{formatCurrency(monthData.total)}</div>
+                          {monthData.openBalance > 0 && (
+                            <div className="text-sm font-medium text-amber-600">{formatCurrency(monthData.openBalance)} open</div>
+                          )}
+                          <div className="text-xs text-gray-500">
+                            {monthData.count.toLocaleString()} invoice{monthData.count !== 1 ? 's' : ''}
+                            {monthData.customers > 0 && ` | ${monthData.customers} customers`}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-400">No invoices</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                {getYearlyData().map((yearData) => {
+                  const isCurrentYear = yearData.year === new Date().getFullYear();
+                  return (
+                    <button
+                      key={yearData.year}
+                      onClick={() => {
+                        setSelectedYear(yearData.year);
+                        setCalendarView('monthly');
+                      }}
+                      className={`
+                        p-8 rounded-xl border-2 transition-all hover:shadow-xl cursor-pointer text-left
+                        ${isCurrentYear ? 'bg-blue-50 border-blue-400 ring-4 ring-blue-200' : 'bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-300'}
+                      `}
+                    >
+                      <div className="text-3xl font-bold text-gray-700 mb-4">{yearData.year}</div>
+                      {yearData.count > 0 ? (
+                        <div className="space-y-2">
+                          <div className="text-3xl font-bold text-blue-600">{formatCurrency(yearData.total)}</div>
+                          {yearData.openBalance > 0 && (
+                            <div className="text-lg font-medium text-amber-600">{formatCurrency(yearData.openBalance)} open</div>
+                          )}
+                          <div className="text-sm text-gray-500">
+                            {yearData.count.toLocaleString()} invoice{yearData.count !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-base text-gray-400">No invoices</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 max-w-full">
+            <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-lg p-4 overflow-hidden">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-blue-500/20 rounded-lg flex-shrink-0">
+                  <DollarSign className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-gray-500 text-xs mb-1">Total Invoiced</p>
+                  <p className="text-base font-bold text-gray-700 break-words">{formatCurrency(monthlyTotal)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-lg p-4 overflow-hidden">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-amber-500/20 rounded-lg flex-shrink-0">
+                  <TrendingUp className="w-5 h-5 text-amber-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-gray-500 text-xs mb-1">Open Balance</p>
+                  <p className="text-base font-bold text-gray-700 break-words">{formatCurrency(monthlyBalance)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-lg p-4 overflow-hidden">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-green-500/20 rounded-lg flex-shrink-0">
+                  <FileText className="w-5 h-5 text-green-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-gray-500 text-xs mb-1">Total Invoices</p>
+                  <p className="text-base font-bold text-gray-700 break-words">{monthlyInvoiceCount.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-teal-500/20 to-teal-600/10 border border-teal-500/30 rounded-lg p-4 overflow-hidden">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-teal-500/20 rounded-lg flex-shrink-0">
+                  <Users className="w-5 h-5 text-teal-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-gray-500 text-xs mb-1">Unique Customers</p>
+                  <p className="text-base font-bold text-gray-700 break-words">{monthlyCustomerCount.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Search and Actions Bar */}
+          <div className="flex flex-wrap gap-4 mb-6 max-w-full">
+            <div className="flex-1 min-w-[200px] relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+              <input
+                type="text"
+                placeholder="Search by reference, customer, type..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <button
+              onClick={exportToExcel}
+              className="flex items-center gap-2 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all shadow-sm"
+            >
+              <Download className="w-5 h-5" />
+              Export Excel
+            </button>
+          </div>
+
+          {/* Invoice Table */}
+          <div className="bg-white border border-gray-200 shadow-lg rounded-xl overflow-hidden max-w-full">
+            <div className="max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+              {loading && filteredInvoices.length === 0 ? (
+                <div className="flex items-center justify-center py-20">
+                  <div className="text-center">
+                    <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 text-blue-400" />
+                    <p className="text-gray-500">{loadingBatchInfo || 'Loading invoices...'}</p>
+                  </div>
+                </div>
+              ) : filteredInvoices.length === 0 && !loading ? (
+                <div className="text-center text-gray-500 py-12">
+                  {searchTerm ? 'No invoices found matching your search.' : 'No invoices found for this period.'}
+                </div>
+              ) : (
+                <table className="divide-y divide-gray-200" style={{ minWidth: '1200px', width: 'max-content' }}>
+                  <thead>
+                    <tr>
+                      <SortableHeader field="date" label="Date" />
+                      <SortableHeader field="reference_number" label="Reference" />
+                      <SortableHeader field="type" label="Type" />
+                      <SortableHeader field="customer_name" label="Customer" />
+                      <SortableHeader field="amount" label="Amount" />
+                      <SortableHeader field="balance" label="Balance" />
+                      <SortableHeader field="due_date" label="Due Date" />
+                      <SortableHeader field="status" label="Status" />
+                      <SortableHeader field="description" label="Description" />
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 sticky top-0 z-10">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {(() => {
+                      let lastDayKey = '';
+                      return filteredInvoices.map((invoice, index) => {
+                        const currentDayKey = invoice.date ? invoice.date.split('T')[0] : 'unknown';
+                        const showDayHeader = !selectedDate && dayGroups && currentDayKey !== lastDayKey;
+                        if (showDayHeader) lastDayKey = currentDayKey;
+                        const dayGroup = dayGroups?.get(currentDayKey);
+                        const colorDot = getColorDot(invoice.color_status);
+
+                        return (
+                          <Fragment key={invoice.id || index}>
+                            {showDayHeader && dayGroup && (
+                              <tr className="bg-gradient-to-r from-slate-100 to-blue-50">
+                                <td colSpan={10} className="px-4 py-2">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <Calendar className="w-4 h-4 text-blue-500" />
+                                      <span className="font-semibold text-gray-800">
+                                        {new Date(currentDayKey + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                      </span>
+                                      <span className="text-sm text-gray-500">
+                                        {dayGroup.count} invoice{dayGroup.count !== 1 ? 's' : ''}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                      <span className="text-sm font-semibold text-blue-600">{formatCurrencyFull(dayGroup.total)}</span>
+                                      {dayGroup.balance > 0 && (
+                                        <span className="text-sm font-semibold text-amber-600">{formatCurrencyFull(dayGroup.balance)} bal</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            <tr className="hover:bg-gray-50 transition-colors border-b border-gray-100">
+                              <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap border-r border-gray-100">
+                                {formatDateString(invoice.date)}
+                              </td>
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap border-r border-gray-100">
+                                <div className="flex items-center gap-2">
+                                  {colorDot && <div className={`w-2.5 h-2.5 rounded-full ${colorDot}`} />}
+                                  {invoice.reference_number}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-sm whitespace-nowrap border-r border-gray-100">
+                                <span className={`px-2 py-1 text-xs font-medium rounded ${getTypeBadge(invoice.type)}`}>
+                                  {invoice.type}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-100 max-w-[200px] truncate" title={`${invoice.customer_name} (${invoice.customer})`}>
+                                {invoice.customer_name}
+                              </td>
+                              <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap text-right border-r border-gray-100">
+                                {formatCurrencyFull(invoice.amount)}
+                              </td>
+                              <td className={`px-4 py-3 text-sm font-semibold whitespace-nowrap text-right border-r border-gray-100 ${invoice.balance > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                                {formatCurrencyFull(invoice.balance)}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap border-r border-gray-100">
+                                {formatDateString(invoice.due_date)}
+                              </td>
+                              <td className="px-4 py-3 text-sm whitespace-nowrap border-r border-gray-100">
+                                <span className={`px-2 py-1 text-xs font-medium rounded border ${getStatusBadge(invoice.status)}`}>
+                                  {invoice.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600 max-w-[200px] truncate border-r border-gray-100" title={invoice.description}>
+                                {invoice.description || '-'}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <a
+                                  href={getAcumaticaInvoiceUrl(invoice.reference_number)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                                  title="Open in Acumatica"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              </td>
+                            </tr>
+                          </Fragment>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

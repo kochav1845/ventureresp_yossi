@@ -15,7 +15,6 @@ import AcumaticaInvoiceTest from './components/AcumaticaInvoiceTest';
 import AcumaticaCustomers from './components/AcumaticaCustomers';
 import AcumaticaInvoices from './components/AcumaticaInvoices';
 import AcumaticaPayments from './components/AcumaticaPayments';
-import AnalyticsDashboard from './components/AnalyticsDashboard';
 import InvoiceStatusAnalytics from './components/InvoiceStatusAnalytics';
 import PaymentAnalytics from './components/PaymentAnalytics';
 import CustomerReportsMonthly from './components/CustomerReportsMonthly';
@@ -85,6 +84,7 @@ import EmailSettings from './components/EmailSettings';
 import TicketDetailPage from './components/TicketDetailPage';
 import CustomerStatements from './components/CustomerStatements';
 import ApiKeyManagement from './components/ApiKeyManagement';
+import InvoiceAnalyticsPage from './components/InvoiceAnalyticsPage';
 
 function LoadingScreen() {
   return (
@@ -145,7 +145,7 @@ function AppContent() {
         <Route path="acumatica-customers" element={<AcumaticaCustomers />} />
         <Route path="acumatica-invoices" element={<AcumaticaInvoices />} />
         <Route path="acumatica-payments" element={<AcumaticaPayments />} />
-        <Route path="invoice-analytics" element={<AnalyticsDashboard />} />
+        <Route path="invoice-analytics" element={<InvoiceAnalyticsPage />} />
         <Route path="payment-analytics" element={<PaymentAnalytics />} />
         <Route path="payment-breakdown" element={<PaymentBreakdown />} />
         <Route path="invoice-breakdown" element={<InvoiceBreakdown />} />
