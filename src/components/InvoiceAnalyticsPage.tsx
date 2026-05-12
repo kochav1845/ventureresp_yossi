@@ -137,9 +137,15 @@ export default function InvoiceAnalyticsPage() {
         existing.invoices.push(inv);
         existing.totalAmount += inv.amount;
         existing.totalBalance += inv.balance;
+        // Prefer a real name over one that's just the customer number
+        const name = inv.customer_name || '';
+        if (existing.customerName === key && name && name !== key) {
+          existing.customerName = name;
+        }
       } else {
+        const name = inv.customer_name || '';
         map.set(key, {
-          customerName: inv.customer_name || 'Unknown',
+          customerName: name && name !== key ? name : 'Unknown',
           customerId: key,
           invoices: [inv],
           totalAmount: inv.amount,
@@ -166,12 +172,16 @@ export default function InvoiceAnalyticsPage() {
   const uniqueCustomers = useMemo(() => {
     const map = new Map<string, string>();
     for (const inv of invoices) {
-      if (inv.customer && !map.has(inv.customer)) {
-        map.set(inv.customer, inv.customer_name || inv.customer);
+      if (!inv.customer) continue;
+      const existing = map.get(inv.customer);
+      const name = inv.customer_name || '';
+      // Prefer a name that isn't just the customer number
+      if (!existing || existing === inv.customer) {
+        map.set(inv.customer, name && name !== inv.customer ? name : (existing || inv.customer));
       }
     }
     return Array.from(map.entries())
-      .map(([id, name]) => ({ id, name }))
+      .map(([id, name]) => ({ id, name: name || id }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [invoices]);
 
@@ -948,9 +958,14 @@ export default function InvoiceAnalyticsPage() {
                               <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
                                 {isSelected && <Check className="w-3 h-3 text-white" />}
                               </div>
-                              <span className={`truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}`}>
-                                {cust.name}
-                              </span>
+                              <div className="min-w-0 flex-1">
+                                <span className={`block truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}`}>
+                                  {cust.name}
+                                </span>
+                                {cust.name !== cust.id && (
+                                  <span className="block text-[10px] text-gray-400 truncate">{cust.id}</span>
+                                )}
+                              </div>
                             </button>
                           );
                         })
