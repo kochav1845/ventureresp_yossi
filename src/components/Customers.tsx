@@ -202,6 +202,9 @@ export default function Customers({ onBack }: CustomersProps) {
   const [showAnalytics, setShowAnalytics] = useState(true);
   const [excludeCreditMemos, setExcludeCreditMemos] = useState(false);
   const [customersWithOpenTickets, setCustomersWithOpenTickets] = useState<Set<string>>(new Set());
+  const [cachedStatsLoaded, setCachedStatsLoaded] = useState(false);
+  const [cachedStatsTime, setCachedStatsTime] = useState<string | null>(null);
+  const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [stats, setStats] = useState({
     total_customers: 0,
     active_customers: 0,
@@ -235,7 +238,37 @@ export default function Customers({ onBack }: CustomersProps) {
     email: '',
   });
 
+  const loadCachedStats = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('cached_customer_stats')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (data && !error) {
+        const isTest = showTestCustomers;
+        setStats({
+          total_customers: isTest ? data.total_customers : data.total_customers_excl_test,
+          active_customers: isTest ? data.active_customers : data.active_customers_excl_test,
+          total_balance: isTest ? data.total_balance : data.total_balance_excl_test,
+          avg_balance: isTest ? data.avg_balance : data.avg_balance_excl_test,
+          customers_with_debt: isTest ? data.customers_with_debt : data.customers_with_debt_excl_test,
+          total_open_invoices: isTest ? data.total_open_invoices : data.total_open_invoices_excl_test,
+          customers_with_overdue: isTest ? data.customers_with_overdue : data.customers_with_overdue_excl_test
+        });
+        setCachedStatsLoaded(true);
+        if (data.calculated_at) {
+          setCachedStatsTime(data.calculated_at);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading cached stats:', err);
+    }
+  };
+
   useEffect(() => {
+    loadCachedStats();
     loadCustomersWithAnalytics();
     loadCustomersWithOpenTickets();
 
@@ -345,6 +378,15 @@ export default function Customers({ onBack }: CustomersProps) {
   };
 
   useEffect(() => {
+    if (filteredCustomers.length === 0 && cachedStatsLoaded && !hasActiveFilters) return;
+    if (!hasActiveFilters && !loadingMore && cachedStatsLoaded && filteredCustomers.length > 0) {
+      // Only update from live data once fully loaded (no more batches incoming)
+    } else if (hasActiveFilters || !cachedStatsLoaded) {
+      // Filters active or no cached stats - compute from what we have
+    } else {
+      return;
+    }
+
     const customers = filteredCustomers;
     const totalCustomers = customers.length;
     const activeCustomers = customers.filter(c => c.is_active).length;
@@ -363,7 +405,7 @@ export default function Customers({ onBack }: CustomersProps) {
       total_open_invoices: totalOpenInvoices,
       customers_with_overdue: customersWithOverdue
     });
-  }, [filteredCustomers]);
+  }, [filteredCustomers, loadingMore, cachedStatsLoaded, hasActiveFilters]);
 
   const applyFilters = useCallback(async () => {
     const hasServerFilter =
@@ -373,6 +415,8 @@ export default function Customers({ onBack }: CustomersProps) {
       filters.minBalance > 0 || filters.maxBalance !== Infinity ||
       filters.minInvoiceCount > 0 || filters.maxInvoiceCount !== Infinity ||
       filters.minDaysOverdue > 0 || filters.maxDaysOverdue !== Infinity;
+
+    setHasActiveFilters(hasServerFilter);
 
     if (hasServerFilter) {
       setLoading(true);
@@ -997,7 +1041,7 @@ export default function Customers({ onBack }: CustomersProps) {
     );
   }
 
-  if (permissionsLoading || loading) {
+  if (permissionsLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -1234,7 +1278,15 @@ export default function Customers({ onBack }: CustomersProps) {
 
         {/* Analytics Stats Cards */}
         {showAnalytics && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="mb-6">
+          {cachedStatsLoaded && !hasActiveFilters && cachedStatsTime && (
+            <div className="flex items-center gap-1 text-xs text-gray-400 mb-2 justify-end">
+              <Clock size={12} />
+              Updated {new Date(cachedStatsTime).toLocaleTimeString()}
+              {loadingMore && <span className="text-blue-500 ml-1">-- refreshing live...</span>}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-gray-600 font-medium text-sm">Total Customers</span>
@@ -1274,6 +1326,7 @@ export default function Customers({ onBack }: CustomersProps) {
               </p>
               <p className="text-sm text-gray-600 mt-1">per customer with debt</p>
             </div>
+          </div>
           </div>
         )}
 
