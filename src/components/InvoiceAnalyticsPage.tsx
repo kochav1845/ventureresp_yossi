@@ -161,40 +161,44 @@ export default function InvoiceAnalyticsPage() {
   // Load data based on view
   const restoredFromCache = useRef(!!c);
 
+  // Keep a ref with latest state for the unmount save
+  const stateRef = useRef<Record<string, any>>({});
+  useEffect(() => {
+    stateRef.current = {
+      selectedMonth: selectedMonth.toISOString(),
+      selectedYear,
+      calendarView,
+      invoices,
+      filteredInvoices,
+      allFilteredInvoices,
+      monthlyAggregates,
+      yearlyAggregates,
+      monthlyTotal,
+      monthlyBalance,
+      monthlyInvoiceCount,
+      monthlyCustomerCount,
+      monthlyCreditMemoTotal,
+      monthlyCreditMemoCount,
+      monthlyOpenInvBalance,
+      monthlyBalancedInvBalance,
+      monthlyBalancedInvCount,
+      monthlyOpenCmBalance,
+      monthlyOpenCmCount,
+      searchTerm,
+      sortField,
+      sortDirection,
+      filterStatus,
+      filterType,
+      dateFrom,
+      dateTo,
+      selectedDate: selectedDate?.toISOString() ?? null,
+      lastRefreshTime: lastRefreshTime?.toISOString() ?? null,
+    };
+  });
+
   // Save state to cache on unmount
   useEffect(() => {
-    return () => {
-      setCachedState({
-        selectedMonth: selectedMonth.toISOString(),
-        selectedYear,
-        calendarView,
-        invoices,
-        filteredInvoices,
-        allFilteredInvoices,
-        monthlyAggregates,
-        yearlyAggregates,
-        monthlyTotal,
-        monthlyBalance,
-        monthlyInvoiceCount,
-        monthlyCustomerCount,
-        monthlyCreditMemoTotal,
-        monthlyCreditMemoCount,
-        monthlyOpenInvBalance,
-        monthlyBalancedInvBalance,
-        monthlyBalancedInvCount,
-        monthlyOpenCmBalance,
-        monthlyOpenCmCount,
-        searchTerm,
-        sortField,
-        sortDirection,
-        filterStatus,
-        filterType,
-        dateFrom,
-        dateTo,
-        selectedDate: selectedDate?.toISOString() ?? null,
-        lastRefreshTime: lastRefreshTime?.toISOString() ?? null,
-      });
-    };
+    return () => { setCachedState(stateRef.current); };
   }, []);
 
   useEffect(() => {

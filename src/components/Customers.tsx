@@ -227,28 +227,17 @@ export default function Customers({ onBack }: CustomersProps) {
   const fetchKeyRef = useRef(cl ? `${cl.showTestCustomers ?? false}-${cl.excludeCreditMemos ?? false}` : '');
   const restoredFromCache = useRef(!!cl);
 
-  // Save state to cache on unmount
+  const stateRef = useRef<Record<string, any>>({});
   useEffect(() => {
-    return () => {
-      setCachedState({
-        customers,
-        allCustomers,
-        filteredCustomers,
-        loadedCount,
-        showTestCustomers,
-        currentPage,
-        totalCount,
-        grandTotalCustomers,
-        searchQuery,
-        showFilters,
-        showAnalytics,
-        excludeCreditMemos,
-        cachedStatsLoaded,
-        cachedStatsTime,
-        stats,
-        filters,
-      });
+    stateRef.current = {
+      customers, allCustomers, filteredCustomers, loadedCount, showTestCustomers,
+      currentPage, totalCount, grandTotalCustomers, searchQuery, showFilters,
+      showAnalytics, excludeCreditMemos, cachedStatsLoaded, cachedStatsTime, stats, filters,
     };
+  });
+
+  useEffect(() => {
+    return () => { setCachedState(stateRef.current); };
   }, []);
 
   useEffect(() => {

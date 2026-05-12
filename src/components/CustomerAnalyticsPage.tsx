@@ -92,18 +92,15 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
 
   const restoredFromCache = useRef(!!c);
 
-  // Save state to cache on unmount
+  const stateRef = useRef<Record<string, any>>({});
   useEffect(() => {
-    return () => {
-      setCachedState({
-        stats,
-        allCustomers,
-        filteredCustomers,
-        allInvoices,
-        filters,
-        showFilters,
-      });
+    stateRef.current = {
+      stats, allCustomers, filteredCustomers, allInvoices, filters, showFilters,
     };
+  });
+
+  useEffect(() => {
+    return () => { setCachedState(stateRef.current); };
   }, []);
 
   useEffect(() => {

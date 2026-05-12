@@ -331,36 +331,38 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   const restoredFromCache = useRef(!!c);
 
-  // Save state to cache on unmount
+  const stateRef = useRef<Record<string, any>>({});
   useEffect(() => {
-    return () => {
-      setCachedState({
-        selectedMonth: selectedMonth.toISOString(),
-        selectedYear,
-        calendarView,
-        payments,
-        filteredPayments,
-        allFilteredPayments,
-        monthlyAggregates,
-        yearlyAggregates,
-        monthlyTotal,
-        monthlyPaymentCount,
-        monthlyCustomerCount,
-        searchTerm,
-        sortField,
-        sortDirection,
-        filterStatus,
-        filterType,
-        filterPaymentMethod,
-        filterInvoicePeriod,
-        filterCustomer,
-        dateFrom,
-        dateTo,
-        selectedDate: selectedDate?.toISOString() ?? null,
-        viewMode,
-        lastRefreshTime: lastRefreshTime?.toISOString() ?? null,
-      });
+    stateRef.current = {
+      selectedMonth: selectedMonth.toISOString(),
+      selectedYear,
+      calendarView,
+      payments,
+      filteredPayments,
+      allFilteredPayments,
+      monthlyAggregates,
+      yearlyAggregates,
+      monthlyTotal,
+      monthlyPaymentCount,
+      monthlyCustomerCount,
+      searchTerm,
+      sortField,
+      sortDirection,
+      filterStatus,
+      filterType,
+      filterPaymentMethod,
+      filterInvoicePeriod,
+      filterCustomer,
+      dateFrom,
+      dateTo,
+      selectedDate: selectedDate?.toISOString() ?? null,
+      viewMode,
+      lastRefreshTime: lastRefreshTime?.toISOString() ?? null,
     };
+  });
+
+  useEffect(() => {
+    return () => { setCachedState(stateRef.current); };
   }, []);
 
   useEffect(() => {

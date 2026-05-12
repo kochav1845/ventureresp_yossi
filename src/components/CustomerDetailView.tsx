@@ -152,26 +152,17 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
   const restoredFromCache = useRef(!!cd);
 
-  // Save state to cache on unmount
+  const stateRef = useRef<Record<string, any>>({});
   useEffect(() => {
-    return () => {
-      setCachedState({
-        customer,
-        displayedInvoices,
-        payments,
-        customerNotes,
-        tickets,
-        activeTab,
-        invoiceCounts,
-        invoiceColorCounts,
-        advancedFilters,
-        invoiceStats,
-        filteredStats,
-        avgDaysToCollect,
-        excludeCreditMemos,
-        hasMore,
-      });
+    stateRef.current = {
+      customer, displayedInvoices, payments, customerNotes, tickets, activeTab,
+      invoiceCounts, invoiceColorCounts, advancedFilters, invoiceStats, filteredStats,
+      avgDaysToCollect, excludeCreditMemos, hasMore,
     };
+  });
+
+  useEffect(() => {
+    return () => { setCachedState(stateRef.current); };
   }, []);
 
   useEffect(() => {
