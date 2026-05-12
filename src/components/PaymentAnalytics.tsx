@@ -118,6 +118,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>(() => c?.selectedCustomers ?? []);
   const [tempSelectedCustomers, setTempSelectedCustomers] = useState<string[]>(() => c?.selectedCustomers ?? []);
   const [customerFilterSearch, setCustomerFilterSearch] = useState('');
+  const [customerNameMap, setCustomerNameMap] = useState<Map<string, string>>(new Map());
 
   const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterPaymentMethod !== 'all' || filterInvoicePeriod !== 'all' || selectedCustomers.length > 0;
 
@@ -371,6 +372,20 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     if (dismissed === 'true') {
       setExclusionBannerDismissed(true);
     }
+    supabase
+      .from('acumatica_customers')
+      .select('customer_id, customer_name')
+      .then(({ data }) => {
+        if (data) {
+          const map = new Map<string, string>();
+          for (const c of data) {
+            if (c.customer_id && c.customer_name) {
+              map.set(c.customer_id, c.customer_name);
+            }
+          }
+          setCustomerNameMap(map);
+        }
+      });
   }, []);
 
   // Load data based on view type
@@ -1510,19 +1525,19 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   }, [payments]);
 
   const uniqueCustomers = useMemo(() => {
-    const map = new Map<string, string>();
+    const ids = new Set<string>();
     for (const p of payments) {
-      if (!p.customer_id) continue;
-      const existing = map.get(p.customer_id);
-      const name = p.customer_name || '';
-      if (!existing || existing === p.customer_id) {
-        map.set(p.customer_id, name && name !== p.customer_id ? name : (existing || p.customer_id));
-      }
+      if (p.customer_id) ids.add(p.customer_id);
     }
-    return Array.from(map.entries())
-      .map(([id, name]) => ({ id, name: name || id }))
+    return Array.from(ids)
+      .map(id => {
+        const fromMap = customerNameMap.get(id);
+        if (fromMap) return { id, name: fromMap };
+        const payment = payments.find(p => p.customer_id === id && p.customer_name && p.customer_name !== id);
+        return { id, name: payment?.customer_name || id };
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [payments]);
+  }, [payments, customerNameMap]);
 
   const filteredCustomerOptions = useMemo(() => {
     if (!customerFilterSearch) return uniqueCustomers;

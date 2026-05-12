@@ -75,6 +75,8 @@ export default function InvoiceAnalyticsPage() {
   const [monthlyOpenCmBalance, setMonthlyOpenCmBalance] = useState(() => c?.monthlyOpenCmBalance ?? 0);
   const [monthlyOpenCmCount, setMonthlyOpenCmCount] = useState(() => c?.monthlyOpenCmCount ?? 0);
 
+  const [customerNameMap, setCustomerNameMap] = useState<Map<string, string>>(new Map());
+
   const [refreshingAnalytics, setRefreshingAnalytics] = useState(false);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(() => c?.lastRefreshTime ? new Date(c.lastRefreshTime) : null);
 
@@ -137,15 +139,9 @@ export default function InvoiceAnalyticsPage() {
         existing.invoices.push(inv);
         existing.totalAmount += inv.amount;
         existing.totalBalance += inv.balance;
-        // Prefer a real name over one that's just the customer number
-        const name = inv.customer_name || '';
-        if (existing.customerName === key && name && name !== key) {
-          existing.customerName = name;
-        }
       } else {
-        const name = inv.customer_name || '';
         map.set(key, {
-          customerName: name && name !== key ? name : 'Unknown',
+          customerName: resolveCustomerName(key, inv.customer_name),
           customerId: key,
           invoices: [inv],
           totalAmount: inv.amount,
@@ -156,7 +152,7 @@ export default function InvoiceAnalyticsPage() {
     const groups = Array.from(map.values());
     groups.sort((a, b) => b.totalAmount - a.totalAmount);
     return groups;
-  }, [filteredInvoices]);
+  }, [filteredInvoices, resolveCustomerName]);
 
   // Unique filter values
   const uniqueStatuses = useMemo(() => {
@@ -169,21 +165,22 @@ export default function InvoiceAnalyticsPage() {
     return ['all', ...Array.from(set).sort()];
   }, [invoices]);
 
+  const resolveCustomerName = useCallback((customerId: string, invoiceName?: string) => {
+    const fromMap = customerNameMap.get(customerId);
+    if (fromMap) return fromMap;
+    if (invoiceName && invoiceName !== customerId) return invoiceName;
+    return customerId;
+  }, [customerNameMap]);
+
   const uniqueCustomers = useMemo(() => {
-    const map = new Map<string, string>();
+    const ids = new Set<string>();
     for (const inv of invoices) {
-      if (!inv.customer) continue;
-      const existing = map.get(inv.customer);
-      const name = inv.customer_name || '';
-      // Prefer a name that isn't just the customer number
-      if (!existing || existing === inv.customer) {
-        map.set(inv.customer, name && name !== inv.customer ? name : (existing || inv.customer));
-      }
+      if (inv.customer) ids.add(inv.customer);
     }
-    return Array.from(map.entries())
-      .map(([id, name]) => ({ id, name: name || id }))
+    return Array.from(ids)
+      .map(id => ({ id, name: resolveCustomerName(id) }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [invoices]);
+  }, [invoices, resolveCustomerName]);
 
   const filteredCustomerOptions = useMemo(() => {
     if (!customerSearchTerm) return uniqueCustomers;
@@ -299,6 +296,22 @@ export default function InvoiceAnalyticsPage() {
     setTempDateFrom(dateFrom);
     setTempDateTo(dateTo);
     setTempSelectedCustomers(selectedCustomers);
+
+    // Load authoritative customer names
+    supabase
+      .from('acumatica_customers')
+      .select('customer_id, customer_name')
+      .then(({ data }) => {
+        if (data) {
+          const map = new Map<string, string>();
+          for (const c of data) {
+            if (c.customer_id && c.customer_name) {
+              map.set(c.customer_id, c.customer_name);
+            }
+          }
+          setCustomerNameMap(map);
+        }
+      });
   }, []);
 
   const loadDailyData = async () => {
@@ -363,7 +376,7 @@ export default function InvoiceAnalyticsPage() {
             amount: parseFloat(inv.amount) || 0,
             balance: parseFloat(inv.balance) || 0,
             customer: inv.customer || '',
-            customer_name: inv.customer_name || 'N/A',
+            customer_name: customerNameMap.get(inv.customer) || (inv.customer_name && inv.customer_name !== inv.customer ? inv.customer_name : '') || 'N/A',
             description: inv.description || '',
             color_status: inv.color_status || '',
           }));
