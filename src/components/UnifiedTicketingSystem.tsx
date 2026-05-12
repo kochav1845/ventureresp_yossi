@@ -72,7 +72,8 @@ export default function UnifiedTicketingSystem({
   // Ticket data
   const [tickets, setTickets] = useState<TicketGroup[]>([]);
   const [individualAssignments, setIndividualAssignments] = useState<Assignment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [enriching, setEnriching] = useState(false);
 
   // Create ticket states
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -310,213 +311,225 @@ export default function UnifiedTicketingSystem({
     }
   };
 
+  const applyEnrichment = (ticketGroupsArray: TicketGroup[], enrichmentResult: any, customerStatsResult: any, appResult: any) => {
+    if (enrichmentResult.data) {
+      const enrichMap = new Map<string, any>();
+      enrichmentResult.data.forEach((e: any) => enrichMap.set(e.ticket_id, e));
+
+      ticketGroupsArray.forEach(ticket => {
+        const e = enrichMap.get(ticket.ticket_id);
+        if (!e) return;
+
+        ticket.promise_date = e.promise_date;
+        ticket.promise_by_user_name = e.promise_by_user_name;
+        ticket.ticket_created_at = e.ticket_created_at;
+        ticket.ticket_closed_at = e.ticket_resolved_at;
+
+        if (e.last_status_change_status) {
+          const statusMatch = e.last_status_change_status.match(/Changed ticket status to "(.+?)"/);
+          ticket.last_status_change = {
+            status: statusMatch ? statusMatch[1] : ticket.ticket_status,
+            changed_at: e.last_status_change_at,
+            changed_by_name: e.last_status_change_by || 'Unknown'
+          };
+        }
+
+        if (e.last_activity_description) {
+          ticket.last_activity = {
+            description: e.last_activity_description,
+            created_at: e.last_activity_at,
+            created_by_name: e.last_activity_by || 'Unknown'
+          };
+        }
+
+        if (e.note_count > 0) {
+          ticket.note_count = Number(e.note_count);
+          ticket.has_attachments = e.has_note_attachments;
+          ticket.has_images = e.has_note_images;
+          ticket.has_documents = e.has_note_documents;
+          if (e.last_note_text) {
+            ticket.last_note = { note_text: e.last_note_text, created_at: e.last_note_at };
+          }
+        }
+
+        if (e.memo_count > 0) {
+          ticket.memo_count = Number(e.memo_count);
+          ticket.has_memo_attachments = e.has_memo_attachments;
+          ticket.has_memo_images = e.has_memo_images;
+          ticket.has_memo_documents = e.has_memo_documents;
+          if (e.last_memo_text) {
+            ticket.last_memo = { memo_text: e.last_memo_text, created_at: e.last_memo_at };
+          }
+        }
+      });
+    }
+
+    if (customerStatsResult.data) {
+      const statsMap = new Map<string, any>();
+      customerStatsResult.data.forEach((s: any) => statsMap.set(s.customer_id, s));
+
+      ticketGroupsArray.forEach(ticket => {
+        const stats = statsMap.get(ticket.customer_id);
+        if (stats) {
+          ticket.customer_balance = Number(stats.total_balance) || 0;
+          ticket.open_invoice_count = Number(stats.open_invoice_count) || 0;
+          ticket.oldest_invoice_date = stats.oldest_invoice_date;
+          ticket.last_payment_amount = stats.last_payment_amount ? Number(stats.last_payment_amount) : undefined;
+          ticket.last_payment_date = stats.last_payment_date;
+        }
+      });
+    }
+
+    if (appResult.data && appResult.data.length > 0) {
+      const invoiceCollectionDate = new Map<string, string>();
+      appResult.data.forEach((a: any) => {
+        if (!invoiceCollectionDate.has(a.invoice_reference_number) && a.application_date) {
+          invoiceCollectionDate.set(a.invoice_reference_number, a.application_date);
+        }
+      });
+
+      ticketGroupsArray.forEach(ticket => {
+        ticket.invoices.forEach(inv => {
+          const colDate = invoiceCollectionDate.get(inv.invoice_reference_number);
+          if (colDate) {
+            inv.collection_date = colDate;
+          }
+        });
+      });
+    }
+  };
+
+  const buildTicketGroups = (assignments: any[]) => {
+    const ticketGroups = new Map<string, TicketGroup>();
+    const individualList: Assignment[] = [];
+
+    assignments.forEach((assignment: any) => {
+      if (assignment.ticket_id) {
+        if (!ticketGroups.has(assignment.ticket_id)) {
+          ticketGroups.set(assignment.ticket_id, {
+            ticket_id: assignment.ticket_id,
+            ticket_number: assignment.ticket_number || '',
+            ticket_status: assignment.ticket_status || '',
+            ticket_priority: assignment.ticket_priority || '',
+            ticket_type: assignment.ticket_type || '',
+            ticket_due_date: assignment.ticket_due_date,
+            assigned_collector_id: assignment.assigned_collector_id || null,
+            assigned_collector_name: assignment.collector_name || assignment.collector_email || null,
+            customer_id: assignment.customer || assignment.ticket_customer_id,
+            customer_name: assignment.customer_name,
+            invoices: []
+          });
+        }
+        ticketGroups.get(assignment.ticket_id)!.invoices.push(assignment);
+      } else {
+        individualList.push(assignment);
+      }
+    });
+
+    return { ticketGroups, individualList };
+  };
+
   const loadTickets = async (isInitialLoad = false) => {
     if (!user || !profile) return;
 
     if (isInitialLoad) setLoading(true);
     try {
-      let query = supabase
+      // Phase 1: Fetch base ticket data from two sources in parallel
+      let assignmentQuery = supabase
         .from('collector_assignment_details')
         .select('*');
 
-      // Filter by assigned collector if showOnlyAssigned is true
+      let emptyTicketsQuery = supabase
+        .from('collection_tickets')
+        .select(`
+          id,
+          ticket_number,
+          customer_id,
+          customer_name,
+          status,
+          priority,
+          ticket_type,
+          due_date,
+          assigned_collector_id,
+          collector:user_profiles!collection_tickets_assigned_collector_id_fkey(full_name, email)
+        `);
+
       if (showOnlyAssigned) {
-        query = query.eq('assigned_collector_id', profile.id);
+        assignmentQuery = assignmentQuery.eq('assigned_collector_id', profile.id);
+        emptyTicketsQuery = emptyTicketsQuery.eq('assigned_collector_id', profile.id);
       }
 
-      const { data: assignments, error } = await query;
+      const [assignmentResult, emptyTicketsResult] = await Promise.all([
+        assignmentQuery,
+        emptyTicketsQuery
+      ]);
 
-      if (error) throw error;
+      if (assignmentResult.error) throw assignmentResult.error;
+      const assignments = assignmentResult.data || [];
 
-      if (assignments) {
-        const ticketGroups = new Map<string, TicketGroup>();
-        const individualList: Assignment[] = [];
+      const { ticketGroups, individualList } = buildTicketGroups(assignments);
 
-        assignments.forEach((assignment: any) => {
-          if (assignment.ticket_id) {
-            if (!ticketGroups.has(assignment.ticket_id)) {
-              ticketGroups.set(assignment.ticket_id, {
-                ticket_id: assignment.ticket_id,
-                ticket_number: assignment.ticket_number || '',
-                ticket_status: assignment.ticket_status || '',
-                ticket_priority: assignment.ticket_priority || '',
-                ticket_type: assignment.ticket_type || '',
-                ticket_due_date: assignment.ticket_due_date,
-                assigned_collector_id: assignment.assigned_collector_id || null,
-                assigned_collector_name: assignment.collector_name || assignment.collector_email || null,
-                customer_id: assignment.customer || assignment.ticket_customer_id,
-                customer_name: assignment.customer_name,
-                invoices: []
-              });
-            }
-            ticketGroups.get(assignment.ticket_id)!.invoices.push(assignment);
-          } else {
-            individualList.push(assignment);
+      if (emptyTicketsResult.data) {
+        emptyTicketsResult.data.forEach((t: any) => {
+          if (!ticketGroups.has(t.id)) {
+            ticketGroups.set(t.id, {
+              ticket_id: t.id,
+              ticket_number: t.ticket_number || '',
+              ticket_status: t.status || '',
+              ticket_priority: t.priority || '',
+              ticket_type: t.ticket_type || '',
+              ticket_due_date: t.due_date,
+              assigned_collector_id: t.assigned_collector_id || null,
+              assigned_collector_name: t.collector?.full_name || t.collector?.email || null,
+              customer_id: t.customer_id,
+              customer_name: t.customer_name,
+              invoices: []
+            });
           }
         });
-
-        // Load tickets that have no invoice assignments (they won't appear in the view)
-        let emptyTicketsQuery = supabase
-          .from('collection_tickets')
-          .select(`
-            id,
-            ticket_number,
-            customer_id,
-            customer_name,
-            status,
-            priority,
-            ticket_type,
-            due_date,
-            assigned_collector_id,
-            collector:user_profiles!collection_tickets_assigned_collector_id_fkey(full_name, email)
-          `);
-
-        if (showOnlyAssigned) {
-          emptyTicketsQuery = emptyTicketsQuery.eq('assigned_collector_id', profile.id);
-        }
-
-        const { data: allActiveTickets } = await emptyTicketsQuery;
-
-        if (allActiveTickets) {
-          allActiveTickets.forEach((t: any) => {
-            if (!ticketGroups.has(t.id)) {
-              ticketGroups.set(t.id, {
-                ticket_id: t.id,
-                ticket_number: t.ticket_number || '',
-                ticket_status: t.status || '',
-                ticket_priority: t.priority || '',
-                ticket_type: t.ticket_type || '',
-                ticket_due_date: t.due_date,
-                assigned_collector_id: t.assigned_collector_id || null,
-                assigned_collector_name: t.collector?.full_name || t.collector?.email || null,
-                customer_id: t.customer_id,
-                customer_name: t.customer_name,
-                invoices: []
-              });
-            }
-          });
-        }
-
-        const ticketGroupsArray = Array.from(ticketGroups.values());
-        const ticketIds = ticketGroupsArray.map(t => t.ticket_id);
-        const uniqueCustomerIds = [...new Set(ticketGroupsArray.map(t => t.customer_id))];
-        const allInvoiceRefs = ticketGroupsArray.flatMap(t => t.invoices.map(inv => inv.invoice_reference_number));
-
-        // Run ALL enrichment queries in parallel instead of per-ticket
-        const [enrichmentResult, customerStatsResult, appResult] = await Promise.all([
-          ticketIds.length > 0
-            ? supabase.rpc('get_ticket_enrichment_bulk', { p_ticket_ids: ticketIds })
-            : { data: [], error: null },
-          uniqueCustomerIds.length > 0
-            ? supabase.rpc('get_ticket_customer_stats_bulk', { p_customer_ids: uniqueCustomerIds })
-            : { data: [], error: null },
-          allInvoiceRefs.length > 0
-            ? supabase
-                .from('payment_invoice_applications')
-                .select('invoice_reference_number, application_date, amount_paid')
-                .in('invoice_reference_number', allInvoiceRefs)
-                .gt('amount_paid', 0)
-                .order('application_date', { ascending: false })
-            : { data: [], error: null }
-        ]);
-
-        // Apply ticket enrichment data
-        if (enrichmentResult.data) {
-          const enrichMap = new Map<string, any>();
-          enrichmentResult.data.forEach((e: any) => enrichMap.set(e.ticket_id, e));
-
-          ticketGroupsArray.forEach(ticket => {
-            const e = enrichMap.get(ticket.ticket_id);
-            if (!e) return;
-
-            ticket.promise_date = e.promise_date;
-            ticket.promise_by_user_name = e.promise_by_user_name;
-            ticket.ticket_created_at = e.ticket_created_at;
-            ticket.ticket_closed_at = e.ticket_resolved_at;
-
-            if (e.last_status_change_status) {
-              const statusMatch = e.last_status_change_status.match(/Changed ticket status to "(.+?)"/);
-              ticket.last_status_change = {
-                status: statusMatch ? statusMatch[1] : ticket.ticket_status,
-                changed_at: e.last_status_change_at,
-                changed_by_name: e.last_status_change_by || 'Unknown'
-              };
-            }
-
-            if (e.last_activity_description) {
-              ticket.last_activity = {
-                description: e.last_activity_description,
-                created_at: e.last_activity_at,
-                created_by_name: e.last_activity_by || 'Unknown'
-              };
-            }
-
-            if (e.note_count > 0) {
-              ticket.note_count = Number(e.note_count);
-              ticket.has_attachments = e.has_note_attachments;
-              ticket.has_images = e.has_note_images;
-              ticket.has_documents = e.has_note_documents;
-              if (e.last_note_text) {
-                ticket.last_note = { note_text: e.last_note_text, created_at: e.last_note_at };
-              }
-            }
-
-            if (e.memo_count > 0) {
-              ticket.memo_count = Number(e.memo_count);
-              ticket.has_memo_attachments = e.has_memo_attachments;
-              ticket.has_memo_images = e.has_memo_images;
-              ticket.has_memo_documents = e.has_memo_documents;
-              if (e.last_memo_text) {
-                ticket.last_memo = { memo_text: e.last_memo_text, created_at: e.last_memo_at };
-              }
-            }
-          });
-        }
-
-        // Apply customer balance + last payment stats
-        if (customerStatsResult.data) {
-          const statsMap = new Map<string, any>();
-          customerStatsResult.data.forEach((s: any) => statsMap.set(s.customer_id, s));
-
-          ticketGroupsArray.forEach(ticket => {
-            const stats = statsMap.get(ticket.customer_id);
-            if (stats) {
-              ticket.customer_balance = Number(stats.total_balance) || 0;
-              ticket.open_invoice_count = Number(stats.open_invoice_count) || 0;
-              ticket.oldest_invoice_date = stats.oldest_invoice_date;
-              ticket.last_payment_amount = stats.last_payment_amount ? Number(stats.last_payment_amount) : undefined;
-              ticket.last_payment_date = stats.last_payment_date;
-            }
-          });
-        }
-
-        // Apply invoice collection dates
-        if (appResult.data && appResult.data.length > 0) {
-          const invoiceCollectionDate = new Map<string, string>();
-          appResult.data.forEach((a: any) => {
-            if (!invoiceCollectionDate.has(a.invoice_reference_number) && a.application_date) {
-              invoiceCollectionDate.set(a.invoice_reference_number, a.application_date);
-            }
-          });
-
-          ticketGroupsArray.forEach(ticket => {
-            ticket.invoices.forEach(inv => {
-              const colDate = invoiceCollectionDate.get(inv.invoice_reference_number);
-              if (colDate) {
-                inv.collection_date = colDate;
-              }
-            });
-          });
-        }
-
-        const sortedTickets = sortTicketsByPriority(ticketGroupsArray);
-        setTickets(sortedTickets);
-        setIndividualAssignments(individualList);
       }
+
+      const ticketGroupsArray = Array.from(ticketGroups.values());
+
+      // Show base tickets immediately (before enrichment)
+      const sortedBase = sortTicketsByPriority(ticketGroupsArray);
+      setTickets(sortedBase);
+      setIndividualAssignments(individualList);
+      setLoading(false);
+
+      // Phase 2: Enrich in background
+      setEnriching(true);
+      const ticketIds = ticketGroupsArray.map(t => t.ticket_id);
+      const uniqueCustomerIds = [...new Set(ticketGroupsArray.map(t => t.customer_id))];
+      const allInvoiceRefs = ticketGroupsArray.flatMap(t => t.invoices.map(inv => inv.invoice_reference_number));
+
+      const [enrichmentResult, customerStatsResult, appResult] = await Promise.all([
+        ticketIds.length > 0
+          ? supabase.rpc('get_ticket_enrichment_bulk', { p_ticket_ids: ticketIds })
+          : { data: [], error: null },
+        uniqueCustomerIds.length > 0
+          ? supabase.rpc('get_ticket_customer_stats_bulk', { p_customer_ids: uniqueCustomerIds })
+          : { data: [], error: null },
+        allInvoiceRefs.length > 0
+          ? supabase
+              .from('payment_invoice_applications')
+              .select('invoice_reference_number, application_date, amount_paid')
+              .in('invoice_reference_number', allInvoiceRefs)
+              .gt('amount_paid', 0)
+              .order('application_date', { ascending: false })
+          : { data: [], error: null }
+      ]);
+
+      applyEnrichment(ticketGroupsArray, enrichmentResult, customerStatsResult, appResult);
+
+      const sortedEnriched = sortTicketsByPriority([...ticketGroupsArray]);
+      setTickets(sortedEnriched);
+      setEnriching(false);
     } catch (error) {
       console.error('Error loading tickets:', error);
     } finally {
       setLoading(false);
+      setEnriching(false);
     }
   };
 
@@ -1280,16 +1293,6 @@ export default function UnifiedTicketingSystem({
       ? tickets.reduce((sum, ticket) => sum + ticket.invoices.length, 0)
       : individualAssignments.length;
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading tickets...</p>
-        </div>
-      </div>
-    );
-  }
 
   const selectedCustomerData = customers.find(c => c.customer_id === selectedCustomer);
 
@@ -1656,7 +1659,12 @@ export default function UnifiedTicketingSystem({
                           : 'No tickets found'
                         : 'No tickets match your search';
 
-                  return displayTickets.length === 0 ? (
+                  return loading ? (
+                    <div className="text-center py-12">
+                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-3"></div>
+                      <p className="text-gray-500 text-sm">Loading tickets...</p>
+                    </div>
+                  ) : displayTickets.length === 0 ? (
                     <div className="text-center py-12">
                       <TicketIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                       <p className="text-gray-500">{emptyMessage}</p>
