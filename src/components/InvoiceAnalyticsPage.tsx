@@ -127,6 +127,13 @@ export default function InvoiceAnalyticsPage() {
     return groups;
   }, [filteredInvoices, allFilteredInvoices, selectedDate]);
 
+  const resolveCustomerName = useCallback((customerId: string, invoiceName?: string) => {
+    const fromMap = customerNameMap.get(customerId);
+    if (fromMap) return fromMap;
+    if (invoiceName && invoiceName !== customerId) return invoiceName;
+    return customerId;
+  }, [customerNameMap]);
+
   // Customer-grouped data for the table
   const customerGroups = useMemo(() => {
     const source = filteredInvoices;
@@ -164,13 +171,6 @@ export default function InvoiceAnalyticsPage() {
     const set = new Set(invoices.map(i => i.type).filter(Boolean));
     return ['all', ...Array.from(set).sort()];
   }, [invoices]);
-
-  const resolveCustomerName = useCallback((customerId: string, invoiceName?: string) => {
-    const fromMap = customerNameMap.get(customerId);
-    if (fromMap) return fromMap;
-    if (invoiceName && invoiceName !== customerId) return invoiceName;
-    return customerId;
-  }, [customerNameMap]);
 
   const uniqueCustomers = useMemo(() => {
     const ids = new Set<string>();
