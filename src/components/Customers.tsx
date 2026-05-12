@@ -841,26 +841,80 @@ export default function Customers({ onBack }: CustomersProps) {
   };
 
   const exportToExcel = () => {
+    const fmtCurrency = (v: number) => {
+      const num = Number(v) || 0;
+      return num;
+    };
+
+    const totalBalance = filteredCustomers.reduce((sum, c) => sum + (c.balance || 0), 0);
+    const totalGross = filteredCustomers.reduce((sum, c) => sum + (c.gross_balance || 0), 0);
+    const totalInvoices = filteredCustomers.reduce((sum, c) => sum + (c.invoice_count || 0), 0);
+    const filterDesc = hasActiveFilters
+      ? `Filtered: ${filteredCustomers.length} of ${grandTotalCustomers} customers`
+      : `All ${filteredCustomers.length} customers`;
+
     const exportData = filteredCustomers.map((customer, index) => ({
-      'Rank': index + 1,
+      '#': index + 1,
+      'Customer ID': customer.customer_id || customer.id,
       'Customer Name': customer.name,
       'Email': customer.email,
       'Active': customer.is_active ? 'Yes' : 'No',
-      'Responded This Month': customer.responded_this_month ? 'Yes' : 'No',
-      'Customer ID': customer.customer_id || customer.id,
       'Open Invoices': customer.invoice_count || 0,
-      'Outstanding Balance': customer.balance || 0,
+      'Gross Balance': fmtCurrency(customer.gross_balance),
+      'Net Balance': fmtCurrency(customer.balance),
       'Max Days Overdue': customer.max_days_overdue || 0,
-      'Avg Days to Collect': customer.avg_days_to_collect || 'N/A',
-      'Oldest Invoice Date': customer.oldest_invoice_date || 'N/A',
-      'Newest Invoice Date': customer.newest_invoice_date || 'N/A',
-      'Created': new Date(customer.created_at).toLocaleDateString()
+      'Red Invoices': customer.red_count || 0,
+      'Yellow Invoices': customer.yellow_count || 0,
+      'Green Invoices': customer.green_count || 0,
+      'Responded This Month': customer.responded_this_month ? 'Yes' : 'No',
+      'Postponed Until': customer.postpone_until
+        ? new Date(customer.postpone_until).toLocaleDateString()
+        : '',
+      'Postpone Reason': customer.postpone_reason || ''
     }));
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const summaryRow = {
+      '#': '',
+      'Customer ID': '',
+      'Customer Name': 'TOTALS',
+      'Email': '',
+      'Active': '',
+      'Open Invoices': totalInvoices,
+      'Gross Balance': fmtCurrency(totalGross),
+      'Net Balance': fmtCurrency(totalBalance),
+      'Max Days Overdue': '',
+      'Red Invoices': '',
+      'Yellow Invoices': '',
+      'Green Invoices': '',
+      'Responded This Month': '',
+      'Postponed Until': '',
+      'Postpone Reason': ''
+    };
+
+    const worksheet = XLSX.utils.json_to_sheet([...exportData, summaryRow]);
+
+    const colWidths = [
+      { wch: 5 }, { wch: 14 }, { wch: 30 }, { wch: 28 }, { wch: 8 },
+      { wch: 13 }, { wch: 15 }, { wch: 15 }, { wch: 16 },
+      { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 20 },
+      { wch: 16 }, { wch: 20 }
+    ];
+    worksheet['!cols'] = colWidths;
+
+    const currencyCols = [6, 7];
+    const rowCount = exportData.length + 2;
+    currencyCols.forEach(col => {
+      for (let row = 1; row < rowCount; row++) {
+        const cell = XLSX.utils.encode_cell({ r: row, c: col });
+        if (worksheet[cell] && typeof worksheet[cell].v === 'number') {
+          worksheet[cell].z = '$#,##0.00';
+        }
+      }
+    });
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Customers');
-    XLSX.writeFile(workbook, `customers_analytics_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(workbook, `customers_${filterDesc.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const activeFilterCount = [
