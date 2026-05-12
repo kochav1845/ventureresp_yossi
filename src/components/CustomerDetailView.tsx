@@ -203,7 +203,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
       const { data: outstandingInvoices, error: invError } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('balance, type, status')
         .eq('customer', customerId)
         .in('status', ['Open', 'Balanced'])
