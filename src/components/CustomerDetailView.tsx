@@ -287,9 +287,9 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       // Load color status counts
       const { data: colorCounts, error: colorCountsError } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('color_status')
         .eq('customer', customerId)
+        .neq('status', 'On Hold')
         .gt('balance', 0);
 
       if (!colorCountsError && colorCounts) {
@@ -446,7 +446,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
   const loadFilteredStats = async () => {
     try {
-      const filterType = activeTab === 'open-invoices' ? 'open' : activeTab === 'balanced-invoices' ? 'balanced' : activeTab === 'paid-invoices' ? 'paid' : 'all';
+      const tabFilter = activeTab === 'open-invoices' ? 'open' : activeTab === 'balanced-invoices' ? 'balanced' : activeTab === 'paid-invoices' ? 'paid' : 'all';
+      const filterType = advancedFilters.invoiceStatus ? 'all' : tabFilter;
 
       const { data, error } = await supabase
         .rpc('get_customer_invoices_advanced_count', {
@@ -473,7 +474,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const loadInvoices = async (offset = 0, append = false) => {
     if (!append) setLoadingInvoices(true);
     try {
-      const filterType = activeTab === 'open-invoices' ? 'open' : activeTab === 'balanced-invoices' ? 'balanced' : activeTab === 'paid-invoices' ? 'paid' : 'all';
+      const tabFilter = activeTab === 'open-invoices' ? 'open' : activeTab === 'balanced-invoices' ? 'balanced' : activeTab === 'paid-invoices' ? 'paid' : 'all';
+      const filterType = advancedFilters.invoiceStatus ? 'all' : tabFilter;
 
       const { data, error } = await supabase
         .rpc('get_customer_invoices_advanced', {
@@ -1150,7 +1152,9 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             <button
               onClick={() => {
                 setActiveTab('open-invoices');
-                if (advancedFilters.colorStatus) clearColorFilter();
+                if (advancedFilters.colorStatus || advancedFilters.invoiceStatus) {
+                  setAdvancedFilters(prev => ({ ...prev, colorStatus: '', invoiceStatus: '' }));
+                }
               }}
               className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'open-invoices'
@@ -1164,7 +1168,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               </div>
             </button>
             <button
-              onClick={() => setActiveTab('balanced-invoices')}
+              onClick={() => {
+                setActiveTab('balanced-invoices');
+                if (advancedFilters.invoiceStatus) {
+                  setAdvancedFilters(prev => ({ ...prev, invoiceStatus: '' }));
+                }
+              }}
               className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'balanced-invoices'
                   ? 'border-amber-600 text-amber-600'
@@ -1177,7 +1186,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               </div>
             </button>
             <button
-              onClick={() => setActiveTab('paid-invoices')}
+              onClick={() => {
+                setActiveTab('paid-invoices');
+                if (advancedFilters.invoiceStatus) {
+                  setAdvancedFilters(prev => ({ ...prev, invoiceStatus: '' }));
+                }
+              }}
               className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'paid-invoices'
                   ? 'border-green-600 text-green-600'
