@@ -138,8 +138,8 @@ export default function TicketCard({
 
       const { data, error } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('reference_number, date, due_date, amount, balance, description')
+        .neq('status', 'On Hold')
         .eq('customer', ticket.customer_id)
         .eq('status', 'Open')
         .gt('balance', 0)

@@ -90,8 +90,8 @@ export function useCustomerStatements() {
     try {
       const { data, error } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('reference_number, date, due_date, amount, dac_total, balance, status, description, type')
+        .neq('status', 'On Hold')
         .eq('customer', customerId)
         .gt('balance', 0)
         .neq('status', 'Voided')
@@ -127,8 +127,8 @@ export function useCustomerStatements() {
       const batch = missing.slice(i, i + batchSize);
       const { data, error } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('customer, reference_number, date, due_date, amount, dac_total, balance, status, description, type')
+        .neq('status', 'On Hold')
         .in('customer', batch)
         .gt('balance', 0)
         .neq('status', 'Voided')

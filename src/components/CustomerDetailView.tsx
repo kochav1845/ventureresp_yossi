@@ -4,6 +4,7 @@ import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, Aler
 import { supabase, logActivity } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
+import { usePageCache } from '../contexts/PageCacheContext';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl } from '../lib/acumaticaLinks';
 import InvoiceFilterPanel from './InvoiceFilterPanel';
@@ -106,31 +107,34 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const navigate = useNavigate();
   const handleBack = onBack || (() => navigate(-1));
   const hasAccess = hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW, 'view');
-  const [customer, setCustomer] = useState<CustomerData | null>(null);
-  const [displayedInvoices, setDisplayedInvoices] = useState<InvoiceData[]>([]);
-  const [payments, setPayments] = useState<PaymentData[]>([]);
-  const [customerNotes, setCustomerNotes] = useState<CustomerNote[]>([]);
-  const [tickets, setTickets] = useState<TicketData[]>([]);
-  const [loadingCustomer, setLoadingCustomer] = useState(true);
-  const [loadingChart, setLoadingChart] = useState(true);
-  const [loadingInvoices, setLoadingInvoices] = useState(true);
+  const { getCachedState, setCachedState } = usePageCache(`customer-detail-${customerId}`);
+  const cachedDetail = useRef(getCachedState());
+  const cd = cachedDetail.current;
+  const [customer, setCustomer] = useState<CustomerData | null>(() => cd?.customer ?? null);
+  const [displayedInvoices, setDisplayedInvoices] = useState<InvoiceData[]>(() => cd?.displayedInvoices ?? []);
+  const [payments, setPayments] = useState<PaymentData[]>(() => cd?.payments ?? []);
+  const [customerNotes, setCustomerNotes] = useState<CustomerNote[]>(() => cd?.customerNotes ?? []);
+  const [tickets, setTickets] = useState<TicketData[]>(() => cd?.tickets ?? []);
+  const [loadingCustomer, setLoadingCustomer] = useState(() => !cd);
+  const [loadingChart, setLoadingChart] = useState(() => !cd);
+  const [loadingInvoices, setLoadingInvoices] = useState(() => !cd);
   const [loadingPayments, setLoadingPayments] = useState(false);
-  const [loadingTickets, setLoadingTickets] = useState(true);
+  const [loadingTickets, setLoadingTickets] = useState(() => !cd);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [activeTab, setActiveTab] = useState<'open-invoices' | 'balanced-invoices' | 'paid-invoices' | 'payments' | 'email-tracking'>('open-invoices');
+  const [activeTab, setActiveTab] = useState<'open-invoices' | 'balanced-invoices' | 'paid-invoices' | 'payments' | 'email-tracking'>(() => cd?.activeTab ?? 'open-invoices');
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('general');
   const [savingNote, setSavingNote] = useState(false);
-  const [invoiceCounts, setInvoiceCounts] = useState({ total: 0, open: 0, paid: 0, balanced: 0 });
-  const [invoiceColorCounts, setInvoiceColorCounts] = useState({ red: 0, yellow: 0, green: 0, total: 0 });
+  const [invoiceCounts, setInvoiceCounts] = useState(() => cd?.invoiceCounts ?? { total: 0, open: 0, paid: 0, balanced: 0 });
+  const [invoiceColorCounts, setInvoiceColorCounts] = useState(() => cd?.invoiceColorCounts ?? { red: 0, yellow: 0, green: 0, total: 0 });
   const [sortBy, setSortBy] = useState<string>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(() => cd?.hasMore ?? true);
   const observer = useRef<IntersectionObserver | null>(null);
   const ITEMS_PER_PAGE = 50;
 
-  const [advancedFilters, setAdvancedFilters] = useState({
+  const [advancedFilters, setAdvancedFilters] = useState(() => cd?.advancedFilters ?? {
     dateFrom: '',
     dateTo: '',
     amountMin: '',
@@ -140,13 +144,40 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     sortBy: 'date',
     sortOrder: 'desc' as 'asc' | 'desc'
   });
-  const [invoiceStats, setInvoiceStats] = useState<any>(null);
-  const [filteredStats, setFilteredStats] = useState<any>(null);
+  const [invoiceStats, setInvoiceStats] = useState<any>(() => cd?.invoiceStats ?? null);
+  const [filteredStats, setFilteredStats] = useState<any>(() => cd?.filteredStats ?? null);
   const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
-  const [avgDaysToCollect, setAvgDaysToCollect] = useState<number | null>(null);
-  const [excludeCreditMemos, setExcludeCreditMemos] = useState(false);
+  const [avgDaysToCollect, setAvgDaysToCollect] = useState<number | null>(() => cd?.avgDaysToCollect ?? null);
+  const [excludeCreditMemos, setExcludeCreditMemos] = useState(() => cd?.excludeCreditMemos ?? false);
+
+  const restoredFromCache = useRef(!!cd);
+
+  // Save state to cache on unmount
+  useEffect(() => {
+    return () => {
+      setCachedState({
+        customer,
+        displayedInvoices,
+        payments,
+        customerNotes,
+        tickets,
+        activeTab,
+        invoiceCounts,
+        invoiceColorCounts,
+        advancedFilters,
+        invoiceStats,
+        filteredStats,
+        avgDaysToCollect,
+        excludeCreditMemos,
+        hasMore,
+      });
+    };
+  }, []);
 
   useEffect(() => {
+    if (restoredFromCache.current) {
+      return;
+    }
     loadCustomerBasicInfo();
     loadInvoiceStats();
     loadChartData();
@@ -154,6 +185,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   }, [customerId]);
 
   useEffect(() => {
+    if (restoredFromCache.current) return;
     loadCustomerBasicInfo();
   }, [excludeCreditMemos]);
 
@@ -176,6 +208,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   }, [page]);
 
   useEffect(() => {
+    if (restoredFromCache.current) {
+      restoredFromCache.current = false;
+      return;
+    }
     setPage(0);
     setDisplayedInvoices([]);
     setHasMore(true);

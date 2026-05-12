@@ -151,8 +151,8 @@ export default function InvoiceStatusControl({ invoiceReference, customerId, cur
       // Get invoice_id from reference number
       const { data: invoiceData, error: invoiceError } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('id')
+        .neq('status', 'On Hold')
         .eq('reference_number', invoiceReference)
         .single();
 

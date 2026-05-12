@@ -4,6 +4,7 @@ import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign,
 import { supabase } from '../lib/supabase';
 import { batchedInQuery } from '../lib/batchedQuery';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
+import { usePageCache } from '../contexts/PageCacheContext';
 import * as XLSX from 'xlsx';
 import { parseISO, format } from 'date-fns';
 
@@ -65,17 +66,20 @@ const formatDateString = (dateString: string): string => {
 
 export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const navigate = useNavigate();
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [calendarView, setCalendarView] = useState<'daily' | 'monthly' | 'yearly'>('daily');
-  const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [filteredPayments, setFilteredPayments] = useState<PaymentRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [monthlyAggregates, setMonthlyAggregates] = useState<{month: number, total: number, count: number}[]>([]);
-  const [yearlyAggregates, setYearlyAggregates] = useState<{year: number, total: number, count: number}[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortField, setSortField] = useState<SortField>('date');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const { getCachedState, setCachedState } = usePageCache('payment-analytics');
+  const cachedState = useRef(getCachedState());
+  const c = cachedState.current;
+  const [selectedMonth, setSelectedMonth] = useState(() => c?.selectedMonth ? new Date(c.selectedMonth) : new Date());
+  const [selectedYear, setSelectedYear] = useState<number>(() => c?.selectedYear ?? new Date().getFullYear());
+  const [calendarView, setCalendarView] = useState<'daily' | 'monthly' | 'yearly'>(() => c?.calendarView ?? 'daily');
+  const [payments, setPayments] = useState<PaymentRow[]>(() => c?.payments ?? []);
+  const [filteredPayments, setFilteredPayments] = useState<PaymentRow[]>(() => c?.filteredPayments ?? []);
+  const [loading, setLoading] = useState(() => !c);
+  const [monthlyAggregates, setMonthlyAggregates] = useState<{month: number, total: number, count: number}[]>(() => c?.monthlyAggregates ?? []);
+  const [yearlyAggregates, setYearlyAggregates] = useState<{year: number, total: number, count: number}[]>(() => c?.yearlyAggregates ?? []);
+  const [searchTerm, setSearchTerm] = useState(() => c?.searchTerm ?? '');
+  const [sortField, setSortField] = useState<SortField>(() => c?.sortField ?? 'date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>(() => c?.sortDirection ?? 'desc');
   const [fetchingApplications, setFetchingApplications] = useState(false);
   const [fetchResult, setFetchResult] = useState<any>(null);
   const [fetchingAttachments, setFetchingAttachments] = useState(false);
@@ -84,36 +88,35 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [hasMorePayments, setHasMorePayments] = useState(false);
   const [loadingBatchInfo, setLoadingBatchInfo] = useState<string>('');
 
-  const [monthlyTotal, setMonthlyTotal] = useState(0);
-  const [monthlyPaymentCount, setMonthlyPaymentCount] = useState(0);
-  const [monthlyCustomerCount, setMonthlyCustomerCount] = useState(0);
-  const [allFilteredPayments, setAllFilteredPayments] = useState<PaymentRow[]>([]);
+  const [monthlyTotal, setMonthlyTotal] = useState(() => c?.monthlyTotal ?? 0);
+  const [monthlyPaymentCount, setMonthlyPaymentCount] = useState(() => c?.monthlyPaymentCount ?? 0);
+  const [monthlyCustomerCount, setMonthlyCustomerCount] = useState(() => c?.monthlyCustomerCount ?? 0);
+  const [allFilteredPayments, setAllFilteredPayments] = useState<PaymentRow[]>(() => c?.allFilteredPayments ?? []);
 
-  // Refresh analytics state
   const [refreshingAnalytics, setRefreshingAnalytics] = useState(false);
-  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(() => c?.lastRefreshTime ? new Date(c.lastRefreshTime) : null);
 
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterType, setFilterType] = useState<string>('all');
-  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all');
-  const [filterInvoicePeriod, setFilterInvoicePeriod] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>(() => c?.filterStatus ?? 'all');
+  const [filterType, setFilterType] = useState<string>(() => c?.filterType ?? 'all');
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>(() => c?.filterPaymentMethod ?? 'all');
+  const [filterInvoicePeriod, setFilterInvoicePeriod] = useState<string>(() => c?.filterInvoicePeriod ?? 'all');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(() => c?.selectedDate ? new Date(c.selectedDate) : null);
 
   // Temporary filter states (not yet applied)
-  const [tempDateFrom, setTempDateFrom] = useState('');
-  const [tempDateTo, setTempDateTo] = useState('');
-  const [tempFilterStatus, setTempFilterStatus] = useState<string>('all');
-  const [tempFilterType, setTempFilterType] = useState<string>('all');
-  const [tempFilterPaymentMethod, setTempFilterPaymentMethod] = useState<string>('all');
-  const [tempFilterInvoicePeriod, setTempFilterInvoicePeriod] = useState<string>('all');
+  const [tempDateFrom, setTempDateFrom] = useState(() => c?.dateFrom ?? '');
+  const [tempDateTo, setTempDateTo] = useState(() => c?.dateTo ?? '');
+  const [tempFilterStatus, setTempFilterStatus] = useState<string>(() => c?.filterStatus ?? 'all');
+  const [tempFilterType, setTempFilterType] = useState<string>(() => c?.filterType ?? 'all');
+  const [tempFilterPaymentMethod, setTempFilterPaymentMethod] = useState<string>(() => c?.filterPaymentMethod ?? 'all');
+  const [tempFilterInvoicePeriod, setTempFilterInvoicePeriod] = useState<string>(() => c?.filterInvoicePeriod ?? 'all');
 
   // Applied filter states (triggers data reload)
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(() => c?.dateFrom ?? '');
+  const [dateTo, setDateTo] = useState(() => c?.dateTo ?? '');
 
-  const [filterCustomer, setFilterCustomer] = useState<string>('all');
-  const [tempFilterCustomer, setTempFilterCustomer] = useState<string>('all');
+  const [filterCustomer, setFilterCustomer] = useState<string>(() => c?.filterCustomer ?? 'all');
+  const [tempFilterCustomer, setTempFilterCustomer] = useState<string>(() => c?.filterCustomer ?? 'all');
   const [customerFilterSearch, setCustomerFilterSearch] = useState('');
 
   const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterPaymentMethod !== 'all' || filterInvoicePeriod !== 'all' || filterCustomer !== 'all';
@@ -165,7 +168,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [expandedPaymentIds, setExpandedPaymentIds] = useState<Set<string>>(new Set());
 
   // View mode state
-  const [viewMode, setViewMode] = useState<'payment' | 'application'>('payment');
+  const [viewMode, setViewMode] = useState<'payment' | 'application'>(() => c?.viewMode ?? 'payment');
   const [applicationRows, setApplicationRows] = useState<any[]>([]);
   const [filteredApplicationRows, setFilteredApplicationRows] = useState<any[]>([]);
 
@@ -326,9 +329,42 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     }
   };
 
+  const restoredFromCache = useRef(!!c);
+
+  // Save state to cache on unmount
+  useEffect(() => {
+    return () => {
+      setCachedState({
+        selectedMonth: selectedMonth.toISOString(),
+        selectedYear,
+        calendarView,
+        payments,
+        filteredPayments,
+        allFilteredPayments,
+        monthlyAggregates,
+        yearlyAggregates,
+        monthlyTotal,
+        monthlyPaymentCount,
+        monthlyCustomerCount,
+        searchTerm,
+        sortField,
+        sortDirection,
+        filterStatus,
+        filterType,
+        filterPaymentMethod,
+        filterInvoicePeriod,
+        filterCustomer,
+        dateFrom,
+        dateTo,
+        selectedDate: selectedDate?.toISOString() ?? null,
+        viewMode,
+        lastRefreshTime: lastRefreshTime?.toISOString() ?? null,
+      });
+    };
+  }, []);
+
   useEffect(() => {
     loadExcludedCustomers();
-    // Load banner dismissal state from localStorage
     const dismissed = localStorage.getItem('paymentAnalytics_exclusionBannerDismissed');
     if (dismissed === 'true') {
       setExclusionBannerDismissed(true);
@@ -337,20 +373,20 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   // Load data based on view type
   useEffect(() => {
+    if (restoredFromCache.current) {
+      restoredFromCache.current = false;
+      return;
+    }
     const loadViewData = async () => {
       if (calendarView === 'monthly') {
-        // Clear yearly data when switching to monthly
         setYearlyAggregates([]);
         setPayments([]);
         await loadMonthlyAggregates(selectedYear);
       } else if (calendarView === 'yearly') {
-        // Clear monthly data when switching to yearly
         setMonthlyAggregates([]);
         setPayments([]);
         await loadYearlyAggregates();
       } else {
-        // Daily view - load detailed payments for the month
-        // Clear aggregates when in daily view
         setMonthlyAggregates([]);
         setYearlyAggregates([]);
         await loadMonthlyData();
@@ -1764,8 +1800,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       while (hasMore) {
         const { data: batch, error } = await supabase
           .from('acumatica_invoices')
-          .neq('status', 'On Hold')
           .select('reference_number, customer, customer_name, date, due_date, balance, amount, status')
+          .neq('status', 'On Hold')
           .gte('date', startStr)
           .lte('date', endStr)
           .gt('balance', 0)
@@ -1914,8 +1950,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
         const { data: invoices } = await supabase
           .from('acumatica_invoices')
-          .neq('status', 'On Hold')
           .select('reference_number, date, balance, amount, status, due_date')
+          .neq('status', 'On Hold')
           .in('reference_number', invoiceRefs);
 
         const invoiceMap = new Map(

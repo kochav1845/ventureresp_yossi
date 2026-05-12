@@ -111,8 +111,8 @@ export default function TestTemplateEmailModal({ template, onClose }: TestTempla
     try {
       const { data, error } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('reference_number, invoice_date, due_date, amount, balance, description, type')
+        .neq('status', 'On Hold')
         .eq('customer', customerId)
         .gt('balance', 0)
         .order('due_date', { ascending: true });

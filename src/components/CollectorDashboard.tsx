@@ -231,8 +231,8 @@ export default function CollectorDashboard() {
     try {
       const { data: invoiceData, error } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('id, reference_number, customer, customer_name, date, balance, status')
+        .neq('status', 'On Hold')
         .eq('reference_number', invoice.invoice_reference_number)
         .maybeSingle();
 

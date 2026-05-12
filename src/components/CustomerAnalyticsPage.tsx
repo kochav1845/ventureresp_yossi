@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Users, DollarSign, FileText, TrendingUp, AlertCircle, Filter, X, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { usePageCache } from '../contexts/PageCacheContext';
 import * as XLSX from 'xlsx';
 
 interface CustomerAnalyticsPageProps {
@@ -50,7 +51,10 @@ const PRESET_FILTERS = [
 
 export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageProps) {
   const navigate = useNavigate();
-  const [stats, setStats] = useState<CustomerStats>({
+  const { getCachedState, setCachedState } = usePageCache('customer-analytics');
+  const cachedState = useRef(getCachedState());
+  const c = cachedState.current;
+  const [stats, setStats] = useState<CustomerStats>(() => c?.stats ?? {
     total_customers: 0,
     active_customers: 0,
     high_balance_customers: 0,
@@ -58,13 +62,13 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
     avg_balance: 0,
     customers_with_open_invoices: 0
   });
-  const [allCustomers, setAllCustomers] = useState<CustomerData[]>([]);
-  const [filteredCustomers, setFilteredCustomers] = useState<CustomerData[]>([]);
-  const [allInvoices, setAllInvoices] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showFilters, setShowFilters] = useState(false);
+  const [allCustomers, setAllCustomers] = useState<CustomerData[]>(() => c?.allCustomers ?? []);
+  const [filteredCustomers, setFilteredCustomers] = useState<CustomerData[]>(() => c?.filteredCustomers ?? []);
+  const [allInvoices, setAllInvoices] = useState<any[]>(() => c?.allInvoices ?? []);
+  const [loading, setLoading] = useState(() => !c);
+  const [showFilters, setShowFilters] = useState(() => c?.showFilters ?? false);
 
-  const [filters, setFilters] = useState<FilterConfig>({
+  const [filters, setFilters] = useState<FilterConfig>(() => c?.filters ?? {
     minBalance: 0,
     maxBalance: Infinity,
     minInvoiceCount: 0,
@@ -86,7 +90,27 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
     }
   };
 
+  const restoredFromCache = useRef(!!c);
+
+  // Save state to cache on unmount
   useEffect(() => {
+    return () => {
+      setCachedState({
+        stats,
+        allCustomers,
+        filteredCustomers,
+        allInvoices,
+        filters,
+        showFilters,
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (restoredFromCache.current) {
+      restoredFromCache.current = false;
+      return;
+    }
     loadCustomerAnalytics();
   }, []);
 

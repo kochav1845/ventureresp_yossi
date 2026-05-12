@@ -103,8 +103,8 @@ export default function CollectorControlPanel({ onBack }: { onBack: () => void }
 
     const { data } = await supabase
       .from('acumatica_invoices')
-      .neq('status', 'On Hold')
       .select('*')
+      .neq('status', 'On Hold')
       .in('customer', customerIds)
       .order('date', { ascending: false });
 
@@ -173,12 +173,12 @@ export default function CollectorControlPanel({ onBack }: { onBack: () => void }
   const updateInvoiceColor = async (invoiceId: string, newColor: string) => {
     const { error } = await supabase
       .from('acumatica_invoices')
-      .neq('status', 'On Hold')
       .update({
         color_status: newColor,
         last_modified_by: user?.id,
         last_modified_at: new Date().toISOString()
       })
+      .neq('status', 'On Hold')
       .eq('id', invoiceId);
 
     if (!error) {

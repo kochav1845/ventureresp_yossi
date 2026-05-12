@@ -303,8 +303,8 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     try {
       const { data, error } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('*')
+        .neq('status', 'On Hold')
         .eq('id', invoiceId)
         .maybeSingle();
 

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { PageCacheProvider } from './contexts/PageCacheContext';
 import SignIn from './components/SignIn';
 import ResetPassword from './components/ResetPassword';
 import Layout from './components/Layout';
@@ -226,7 +227,9 @@ function App() {
     <BrowserRouter>
       <ToastProvider>
         <AuthProvider>
-          <AppContent />
+          <PageCacheProvider>
+            <AppContent />
+          </PageCacheProvider>
         </AuthProvider>
       </ToastProvider>
     </BrowserRouter>

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import CustomerDetailView from './CustomerDetailView';
 import { ArrowLeft, Plus, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, Lock, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket } from 'lucide-react';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
+import { usePageCache } from '../contexts/PageCacheContext';
 import CustomerFiles from './CustomerFiles';
 import * as XLSX from 'xlsx';
 
@@ -112,6 +113,9 @@ export default function Customers({ onBack }: CustomersProps) {
   const invoiceParam = searchParams.get('invoice');
   const handleBack = onBack || (() => navigate(-1));
   const hasAccess = hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW, 'view');
+  const { getCachedState, setCachedState } = usePageCache('customers-list');
+  const cachedListState = useRef(getCachedState());
+  const cl = cachedListState.current;
 
   // Handle invoice parameter by looking up the customer
   useEffect(() => {
@@ -119,9 +123,9 @@ export default function Customers({ onBack }: CustomersProps) {
       const lookupInvoiceCustomer = async () => {
         const { data, error } = await supabase
           .from('acumatica_invoices')
-          .neq('status', 'On Hold')
           .select('customer')
           .eq('reference_number', invoiceParam)
+          .neq('status', 'On Hold')
           .maybeSingle();
 
         if (data && !error) {
@@ -132,13 +136,13 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   }, [invoiceParam, customerIdParam, navigate]);
 
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
-  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [customers, setCustomers] = useState<Customer[]>(() => cl?.customers ?? []);
+  const [allCustomers, setAllCustomers] = useState<Customer[]>(() => cl?.allCustomers ?? []);
+  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>(() => cl?.filteredCustomers ?? []);
+  const [loading, setLoading] = useState(() => !cl);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [loadedCount, setLoadedCount] = useState(0);
-  const [showTestCustomers, setShowTestCustomers] = useState(false);
+  const [loadedCount, setLoadedCount] = useState(() => cl?.loadedCount ?? 0);
+  const [showTestCustomers, setShowTestCustomers] = useState(() => cl?.showTestCustomers ?? false);
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -146,19 +150,19 @@ export default function Customers({ onBack }: CustomersProps) {
   const [viewingSchedule, setViewingSchedule] = useState<{ id: string; name: string } | null>(null);
   const [scheduledEmails, setScheduledEmails] = useState<ScheduledEmail[]>([]);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
-  const [grandTotalCustomers, setGrandTotalCustomers] = useState(0); // Unfiltered total
-  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(() => cl?.currentPage ?? 0);
+  const [totalCount, setTotalCount] = useState(() => cl?.totalCount ?? 0);
+  const [grandTotalCustomers, setGrandTotalCustomers] = useState(() => cl?.grandTotalCustomers ?? 0);
+  const [searchQuery, setSearchQuery] = useState(() => cl?.searchQuery ?? '');
   const [isSearching, setIsSearching] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
-  const [showAnalytics, setShowAnalytics] = useState(true);
-  const [excludeCreditMemos, setExcludeCreditMemos] = useState(false);
+  const [showFilters, setShowFilters] = useState(() => cl?.showFilters ?? false);
+  const [showAnalytics, setShowAnalytics] = useState(() => cl?.showAnalytics ?? true);
+  const [excludeCreditMemos, setExcludeCreditMemos] = useState(() => cl?.excludeCreditMemos ?? false);
   const [customersWithOpenTickets, setCustomersWithOpenTickets] = useState<Set<string>>(new Set());
-  const [cachedStatsLoaded, setCachedStatsLoaded] = useState(false);
-  const [cachedStatsTime, setCachedStatsTime] = useState<string | null>(null);
+  const [cachedStatsLoaded, setCachedStatsLoaded] = useState(() => cl?.cachedStatsLoaded ?? false);
+  const [cachedStatsTime, setCachedStatsTime] = useState<string | null>(() => cl?.cachedStatsTime ?? null);
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState(() => cl?.stats ?? {
     total_customers: 0,
     active_customers: 0,
     total_balance: 0,
@@ -168,7 +172,7 @@ export default function Customers({ onBack }: CustomersProps) {
     customers_with_overdue: 0
   });
 
-  const [filters, setFilters] = useState<FilterConfig>({
+  const [filters, setFilters] = useState<FilterConfig>(() => cl?.filters ?? {
     minBalance: 0,
     maxBalance: Infinity,
     minInvoiceCount: 0,
@@ -220,11 +224,42 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
-  const fetchKeyRef = useRef('');
+  const fetchKeyRef = useRef(cl ? `${cl.showTestCustomers ?? false}-${cl.excludeCreditMemos ?? false}` : '');
+  const restoredFromCache = useRef(!!cl);
+
+  // Save state to cache on unmount
+  useEffect(() => {
+    return () => {
+      setCachedState({
+        customers,
+        allCustomers,
+        filteredCustomers,
+        loadedCount,
+        showTestCustomers,
+        currentPage,
+        totalCount,
+        grandTotalCustomers,
+        searchQuery,
+        showFilters,
+        showAnalytics,
+        excludeCreditMemos,
+        cachedStatsLoaded,
+        cachedStatsTime,
+        stats,
+        filters,
+      });
+    };
+  }, []);
 
   useEffect(() => {
     const key = `${showTestCustomers}-${excludeCreditMemos}`;
-    if (fetchKeyRef.current === key) return;
+    if (fetchKeyRef.current === key) {
+      if (restoredFromCache.current) {
+        restoredFromCache.current = false;
+        loadCustomersWithOpenTickets();
+      }
+      return;
+    }
     fetchKeyRef.current = key;
 
     loadCachedStats();

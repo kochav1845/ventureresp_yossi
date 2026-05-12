@@ -281,8 +281,8 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
     try {
       const { count: invoiceCount } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
-        .select('*', { count: 'exact', head: true });
+        .select('*', { count: 'exact', head: true })
+        .neq('status', 'On Hold');
 
       const { count: paymentCount } = await supabase
         .from('acumatica_payments')
@@ -298,8 +298,8 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
 
       const { data: invoices, error: invError } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('date, amount')
+        .neq('status', 'On Hold')
         .limit(invoiceLimit);
 
       if (invError) throw invError;
@@ -417,8 +417,8 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
 
       const { data: invoices } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('date, amount')
+        .neq('status', 'On Hold')
         .gte('date', startStr)
         .lt('date', endStr);
 
@@ -588,8 +588,8 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
 
       const { data: invoices } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('date, amount, reference_nbr')
+        .neq('status', 'On Hold')
         .gte('date', startStr)
         .lt('date', endStr);
 

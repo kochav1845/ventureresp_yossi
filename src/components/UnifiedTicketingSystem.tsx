@@ -766,8 +766,8 @@ export default function UnifiedTicketingSystem({
     try {
       const { data: invoice } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('id')
+        .neq('status', 'On Hold')
         .eq('reference_number', invoiceRefNumber)
         .single();
 
@@ -780,8 +780,8 @@ export default function UnifiedTicketingSystem({
 
       await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .update({ color_status: newColor })
+        .neq('status', 'On Hold')
         .eq('reference_number', invoiceRefNumber);
 
       await supabase.from('invoice_activity_log').insert({
@@ -807,8 +807,8 @@ export default function UnifiedTicketingSystem({
     try {
       const { data: invoice } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('id, reference_number, customer_name')
+        .neq('status', 'On Hold')
         .eq('reference_number', promiseDateModalInvoice)
         .maybeSingle();
 
@@ -816,12 +816,12 @@ export default function UnifiedTicketingSystem({
 
       await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .update({
           color_status: 'green',
           promise_date: promiseDate,
           promise_by_user_id: profile.id
         })
+        .neq('status', 'On Hold')
         .eq('reference_number', promiseDateModalInvoice);
 
       await supabase.from('invoice_activity_log').insert({
@@ -1136,8 +1136,8 @@ export default function UnifiedTicketingSystem({
       const notePromises = Array.from(selectedInvoices).map(async (refNumber) => {
         const { data: invoice } = await supabase
           .from('acumatica_invoices')
-          .neq('status', 'On Hold')
           .select('id')
+          .neq('status', 'On Hold')
           .eq('reference_number', refNumber)
           .single();
 
@@ -1190,8 +1190,8 @@ export default function UnifiedTicketingSystem({
     try {
       const { data: invoiceData, error } = await supabase
         .from('acumatica_invoices')
-        .neq('status', 'On Hold')
         .select('id, reference_number, customer, customer_name, date, balance, status')
+        .neq('status', 'On Hold')
         .eq('reference_number', invoice.invoice_reference_number)
         .maybeSingle();
 

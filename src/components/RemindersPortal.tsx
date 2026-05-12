@@ -105,8 +105,8 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
           if (item.invoice_reference && !item.customer_name) {
             const { data: invoiceData } = await supabase
               .from('acumatica_invoices')
-              .neq('status', 'On Hold')
               .select('customer_name')
+              .neq('status', 'On Hold')
               .eq('reference_number', item.invoice_reference)
               .maybeSingle();
 

@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, X, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
+import { usePageCache } from '../contexts/PageCacheContext';
 import * as XLSX from 'xlsx';
 
 interface InvoiceRow {
@@ -47,48 +48,51 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 
 export default function InvoiceAnalyticsPage() {
   const navigate = useNavigate();
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [calendarView, setCalendarView] = useState<'daily' | 'monthly' | 'yearly'>('daily');
-  const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
-  const [filteredInvoices, setFilteredInvoices] = useState<InvoiceRow[]>([]);
-  const [allFilteredInvoices, setAllFilteredInvoices] = useState<InvoiceRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { getCachedState, setCachedState } = usePageCache('invoice-analytics');
+  const cachedState = useRef(getCachedState());
+  const c = cachedState.current;
+  const [selectedMonth, setSelectedMonth] = useState(() => c?.selectedMonth ? new Date(c.selectedMonth) : new Date());
+  const [selectedYear, setSelectedYear] = useState<number>(() => c?.selectedYear ?? new Date().getFullYear());
+  const [calendarView, setCalendarView] = useState<'daily' | 'monthly' | 'yearly'>(() => c?.calendarView ?? 'daily');
+  const [invoices, setInvoices] = useState<InvoiceRow[]>(() => c?.invoices ?? []);
+  const [filteredInvoices, setFilteredInvoices] = useState<InvoiceRow[]>(() => c?.filteredInvoices ?? []);
+  const [allFilteredInvoices, setAllFilteredInvoices] = useState<InvoiceRow[]>(() => c?.allFilteredInvoices ?? []);
+  const [loading, setLoading] = useState(() => !c);
   const [loadingBatchInfo, setLoadingBatchInfo] = useState('');
 
-  const [monthlyAggregates, setMonthlyAggregates] = useState<{ month: number; total: number; count: number; balance: number; openBalance: number; customers: number; creditMemoAmount: number; creditMemoCount: number; openInvoiceBalance: number; openInvoiceCount: number; balancedInvoiceBalance: number; balancedInvoiceCount: number; openCmBalance: number; openCmCount: number }[]>([]);
-  const [yearlyAggregates, setYearlyAggregates] = useState<{ year: number; total: number; count: number; balance: number; openBalance: number; customers: number; creditMemoAmount: number; creditMemoCount: number; openInvoiceBalance: number; openInvoiceCount: number; balancedInvoiceBalance: number; balancedInvoiceCount: number; openCmBalance: number; openCmCount: number }[]>([]);
+  const [monthlyAggregates, setMonthlyAggregates] = useState<{ month: number; total: number; count: number; balance: number; openBalance: number; customers: number; creditMemoAmount: number; creditMemoCount: number; openInvoiceBalance: number; openInvoiceCount: number; balancedInvoiceBalance: number; balancedInvoiceCount: number; openCmBalance: number; openCmCount: number }[]>(() => c?.monthlyAggregates ?? []);
+  const [yearlyAggregates, setYearlyAggregates] = useState<{ year: number; total: number; count: number; balance: number; openBalance: number; customers: number; creditMemoAmount: number; creditMemoCount: number; openInvoiceBalance: number; openInvoiceCount: number; balancedInvoiceBalance: number; balancedInvoiceCount: number; openCmBalance: number; openCmCount: number }[]>(() => c?.yearlyAggregates ?? []);
 
-  const [monthlyTotal, setMonthlyTotal] = useState(0);
-  const [monthlyBalance, setMonthlyBalance] = useState(0);
-  const [monthlyInvoiceCount, setMonthlyInvoiceCount] = useState(0);
-  const [monthlyCustomerCount, setMonthlyCustomerCount] = useState(0);
-  const [monthlyCreditMemoTotal, setMonthlyCreditMemoTotal] = useState(0);
-  const [monthlyCreditMemoCount, setMonthlyCreditMemoCount] = useState(0);
-  const [monthlyOpenInvBalance, setMonthlyOpenInvBalance] = useState(0);
-  const [monthlyBalancedInvBalance, setMonthlyBalancedInvBalance] = useState(0);
-  const [monthlyBalancedInvCount, setMonthlyBalancedInvCount] = useState(0);
-  const [monthlyOpenCmBalance, setMonthlyOpenCmBalance] = useState(0);
-  const [monthlyOpenCmCount, setMonthlyOpenCmCount] = useState(0);
+  const [monthlyTotal, setMonthlyTotal] = useState(() => c?.monthlyTotal ?? 0);
+  const [monthlyBalance, setMonthlyBalance] = useState(() => c?.monthlyBalance ?? 0);
+  const [monthlyInvoiceCount, setMonthlyInvoiceCount] = useState(() => c?.monthlyInvoiceCount ?? 0);
+  const [monthlyCustomerCount, setMonthlyCustomerCount] = useState(() => c?.monthlyCustomerCount ?? 0);
+  const [monthlyCreditMemoTotal, setMonthlyCreditMemoTotal] = useState(() => c?.monthlyCreditMemoTotal ?? 0);
+  const [monthlyCreditMemoCount, setMonthlyCreditMemoCount] = useState(() => c?.monthlyCreditMemoCount ?? 0);
+  const [monthlyOpenInvBalance, setMonthlyOpenInvBalance] = useState(() => c?.monthlyOpenInvBalance ?? 0);
+  const [monthlyBalancedInvBalance, setMonthlyBalancedInvBalance] = useState(() => c?.monthlyBalancedInvBalance ?? 0);
+  const [monthlyBalancedInvCount, setMonthlyBalancedInvCount] = useState(() => c?.monthlyBalancedInvCount ?? 0);
+  const [monthlyOpenCmBalance, setMonthlyOpenCmBalance] = useState(() => c?.monthlyOpenCmBalance ?? 0);
+  const [monthlyOpenCmCount, setMonthlyOpenCmCount] = useState(() => c?.monthlyOpenCmCount ?? 0);
 
   const [refreshingAnalytics, setRefreshingAnalytics] = useState(false);
-  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(() => c?.lastRefreshTime ? new Date(c.lastRefreshTime) : null);
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortField, setSortField] = useState<SortField>('date');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [searchTerm, setSearchTerm] = useState(() => c?.searchTerm ?? '');
+  const [sortField, setSortField] = useState<SortField>(() => c?.sortField ?? 'date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>(() => c?.sortDirection ?? 'desc');
+  const [selectedDate, setSelectedDate] = useState<Date | null>(() => c?.selectedDate ? new Date(c.selectedDate) : null);
 
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterType, setFilterType] = useState('all');
+  const [filterStatus, setFilterStatus] = useState(() => c?.filterStatus ?? 'all');
+  const [filterType, setFilterType] = useState(() => c?.filterType ?? 'all');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const [tempFilterStatus, setTempFilterStatus] = useState('all');
-  const [tempFilterType, setTempFilterType] = useState('all');
-  const [tempDateFrom, setTempDateFrom] = useState('');
-  const [tempDateTo, setTempDateTo] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [tempFilterStatus, setTempFilterStatus] = useState(() => c?.filterStatus ?? 'all');
+  const [tempFilterType, setTempFilterType] = useState(() => c?.filterType ?? 'all');
+  const [tempDateFrom, setTempDateFrom] = useState(() => c?.dateFrom ?? '');
+  const [tempDateTo, setTempDateTo] = useState(() => c?.dateTo ?? '');
+  const [dateFrom, setDateFrom] = useState(() => c?.dateFrom ?? '');
+  const [dateTo, setDateTo] = useState(() => c?.dateTo ?? '');
 
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
 
@@ -155,7 +159,49 @@ export default function InvoiceAnalyticsPage() {
   }, [invoices]);
 
   // Load data based on view
+  const restoredFromCache = useRef(!!c);
+
+  // Save state to cache on unmount
   useEffect(() => {
+    return () => {
+      setCachedState({
+        selectedMonth: selectedMonth.toISOString(),
+        selectedYear,
+        calendarView,
+        invoices,
+        filteredInvoices,
+        allFilteredInvoices,
+        monthlyAggregates,
+        yearlyAggregates,
+        monthlyTotal,
+        monthlyBalance,
+        monthlyInvoiceCount,
+        monthlyCustomerCount,
+        monthlyCreditMemoTotal,
+        monthlyCreditMemoCount,
+        monthlyOpenInvBalance,
+        monthlyBalancedInvBalance,
+        monthlyBalancedInvCount,
+        monthlyOpenCmBalance,
+        monthlyOpenCmCount,
+        searchTerm,
+        sortField,
+        sortDirection,
+        filterStatus,
+        filterType,
+        dateFrom,
+        dateTo,
+        selectedDate: selectedDate?.toISOString() ?? null,
+        lastRefreshTime: lastRefreshTime?.toISOString() ?? null,
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (restoredFromCache.current) {
+      restoredFromCache.current = false;
+      return;
+    }
     if (calendarView === 'monthly') {
       setYearlyAggregates([]);
       setInvoices([]);
