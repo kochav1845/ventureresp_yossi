@@ -60,7 +60,7 @@ type FilterConfig = {
   sortOrder: 'asc' | 'desc';
 };
 
-const BATCH_SIZE = 1000;
+const BATCH_SIZE = 500;
 
 async function batchFetchRpc(rpcName: string, params: Record<string, any>): Promise<any[]> {
   let allData: any[] = [];
@@ -73,6 +73,33 @@ async function batchFetchRpc(rpcName: string, params: Record<string, any>): Prom
     if (!data || data.length === 0) break;
     allData = allData.concat(data);
     if (data.length < BATCH_SIZE) break;
+    offset += BATCH_SIZE;
+  }
+  return allData;
+}
+
+async function progressiveFetchRpc(
+  rpcName: string,
+  params: Record<string, any>,
+  onBatch: (accumulated: any[], batchNum: number, done: boolean) => void
+): Promise<any[]> {
+  let allData: any[] = [];
+  let offset = 0;
+  let batchNum = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .rpc(rpcName, params)
+      .range(offset, offset + BATCH_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      onBatch(allData, batchNum, true);
+      break;
+    }
+    allData = allData.concat(data);
+    batchNum++;
+    const isDone = data.length < BATCH_SIZE;
+    onBatch(allData, batchNum, isDone);
+    if (isDone) break;
     offset += BATCH_SIZE;
   }
   return allData;
@@ -156,6 +183,8 @@ export default function Customers({ onBack }: CustomersProps) {
   const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadedCount, setLoadedCount] = useState(0);
   const [showTestCustomers, setShowTestCustomers] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -280,30 +309,38 @@ export default function Customers({ onBack }: CustomersProps) {
   const loadCustomersWithAnalytics = async () => {
     setLoading(true);
     setIsSearching(false);
+    setLoadedCount(0);
     try {
-      const [fastData, trackingData] = await Promise.all([
-        batchFetchRpc('get_customers_with_balance_fast', {
-          p_test_customers: showTestCustomers,
-          p_exclude_credit_memos: excludeCreditMemos
-        }),
-        batchFetchTable('acumatica_customers', 'customer_id, responded_this_month, postpone_until, postpone_reason, is_active')
-      ]);
-
+      const trackingData = await batchFetchTable('acumatica_customers', 'customer_id, responded_this_month, postpone_until, postpone_reason, is_active');
       const customerLookup = new Map<string, any>();
       trackingData.forEach((c: any) => {
         customerLookup.set(c.customer_id, c);
       });
 
-      const mergedData = fastData.map((item: any) =>
-        mapCustomerRow(item, customerLookup, showTestCustomers)
+      await progressiveFetchRpc(
+        'get_customers_with_balance_fast',
+        {
+          p_test_customers: showTestCustomers,
+          p_exclude_credit_memos: excludeCreditMemos
+        },
+        (accumulated, batchNum, done) => {
+          const mergedData = accumulated.map((item: any) =>
+            mapCustomerRow(item, customerLookup, showTestCustomers)
+          );
+          setLoadedCount(mergedData.length);
+          setGrandTotalCustomers(mergedData.length);
+          setAllCustomers(mergedData);
+          if (batchNum === 1) {
+            setLoading(false);
+          }
+          setLoadingMore(!done);
+        }
       );
-
-      setGrandTotalCustomers(mergedData.length);
-      setAllCustomers(mergedData);
     } catch (error) {
       console.error('Error loading customers:', error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -339,8 +376,15 @@ export default function Customers({ onBack }: CustomersProps) {
 
     if (hasServerFilter) {
       setLoading(true);
+      setLoadedCount(0);
       try {
-        const analyticsData = await batchFetchRpcWithParams('get_customers_with_balance', {
+        const custTableData = await batchFetchTable('acumatica_customers', 'customer_id, responded_this_month, postpone_until, postpone_reason, is_active');
+        const custLookup = new Map<string, any>();
+        custTableData.forEach((c: any) => {
+          custLookup.set(c.customer_id, c);
+        });
+
+        const rpcParams = {
           p_search: searchQuery.trim() || null,
           p_status_filter: 'all',
           p_country_filter: 'all',
@@ -361,27 +405,44 @@ export default function Customers({ onBack }: CustomersProps) {
           p_min_days_overdue: filters.minDaysOverdue > 0 ? filters.minDaysOverdue : null,
           p_max_days_overdue: filters.maxDaysOverdue !== Infinity ? Math.round(filters.maxDaysOverdue) : null,
           p_test_customers: showTestCustomers
-        });
+        };
 
-        const custTableData = await batchFetchTable('acumatica_customers', 'customer_id, responded_this_month, postpone_until, postpone_reason, is_active');
-        const custLookup = new Map<string, any>();
-        custTableData.forEach((c: any) => {
-          custLookup.set(c.customer_id, c);
-        });
+        let allAnalytics: any[] = [];
+        let offset = 0;
+        let batchNum = 0;
+        while (true) {
+          const { data, error } = await supabase
+            .rpc('get_customers_with_balance', { ...rpcParams, p_limit: BATCH_SIZE, p_offset: offset });
+          if (error) throw error;
+          if (!data || data.length === 0) {
+            setLoadingMore(false);
+            break;
+          }
+          allAnalytics = allAnalytics.concat(data);
+          batchNum++;
 
-        const filtered = (analyticsData || []).map((item: any) =>
-          mapCustomerRow(item, custLookup)
-        );
+          const filtered = allAnalytics.map((item: any) =>
+            mapCustomerRow(item, custLookup)
+          );
+          setLoadedCount(filtered.length);
+          setFilteredCustomers(filtered);
+          setTotalCount(filtered.length);
+          const start = currentPage * pageSize;
+          const end = start + pageSize;
+          setCustomers(filtered.slice(start, end));
 
-        setFilteredCustomers(filtered);
-        setTotalCount(filtered.length);
-        const start = currentPage * pageSize;
-        const end = start + pageSize;
-        setCustomers(filtered.slice(start, end));
+          if (batchNum === 1) setLoading(false);
+
+          const isDone = data.length < BATCH_SIZE;
+          setLoadingMore(!isDone);
+          if (isDone) break;
+          offset += BATCH_SIZE;
+        }
       } catch (error) {
         console.error('Error applying filters:', error);
       } finally {
         setLoading(false);
+        setLoadingMore(false);
       }
       return;
     }
@@ -1511,8 +1572,14 @@ export default function Customers({ onBack }: CustomersProps) {
                 <ChevronLeft size={20} />
                 Previous
               </button>
-              <span className="text-gray-600 font-medium">
+              <span className="text-gray-600 font-medium flex items-center gap-2">
                 Page {currentPage + 1} of {Math.ceil(totalCount / pageSize)} • Showing {Math.min(currentPage * pageSize + 1, totalCount)}-{Math.min((currentPage + 1) * pageSize, totalCount)} of {totalCount}
+                {loadingMore && (
+                  <span className="inline-flex items-center gap-1 text-blue-600 text-sm">
+                    <RefreshCw size={14} className="animate-spin" />
+                    Loading more ({loadedCount} loaded)...
+                  </span>
+                )}
               </span>
               <button
                 onClick={goToNextPage}
@@ -1821,8 +1888,14 @@ export default function Customers({ onBack }: CustomersProps) {
                 <ChevronLeft size={20} />
                 Previous
               </button>
-              <span className="text-gray-600 font-medium">
+              <span className="text-gray-600 font-medium flex items-center gap-2">
                 Page {currentPage + 1} of {Math.ceil(totalCount / pageSize)}
+                {loadingMore && (
+                  <span className="inline-flex items-center gap-1 text-blue-600 text-sm">
+                    <RefreshCw size={14} className="animate-spin" />
+                    Loading more...
+                  </span>
+                )}
               </span>
               <button
                 onClick={goToNextPage}
