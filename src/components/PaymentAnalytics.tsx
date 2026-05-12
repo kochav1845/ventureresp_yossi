@@ -851,6 +851,71 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         setLastRefreshTime(new Date(cachedData[0].calculated_at));
         setLoading(false);
         setLoadingBatchInfo('');
+
+        // Check if current month is missing from cache and refresh in background
+        const now = new Date();
+        const currentMonth = now.getMonth() + 1;
+        const currentYear = now.getFullYear();
+        if (year === currentYear && !seenMonths.has(currentMonth)) {
+          console.log(`Current month (${currentMonth}) missing from cache, refreshing in background...`);
+          (async () => {
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session) return;
+              const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/calculate-payment-analytics`;
+              const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ periodType: 'monthly', year })
+              });
+              const result = await response.json();
+              if (result.success) {
+                console.log('Background cache refresh completed, reloading data...');
+                const { data: refreshedData } = await supabase
+                  .from('cached_payment_analytics')
+                  .select('*')
+                  .eq('period_type', 'monthly')
+                  .eq('year', year)
+                  .order('calculated_at', { ascending: false });
+                if (refreshedData && refreshedData.length > 0) {
+                  const refreshedSeen = new Set<number>();
+                  const refreshedUnique = refreshedData.filter(cache => {
+                    if (cache.month === null) return false;
+                    if (refreshedSeen.has(cache.month)) return false;
+                    refreshedSeen.add(cache.month);
+                    return true;
+                  });
+                  const newAggregates = Array.from({ length: 12 }, (_, month) => ({ month, total: 0, count: 0 }));
+                  let newTotal = 0;
+                  let newCount = 0;
+                  refreshedUnique.forEach(cache => {
+                    if (cache.month !== null && cache.month >= 1 && cache.month <= 12) {
+                      newAggregates[cache.month - 1] = {
+                        month: cache.month - 1,
+                        total: parseFloat(cache.total_amount) || 0,
+                        count: cache.payment_count || 0
+                      };
+                      newTotal += parseFloat(cache.total_amount) || 0;
+                      newCount += cache.payment_count || 0;
+                    }
+                  });
+                  setMonthlyAggregates(newAggregates);
+                  setMonthlyTotal(newTotal);
+                  setMonthlyPaymentCount(newCount);
+                  const newCustomers = refreshedUnique.reduce((sum, c) => sum + (c.unique_customer_count || 0), 0);
+                  setMonthlyCustomerCount(newCustomers);
+                  setLastRefreshTime(new Date());
+                }
+              }
+            } catch (err) {
+              console.error('Background cache refresh failed:', err);
+            }
+          })();
+        }
+
         return;
       }
 
