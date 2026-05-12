@@ -1546,7 +1546,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   }, [payments, customerNameMap]);
 
   const filteredCustomerOptions = useMemo(() => {
-    if (!customerFilterSearch) return uniqueCustomers;
+    if (!customerFilterSearch) return [];
     const search = customerFilterSearch.toLowerCase();
     return uniqueCustomers.filter(c =>
       c.name.toLowerCase().includes(search) || c.id.toLowerCase().includes(search)
@@ -2944,51 +2944,76 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                         </span>
                       )}
                     </label>
+
+                    {/* Selected customers as chips */}
+                    {tempSelectedCustomers.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 p-2 bg-blue-50/50 border border-blue-200 rounded-lg">
+                        {tempSelectedCustomers.map(id => {
+                          const cust = uniqueCustomers.find(c => c.id === id);
+                          const displayName = cust?.name || id;
+                          return (
+                            <span
+                              key={id}
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-medium max-w-full"
+                            >
+                              <span className="truncate">{displayName}</span>
+                              <button
+                                onClick={() => toggleTempCustomer(id)}
+                                className="flex-shrink-0 hover:text-blue-600 ml-0.5"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          );
+                        })}
+                        <button
+                          onClick={() => { setTempSelectedCustomers([]); setCustomerFilterSearch(''); }}
+                          className="text-[10px] text-red-500 hover:text-red-600 font-medium px-1.5 py-1"
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                    )}
+
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                       <input
                         type="text"
-                        placeholder="Search customers..."
+                        placeholder="Type to search customers..."
                         value={customerFilterSearch}
                         onChange={(e) => setCustomerFilterSearch(e.target.value)}
                         className="w-full pl-8 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
-                    <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white">
-                      {filteredCustomerOptions.length === 0 ? (
-                        <p className="text-xs text-gray-400 p-3 text-center">No customers found</p>
-                      ) : (
-                        filteredCustomerOptions.map(cust => {
-                          const isSelected = tempSelectedCustomers.includes(cust.id);
-                          return (
-                            <button
-                              key={cust.id}
-                              onClick={() => toggleTempCustomer(cust.id)}
-                              className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors ${isSelected ? 'bg-blue-50' : ''}`}
-                            >
-                              <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
-                                {isSelected && <Check className="w-3 h-3 text-white" />}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <span className={`block truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}`}>
-                                  {cust.name}
-                                </span>
-                                {cust.name !== cust.id && (
-                                  <span className="block text-[10px] text-gray-400 truncate">{cust.id}</span>
-                                )}
-                              </div>
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                    {tempSelectedCustomers.length > 0 && (
-                      <button
-                        onClick={() => { setTempSelectedCustomers([]); setCustomerFilterSearch(''); }}
-                        className="text-xs text-blue-500 hover:text-blue-600 font-medium"
-                      >
-                        Clear customer selection
-                      </button>
+                    {customerFilterSearch && (
+                      <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white">
+                        {filteredCustomerOptions.length === 0 ? (
+                          <p className="text-xs text-gray-400 p-3 text-center">No customers match "{customerFilterSearch}"</p>
+                        ) : (
+                          filteredCustomerOptions.map(cust => {
+                            const isSelected = tempSelectedCustomers.includes(cust.id);
+                            return (
+                              <button
+                                key={cust.id}
+                                onClick={() => toggleTempCustomer(cust.id)}
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors ${isSelected ? 'bg-blue-50' : ''}`}
+                              >
+                                <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                  {isSelected && <Check className="w-3 h-3 text-white" />}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <span className={`block truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}`}>
+                                    {cust.name}
+                                  </span>
+                                  {cust.name !== cust.id && (
+                                    <span className="block text-[10px] text-gray-400 truncate">{cust.id}</span>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
                     )}
                   </div>
 
