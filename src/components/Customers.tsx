@@ -344,11 +344,18 @@ export default function Customers({ onBack }: CustomersProps) {
     setIsSearching(false);
     setLoadedCount(0);
     try {
-      const trackingData = await batchFetchTable('acumatica_customers', 'customer_id, responded_this_month, postpone_until, postpone_reason, is_active');
       const customerLookup = new Map<string, any>();
-      trackingData.forEach((c: any) => {
-        customerLookup.set(c.customer_id, c);
-      });
+      let trackingLoaded = false;
+
+      const trackingPromise = batchFetchTable('acumatica_customers', 'customer_id, responded_this_month, postpone_until, postpone_reason, is_active')
+        .then(trackingData => {
+          trackingData.forEach((c: any) => {
+            customerLookup.set(c.customer_id, c);
+          });
+          trackingLoaded = true;
+        });
+
+      let pendingRaw: any[] | null = null;
 
       await progressiveFetchRpc(
         'get_customers_with_balance_fast',
@@ -357,6 +364,9 @@ export default function Customers({ onBack }: CustomersProps) {
           p_exclude_credit_memos: excludeCreditMemos
         },
         (accumulated, batchNum, done) => {
+          if (!trackingLoaded) {
+            pendingRaw = accumulated;
+          }
           const mergedData = accumulated.map((item: any) =>
             mapCustomerRow(item, customerLookup, showTestCustomers)
           );
@@ -369,6 +379,15 @@ export default function Customers({ onBack }: CustomersProps) {
           setLoadingMore(!done);
         }
       );
+
+      await trackingPromise;
+
+      if (pendingRaw) {
+        const mergedData = pendingRaw.map((item: any) =>
+          mapCustomerRow(item, customerLookup, showTestCustomers)
+        );
+        setAllCustomers(mergedData);
+      }
     } catch (error) {
       console.error('Error loading customers:', error);
     } finally {
