@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, X, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, X, ExternalLink, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { usePageCache } from '../contexts/PageCacheContext';
@@ -96,7 +96,12 @@ export default function InvoiceAnalyticsPage() {
 
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
 
-  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all';
+  // Customer filter
+  const [selectedCustomers, setSelectedCustomers] = useState<string[]>(() => c?.selectedCustomers ?? []);
+  const [tempSelectedCustomers, setTempSelectedCustomers] = useState<string[]>(() => c?.selectedCustomers ?? []);
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
+
+  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || selectedCustomers.length > 0;
 
   const monthName = `${MONTH_NAMES[selectedMonth.getMonth()]} ${selectedMonth.getFullYear()}`;
 
@@ -158,6 +163,32 @@ export default function InvoiceAnalyticsPage() {
     return ['all', ...Array.from(set).sort()];
   }, [invoices]);
 
+  const uniqueCustomers = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const inv of invoices) {
+      if (inv.customer && !map.has(inv.customer)) {
+        map.set(inv.customer, inv.customer_name || inv.customer);
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [invoices]);
+
+  const filteredCustomerOptions = useMemo(() => {
+    if (!customerSearchTerm) return uniqueCustomers;
+    const search = customerSearchTerm.toLowerCase();
+    return uniqueCustomers.filter(c =>
+      c.name.toLowerCase().includes(search) || c.id.toLowerCase().includes(search)
+    );
+  }, [uniqueCustomers, customerSearchTerm]);
+
+  const toggleTempCustomer = useCallback((customerId: string) => {
+    setTempSelectedCustomers(prev =>
+      prev.includes(customerId) ? prev.filter(c => c !== customerId) : [...prev, customerId]
+    );
+  }, []);
+
   // Load data based on view
   const restoredFromCache = useRef(!!c);
 
@@ -191,6 +222,7 @@ export default function InvoiceAnalyticsPage() {
       filterType,
       dateFrom,
       dateTo,
+      selectedCustomers,
       selectedDate: selectedDate?.toISOString() ?? null,
       lastRefreshTime: lastRefreshTime?.toISOString() ?? null,
     };
@@ -223,7 +255,7 @@ export default function InvoiceAnalyticsPage() {
 
   useEffect(() => {
     filterAndSortInvoices();
-  }, [invoices, searchTerm, sortField, sortDirection, filterStatus, filterType, selectedDate]);
+  }, [invoices, searchTerm, sortField, sortDirection, filterStatus, filterType, selectedDate, selectedCustomers]);
 
   useEffect(() => {
     if (calendarView === 'daily') {
@@ -256,6 +288,7 @@ export default function InvoiceAnalyticsPage() {
     setTempFilterType(filterType);
     setTempDateFrom(dateFrom);
     setTempDateTo(dateTo);
+    setTempSelectedCustomers(selectedCustomers);
   }, []);
 
   const loadDailyData = async () => {
@@ -562,6 +595,10 @@ export default function InvoiceAnalyticsPage() {
     if (filterType !== 'all') {
       filtered = filtered.filter(i => i.type === filterType);
     }
+    if (selectedCustomers.length > 0) {
+      const customerSet = new Set(selectedCustomers);
+      filtered = filtered.filter(i => customerSet.has(i.customer));
+    }
 
     filtered.sort((a, b) => {
       const aVal = a[sortField];
@@ -598,6 +635,7 @@ export default function InvoiceAnalyticsPage() {
     setFilterType(tempFilterType);
     setDateFrom(tempDateFrom);
     setDateTo(tempDateTo);
+    setSelectedCustomers(tempSelectedCustomers);
   };
 
   const clearFilters = () => {
@@ -605,10 +643,13 @@ export default function InvoiceAnalyticsPage() {
     setTempFilterType('all');
     setTempDateFrom('');
     setTempDateTo('');
+    setTempSelectedCustomers([]);
+    setCustomerSearchTerm('');
     setFilterStatus('all');
     setFilterType('all');
     setDateFrom('');
     setDateTo('');
+    setSelectedCustomers([]);
     setSelectedDate(null);
   };
 
@@ -873,6 +914,58 @@ export default function InvoiceAnalyticsPage() {
                     </select>
                   </div>
 
+                  {/* Customer Filter */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Customers {tempSelectedCustomers.length > 0 && (
+                        <span className="ml-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-bold">
+                          {tempSelectedCustomers.length}
+                        </span>
+                      )}
+                    </label>
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search customers..."
+                        value={customerSearchTerm}
+                        onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white">
+                      {filteredCustomerOptions.length === 0 ? (
+                        <p className="text-xs text-gray-400 p-3 text-center">No customers found</p>
+                      ) : (
+                        filteredCustomerOptions.map(cust => {
+                          const isSelected = tempSelectedCustomers.includes(cust.id);
+                          return (
+                            <button
+                              key={cust.id}
+                              onClick={() => toggleTempCustomer(cust.id)}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors ${isSelected ? 'bg-blue-50' : ''}`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                {isSelected && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <span className={`truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}`}>
+                                {cust.name}
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                    {tempSelectedCustomers.length > 0 && (
+                      <button
+                        onClick={() => { setTempSelectedCustomers([]); setCustomerSearchTerm(''); }}
+                        className="text-xs text-blue-500 hover:text-blue-600 font-medium"
+                      >
+                        Clear customer selection
+                      </button>
+                    )}
+                  </div>
+
                   {/* Date Range */}
                   <div className="space-y-3 pt-3 border-t border-gray-200">
                     <h4 className="text-xs font-semibold text-gray-700 flex items-center gap-2">
@@ -927,10 +1020,15 @@ export default function InvoiceAnalyticsPage() {
                   </div>
 
                   {hasActiveFilters && (
-                    <div className="bg-amber-50 border border-amber-300 rounded-lg p-2">
+                    <div className="bg-amber-50 border border-amber-300 rounded-lg p-2 space-y-1">
                       <p className="text-xs font-medium text-amber-700">
                         Filters active -- results in all views are filtered
                       </p>
+                      {selectedCustomers.length > 0 && (
+                        <p className="text-[10px] text-amber-600">
+                          {selectedCustomers.length} customer{selectedCustomers.length !== 1 ? 's' : ''} selected
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
