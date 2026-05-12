@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import CustomerDetailView from './CustomerDetailView';
@@ -62,22 +62,6 @@ type FilterConfig = {
 
 const BATCH_SIZE = 500;
 
-async function batchFetchRpc(rpcName: string, params: Record<string, any>): Promise<any[]> {
-  let allData: any[] = [];
-  let offset = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .rpc(rpcName, params)
-      .range(offset, offset + BATCH_SIZE - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    allData = allData.concat(data);
-    if (data.length < BATCH_SIZE) break;
-    offset += BATCH_SIZE;
-  }
-  return allData;
-}
-
 async function progressiveFetchRpc(
   rpcName: string,
   params: Record<string, any>,
@@ -105,37 +89,6 @@ async function progressiveFetchRpc(
   return allData;
 }
 
-async function batchFetchRpcWithParams(rpcName: string, params: Record<string, any>): Promise<any[]> {
-  let allData: any[] = [];
-  let offset = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .rpc(rpcName, { ...params, p_limit: BATCH_SIZE, p_offset: offset });
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    allData = allData.concat(data);
-    if (data.length < BATCH_SIZE) break;
-    offset += BATCH_SIZE;
-  }
-  return allData;
-}
-
-async function batchFetchTable(table: string, selectCols: string): Promise<any[]> {
-  let allData: any[] = [];
-  let offset = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .from(table)
-      .select(selectCols)
-      .range(offset, offset + BATCH_SIZE - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    allData = allData.concat(data);
-    if (data.length < BATCH_SIZE) break;
-    offset += BATCH_SIZE;
-  }
-  return allData;
-}
 
 const PRESET_FILTERS = [
   { label: 'High Balance (>$10k)', filter: { minBalance: 10000, maxBalance: Infinity, minInvoiceCount: 0, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
@@ -267,7 +220,13 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
+  const fetchKeyRef = useRef('');
+
   useEffect(() => {
+    const key = `${showTestCustomers}-${excludeCreditMemos}`;
+    if (fetchKeyRef.current === key) return;
+    fetchKeyRef.current = key;
+
     loadCachedStats();
     loadCustomersWithAnalytics();
     loadCustomersWithOpenTickets();
@@ -307,19 +266,18 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
-  const mapCustomerRow = (item: any, customerLookup: Map<string, any>, isTest = false) => {
+  const mapCustomerRow = (item: any, isTest = false) => {
     const custId = isTest && item.customer_id?.startsWith('TEST-')
       ? item.customer_id.replace('TEST-', '')
       : item.customer_id;
-    const custRecord = customerLookup.get(item.customer_id) || customerLookup.get(custId);
     return {
       id: custId || item.id,
       name: item.customer_name || '',
       email: item.email_address || '',
-      is_active: custRecord?.is_active ?? true,
-      responded_this_month: custRecord?.responded_this_month ?? false,
-      postpone_until: custRecord?.postpone_until ?? null,
-      postpone_reason: custRecord?.postpone_reason ?? null,
+      is_active: item.is_active ?? true,
+      responded_this_month: item.responded_this_month ?? false,
+      postpone_until: item.postpone_until ?? null,
+      postpone_reason: item.postpone_reason ?? null,
       created_at: item.created_at,
       updated_at: item.updated_at,
       customer_id: item.customer_id,
@@ -344,19 +302,6 @@ export default function Customers({ onBack }: CustomersProps) {
     setIsSearching(false);
     setLoadedCount(0);
     try {
-      const customerLookup = new Map<string, any>();
-      let trackingLoaded = false;
-
-      const trackingPromise = batchFetchTable('acumatica_customers', 'customer_id, responded_this_month, postpone_until, postpone_reason, is_active')
-        .then(trackingData => {
-          trackingData.forEach((c: any) => {
-            customerLookup.set(c.customer_id, c);
-          });
-          trackingLoaded = true;
-        });
-
-      let pendingRaw: any[] | null = null;
-
       await progressiveFetchRpc(
         'get_customers_with_balance_fast',
         {
@@ -364,11 +309,8 @@ export default function Customers({ onBack }: CustomersProps) {
           p_exclude_credit_memos: excludeCreditMemos
         },
         (accumulated, batchNum, done) => {
-          if (!trackingLoaded) {
-            pendingRaw = accumulated;
-          }
           const mergedData = accumulated.map((item: any) =>
-            mapCustomerRow(item, customerLookup, showTestCustomers)
+            mapCustomerRow(item, showTestCustomers)
           );
           setLoadedCount(mergedData.length);
           setGrandTotalCustomers(mergedData.length);
@@ -379,15 +321,6 @@ export default function Customers({ onBack }: CustomersProps) {
           setLoadingMore(!done);
         }
       );
-
-      await trackingPromise;
-
-      if (pendingRaw) {
-        const mergedData = pendingRaw.map((item: any) =>
-          mapCustomerRow(item, customerLookup, showTestCustomers)
-        );
-        setAllCustomers(mergedData);
-      }
     } catch (error) {
       console.error('Error loading customers:', error);
     } finally {
@@ -441,12 +374,6 @@ export default function Customers({ onBack }: CustomersProps) {
       setLoading(true);
       setLoadedCount(0);
       try {
-        const custTableData = await batchFetchTable('acumatica_customers', 'customer_id, responded_this_month, postpone_until, postpone_reason, is_active');
-        const custLookup = new Map<string, any>();
-        custTableData.forEach((c: any) => {
-          custLookup.set(c.customer_id, c);
-        });
-
         const rpcParams = {
           p_search: searchQuery.trim() || null,
           p_status_filter: 'all',
@@ -485,7 +412,7 @@ export default function Customers({ onBack }: CustomersProps) {
           batchNum++;
 
           const filtered = allAnalytics.map((item: any) =>
-            mapCustomerRow(item, custLookup)
+            mapCustomerRow(item)
           );
           setLoadedCount(filtered.length);
           setFilteredCustomers(filtered);
