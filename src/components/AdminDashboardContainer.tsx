@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Users, Activity, TrendingUp, FileText, DollarSign, UserCheck, BarChart3, Mail, RefreshCw, Ticket, Settings, Palette, Clock } from 'lucide-react';
+import { ArrowLeft, Users, Activity, TrendingUp, FileText, DollarSign, UserCheck, BarChart3, Mail, RefreshCw, Ticket, Settings, Palette, Clock, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import PaymentAnalytics from './PaymentAnalytics';
@@ -15,6 +15,7 @@ import TicketStatusManagement from './TicketStatusManagement';
 import TicketTypeManagement from './TicketTypeManagement';
 import InvoiceColorStatusManagement from './InvoiceColorStatusManagement';
 import AutoTicketRules from './AutoTicketRules';
+import SystemDocumentation from './SystemDocumentation';
 
 type AdminView =
   | 'payment-analytics'
@@ -30,7 +31,8 @@ type AdminView =
   | 'ticket-status-management'
   | 'ticket-type-management'
   | 'invoice-color-status-management'
-  | 'auto-ticket-rules';
+  | 'auto-ticket-rules'
+  | 'system-documentation';
 
 type AdminDashboardContainerProps = {
   onBack?: () => void;
@@ -122,6 +124,12 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
       icon: <Clock size={20} />,
       permissionKey: null, // Only admins and managers
     },
+    {
+      id: 'system-documentation' as AdminView,
+      label: 'System Documentation',
+      icon: <BookOpen size={20} />,
+      permissionKey: null,
+    },
   ];
 
   const getViewTitle = () => {
@@ -162,6 +170,8 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
         return <InvoiceColorStatusManagement onBack={() => setCurrentView('invoice-color-status-management')} />;
       case 'auto-ticket-rules':
         return <AutoTicketRules onBack={() => setCurrentView('auto-ticket-rules')} />;
+      case 'system-documentation':
+        return <SystemDocumentation onBack={() => setCurrentView('system-documentation')} />;
       default:
         return <PaymentAnalytics onBack={() => setCurrentView('payment-analytics')} />;
     }
