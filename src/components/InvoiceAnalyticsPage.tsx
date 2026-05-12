@@ -173,14 +173,26 @@ export default function InvoiceAnalyticsPage() {
   }, [invoices]);
 
   const uniqueCustomers = useMemo(() => {
-    const ids = new Set<string>();
+    const bestName = new Map<string, string>();
     for (const inv of invoices) {
-      if (inv.customer) ids.add(inv.customer);
+      if (!inv.customer) continue;
+      const id = inv.customer;
+      if (bestName.has(id)) continue;
+      const fromMap = customerNameMap.get(id);
+      if (fromMap) {
+        bestName.set(id, fromMap);
+        continue;
+      }
+      const name = inv.customer_name;
+      if (name && name !== id && name !== 'N/A') {
+        bestName.set(id, name);
+      }
     }
+    const ids = new Set(invoices.map(i => i.customer).filter(Boolean));
     return Array.from(ids)
-      .map(id => ({ id, name: resolveCustomerName(id) }))
+      .map(id => ({ id, name: bestName.get(id) || id }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [invoices, resolveCustomerName]);
+  }, [invoices, customerNameMap]);
 
   const filteredCustomerOptions = useMemo(() => {
     if (!customerSearchTerm) return uniqueCustomers;

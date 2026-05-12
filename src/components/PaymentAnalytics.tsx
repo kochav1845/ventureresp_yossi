@@ -1525,17 +1525,23 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   }, [payments]);
 
   const uniqueCustomers = useMemo(() => {
-    const ids = new Set<string>();
+    const bestName = new Map<string, string>();
     for (const p of payments) {
-      if (p.customer_id) ids.add(p.customer_id);
+      if (!p.customer_id) continue;
+      const id = p.customer_id;
+      if (bestName.has(id)) continue;
+      const fromMap = customerNameMap.get(id);
+      if (fromMap) {
+        bestName.set(id, fromMap);
+        continue;
+      }
+      if (p.customer_name && p.customer_name !== id) {
+        bestName.set(id, p.customer_name);
+      }
     }
+    const ids = new Set(payments.map(p => p.customer_id).filter(Boolean));
     return Array.from(ids)
-      .map(id => {
-        const fromMap = customerNameMap.get(id);
-        if (fromMap) return { id, name: fromMap };
-        const payment = payments.find(p => p.customer_id === id && p.customer_name && p.customer_name !== id);
-        return { id, name: payment?.customer_name || id };
-      })
+      .map(id => ({ id, name: bestName.get(id) || id }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [payments, customerNameMap]);
 
