@@ -22,12 +22,9 @@ import {
   ChevronDown,
   ChevronUp,
   Code,
-  Menu,
   ChevronLeft,
   ChevronRight,
-  Palette,
-  Eye,
-  ClipboardList
+  Palette
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import RemindersSidebar from './RemindersSidebar';
@@ -49,6 +46,7 @@ export default function Layout() {
   const [developerSettingsOpen, setDeveloperSettingsOpen] = useState(false);
   const [emailSystemOpen, setEmailSystemOpen] = useState(false);
   const [adminDashboardOpen, setAdminDashboardOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [showUserSidebar, setShowUserSidebar] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [cronJobHealthy, setCronJobHealthy] = useState(true);
@@ -150,7 +148,6 @@ export default function Layout() {
       title: 'Customer Management',
       items: [
         ...(hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW) ? [{ id: 'customers', name: 'Customers', icon: Users, permission: PERMISSION_KEYS.CUSTOMERS_VIEW }] : []),
-        ...(hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW) ? [{ id: 'customer-statements', name: 'Statements & Reports', icon: ClipboardList, permission: PERMISSION_KEYS.CUSTOMERS_VIEW }] : []),
         ...(canBeAssignedAsCollector ? [{ id: 'my-assignments', name: 'My Assignments', icon: Ticket }] : []),
       ]
     },
@@ -158,7 +155,6 @@ export default function Layout() {
       title: 'Invoice Management',
       items: [
         ...(hasPermission(PERMISSION_KEYS.INVOICES_VIEW) ? [{ id: 'invoice-analytics', name: 'Invoice Analytics', icon: FileText, permission: PERMISSION_KEYS.INVOICES_VIEW }] : []),
-        ...(hasPermission(PERMISSION_KEYS.INVOICES_STATUS) ? [{ id: 'invoice-status-admin', name: 'Invoice Status', icon: Shield, permission: PERMISSION_KEYS.INVOICES_STATUS }] : []),
       ]
     },
     {
@@ -177,7 +173,6 @@ export default function Layout() {
       title: 'Administration',
       items: [
         ...(isAdmin ? [{ id: 'collection-ticketing', name: 'Ticketing System', icon: Ticket }] : []),
-        ...(hasPermission(PERMISSION_KEYS.ADMIN_SYNC_CONFIG) ? [{ id: 'sync-config', name: 'Sync Settings', icon: Settings, permission: PERMISSION_KEYS.ADMIN_SYNC_CONFIG }] : []),
       ]
     },
   ];
@@ -201,23 +196,21 @@ export default function Layout() {
     hasPermission(PERMISSION_KEYS.SYNC_STATUS, 'view');
 
   const adminDashboardItems = hasAnyAdminPermission ? [
-    { id: 'user-approval', name: 'User Approval', icon: Shield },
-    { id: 'create-user', name: 'Create New User', icon: Users },
     { id: 'collector-monitoring', name: 'Collector Dashboard', icon: Activity },
-    { id: 'customer-statements', name: 'Customer Statements', icon: ClipboardList },
-    { id: 'customer-reports', name: 'Customer Reports', icon: FileText },
-    { id: 'customer-report-templates', name: 'Report Templates', icon: Mail },
-    { id: 'customer-email-tracking', name: 'Email Tracking', icon: Eye },
     { id: 'customer-analytics', name: 'Customer Analytics', icon: Users },
     { id: 'invoice-analytics', name: 'Invoice Analytics', icon: FileText },
     { id: 'payment-analytics', name: 'Payment Analytics', icon: DollarSign },
     { id: 'payment-breakdown', name: 'Payment Breakdown', icon: CreditCard },
     { id: 'invoice-breakdown', name: 'Invoice Breakdown', icon: FileText },
+  ] : [];
+
+  const adminSettingsItems = hasAnyAdminPermission ? [
+    { id: 'invoice-color-settings', name: 'Invoice Color Settings', icon: Palette },
+    { id: 'user-approval', name: 'User Approval', icon: Shield },
+    { id: 'create-user', name: 'Create New User', icon: Users },
     { id: 'user-activity', name: 'User Activity', icon: Activity },
-    { id: 'email-analytics', name: 'Email Analytics', icon: Mail },
     { id: 'sync-status', name: 'Synchronization Status', icon: RefreshCw },
     { id: 'ticket-status-settings', name: 'Ticket Status Settings', icon: Settings },
-    { id: 'invoice-color-settings', name: 'Invoice Color Settings', icon: Palette },
     { id: 'auto-ticket-rules', name: 'Auto-Ticket Rules', icon: Clock },
     { id: 'email-settings', name: 'Email Settings', icon: Mail },
   ] : [];
@@ -346,6 +339,70 @@ export default function Layout() {
                       const isActive = currentView === item.id;
                       return (
                         <li key={`${item.id}-${index}`}>
+                          <button
+                            onClick={() => navigate(`/${item.id}`)}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                              isActive
+                                ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-md'
+                                : 'text-blue-700 hover:bg-blue-50 hover:text-blue-900'
+                            }`}
+                          >
+                            <Icon size={18} />
+                            <span>{item.name}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {/* Settings - Collapsible Section */}
+            {adminSettingsItems.length > 0 && (
+              <div>
+                <div className="relative group">
+                  <button
+                    onClick={() => {
+                      if (sidebarCollapsed) {
+                        navigate('/invoice-color-settings');
+                      } else {
+                        setSettingsOpen(!settingsOpen);
+                      }
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all mb-2 ${
+                      adminSettingsItems.some(item => currentView === item.id)
+                        ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md'
+                        : 'text-blue-700 hover:text-blue-900 hover:bg-blue-50'
+                    } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  >
+                    {sidebarCollapsed ? (
+                      <Settings size={18} />
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Settings size={16} />
+                          <span className="text-xs font-semibold uppercase tracking-wider">Settings</span>
+                        </div>
+                        {settingsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </>
+                    )}
+                  </button>
+                  {sidebarCollapsed && (
+                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none">
+                      Settings
+                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-900"></div>
+                    </div>
+                  )}
+                </div>
+
+                {settingsOpen && !sidebarCollapsed && (
+                  <ul className="space-y-1 ml-2">
+                    {adminSettingsItems.map((item, index) => {
+                      const Icon = item.icon;
+                      const isActive = currentView === item.id;
+                      return (
+                        <li key={`${item.id}-settings-${index}`}>
                           <button
                             onClick={() => navigate(`/${item.id}`)}
                             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
