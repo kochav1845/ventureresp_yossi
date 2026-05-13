@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, DollarSign, Filter, X, CreditCard, User, FileText, ChevronLeft, ChevronRight, Download, Lock } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, DollarSign, Filter, X, CreditCard, User, FileText, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
+
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { exportToExcel as exportExcel, formatDate, formatCurrency } from '../lib/excelExport';
 
@@ -14,10 +14,10 @@ interface AcumaticaPaymentsProps {
 
 export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPaymentsProps) {
   const { profile } = useAuth();
-  const { hasPermission, loading: permissionsLoading } = useUserPermissions();
+
   const navigate = useNavigate();
   const handleBack = onBack || (() => navigate(-1));
-  const hasAccess = hasPermission(PERMISSION_KEYS.PAYMENTS, 'view');
+
   const canPerformFetch = profile?.role === 'admin' || (profile as any)?.can_perform_fetch;
   const [displayedPayments, setDisplayedPayments] = useState<any[]>([]);
   const [paymentApplications, setPaymentApplications] = useState<Map<string, any[]>>(new Map());
@@ -662,48 +662,6 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
       currency: 'USD'
     }).format(amount);
   };
-
-  // Wait for permissions to load before checking access
-  if (permissionsLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-blue-600">Loading permissions...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Check permission
-  if (!hasAccess) {
-    return (
-      <div className="min-h-screen bg-gray-100 p-6">
-        <div className="max-w-2xl mx-auto">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors mb-6"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back
-          </button>
-
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <Lock className="w-8 h-8 text-red-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-            <p className="text-gray-600 mb-6">
-              You do not have permission to view Payments.
-            </p>
-            <p className="text-sm text-gray-500">
-              Please contact your administrator if you believe you should have access to this page.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">

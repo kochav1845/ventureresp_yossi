@@ -57,19 +57,17 @@ import CollectorControlPanel from './CollectorControlPanel';
 import UserApprovalPanel from './UserApprovalPanel';
 import AdminDashboardContainer from './AdminDashboardContainer';
 import { useAuth } from '../contexts/AuthContext';
-import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
-import { Lock } from 'lucide-react';
+
 
 type View = 'dashboard' | 'inbox' | 'formulas' | 'templates' | 'customers' | 'assignments' | 'schedule' | 'logs' | 'users' | 'acumatica' | 'acumatica-customers' | 'acumatica-invoices' | 'acumatica-payments' | 'invoice-analytics' | 'payment-analytics' | 'webhooks' | 'sync-status' | 'sync-config' | 'invoice-status-admin' | 'invoice-status-analytics' | 'customer-reports-monthly' | 'customer-reports' | 'system-documentation' | 'acumatica-files-test' | 'reminders' | 'credential-tester' | 'batch-fetcher' | 'bulk-fetcher' | 'sync-logs' | 'payment-diagnostic' | 'payment-attachment-test' | 'payment-count' | 'stripe-payments' | 'payment-app-status' | 'orphaned-invoice-fixer' | 'application-date-diagnostic' | 'invoice-format-checker' | 'invoice-variation-checker' | 'orphaned-application-diagnostic' | 'collection-ticketing' | 'invoice-color-settings' | 'admin-dashboard' | 'customer-dashboard' | 'invoice-status' | 'payment-applications' | 'my-assignments' | 'collector-performance' | 'revenue-analytics' | 'customer-analytics' | 'user-activity' | 'email-analytics' | 'stripe-analytics' | 'collector-control-panel' | 'collector-monitoring' | 'user-approval' | 'recent-sync-app-check';
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
-  const { hasPermission, userRole } = useUserPermissions();
+
   const isCollector = profile?.role === 'collector';
   const [currentView, setCurrentView] = useState<View>(isCollector ? 'my-assignments' : 'admin-dashboard');
 
-  // Check if user has access to admin dashboard
-  const hasAdminAccess = userRole === 'admin' || userRole === 'manager' || hasPermission(PERMISSION_KEYS.ADMIN_DASHBOARD, 'view');
+
   const [showUserSidebar, setShowUserSidebar] = useState(false);
 
   const renderView = () => {
@@ -186,28 +184,6 @@ export default function AdminDashboard() {
         return <AdminDashboardContainer onBack={() => setCurrentView('dashboard')} />;
     }
   };
-
-  // Check permission before rendering
-  if (!hasAdminAccess) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full">
-          <div className="bg-white rounded-2xl shadow-2xl p-12 text-center border border-gray-100">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-red-50 rounded-full mb-6">
-              <Lock className="w-10 h-10 text-red-600" />
-            </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-3">Access Denied</h2>
-            <p className="text-gray-600 text-lg mb-2">
-              You do not have permission to access the Admin Dashboard.
-            </p>
-            <p className="text-sm text-gray-500">
-              Please contact your administrator if you believe you should have access to this area.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <>

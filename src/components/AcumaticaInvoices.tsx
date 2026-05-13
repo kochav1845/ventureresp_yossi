@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, FileText, User, ChevronLeft, ChevronRight, MessageSquare, Lock, ArrowUpDown, ArrowUp, ArrowDown, Download, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, FileText, User, ChevronLeft, ChevronRight, MessageSquare, ArrowUpDown, ArrowUp, ArrowDown, Download, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
+
 import AcumaticaInvoiceFetch from './AcumaticaInvoiceFetch';
 import InvoiceMemoModal from './InvoiceMemoModal';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
@@ -20,7 +20,7 @@ interface AcumaticaInvoicesProps {
 
 export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   const { profile, user } = useAuth();
-  const { hasPermission, loading: permissionsLoading } = useUserPermissions();
+
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const handleBack = onBack || (() => navigate(-1));
@@ -29,7 +29,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   // Get invoice from URL if present
   const invoiceFromUrl = searchParams.get('invoice');
 
-  const hasAccess = hasPermission(PERMISSION_KEYS.INVOICES, 'view');
+
   const [displayedInvoices, setDisplayedInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -752,41 +752,12 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     return <AcumaticaInvoiceFetch onBack={() => setShowFetchPage(false)} />;
   }
 
-  if (permissionsLoading || loading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading invoices...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!hasAccess) {
-    return (
-      <div className="min-h-screen bg-gray-100 p-6">
-        <div className="max-w-2xl mx-auto">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors mb-6"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back
-          </button>
-
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <Lock className="w-8 h-8 text-red-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-            <p className="text-gray-600 mb-6">
-              You do not have permission to view Invoices.
-            </p>
-            <p className="text-sm text-gray-500">
-              Please contact your administrator if you believe you should have access to this page.
-            </p>
-          </div>
         </div>
       </div>
     );

@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, Lock, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Ticket, ChevronRight, PauseCircle } from 'lucide-react';
+import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Ticket, ChevronRight, PauseCircle } from 'lucide-react';
 import { supabase, logActivity } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import { usePageCache } from '../contexts/PageCacheContext';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl } from '../lib/acumaticaLinks';
@@ -103,11 +102,9 @@ interface TicketData {
 
 export default function CustomerDetailView({ customerId, onBack }: CustomerDetailViewProps) {
   const { profile } = useAuth();
-  const { hasPermission } = useUserPermissions();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const handleBack = onBack || (() => navigate(-1));
-  const hasAccess = hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW, 'view');
   const { getCachedState, setCachedState } = usePageCache(`customer-detail-${customerId}`);
   const cachedDetail = useRef(getCachedState());
   const cd = cachedDetail.current;
@@ -817,36 +814,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const oldestOpenInvoice = displayedInvoices
     .filter(inv => inv.balance > 0)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
-
-  // Check permission
-  if (!hasAccess) {
-    return (
-      <div className="min-h-screen bg-gray-100 p-6">
-        <div className="max-w-2xl mx-auto">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors mb-6"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back
-          </button>
-
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <Lock className="w-8 h-8 text-red-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-            <p className="text-gray-600 mb-6">
-              You do not have permission to view Customer Details.
-            </p>
-            <p className="text-sm text-gray-500">
-              Please contact your administrator if you believe you should have access to this page.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-8">

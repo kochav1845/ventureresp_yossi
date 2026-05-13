@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import {
-  Users, Shield, X, ChevronDown, ChevronRight, CheckSquare,
-  Square, Eye, Edit, Plus, Trash, LayoutDashboard, TrendingUp,
-  UserCircle, FileText, DollarSign, Mail, ClipboardList, Bell,
-  Settings, Database, Activity, ArrowLeft, UserCog
+  Users, Shield, X, Lock, Unlock,
+  UserCircle, Activity, ArrowLeft, UserCog, Trash,
+  Settings, Mail, Code, FileText, DollarSign
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { LOCKABLE_COMPONENTS, COMPONENT_LABELS, LockableComponent } from '../lib/permissions';
 import UserActivityLog from './UserActivityLog';
 
 interface User {
@@ -17,16 +17,9 @@ interface User {
   can_be_assigned_as_collector: boolean;
 }
 
-interface Permission {
-  permission_key: string;
-  permission_name: string;
-  category: string;
-  description: string;
-  can_view: boolean;
-  can_create: boolean;
-  can_edit: boolean;
-  can_delete: boolean;
-  is_custom: boolean;
+interface ComponentLock {
+  component_key: string;
+  is_locked: boolean;
 }
 
 interface UserManagementSidebarProps {
@@ -35,33 +28,29 @@ interface UserManagementSidebarProps {
 }
 
 const ROLES = [
-  { value: 'admin', label: 'Admin', color: 'purple', description: 'Full access to all features' },
-  { value: 'manager', label: 'Manager', color: 'blue', description: 'Management and analytics access' },
+  { value: 'admin', label: 'Admin', color: 'blue', description: 'Full access to all features' },
+  { value: 'manager', label: 'Manager', color: 'teal', description: 'Management and analytics access' },
   { value: 'collector', label: 'Collector', color: 'green', description: 'Customer and collection access' },
   { value: 'viewer', label: 'Viewer', color: 'gray', description: 'Read-only access' },
 ];
 
-const CATEGORY_ICONS: Record<string, any> = {
-  'Dashboard & Analytics': TrendingUp,
-  'Customer Management': UserCircle,
-  'Invoice Management': FileText,
-  'Payment Management': DollarSign,
-  'Email System': Mail,
-  'Reports & Documents': ClipboardList,
-  'Reminders System': Bell,
-  'System Administration': Settings,
-  'Acumatica Integration': Database,
-  'Monitoring & Logs': Activity,
+const COMPONENT_ICONS: Record<string, any> = {
+  settings: Settings,
+  email_system: Mail,
+  developer_settings: Code,
+  invoice_analytics: FileText,
+  payment_analytics: DollarSign,
 };
 
-export default function UserManagementSidebar({  onClose, isOpen }: UserManagementSidebarProps) {
+const ALL_COMPONENT_KEYS = Object.values(LOCKABLE_COMPONENTS);
+
+export default function UserManagementSidebar({ onClose, isOpen }: UserManagementSidebarProps) {
   const { profile, impersonateUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [locks, setLocks] = useState<ComponentLock[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [showActivityLog, setShowActivityLog] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -71,12 +60,11 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
     if (isOpen) {
       loadUsers();
     }
-    console.warn(isOpen)
   }, [isOpen]);
 
   useEffect(() => {
     if (selectedUser) {
-      loadUserPermissions();
+      loadUserLocks();
     }
   }, [selectedUser]);
 
@@ -97,20 +85,51 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
     }
   };
 
-  const loadUserPermissions = async () => {
+  const loadUserLocks = async () => {
     if (!selectedUser) return;
 
     try {
       const { data, error } = await supabase
-        .rpc('get_user_permissions', { user_uuid: selectedUser.id });
+        .from('user_component_locks')
+        .select('component_key, is_locked')
+        .eq('user_id', selectedUser.id);
 
       if (error) throw error;
-      setPermissions(data || []);
-
-      const categories = new Set(data?.map((p: Permission) => p.category) || []);
-      setExpandedCategories(categories);
+      setLocks(data || []);
     } catch (error) {
-      console.error('Error loading permissions:', error);
+      console.error('Error loading component locks:', error);
+    }
+  };
+
+  const isLocked = (componentKey: string): boolean => {
+    const lock = locks.find(l => l.component_key === componentKey);
+    return lock?.is_locked ?? false;
+  };
+
+  const toggleLock = async (componentKey: string) => {
+    if (!selectedUser) return;
+
+    const currentlyLocked = isLocked(componentKey);
+    setSaving(true);
+
+    try {
+      const { error } = await supabase
+        .from('user_component_locks')
+        .upsert({
+          user_id: selectedUser.id,
+          component_key: componentKey,
+          is_locked: !currentlyLocked,
+          updated_by: profile?.id,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,component_key' });
+
+      if (error) throw error;
+      await loadUserLocks();
+    } catch (error) {
+      console.error('Error toggling lock:', error);
+      alert('Failed to update component lock');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -132,7 +151,6 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
 
       if (selectedUser?.id === userId) {
         setSelectedUser(prev => prev ? { ...prev, role: newRole } : null);
-        await loadUserPermissions();
       }
     } catch (error) {
       console.error('Error updating role:', error);
@@ -196,61 +214,22 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
     }
   };
 
-  const updateCustomPermission = async (
-    permissionKey: string,
-    field: 'can_view' | 'can_create' | 'can_edit' | 'can_delete',
-    value: boolean
-  ) => {
+  const unlockAll = async () => {
     if (!selectedUser) return;
-
-    setSaving(true);
-    try {
-      const currentPerm = permissions.find(p => p.permission_key === permissionKey);
-      if (!currentPerm) return;
-
-      const newPermission = {
-        user_id: selectedUser.id,
-        permission_key: permissionKey,
-        can_view: field === 'can_view' ? value : currentPerm.can_view,
-        can_create: field === 'can_create' ? value : currentPerm.can_create,
-        can_edit: field === 'can_edit' ? value : currentPerm.can_edit,
-        can_delete: field === 'can_delete' ? value : currentPerm.can_delete,
-      };
-
-      const { error } = await supabase
-        .from('user_custom_permissions')
-        .upsert(newPermission, { onConflict: 'user_id,permission_key' });
-
-      if (error) throw error;
-
-      await loadUserPermissions();
-    } catch (error) {
-      console.error('Error updating permission:', error);
-      alert('Failed to update permission');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const resetToRoleDefaults = async () => {
-    if (!selectedUser) return;
-
-    if (!confirm('Reset all custom permissions to role defaults?')) return;
+    if (!confirm('Unlock all components for this user?')) return;
 
     setSaving(true);
     try {
       const { error } = await supabase
-        .from('user_custom_permissions')
+        .from('user_component_locks')
         .delete()
         .eq('user_id', selectedUser.id);
 
       if (error) throw error;
-
-      await loadUserPermissions();
-      alert('Permissions reset to role defaults');
+      setLocks([]);
     } catch (error) {
-      console.error('Error resetting permissions:', error);
-      alert('Failed to reset permissions');
+      console.error('Error unlocking all:', error);
+      alert('Failed to unlock all components');
     } finally {
       setSaving(false);
     }
@@ -304,27 +283,9 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
     }
   };
 
-  const toggleCategory = (category: string) => {
-    setExpandedCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(category)) {
-        next.delete(category);
-      } else {
-        next.add(category);
-      }
-      return next;
-    });
-  };
+  if (!isOpen) return null;
 
-  const groupedPermissions = permissions.reduce((acc, perm) => {
-    if (!acc[perm.category]) {
-      acc[perm.category] = [];
-    }
-    acc[perm.category].push(perm);
-    return acc;
-  }, {} as Record<string, Permission[]>);
-
- if (!isOpen) return null;
+  const lockedCount = locks.filter(l => l.is_locked).length;
 
   return (
     <>
@@ -349,7 +310,7 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
                   <X className="w-5 h-5 text-gray-600" />
                 </button>
               </div>
-              <p className="text-sm text-gray-600">Manage user roles and permissions</p>
+              <p className="text-sm text-gray-600">Manage user roles and component access</p>
             </div>
 
             {loading ? (
@@ -381,15 +342,15 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
                             <div className="flex-1">
                               <p className="font-semibold text-gray-900 text-lg">{user.email}</p>
                               <div className="flex items-center gap-2 mt-1">
-                                <Shield className={`w-4 h-4 text-${roleConfig.color}-600`} />
-                                <span className={`text-sm font-medium px-3 py-1 rounded-full bg-${roleConfig.color}-100 text-${roleConfig.color}-800`}>
+                                <Shield className="w-4 h-4 text-gray-500" />
+                                <span className="text-sm font-medium px-3 py-1 rounded-full bg-gray-100 text-gray-800">
                                   {roleConfig.label}
                                 </span>
                                 <span className="text-xs text-gray-500">{roleConfig.description}</span>
                               </div>
                             </div>
                           </div>
-                          <div className="text-blue-600 font-medium">Manage →</div>
+                          <div className="text-blue-600 font-medium">Manage &rarr;</div>
                         </div>
                       </div>
                     );
@@ -403,9 +364,9 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
                 <p className="font-semibold text-gray-800 text-base mb-3">Role Descriptions:</p>
                 {ROLES.map(role => (
                   <div key={role.value} className="flex items-start gap-3">
-                    <Shield className={`w-5 h-5 text-${role.color}-600 flex-shrink-0 mt-0.5`} />
+                    <Shield className="w-5 h-5 text-gray-500 flex-shrink-0 mt-0.5" />
                     <div>
-                      <span className={`font-semibold text-${role.color}-800`}>{role.label}:</span>
+                      <span className="font-semibold text-gray-800">{role.label}:</span>
                       <span className="ml-2 text-gray-700">{role.description}</span>
                     </div>
                   </div>
@@ -431,7 +392,7 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
                   />
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900">{selectedUser.email}</h2>
-                    <p className="text-sm text-gray-600">Configure role and permissions</p>
+                    <p className="text-sm text-gray-600">Configure role and component access</p>
                   </div>
                 </div>
                 <button
@@ -444,6 +405,7 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
             </div>
 
             <div className="p-6 space-y-6">
+              {/* User Settings */}
               <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900">User Settings</h3>
@@ -532,11 +494,12 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
 
                 <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
                   <button
-                    onClick={resetToRoleDefaults}
-                    disabled={saving}
-                    className="text-sm text-red-600 hover:text-red-700 font-medium disabled:opacity-50"
+                    onClick={unlockAll}
+                    disabled={saving || lockedCount === 0}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50 flex items-center gap-1"
                   >
-                    Reset to Role Defaults
+                    <Unlock className="w-3.5 h-3.5" />
+                    Unlock All Components
                   </button>
                   {selectedUser.id !== profile?.id && (
                     <button
@@ -551,138 +514,73 @@ export default function UserManagementSidebar({  onClose, isOpen }: UserManageme
                 </div>
               </div>
 
+              {/* Component Access */}
               <div className="bg-white rounded-lg border-2 border-gray-200">
                 <div className="p-6 border-b border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Custom Permissions</h3>
-                  <p className="text-sm text-gray-600">
-                    Customize individual permissions to override role defaults. Custom permissions are highlighted.
-                  </p>
-                  <div className="flex gap-4 mt-3 text-xs">
-                    <div className="flex items-center gap-2">
-                      <Eye className="w-3 h-3" />
-                      <span>View</span>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Component Access</h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Lock or unlock specific sections for this user.
+                        {selectedUser.role === 'admin' && (
+                          <span className="ml-1 text-blue-600 font-medium">Admins always have full access regardless of locks.</span>
+                        )}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Plus className="w-3 h-3" />
-                      <span>Create</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Edit className="w-3 h-3" />
-                      <span>Edit</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Trash className="w-3 h-3" />
-                      <span>Delete</span>
-                    </div>
+                    {lockedCount > 0 && (
+                      <span className="text-sm font-medium px-3 py-1 rounded-full bg-red-100 text-red-700">
+                        {lockedCount} locked
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                <div className="divide-y divide-gray-200">
-                  {Object.entries(groupedPermissions).map(([category, perms]) => {
-                    const Icon = CATEGORY_ICONS[category] || LayoutDashboard;
-                    const isExpanded = expandedCategories.has(category);
-                    const hasCustom = perms.some(p => p.is_custom);
+                <div className="divide-y divide-gray-100">
+                  {ALL_COMPONENT_KEYS.map((key) => {
+                    const label = COMPONENT_LABELS[key as LockableComponent];
+                    const Icon = COMPONENT_ICONS[key] || UserCircle;
+                    const locked = isLocked(key);
 
                     return (
-                      <div key={category}>
-                        <button
-                          onClick={() => toggleCategory(category)}
-                          className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Icon className="w-5 h-5 text-gray-600" />
-                            <span className="font-semibold text-gray-900">{category}</span>
-                            {hasCustom && (
-                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                                Custom
-                              </span>
-                            )}
+                      <div
+                        key={key}
+                        className={`flex items-center justify-between px-6 py-5 transition-colors ${
+                          locked ? 'bg-red-50' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            locked ? 'bg-red-100' : 'bg-blue-50'
+                          }`}>
+                            <Icon className={`w-5 h-5 ${locked ? 'text-red-600' : 'text-blue-600'}`} />
                           </div>
-                          {isExpanded ? (
-                            <ChevronDown className="w-5 h-5 text-gray-400" />
+                          <div>
+                            <p className="font-semibold text-gray-900">{label.name}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">{label.description}</p>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => toggleLock(key)}
+                          disabled={saving}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all disabled:opacity-50 ${
+                            locked
+                              ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-200'
+                              : 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200'
+                          }`}
+                        >
+                          {locked ? (
+                            <>
+                              <Lock className="w-4 h-4" />
+                              Locked
+                            </>
                           ) : (
-                            <ChevronRight className="w-5 h-5 text-gray-400" />
+                            <>
+                              <Unlock className="w-4 h-4" />
+                              Unlocked
+                            </>
                           )}
                         </button>
-
-                        {isExpanded && (
-                          <div className="px-6 pb-4 space-y-3 bg-gray-50">
-                            {perms.map((perm) => (
-                              <div
-                                key={perm.permission_key}
-                                className={`p-3 rounded-lg border-2 ${
-                                  perm.is_custom
-                                    ? 'bg-blue-50 border-blue-200'
-                                    : 'bg-white border-gray-200'
-                                }`}
-                              >
-                                <div className="flex items-start justify-between mb-2">
-                                  <div className="flex-1">
-                                    <p className="font-medium text-gray-900 text-sm">
-                                      {perm.permission_name}
-                                      {perm.is_custom && (
-                                        <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                                          Custom
-                                        </span>
-                                      )}
-                                    </p>
-                                    <p className="text-xs text-gray-600 mt-1">{perm.description}</p>
-                                  </div>
-                                </div>
-                                <div className="flex gap-4">
-                                  <button
-                                    onClick={() => updateCustomPermission(perm.permission_key, 'can_view', !perm.can_view)}
-                                    disabled={saving}
-                                    className="flex items-center gap-1 text-xs hover:text-blue-600 transition-colors disabled:opacity-50"
-                                  >
-                                    {perm.can_view ? (
-                                      <CheckSquare className="w-4 h-4 text-blue-600" />
-                                    ) : (
-                                      <Square className="w-4 h-4 text-gray-400" />
-                                    )}
-                                    <Eye className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    onClick={() => updateCustomPermission(perm.permission_key, 'can_create', !perm.can_create)}
-                                    disabled={saving}
-                                    className="flex items-center gap-1 text-xs hover:text-green-600 transition-colors disabled:opacity-50"
-                                  >
-                                    {perm.can_create ? (
-                                      <CheckSquare className="w-4 h-4 text-green-600" />
-                                    ) : (
-                                      <Square className="w-4 h-4 text-gray-400" />
-                                    )}
-                                    <Plus className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    onClick={() => updateCustomPermission(perm.permission_key, 'can_edit', !perm.can_edit)}
-                                    disabled={saving}
-                                    className="flex items-center gap-1 text-xs hover:text-yellow-600 transition-colors disabled:opacity-50"
-                                  >
-                                    {perm.can_edit ? (
-                                      <CheckSquare className="w-4 h-4 text-yellow-600" />
-                                    ) : (
-                                      <Square className="w-4 h-4 text-gray-400" />
-                                    )}
-                                    <Edit className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    onClick={() => updateCustomPermission(perm.permission_key, 'can_delete', !perm.can_delete)}
-                                    disabled={saving}
-                                    className="flex items-center gap-1 text-xs hover:text-red-600 transition-colors disabled:opacity-50"
-                                  >
-                                    {perm.can_delete ? (
-                                      <CheckSquare className="w-4 h-4 text-red-600" />
-                                    ) : (
-                                      <Square className="w-4 h-4 text-gray-400" />
-                                    )}
-                                    <Trash className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     );
                   })}

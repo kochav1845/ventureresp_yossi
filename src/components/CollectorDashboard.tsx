@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Ticket, FileText, Calendar, DollarSign, User, ArrowLeft, MessageSquare, Mic, LogOut, Lock, ExternalLink } from 'lucide-react';
-import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
+import { Ticket, FileText, Calendar, DollarSign, User, ArrowLeft, MessageSquare, Mic, LogOut, ExternalLink } from 'lucide-react';
+
 import InvoiceMemoModal from './InvoiceMemoModal';
 import TicketNoteModal from './TicketNoteModal';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
@@ -43,8 +43,7 @@ interface TicketGroup {
 
 export default function CollectorDashboard() {
   const { user, profile, isImpersonating, signOut } = useAuth();
-  const { userRole } = useUserPermissions();
-  const hasAccess = userRole === 'collector' || userRole === 'manager' || userRole === 'admin';
+
   const [tickets, setTickets] = useState<TicketGroup[]>([]);
   const [individualAssignments, setIndividualAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -271,28 +270,6 @@ export default function CollectorDashboard() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading assignments...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Check permission
-  if (!hasAccess) {
-    return (
-      <div className="min-h-screen bg-gray-100 p-6">
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <Lock className="w-8 h-8 text-red-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-            <p className="text-gray-600 mb-6">
-              You do not have permission to view Collector Dashboard.
-            </p>
-            <p className="text-sm text-gray-500">
-              This dashboard is only available to collectors, managers, and administrators.
-            </p>
-          </div>
         </div>
       </div>
     );

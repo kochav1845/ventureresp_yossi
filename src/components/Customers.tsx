@@ -2,8 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import CustomerDetailView from './CustomerDetailView';
-import { ArrowLeft, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, Lock, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket, ChevronDown, Zap } from 'lucide-react';
-import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
+import { ArrowLeft, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket, ChevronDown, Zap } from 'lucide-react';
 import { usePageCache } from '../contexts/PageCacheContext';
 import CustomerFiles from './CustomerFiles';
 import * as XLSX from 'xlsx';
@@ -93,13 +92,11 @@ type CustomersProps = {
 };
 
 export default function Customers({ onBack }: CustomersProps) {
-  const { hasPermission, loading: permissionsLoading } = useUserPermissions();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const customerIdParam = searchParams.get('customer');
   const invoiceParam = searchParams.get('invoice');
   const handleBack = onBack || (() => navigate(-1));
-  const hasAccess = hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW, 'view');
   const { getCachedState, setCachedState } = usePageCache('customers-list');
   const cachedListState = useRef(getCachedState());
   const cl = cachedListState.current;
@@ -778,35 +775,6 @@ export default function Customers({ onBack }: CustomersProps) {
     );
   }
 
-  if (permissionsLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading customers...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!hasAccess) {
-    return (
-      <div className="min-h-screen bg-gray-100 p-6">
-        <div className="max-w-2xl mx-auto">
-          <button onClick={handleBack} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors mb-6">
-            <ArrowLeft className="w-5 h-5" /> Back
-          </button>
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <Lock className="w-8 h-8 text-red-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-            <p className="text-gray-600 mb-6">You do not have permission to view Customers.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (viewingFiles) {
     return <CustomerFiles customerId={viewingFiles.id} customerName={viewingFiles.name} onBack={() => setViewingFiles(null)} />;

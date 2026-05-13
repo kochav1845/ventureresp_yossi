@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, DollarSign, FileText, TrendingUp, ChevronDown, ChevronRight, Filter, Users, Search, Lock, Download } from 'lucide-react';
+import { ArrowLeft, Calendar, DollarSign, FileText, TrendingUp, ChevronDown, ChevronRight, Filter, Users, Search, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { batchedInQuery } from '../lib/batchedQuery';
-import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import * as XLSX from 'xlsx';
 
 interface AnalyticsDashboardProps {
@@ -62,10 +61,8 @@ interface CurrentMonthStats {
 }
 
 export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDashboardProps) {
-  const { hasPermission } = useUserPermissions();
   const navigate = useNavigate();
   const handleBack = onBack || (() => navigate(-1));
-  const hasAccess = hasPermission(PERMISSION_KEYS.ANALYTICS_DASHBOARD, 'view');
   const [months, setMonths] = useState<MonthData[]>([]);
   const [loading, setLoading] = useState(true);
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilterType>('all');
@@ -929,36 +926,6 @@ export default function AnalyticsDashboard({ onBack, onNavigate }: AnalyticsDash
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Invoice Analytics');
     XLSX.writeFile(workbook, `invoice_analytics_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
-
-  // Check permission
-  if (!hasAccess) {
-    return (
-      <div className="min-h-screen bg-gray-100 p-6">
-        <div className="max-w-2xl mx-auto">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors mb-6"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back
-          </button>
-
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <Lock className="w-8 h-8 text-red-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-            <p className="text-gray-600 mb-6">
-              You do not have permission to view Analytics Dashboard.
-            </p>
-            <p className="text-sm text-gray-500">
-              Please contact your administrator if you believe you should have access to this page.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">

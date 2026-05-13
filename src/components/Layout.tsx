@@ -31,14 +31,14 @@ import RemindersSidebar from './RemindersSidebar';
 import ImpersonationBanner from './ImpersonationBanner';
 import GlobalSearchBar from './GlobalSearch/GlobalSearchBar';
 import { supabase } from '../lib/supabase';
-import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
+import { useUserPermissions, LOCKABLE_COMPONENTS } from '../lib/permissions';
 import UserManagementSidebar from './UserManagementSidebar';
 
 export default function Layout() {
   const { profile, signOut, user, isImpersonating } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { hasPermission, isAdmin } = useUserPermissions();
+  const { isComponentLocked, isAdmin } = useUserPermissions();
   const isCollector = profile?.role === 'collector';
   const canBeAssignedAsCollector = profile?.can_be_assigned_as_collector || profile?.role === 'collector' || profile?.role === 'admin' || profile?.role === 'manager';
   const [showReminders, setShowReminders] = useState(false);
@@ -147,26 +147,26 @@ export default function Layout() {
     {
       title: 'Customer Management',
       items: [
-        ...(hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW) ? [{ id: 'customers', name: 'Customers', icon: Users, permission: PERMISSION_KEYS.CUSTOMERS_VIEW }] : []),
+        { id: 'customers', name: 'Customers', icon: Users },
         ...(canBeAssignedAsCollector ? [{ id: 'my-assignments', name: 'My Assignments', icon: Ticket }] : []),
       ]
     },
-    {
+    ...(!isComponentLocked(LOCKABLE_COMPONENTS.INVOICE_ANALYTICS) ? [{
       title: 'Invoice Management',
       items: [
-        ...(hasPermission(PERMISSION_KEYS.INVOICES_VIEW) ? [{ id: 'invoice-analytics', name: 'Invoice Analytics', icon: FileText, permission: PERMISSION_KEYS.INVOICES_VIEW }] : []),
+        { id: 'invoice-analytics', name: 'Invoice Analytics', icon: FileText },
       ]
-    },
-    {
+    }] : []),
+    ...(!isComponentLocked(LOCKABLE_COMPONENTS.PAYMENT_ANALYTICS) ? [{
       title: 'Payment Management',
       items: [
-        ...(hasPermission(PERMISSION_KEYS.PAYMENTS_VIEW) ? [{ id: 'payment-analytics', name: 'Payment Analytics', icon: DollarSign, permission: PERMISSION_KEYS.PAYMENTS_VIEW }] : []),
+        { id: 'payment-analytics', name: 'Payment Analytics', icon: DollarSign },
       ]
-    },
+    }] : []),
     {
       title: 'Reminders',
       items: [
-        ...(hasPermission(PERMISSION_KEYS.REMINDERS_VIEW) ? [{ id: 'reminders', name: 'My Reminders', icon: Bell, permission: PERMISSION_KEYS.REMINDERS_VIEW }] : []),
+        { id: 'reminders', name: 'My Reminders', icon: Bell },
       ]
     },
     {
@@ -177,34 +177,32 @@ export default function Layout() {
     },
   ];
 
-  const emailSystemItems = [
-    ...(hasPermission(PERMISSION_KEYS.EMAIL_INBOX) ? [{ id: 'inbox', name: 'Inbox', icon: Inbox, permission: PERMISSION_KEYS.EMAIL_INBOX }] : []),
-    ...(hasPermission(PERMISSION_KEYS.CUSTOMERS_ASSIGNMENTS) ? [{ id: 'assignments', name: 'Assignments', icon: LinkIcon, permission: PERMISSION_KEYS.CUSTOMERS_ASSIGNMENTS }] : []),
-    ...(hasPermission(PERMISSION_KEYS.EMAIL_FORMULAS) ? [{ id: 'formulas', name: 'Formulas', icon: Calendar, permission: PERMISSION_KEYS.EMAIL_FORMULAS }] : []),
-    ...(hasPermission(PERMISSION_KEYS.EMAIL_TEMPLATES) ? [{ id: 'templates', name: 'Templates', icon: Mail, permission: PERMISSION_KEYS.EMAIL_TEMPLATES }] : []),
-    ...(hasPermission(PERMISSION_KEYS.EMAIL_LOGS) ? [{ id: 'email-logs', name: 'Email Logs', icon: Clock, permission: PERMISSION_KEYS.EMAIL_LOGS }] : []),
-  ];
-
-  const hasAnyAdminPermission = isAdmin ||
-    hasPermission(PERMISSION_KEYS.USER_APPROVAL, 'view') ||
-    hasPermission(PERMISSION_KEYS.COLLECTOR_MONITORING, 'view') ||
-    hasPermission(PERMISSION_KEYS.INVOICE_ANALYTICS, 'view') ||
-    hasPermission(PERMISSION_KEYS.CUSTOMER_ANALYTICS, 'view') ||
-    hasPermission(PERMISSION_KEYS.PAYMENT_ANALYTICS, 'view') ||
-    hasPermission(PERMISSION_KEYS.USER_ACTIVITY_LOGS, 'view') ||
-    hasPermission(PERMISSION_KEYS.EMAIL_ANALYTICS, 'view') ||
-    hasPermission(PERMISSION_KEYS.SYNC_STATUS, 'view');
-
-  const adminDashboardItems = hasAnyAdminPermission ? [
-    { id: 'collector-monitoring', name: 'Collector Dashboard', icon: Activity },
-    { id: 'customer-analytics', name: 'Customer Analytics', icon: Users },
-    { id: 'invoice-analytics', name: 'Invoice Analytics', icon: FileText },
-    { id: 'payment-analytics', name: 'Payment Analytics', icon: DollarSign },
-    { id: 'payment-breakdown', name: 'Payment Breakdown', icon: CreditCard },
-    { id: 'invoice-breakdown', name: 'Invoice Breakdown', icon: FileText },
+  const emailSystemItems = !isComponentLocked(LOCKABLE_COMPONENTS.EMAIL_SYSTEM) ? [
+    { id: 'inbox', name: 'Inbox', icon: Inbox },
+    { id: 'assignments', name: 'Assignments', icon: LinkIcon },
+    { id: 'formulas', name: 'Formulas', icon: Calendar },
+    { id: 'templates', name: 'Templates', icon: Mail },
+    { id: 'email-logs', name: 'Email Logs', icon: Clock },
   ] : [];
 
-  const adminSettingsItems = hasAnyAdminPermission ? [
+  const settingsLocked = isComponentLocked(LOCKABLE_COMPONENTS.SETTINGS);
+
+  const adminDashboardItems = !settingsLocked ? [
+    { id: 'collector-monitoring', name: 'Collector Dashboard', icon: Activity },
+    { id: 'customer-analytics', name: 'Customer Analytics', icon: Users },
+    ...(!isComponentLocked(LOCKABLE_COMPONENTS.INVOICE_ANALYTICS) ? [
+      { id: 'invoice-analytics', name: 'Invoice Analytics', icon: FileText },
+    ] : []),
+    ...(!isComponentLocked(LOCKABLE_COMPONENTS.PAYMENT_ANALYTICS) ? [
+      { id: 'payment-analytics', name: 'Payment Analytics', icon: DollarSign },
+      { id: 'payment-breakdown', name: 'Payment Breakdown', icon: CreditCard },
+    ] : []),
+    ...(!isComponentLocked(LOCKABLE_COMPONENTS.INVOICE_ANALYTICS) ? [
+      { id: 'invoice-breakdown', name: 'Invoice Breakdown', icon: FileText },
+    ] : []),
+  ] : [];
+
+  const adminSettingsItems = !settingsLocked ? [
     { id: 'invoice-color-settings', name: 'Invoice Color Settings', icon: Palette },
     { id: 'user-approval', name: 'User Approval', icon: Shield },
     { id: 'create-user', name: 'Create New User', icon: Users },
@@ -216,13 +214,13 @@ export default function Layout() {
     { id: 'system-documentation', name: 'Documentation', icon: FileText },
   ] : [];
 
-  const developerItems = [
+  const developerItems = !isComponentLocked(LOCKABLE_COMPONENTS.DEVELOPER_SETTINGS) ? [
     ...(isAdmin ? [{ id: 'developer-tools', name: 'Developer Tools', icon: Code }] : []),
-    ...(hasPermission(PERMISSION_KEYS.MONITOR_SYNC_STATUS) ? [{ id: 'sync-status', name: 'System Health', icon: Activity, permission: PERMISSION_KEYS.MONITOR_SYNC_STATUS }] : []),
-    ...(hasPermission(PERMISSION_KEYS.LOGS_SYNC) ? [{ id: 'sync-logs', name: 'Sync Change Logs', icon: RefreshCw, permission: PERMISSION_KEYS.LOGS_SYNC }] : []),
-    ...(hasPermission(PERMISSION_KEYS.LOGS_SCHEDULER) ? [{ id: 'schedule', name: 'Scheduler', icon: Clock, permission: PERMISSION_KEYS.LOGS_SCHEDULER }] : []),
-    ...(hasPermission(PERMISSION_KEYS.MONITOR_CRON) ? [{ id: 'logs', name: 'System Logs', icon: Database, permission: PERMISSION_KEYS.MONITOR_CRON }] : []),
-  ];
+    { id: 'sync-status', name: 'System Health', icon: Activity },
+    { id: 'sync-logs', name: 'Sync Change Logs', icon: RefreshCw },
+    { id: 'schedule', name: 'Scheduler', icon: Clock },
+    { id: 'logs', name: 'System Logs', icon: Database },
+  ] : [];
 
   const menuSections = allMenuSections.filter(section => section.items.length > 0);
 

@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart3, DollarSign, Users, FileText, TrendingUp, Mail,
-  Activity, CreditCard, ArrowRight, Target, RefreshCw, Lock,
+  Activity, CreditCard, ArrowRight, Target, RefreshCw,
   Sparkles, TrendingDown, CheckCircle2, Clock, AlertCircle, XCircle,
   Calendar, Search
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
+
 
 interface ComprehensiveAdminDashboardProps {
   onNavigate?: (view: string) => void;
@@ -70,8 +70,7 @@ interface DashboardMetrics {
 
 export default function ComprehensiveAdminDashboard({ onNavigate }: ComprehensiveAdminDashboardProps) {
   const navigate = useNavigate();
-  const { hasPermission, userRole } = useUserPermissions();
-  const hasAccess = userRole === 'admin' || userRole === 'manager' || hasPermission(PERMISSION_KEYS.ADMIN_DASHBOARD, 'view');
+
 
   const handleNavigate = (view: string) => {
     if (onNavigate) {
@@ -337,27 +336,6 @@ export default function ComprehensiveAdminDashboard({ onNavigate }: Comprehensiv
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
           <p className="text-gray-600 text-lg font-medium">Loading Dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!hasAccess) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full">
-          <div className="bg-white rounded-2xl shadow-2xl p-12 text-center border border-gray-100">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-red-50 rounded-full mb-6">
-              <Lock className="w-10 h-10 text-red-600" />
-            </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-3">Access Denied</h2>
-            <p className="text-gray-600 text-lg mb-2">
-              You do not have permission to access the Admin Dashboard.
-            </p>
-            <p className="text-sm text-gray-500">
-              Please contact your administrator if you believe you should have access to this area.
-            </p>
-          </div>
         </div>
       </div>
     );

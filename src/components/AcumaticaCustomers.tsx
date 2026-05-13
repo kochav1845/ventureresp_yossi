@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Lock, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare, Download, UserPlus, Settings, Info, HelpCircle } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare, Download, UserPlus, Settings, Info, HelpCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import AcumaticaInvoiceTest from './AcumaticaInvoiceTest';
 import CustomerDetailView from './CustomerDetailView';
 import AssignCustomerModal from './AssignCustomerModal';
@@ -50,12 +49,10 @@ function InfoTooltip({ content, title, children }: TooltipProps) {
 
 export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) {
   const { profile } = useAuth();
-  const { hasPermission } = useUserPermissions();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedCustomer = searchParams.get('customer');
   const handleBack = onBack || (() => navigate(-1));
-  const hasAccess = hasPermission(PERMISSION_KEYS.ACUMATICA_CUSTOMERS, 'view');
   const canPerformFetch = profile?.role === 'admin' || (profile as any)?.can_perform_fetch;
   const [showTestCustomers, setShowTestCustomers] = useState(false);
   const [displayedCustomers, setDisplayedCustomers] = useState<any[]>([]);
@@ -981,36 +978,6 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
   if (showFetchPage) {
     return <AcumaticaInvoiceTest onBack={() => setShowFetchPage(false)} />;
-  }
-
-  // Check permission
-  if (!hasAccess) {
-    return (
-      <div className="min-h-screen bg-gray-100 p-6">
-        <div className="max-w-2xl mx-auto">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-700 transition-colors mb-6"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back
-          </button>
-
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <Lock className="w-8 h-8 text-red-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-            <p className="text-gray-600 mb-6">
-              You do not have permission to view Acumatica Customers.
-            </p>
-            <p className="text-sm text-gray-500">
-              Please contact your administrator if you believe you should have access to this page.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
   }
 
   if (selectedCustomer && selectedCustomer !== 'null' && selectedCustomer !== 'undefined') {

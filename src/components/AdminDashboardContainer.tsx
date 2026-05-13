@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft, Users, Activity, FileText, DollarSign, UserCheck, BarChart3, Mail, RefreshCw, Ticket, Settings, Palette, Clock, CreditCard, ChevronDown, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
+
 import PaymentAnalytics from './PaymentAnalytics';
 import UserApprovalPanel from './UserApprovalPanel';
 import CollectorHub from './CollectorHub';
@@ -49,7 +49,6 @@ type MenuItem = {
   id: AdminView;
   label: string;
   icon: JSX.Element;
-  permissionKey: string | null;
 };
 
 type MenuGroup = {
@@ -59,7 +58,7 @@ type MenuGroup = {
 
 export default function AdminDashboardContainer({ onBack, initialView = 'payment-analytics' }: AdminDashboardContainerProps) {
   const navigate = useNavigate();
-  const { hasPermission, userRole } = useUserPermissions();
+
   const [currentView, setCurrentView] = useState<AdminView>(initialView);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const handleBack = onBack || (() => navigate(-1));
@@ -68,34 +67,31 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
     {
       title: 'Analytics',
       items: [
-        { id: 'my-assignments', label: 'My Assignments', icon: <Ticket size={18} />, permissionKey: null },
-        { id: 'collector-monitoring', label: 'Collector Dashboard', icon: <Activity size={18} />, permissionKey: PERMISSION_KEYS.COLLECTOR_MONITORING },
-        { id: 'invoice-analytics', label: 'Invoice Analytics', icon: <FileText size={18} />, permissionKey: PERMISSION_KEYS.INVOICE_ANALYTICS },
-        { id: 'customer-analytics', label: 'Customer Analytics', icon: <Users size={18} />, permissionKey: PERMISSION_KEYS.CUSTOMER_ANALYTICS },
-        { id: 'payment-analytics', label: 'Payment Analytics', icon: <DollarSign size={18} />, permissionKey: PERMISSION_KEYS.PAYMENT_ANALYTICS },
-        { id: 'payment-breakdown', label: 'Payment Breakdown', icon: <CreditCard size={18} />, permissionKey: PERMISSION_KEYS.PAYMENT_ANALYTICS },
-        { id: 'invoice-breakdown', label: 'Invoice Breakdown', icon: <FileText size={18} />, permissionKey: PERMISSION_KEYS.INVOICE_ANALYTICS },
+        { id: 'my-assignments', label: 'My Assignments', icon: <Ticket size={18} /> },
+        { id: 'collector-monitoring', label: 'Collector Dashboard', icon: <Activity size={18} /> },
+        { id: 'invoice-analytics', label: 'Invoice Analytics', icon: <FileText size={18} /> },
+        { id: 'customer-analytics', label: 'Customer Analytics', icon: <Users size={18} /> },
+        { id: 'payment-analytics', label: 'Payment Analytics', icon: <DollarSign size={18} /> },
+        { id: 'payment-breakdown', label: 'Payment Breakdown', icon: <CreditCard size={18} /> },
+        { id: 'invoice-breakdown', label: 'Invoice Breakdown', icon: <FileText size={18} /> },
       ],
     },
   ];
 
   const settingsItems: MenuItem[] = [
-    { id: 'invoice-color-status-management', label: 'Invoice Color Settings', icon: <Palette size={18} />, permissionKey: null },
-    { id: 'user-approval', label: 'User Approval', icon: <UserCheck size={18} />, permissionKey: PERMISSION_KEYS.USER_APPROVAL },
-    { id: 'create-user', label: 'Create New User', icon: <Users size={18} />, permissionKey: null },
-    { id: 'user-activity', label: 'User Activity', icon: <Activity size={18} />, permissionKey: PERMISSION_KEYS.USER_ACTIVITY_LOGS },
-    { id: 'sync-status', label: 'Synchronization Status', icon: <RefreshCw size={18} />, permissionKey: PERMISSION_KEYS.SYNC_STATUS },
-    { id: 'ticket-status-management', label: 'Ticket Status Settings', icon: <Settings size={18} />, permissionKey: null },
-    { id: 'ticket-type-management', label: 'Ticket Type Settings', icon: <Ticket size={18} />, permissionKey: null },
-    { id: 'auto-ticket-rules', label: 'Auto-Ticket Rules', icon: <Clock size={18} />, permissionKey: null },
-    { id: 'email-settings', label: 'Email Settings', icon: <Mail size={18} />, permissionKey: null },
-    { id: 'system-documentation', label: 'Documentation', icon: <BookOpen size={18} />, permissionKey: null },
+    { id: 'invoice-color-status-management', label: 'Invoice Color Settings', icon: <Palette size={18} /> },
+    { id: 'user-approval', label: 'User Approval', icon: <UserCheck size={18} /> },
+    { id: 'create-user', label: 'Create New User', icon: <Users size={18} /> },
+    { id: 'user-activity', label: 'User Activity', icon: <Activity size={18} /> },
+    { id: 'sync-status', label: 'Synchronization Status', icon: <RefreshCw size={18} /> },
+    { id: 'ticket-status-management', label: 'Ticket Status Settings', icon: <Settings size={18} /> },
+    { id: 'ticket-type-management', label: 'Ticket Type Settings', icon: <Ticket size={18} /> },
+    { id: 'auto-ticket-rules', label: 'Auto-Ticket Rules', icon: <Clock size={18} /> },
+    { id: 'email-settings', label: 'Email Settings', icon: <Mail size={18} /> },
+    { id: 'system-documentation', label: 'Documentation', icon: <BookOpen size={18} /> },
   ];
 
-  const hasAccess = (item: MenuItem) => {
-    if (item.permissionKey === null) return userRole === 'admin' || userRole === 'manager';
-    return userRole === 'admin' || userRole === 'manager' || hasPermission(item.permissionKey, 'view');
-  };
+
 
   const isSettingsView = settingsItems.some(s => s.id === currentView);
 
@@ -164,7 +160,7 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
 
         <nav className="space-y-1 flex-1 overflow-y-auto">
           {menuGroups.map(group => {
-            const visibleItems = group.items.filter(hasAccess);
+            const visibleItems = group.items;
             if (visibleItems.length === 0) return null;
             return (
               <div key={group.title}>
@@ -201,7 +197,7 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
             </button>
             {settingsExpanded && (
               <div className="space-y-0.5 mt-1">
-                {settingsItems.filter(hasAccess).map(item => (
+                {settingsItems.map(item => (
                   <button
                     key={item.id}
                     onClick={() => setCurrentView(item.id)}
