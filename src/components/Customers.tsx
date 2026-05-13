@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import CustomerDetailView from './CustomerDetailView';
-import { ArrowLeft, Plus, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, Lock, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket } from 'lucide-react';
+import { ArrowLeft, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, Lock, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket, ChevronDown, Zap } from 'lucide-react';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import { usePageCache } from '../contexts/PageCacheContext';
 import CustomerFiles from './CustomerFiles';
@@ -61,44 +61,31 @@ type FilterConfig = {
   sortOrder: 'asc' | 'desc';
 };
 
-const BATCH_SIZE = 500;
+const BATCH_SIZE = 50;
+const PAGE_SIZE = 50;
 
-async function progressiveFetchRpc(
-  rpcName: string,
-  params: Record<string, any>,
-  onBatch: (accumulated: any[], batchNum: number, done: boolean) => void
-): Promise<any[]> {
-  let allData: any[] = [];
-  let offset = 0;
-  let batchNum = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .rpc(rpcName, params)
-      .range(offset, offset + BATCH_SIZE - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) {
-      onBatch(allData, batchNum, true);
-      break;
-    }
-    allData = allData.concat(data);
-    batchNum++;
-    const isDone = data.length < BATCH_SIZE;
-    onBatch(allData, batchNum, isDone);
-    if (isDone) break;
-    offset += BATCH_SIZE;
-  }
-  return allData;
-}
+const DEFAULT_FILTERS: FilterConfig = {
+  minBalance: 0,
+  maxBalance: Infinity,
+  minInvoiceCount: 0,
+  maxInvoiceCount: Infinity,
+  minInvoiceAmount: 0,
+  maxInvoiceAmount: Infinity,
+  minDaysOverdue: 0,
+  maxDaysOverdue: Infinity,
+  dateFrom: '',
+  dateTo: '',
+  logicOperator: 'AND',
+  sortBy: 'balance',
+  sortOrder: 'desc'
+};
 
-
-const PRESET_FILTERS = [
-  { label: 'High Balance (>$10k)', filter: { minBalance: 10000, maxBalance: Infinity, minInvoiceCount: 0, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
-  { label: 'Medium Balance ($5k-$10k)', filter: { minBalance: 5000, maxBalance: 10000, minInvoiceCount: 0, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
-  { label: 'Balance >$500 & >10 Invoices', filter: { minBalance: 500, maxBalance: Infinity, minInvoiceCount: 10, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
-  { label: 'Small Invoices ($30-$2k)', filter: { minBalance: 0, maxBalance: Infinity, minInvoiceCount: 0, maxInvoiceCount: Infinity, minInvoiceAmount: 30, maxInvoiceAmount: 2000, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
-  { label: 'Many Open Invoices (>20)', filter: { minBalance: 0, maxBalance: Infinity, minInvoiceCount: 20, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity } },
-  { label: 'Overdue >90 Days', filter: { minBalance: 0, maxBalance: Infinity, minInvoiceCount: 0, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 90, maxDaysOverdue: Infinity } },
-  { label: 'Critical: >$20k OR >30 Invoices', filter: { minBalance: 20000, maxBalance: Infinity, minInvoiceCount: 30, maxInvoiceCount: Infinity, minInvoiceAmount: 0, maxInvoiceAmount: Infinity, minDaysOverdue: 0, maxDaysOverdue: Infinity }, logic: 'OR' as const },
+const QUICK_FILTERS = [
+  { label: 'High Balance', desc: '>$10k', filter: { minBalance: 10000 } },
+  { label: 'Medium Balance', desc: '$5k-$10k', filter: { minBalance: 5000, maxBalance: 10000 } },
+  { label: 'Many Invoices', desc: '>20 open', filter: { minInvoiceCount: 20 } },
+  { label: 'Overdue 90+', desc: 'days', filter: { minDaysOverdue: 90 } },
+  { label: 'Critical', desc: '>$20k', filter: { minBalance: 20000 }, logic: 'OR' as const },
 ];
 
 type CustomersProps = {
@@ -117,7 +104,6 @@ export default function Customers({ onBack }: CustomersProps) {
   const cachedListState = useRef(getCachedState());
   const cl = cachedListState.current;
 
-  // Handle invoice parameter by looking up the customer
   useEffect(() => {
     if (invoiceParam && !customerIdParam) {
       const lookupInvoiceCustomer = async () => {
@@ -127,7 +113,6 @@ export default function Customers({ onBack }: CustomersProps) {
           .eq('reference_number', invoiceParam)
           .neq('status', 'On Hold')
           .maybeSingle();
-
         if (data && !error) {
           navigate(`/customers?customer=${data.customer}`, { replace: true });
         }
@@ -142,8 +127,6 @@ export default function Customers({ onBack }: CustomersProps) {
   const [loading, setLoading] = useState(() => !cl);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadedCount, setLoadedCount] = useState(() => cl?.loadedCount ?? 0);
-  const [showTestCustomers, setShowTestCustomers] = useState(() => cl?.showTestCustomers ?? false);
-  const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
   const [viewingFiles, setViewingFiles] = useState<{ id: string; name: string } | null>(null);
@@ -156,12 +139,15 @@ export default function Customers({ onBack }: CustomersProps) {
   const [searchQuery, setSearchQuery] = useState(() => cl?.searchQuery ?? '');
   const [isSearching, setIsSearching] = useState(false);
   const [showFilters, setShowFilters] = useState(() => cl?.showFilters ?? false);
-  const [showAnalytics, setShowAnalytics] = useState(() => cl?.showAnalytics ?? true);
   const [excludeCreditMemos, setExcludeCreditMemos] = useState(() => cl?.excludeCreditMemos ?? false);
   const [customersWithOpenTickets, setCustomersWithOpenTickets] = useState<Set<string>>(new Set());
   const [cachedStatsLoaded, setCachedStatsLoaded] = useState(() => cl?.cachedStatsLoaded ?? false);
   const [cachedStatsTime, setCachedStatsTime] = useState<string | null>(() => cl?.cachedStatsTime ?? null);
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
+  const [activeQuickFilter, setActiveQuickFilter] = useState<number | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({ name: '', email: '' });
+
   const [stats, setStats] = useState(() => cl?.stats ?? {
     total_customers: 0,
     active_customers: 0,
@@ -172,28 +158,7 @@ export default function Customers({ onBack }: CustomersProps) {
     customers_with_overdue: 0
   });
 
-  const [filters, setFilters] = useState<FilterConfig>(() => cl?.filters ?? {
-    minBalance: 0,
-    maxBalance: Infinity,
-    minInvoiceCount: 0,
-    maxInvoiceCount: Infinity,
-    minInvoiceAmount: 0,
-    maxInvoiceAmount: Infinity,
-    minDaysOverdue: 0,
-    maxDaysOverdue: Infinity,
-    dateFrom: '',
-    dateTo: '',
-    logicOperator: 'AND',
-    sortBy: 'balance',
-    sortOrder: 'desc'
-  });
-
-  const pageSize = 50;
-
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-  });
+  const [filters, setFilters] = useState<FilterConfig>(() => cl?.filters ?? { ...DEFAULT_FILTERS });
 
   const loadCachedStats = async () => {
     try {
@@ -204,15 +169,14 @@ export default function Customers({ onBack }: CustomersProps) {
         .maybeSingle();
 
       if (data && !error) {
-        const isTest = showTestCustomers;
         setStats({
-          total_customers: isTest ? data.total_customers : data.total_customers_excl_test,
-          active_customers: isTest ? data.active_customers : data.active_customers_excl_test,
-          total_balance: isTest ? data.total_balance : data.total_balance_excl_test,
-          avg_balance: isTest ? data.avg_balance : data.avg_balance_excl_test,
-          customers_with_debt: isTest ? data.customers_with_debt : data.customers_with_debt_excl_test,
-          total_open_invoices: isTest ? data.total_open_invoices : data.total_open_invoices_excl_test,
-          customers_with_overdue: isTest ? data.customers_with_overdue : data.customers_with_overdue_excl_test
+          total_customers: data.total_customers_excl_test,
+          active_customers: data.active_customers_excl_test,
+          total_balance: data.total_balance_excl_test,
+          avg_balance: data.avg_balance_excl_test,
+          customers_with_debt: data.customers_with_debt_excl_test,
+          total_open_invoices: data.total_open_invoices_excl_test,
+          customers_with_overdue: data.customers_with_overdue_excl_test
         });
         setCachedStatsLoaded(true);
         if (data.calculated_at) {
@@ -224,15 +188,15 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
-  const fetchKeyRef = useRef(cl ? `${cl.showTestCustomers ?? false}-${cl.excludeCreditMemos ?? false}` : '');
+  const fetchKeyRef = useRef(cl ? `${cl.excludeCreditMemos ?? false}` : '');
   const restoredFromCache = useRef(!!cl);
 
   const stateRef = useRef<Record<string, any>>({});
   useEffect(() => {
     stateRef.current = {
-      customers, allCustomers, filteredCustomers, loadedCount, showTestCustomers,
+      customers, allCustomers, filteredCustomers, loadedCount,
       currentPage, totalCount, grandTotalCustomers, searchQuery, showFilters,
-      showAnalytics, excludeCreditMemos, cachedStatsLoaded, cachedStatsTime, stats, filters,
+      excludeCreditMemos, cachedStatsLoaded, cachedStatsTime, stats, filters,
     };
   });
 
@@ -241,7 +205,7 @@ export default function Customers({ onBack }: CustomersProps) {
   }, []);
 
   useEffect(() => {
-    const key = `${showTestCustomers}-${excludeCreditMemos}`;
+    const key = `${excludeCreditMemos}`;
     if (fetchKeyRef.current === key) {
       if (restoredFromCache.current) {
         restoredFromCache.current = false;
@@ -252,27 +216,19 @@ export default function Customers({ onBack }: CustomersProps) {
     fetchKeyRef.current = key;
 
     loadCachedStats();
-    loadCustomersWithAnalytics();
+    loadCustomersBatched();
     loadCustomersWithOpenTickets();
 
     const ticketSubscription = supabase
       .channel('ticket_status_changes')
       .on('postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'collection_tickets'
-        },
-        () => {
-          loadCustomersWithOpenTickets();
-        }
+        { event: '*', schema: 'public', table: 'collection_tickets' },
+        () => { loadCustomersWithOpenTickets(); }
       )
       .subscribe();
 
-    return () => {
-      ticketSubscription.unsubscribe();
-    };
-  }, [showTestCustomers, excludeCreditMemos]);
+    return () => { ticketSubscription.unsubscribe(); };
+  }, [excludeCreditMemos]);
 
   const loadCustomersWithOpenTickets = async () => {
     try {
@@ -280,71 +236,72 @@ export default function Customers({ onBack }: CustomersProps) {
         .from('collection_tickets')
         .select('customer_id')
         .in('status', ['open', 'in_progress']);
-
       if (error) throw error;
-
-      const customerIds = new Set((data || []).map(ticket => ticket.customer_id));
-      setCustomersWithOpenTickets(customerIds);
+      setCustomersWithOpenTickets(new Set((data || []).map(t => t.customer_id)));
     } catch (error) {
       console.error('Error loading customers with open tickets:', error);
     }
   };
 
-  const mapCustomerRow = (item: any, isTest = false) => {
-    const custId = isTest && item.customer_id?.startsWith('TEST-')
-      ? item.customer_id.replace('TEST-', '')
-      : item.customer_id;
-    return {
-      id: custId || item.id,
-      name: item.customer_name || '',
-      email: item.email_address || '',
-      is_active: item.is_active ?? true,
-      responded_this_month: item.responded_this_month ?? false,
-      postpone_until: item.postpone_until ?? null,
-      postpone_reason: item.postpone_reason ?? null,
-      created_at: item.created_at,
-      updated_at: item.updated_at,
-      customer_id: item.customer_id,
-      balance: item.calculated_balance || 0,
-      gross_balance: item.gross_balance || 0,
-      filtered_gross_balance: item.filtered_gross_balance || 0,
-      filtered_net_balance: item.filtered_net_balance ?? item.filtered_gross_balance ?? 0,
-      invoice_count: item.open_invoice_count || 0,
-      filtered_invoice_count: item.filtered_invoice_count || 0,
-      max_days_overdue: item.max_days_overdue || 0,
-      red_threshold_days: item.red_threshold_days || 30,
-      red_count: item.red_count || 0,
-      yellow_count: item.yellow_count || 0,
-      green_count: item.green_count || 0,
-      exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
-      exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
-    };
-  };
+  const mapCustomerRow = (item: any) => ({
+    id: item.customer_id || item.id,
+    name: item.customer_name || '',
+    email: item.email_address || '',
+    is_active: item.is_active ?? true,
+    responded_this_month: item.responded_this_month ?? false,
+    postpone_until: item.postpone_until ?? null,
+    postpone_reason: item.postpone_reason ?? null,
+    created_at: item.created_at,
+    updated_at: item.updated_at,
+    customer_id: item.customer_id,
+    balance: item.calculated_balance || 0,
+    gross_balance: item.gross_balance || 0,
+    filtered_gross_balance: item.filtered_gross_balance || 0,
+    filtered_net_balance: item.filtered_net_balance ?? item.filtered_gross_balance ?? 0,
+    invoice_count: item.open_invoice_count || 0,
+    filtered_invoice_count: item.filtered_invoice_count || 0,
+    max_days_overdue: item.max_days_overdue || 0,
+    red_threshold_days: item.red_threshold_days || 30,
+    red_count: item.red_count || 0,
+    yellow_count: item.yellow_count || 0,
+    green_count: item.green_count || 0,
+    exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
+    exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
+  });
 
-  const loadCustomersWithAnalytics = async () => {
+  const loadCustomersBatched = async () => {
     setLoading(true);
     setIsSearching(false);
     setLoadedCount(0);
     try {
-      await progressiveFetchRpc(
-        'get_customers_with_balance_fast',
-        {
-          p_test_customers: showTestCustomers,
-          p_exclude_credit_memos: excludeCreditMemos
-        },
-        (accumulated, batchNum, done) => {
-          const mergedData = accumulated.map((item: any) =>
-            mapCustomerRow(item, showTestCustomers)
-          );
-          setLoadedCount(mergedData.length);
-          setGrandTotalCustomers(mergedData.length);
-          setAllCustomers(mergedData);
-          if (batchNum === 1) {
-            setLoading(false);
-          }
-          setLoadingMore(!done);
+      let allData: any[] = [];
+      let offset = 0;
+      let batchNum = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .rpc('get_customers_with_balance_fast', {
+            p_test_customers: false,
+            p_exclude_credit_memos: excludeCreditMemos
+          })
+          .range(offset, offset + BATCH_SIZE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          if (batchNum === 0) { setLoading(false); }
+          setLoadingMore(false);
+          break;
         }
-      );
+        allData = allData.concat(data);
+        batchNum++;
+        const merged = allData.map(item => mapCustomerRow(item));
+        setLoadedCount(merged.length);
+        setGrandTotalCustomers(merged.length);
+        setAllCustomers(merged);
+        if (batchNum === 1) { setLoading(false); }
+        const isDone = data.length < BATCH_SIZE;
+        setLoadingMore(!isDone);
+        if (isDone) break;
+        offset += BATCH_SIZE;
+      }
     } catch (error) {
       console.error('Error loading customers:', error);
     } finally {
@@ -353,23 +310,24 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
+  // Recompute stats from filtered list when filters are active
   useEffect(() => {
     if (filteredCustomers.length === 0 && cachedStatsLoaded && !hasActiveFilters) return;
     if (!hasActiveFilters && !loadingMore && cachedStatsLoaded && filteredCustomers.length > 0) {
-      // Only update from live data once fully loaded (no more batches incoming)
+      // Use cached stats
     } else if (hasActiveFilters || !cachedStatsLoaded) {
-      // Filters active or no cached stats - compute from what we have
+      // Compute from filtered data
     } else {
       return;
     }
 
-    const customers = filteredCustomers;
-    const totalCustomers = customers.length;
-    const activeCustomers = customers.filter(c => c.is_active).length;
-    const totalBalance = customers.reduce((sum: number, c: any) => sum + (c.filtered_net_balance ?? c.balance ?? 0), 0);
-    const customersWithDebt = customers.filter((c: any) => (c.filtered_net_balance ?? c.balance ?? 0) > 0).length;
-    const totalOpenInvoices = customers.reduce((sum: number, c: any) => sum + (c.filtered_invoice_count ?? c.invoice_count ?? 0), 0);
-    const customersWithOverdue = customers.filter((c: any) => (c.max_days_overdue || 0) > 0).length;
+    const list = filteredCustomers;
+    const totalCustomers = list.length;
+    const activeCustomers = list.filter(c => c.is_active).length;
+    const totalBalance = list.reduce((sum, c) => sum + (c.filtered_net_balance ?? c.balance ?? 0), 0);
+    const customersWithDebt = list.filter(c => (c.filtered_net_balance ?? c.balance ?? 0) > 0).length;
+    const totalOpenInvoices = list.reduce((sum, c) => sum + (c.filtered_invoice_count ?? c.invoice_count ?? 0), 0);
+    const customersWithOverdue = list.filter(c => (c.max_days_overdue || 0) > 0).length;
     const avgBalance = customersWithDebt > 0 ? totalBalance / customersWithDebt : 0;
 
     setStats({
@@ -418,7 +376,7 @@ export default function Customers({ onBack }: CustomersProps) {
           p_calculate_avg_days: false,
           p_min_days_overdue: filters.minDaysOverdue > 0 ? filters.minDaysOverdue : null,
           p_max_days_overdue: filters.maxDaysOverdue !== Infinity ? Math.round(filters.maxDaysOverdue) : null,
-          p_test_customers: showTestCustomers
+          p_test_customers: false
         };
 
         let allAnalytics: any[] = [];
@@ -434,19 +392,13 @@ export default function Customers({ onBack }: CustomersProps) {
           }
           allAnalytics = allAnalytics.concat(data);
           batchNum++;
-
-          const filtered = allAnalytics.map((item: any) =>
-            mapCustomerRow(item)
-          );
+          const filtered = allAnalytics.map(item => mapCustomerRow(item));
           setLoadedCount(filtered.length);
           setFilteredCustomers(filtered);
           setTotalCount(filtered.length);
-          const start = currentPage * pageSize;
-          const end = start + pageSize;
-          setCustomers(filtered.slice(start, end));
-
+          const start = currentPage * PAGE_SIZE;
+          setCustomers(filtered.slice(start, start + PAGE_SIZE));
           if (batchNum === 1) setLoading(false);
-
           const isDone = data.length < BATCH_SIZE;
           setLoadingMore(!isDone);
           if (isDone) break;
@@ -461,51 +413,29 @@ export default function Customers({ onBack }: CustomersProps) {
       return;
     }
 
-    // No active filters -- use the cached allCustomers list
     let filtered = [...allCustomers];
-
-    // Apply sorting
     filtered.sort((a, b) => {
       let comparison = 0;
       const sortBy = filters.sortBy;
-
-      if (sortBy === 'balance') {
-        comparison = (a.balance || 0) - (b.balance || 0);
-      } else if (sortBy === 'invoice_count') {
-        comparison = (a.invoice_count || 0) - (b.invoice_count || 0);
-      } else if (sortBy === 'max_days_overdue') {
-        comparison = (a.max_days_overdue || 0) - (b.max_days_overdue || 0);
-      } else if (sortBy === 'name') {
-        comparison = a.name.localeCompare(b.name);
-      } else if (sortBy === 'email') {
-        comparison = a.email.localeCompare(b.email);
-      } else if (sortBy === 'created_at') {
-        comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      }
-
+      if (sortBy === 'balance') comparison = (a.balance || 0) - (b.balance || 0);
+      else if (sortBy === 'invoice_count') comparison = (a.invoice_count || 0) - (b.invoice_count || 0);
+      else if (sortBy === 'max_days_overdue') comparison = (a.max_days_overdue || 0) - (b.max_days_overdue || 0);
+      else if (sortBy === 'name') comparison = a.name.localeCompare(b.name);
+      else if (sortBy === 'email') comparison = a.email.localeCompare(b.email);
+      else if (sortBy === 'created_at') comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       return filters.sortOrder === 'asc' ? comparison : -comparison;
     });
 
     setFilteredCustomers(filtered);
     setTotalCount(filtered.length);
+    const start = currentPage * PAGE_SIZE;
+    setCustomers(filtered.slice(start, start + PAGE_SIZE));
+  }, [allCustomers, filters, searchQuery, currentPage, excludeCreditMemos]);
 
-    const start = currentPage * pageSize;
-    const end = start + pageSize;
-    setCustomers(filtered.slice(start, end));
-  }, [allCustomers, filters, searchQuery, currentPage, pageSize, showTestCustomers, excludeCreditMemos]);
+  useEffect(() => { applyFilters(); }, [applyFilters]);
 
-  useEffect(() => {
-    applyFilters();
-  }, [applyFilters]);
-
-  // If a specific customer is requested, show CustomerDetailView
   if (customerIdParam && customerIdParam !== 'null' && customerIdParam !== 'undefined') {
-    return (
-      <CustomerDetailView
-        customerId={customerIdParam}
-        onBack={() => navigate('/customers')}
-      />
-    );
+    return <CustomerDetailView customerId={customerIdParam} onBack={() => navigate('/customers')} />;
   }
 
   const handleSearch = () => {
@@ -515,15 +445,10 @@ export default function Customers({ onBack }: CustomersProps) {
   };
 
   const goToNextPage = () => {
-    if ((currentPage + 1) * pageSize < totalCount) {
-      setCurrentPage(currentPage + 1);
-    }
+    if ((currentPage + 1) * PAGE_SIZE < totalCount) setCurrentPage(currentPage + 1);
   };
-
   const goToPreviousPage = () => {
-    if (currentPage > 0) {
-      setCurrentPage(currentPage - 1);
-    }
+    if (currentPage > 0) setCurrentPage(currentPage - 1);
   };
 
   const handleSort = (column: string) => {
@@ -536,77 +461,46 @@ export default function Customers({ onBack }: CustomersProps) {
   };
 
   const getSortIcon = (column: string) => {
-    if (filters.sortBy !== column) {
-      return <ArrowUpDown size={14} className="text-gray-400" />;
-    }
+    if (filters.sortBy !== column) return <ArrowUpDown size={14} className="text-gray-400" />;
     return filters.sortOrder === 'asc' ?
       <ArrowUp size={14} className="text-blue-600" /> :
       <ArrowDown size={14} className="text-blue-600" />;
   };
 
   const resetFilters = () => {
-    setFilters({
-      minBalance: 0,
-      maxBalance: Infinity,
-      minInvoiceCount: 0,
-      maxInvoiceCount: Infinity,
-      minInvoiceAmount: 0,
-      maxInvoiceAmount: Infinity,
-      minDaysOverdue: 0,
-      maxDaysOverdue: Infinity,
-      dateFrom: '',
-      dateTo: '',
-      logicOperator: 'AND',
-      sortBy: 'balance',
-      sortOrder: 'desc'
-    });
+    setFilters({ ...DEFAULT_FILTERS });
     setSearchQuery('');
     setCurrentPage(0);
+    setActiveQuickFilter(null);
   };
 
-  const applyPresetFilter = (preset: typeof PRESET_FILTERS[0]) => {
+  const applyQuickFilter = (index: number) => {
+    if (activeQuickFilter === index) {
+      resetFilters();
+      return;
+    }
+    const preset = QUICK_FILTERS[index];
     setFilters({
-      ...filters,
-      minBalance: preset.filter.minBalance,
-      maxBalance: preset.filter.maxBalance,
-      minInvoiceCount: preset.filter.minInvoiceCount,
-      maxInvoiceCount: preset.filter.maxInvoiceCount,
-      minInvoiceAmount: preset.filter.minInvoiceAmount,
-      maxInvoiceAmount: preset.filter.maxInvoiceAmount,
-      minDaysOverdue: preset.filter.minDaysOverdue,
-      maxDaysOverdue: preset.filter.maxDaysOverdue,
+      ...DEFAULT_FILTERS,
+      ...preset.filter,
       logicOperator: preset.logic || 'AND'
     });
     setCurrentPage(0);
-    setShowFilters(true);
-  };
-
-  const handleCreate = () => {
-    setEditingCustomer(null);
-    setFormData({ name: '', email: '' });
-    setShowForm(true);
+    setActiveQuickFilter(index);
   };
 
   const handleEdit = (customer: Customer) => {
     setEditingCustomer(customer);
-    setFormData({
-      name: customer.name,
-      email: customer.email,
-    });
+    setFormData({ name: customer.name, email: customer.email });
     setShowForm(true);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this customer? This will also delete all their assignments and email logs.')) return;
-
+    if (!confirm('Are you sure you want to delete this customer?')) return;
     try {
-      const { error } = await supabase
-        .from('customers')
-        .delete()
-        .eq('id', id);
-
+      const { error } = await supabase.from('customers').delete().eq('id', id);
       if (error) throw error;
-      await loadCustomersWithAnalytics();
+      await loadCustomersBatched();
     } catch (error) {
       console.error('Error deleting customer:', error);
       alert('Error deleting customer');
@@ -616,17 +510,11 @@ export default function Customers({ onBack }: CustomersProps) {
   const handleToggleActive = async (id: string, currentValue: boolean) => {
     setUpdating(id);
     try {
-      const { error } = await supabase
-        .from('acumatica_customers')
-        .update({ is_active: !currentValue })
-        .eq('customer_id', id);
-
+      const { error } = await supabase.from('acumatica_customers').update({ is_active: !currentValue }).eq('customer_id', id);
       if (error) throw error;
-
       setAllCustomers(allCustomers.map(c => c.id === id ? { ...c, is_active: !currentValue } : c));
     } catch (error) {
       console.error('Error updating customer status:', error);
-      alert('Error updating customer status');
     } finally {
       setUpdating(null);
     }
@@ -635,41 +523,25 @@ export default function Customers({ onBack }: CustomersProps) {
   const handleToggleResponded = async (id: string, currentValue: boolean) => {
     setUpdating(id);
     try {
-      const { error } = await supabase
-        .from('acumatica_customers')
-        .update({ responded_this_month: !currentValue })
-        .eq('customer_id', id);
-
+      const { error } = await supabase.from('acumatica_customers').update({ responded_this_month: !currentValue }).eq('customer_id', id);
       if (error) throw error;
-
       setAllCustomers(allCustomers.map(c => c.id === id ? { ...c, responded_this_month: !currentValue } : c));
     } catch (error) {
       console.error('Error updating response status:', error);
-      alert('Error updating response status');
     } finally {
       setUpdating(null);
     }
   };
 
   const handleUnpostpone = async (id: string) => {
-    if (!confirm('Remove the postponement for this customer? They will start receiving scheduled emails again.')) return;
-
+    if (!confirm('Remove the postponement for this customer?')) return;
     setUpdating(id);
     try {
-      const { error } = await supabase
-        .from('acumatica_customers')
-        .update({
-          postpone_until: null,
-          postpone_reason: null
-        })
-        .eq('customer_id', id);
-
+      const { error } = await supabase.from('acumatica_customers').update({ postpone_until: null, postpone_reason: null }).eq('customer_id', id);
       if (error) throw error;
-
       setAllCustomers(allCustomers.map(c => c.id === id ? { ...c, postpone_until: null, postpone_reason: null } : c));
     } catch (error) {
       console.error('Error removing postponement:', error);
-      alert('Error removing postponement');
     } finally {
       setUpdating(null);
     }
@@ -678,31 +550,14 @@ export default function Customers({ onBack }: CustomersProps) {
   const togglePaymentAnalyticsExclusion = async (customerId: string, currentValue: boolean) => {
     setUpdating(customerId);
     try {
-      const { error } = await supabase
-        .from('acumatica_customers')
-        .update({ exclude_from_payment_analytics: !currentValue })
-        .eq('customer_id', customerId);
-
+      const { error } = await supabase.from('acumatica_customers').update({ exclude_from_payment_analytics: !currentValue }).eq('customer_id', customerId);
       if (error) throw error;
-
-      setAllCustomers(allCustomers.map(c =>
-        c.customer_id === customerId
-          ? { ...c, exclude_from_payment_analytics: !currentValue }
-          : c
-      ));
-      setCustomers(customers.map(c =>
-        c.customer_id === customerId
-          ? { ...c, exclude_from_payment_analytics: !currentValue }
-          : c
-      ));
-      setFilteredCustomers(filteredCustomers.map(c =>
-        c.customer_id === customerId
-          ? { ...c, exclude_from_payment_analytics: !currentValue }
-          : c
-      ));
+      const updater = (c: Customer) => c.customer_id === customerId ? { ...c, exclude_from_payment_analytics: !currentValue } : c;
+      setAllCustomers(allCustomers.map(updater));
+      setCustomers(customers.map(updater));
+      setFilteredCustomers(filteredCustomers.map(updater));
     } catch (error) {
       console.error('Error toggling payment analytics exclusion:', error);
-      alert('Error updating customer exclusion');
     } finally {
       setUpdating(null);
     }
@@ -711,31 +566,14 @@ export default function Customers({ onBack }: CustomersProps) {
   const toggleCustomerAnalyticsExclusion = async (customerId: string, currentValue: boolean) => {
     setUpdating(customerId);
     try {
-      const { error } = await supabase
-        .from('acumatica_customers')
-        .update({ exclude_from_customer_analytics: !currentValue })
-        .eq('customer_id', customerId);
-
+      const { error } = await supabase.from('acumatica_customers').update({ exclude_from_customer_analytics: !currentValue }).eq('customer_id', customerId);
       if (error) throw error;
-
-      setAllCustomers(allCustomers.map(c =>
-        c.customer_id === customerId
-          ? { ...c, exclude_from_customer_analytics: !currentValue }
-          : c
-      ));
-      setCustomers(customers.map(c =>
-        c.customer_id === customerId
-          ? { ...c, exclude_from_customer_analytics: !currentValue }
-          : c
-      ));
-      setFilteredCustomers(filteredCustomers.map(c =>
-        c.customer_id === customerId
-          ? { ...c, exclude_from_customer_analytics: !currentValue }
-          : c
-      ));
+      const updater = (c: Customer) => c.customer_id === customerId ? { ...c, exclude_from_customer_analytics: !currentValue } : c;
+      setAllCustomers(allCustomers.map(updater));
+      setCustomers(customers.map(updater));
+      setFilteredCustomers(filteredCustomers.map(updater));
     } catch (error) {
       console.error('Error toggling customer analytics exclusion:', error);
-      alert('Error updating customer exclusion');
     } finally {
       setUpdating(null);
     }
@@ -743,54 +581,17 @@ export default function Customers({ onBack }: CustomersProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!formData.name.trim()) {
-      alert('Please enter a customer name');
-      return;
-    }
-
-    if (!formData.email.trim()) {
-      alert('Please enter an email address');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      alert('Please enter a valid email address');
-      return;
-    }
-
+    if (!formData.name.trim() || !formData.email.trim()) return;
     try {
       if (editingCustomer) {
-        const { error } = await supabase
-          .from('customers')
-          .update({
-            name: formData.name,
-            email: formData.email,
-          })
-          .eq('id', editingCustomer.id);
-
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('customers')
-          .insert({
-            name: formData.name,
-            email: formData.email,
-          });
-
+        const { error } = await supabase.from('customers').update({ name: formData.name, email: formData.email }).eq('id', editingCustomer.id);
         if (error) throw error;
       }
-
       setShowForm(false);
-      await loadCustomersWithAnalytics();
+      await loadCustomersBatched();
     } catch (error: any) {
       console.error('Error saving customer:', error);
-      if (error.code === '23505') {
-        alert('A customer with this email already exists');
-      } else {
-        alert('Error saving customer');
-      }
+      alert('Error saving customer');
     }
   };
 
@@ -799,45 +600,24 @@ export default function Customers({ onBack }: CustomersProps) {
     try {
       const { data, error } = await supabase
         .from('customer_assignments')
-        .select(`
-          id,
-          start_day_of_month,
-          timezone,
-          email_formulas!inner (
-            name,
-            schedule
-          ),
-          email_templates!inner (
-            name
-          )
-        `)
+        .select(`id, start_day_of_month, timezone, email_formulas!inner (name, schedule), email_templates!inner (name)`)
         .eq('customer_id', customerId)
         .eq('is_active', true);
-
       if (error) throw error;
 
       const upcomingEmails: ScheduledEmail[] = [];
       const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth();
-
       data?.forEach((assignment: any) => {
         const startDay = assignment.start_day_of_month;
         const schedule = assignment.email_formulas?.schedule || [];
-
         for (let monthOffset = 0; monthOffset < 6; monthOffset++) {
-          const targetDate = new Date(currentYear, currentMonth + monthOffset, startDay);
-
+          const targetDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, startDay);
           schedule.forEach((scheduleItem: any) => {
-            const times = scheduleItem.times || [];
-
-            times.forEach((sendTime: string) => {
+            (scheduleItem.times || []).forEach((sendTime: string) => {
               const emailDate = new Date(targetDate);
               emailDate.setDate(emailDate.getDate() + (scheduleItem.day - 1));
-
               const [hours, minutes] = sendTime.split(':');
               emailDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-
               if (emailDate > now) {
                 upcomingEmails.push({
                   id: `${assignment.id}-${monthOffset}-${scheduleItem.day}-${sendTime}`,
@@ -851,11 +631,7 @@ export default function Customers({ onBack }: CustomersProps) {
           });
         }
       });
-
-      upcomingEmails.sort((a, b) =>
-        new Date(a.scheduled_time).getTime() - new Date(b.scheduled_time).getTime()
-      );
-
+      upcomingEmails.sort((a, b) => new Date(a.scheduled_time).getTime() - new Date(b.scheduled_time).getTime());
       setScheduledEmails(upcomingEmails.slice(0, 10));
     } catch (error) {
       console.error('Error loading scheduled emails:', error);
@@ -865,17 +641,12 @@ export default function Customers({ onBack }: CustomersProps) {
   };
 
   const exportToExcel = () => {
-    const fmtCurrency = (v: number) => {
-      const num = Number(v) || 0;
-      return num;
-    };
-
     const totalBalance = filteredCustomers.reduce((sum, c) => sum + (c.balance || 0), 0);
     const totalGross = filteredCustomers.reduce((sum, c) => sum + (c.gross_balance || 0), 0);
     const totalInvoices = filteredCustomers.reduce((sum, c) => sum + (c.invoice_count || 0), 0);
     const filterDesc = hasActiveFilters
-      ? `Filtered: ${filteredCustomers.length} of ${grandTotalCustomers} customers`
-      : `All ${filteredCustomers.length} customers`;
+      ? `Filtered_${filteredCustomers.length}_of_${grandTotalCustomers}`
+      : `All_${filteredCustomers.length}`;
 
     const exportData = filteredCustomers.map((customer, index) => ({
       '#': index + 1,
@@ -884,112 +655,68 @@ export default function Customers({ onBack }: CustomersProps) {
       'Email': customer.email,
       'Active': customer.is_active ? 'Yes' : 'No',
       'Open Invoices': customer.invoice_count || 0,
-      'Gross Balance': fmtCurrency(customer.gross_balance),
-      'Net Balance': fmtCurrency(customer.balance),
+      'Gross Balance': customer.gross_balance || 0,
+      'Net Balance': customer.balance || 0,
       'Max Days Overdue': customer.max_days_overdue || 0,
       'Red Invoices': customer.red_count || 0,
       'Yellow Invoices': customer.yellow_count || 0,
       'Green Invoices': customer.green_count || 0,
       'Responded This Month': customer.responded_this_month ? 'Yes' : 'No',
-      'Postponed Until': customer.postpone_until
-        ? new Date(customer.postpone_until).toLocaleDateString()
-        : '',
+      'Postponed Until': customer.postpone_until ? new Date(customer.postpone_until).toLocaleDateString() : '',
       'Postpone Reason': customer.postpone_reason || ''
     }));
 
     const summaryRow = {
-      '#': '',
-      'Customer ID': '',
-      'Customer Name': 'TOTALS',
-      'Email': '',
-      'Active': '',
-      'Open Invoices': totalInvoices,
-      'Gross Balance': fmtCurrency(totalGross),
-      'Net Balance': fmtCurrency(totalBalance),
-      'Max Days Overdue': '',
-      'Red Invoices': '',
-      'Yellow Invoices': '',
-      'Green Invoices': '',
-      'Responded This Month': '',
-      'Postponed Until': '',
-      'Postpone Reason': ''
+      '#': '', 'Customer ID': '', 'Customer Name': 'TOTALS', 'Email': '', 'Active': '',
+      'Open Invoices': totalInvoices, 'Gross Balance': totalGross, 'Net Balance': totalBalance,
+      'Max Days Overdue': '', 'Red Invoices': '', 'Yellow Invoices': '', 'Green Invoices': '',
+      'Responded This Month': '', 'Postponed Until': '', 'Postpone Reason': ''
     };
 
     const worksheet = XLSX.utils.json_to_sheet([...exportData, summaryRow]);
-
-    const colWidths = [
+    worksheet['!cols'] = [
       { wch: 5 }, { wch: 14 }, { wch: 30 }, { wch: 28 }, { wch: 8 },
       { wch: 13 }, { wch: 15 }, { wch: 15 }, { wch: 16 },
       { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 20 },
       { wch: 16 }, { wch: 20 }
     ];
-    worksheet['!cols'] = colWidths;
-
-    const currencyCols = [6, 7];
-    const rowCount = exportData.length + 2;
-    currencyCols.forEach(col => {
-      for (let row = 1; row < rowCount; row++) {
-        const cell = XLSX.utils.encode_cell({ r: row, c: col });
-        if (worksheet[cell] && typeof worksheet[cell].v === 'number') {
-          worksheet[cell].z = '$#,##0.00';
-        }
-      }
-    });
-
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Customers');
-    XLSX.writeFile(workbook, `customers_${filterDesc.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(workbook, `customers_${filterDesc}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const activeFilterCount = [
-    filters.minBalance > 0,
-    filters.maxBalance !== Infinity,
-    filters.minInvoiceCount > 0,
-    filters.maxInvoiceCount !== Infinity,
-    filters.minInvoiceAmount > 0,
-    filters.maxInvoiceAmount !== Infinity,
-    filters.minDaysOverdue > 0,
-    filters.maxDaysOverdue !== Infinity,
-    filters.dateFrom !== '',
-    filters.dateTo !== '',
+    filters.minBalance > 0, filters.maxBalance !== Infinity,
+    filters.minInvoiceCount > 0, filters.maxInvoiceCount !== Infinity,
+    filters.minInvoiceAmount > 0, filters.maxInvoiceAmount !== Infinity,
+    filters.minDaysOverdue > 0, filters.maxDaysOverdue !== Infinity,
+    filters.dateFrom !== '', filters.dateTo !== '',
     searchQuery.trim() !== ''
   ].filter(Boolean).length;
 
+  // Schedule view
   if (viewingSchedule) {
     return (
       <div className="min-h-screen bg-gray-100 text-gray-900 p-8">
         <div className="max-w-6xl mx-auto">
-          <button
-            onClick={() => {
-              setViewingSchedule(null);
-              setScheduledEmails([]);
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg transition-colors mb-6"
-          >
-            <ArrowLeft size={20} />
-            Back to Customers
+          <button onClick={() => { setViewingSchedule(null); setScheduledEmails([]); }}
+            className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg transition-colors mb-6">
+            <ArrowLeft size={20} /> Back to Customers
           </button>
-
           <div className="bg-white rounded-lg shadow border border-gray-300 p-8">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <div className="bg-orange-600 p-2 rounded-lg">
-                  <Clock size={24} className="text-white" />
-                </div>
+                <div className="bg-orange-600 p-2 rounded-lg"><Clock size={24} className="text-white" /></div>
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">Upcoming Emails</h2>
                   <p className="text-gray-600">{viewingSchedule.name}</p>
                 </div>
               </div>
-              <button
-                onClick={() => loadScheduledEmails(viewingSchedule.id)}
-                disabled={loadingSchedule}
-                className="p-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-900 rounded-lg transition-colors"
-              >
+              <button onClick={() => loadScheduledEmails(viewingSchedule.id)} disabled={loadingSchedule}
+                className="p-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-900 rounded-lg transition-colors">
                 <RefreshCw size={18} className={loadingSchedule ? 'animate-spin' : ''} />
               </button>
             </div>
-
             {loadingSchedule ? (
               <div className="text-center py-8">
                 <RefreshCw className="animate-spin text-orange-600 mx-auto mb-4" size={32} />
@@ -1000,54 +727,25 @@ export default function Customers({ onBack }: CustomersProps) {
                 {scheduledEmails.map((email) => {
                   const scheduledDate = new Date(email.scheduled_time);
                   const isToday = scheduledDate.toDateString() === new Date().toDateString();
-
                   return (
-                    <div
-                      key={email.id}
-                      className={`p-4 rounded-lg border transition-all ${
-                        isToday
-                          ? 'bg-orange-50 border-orange-300'
-                          : 'bg-white border-gray-300'
-                      }`}
-                    >
+                    <div key={email.id} className={`p-4 rounded-lg border transition-all ${isToday ? 'bg-orange-50 border-orange-300' : 'bg-white border-gray-300'}`}>
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <Mail size={16} className={isToday ? 'text-orange-600' : 'text-blue-600'} />
-                          <span className={`text-sm font-medium ${isToday ? 'text-orange-800' : 'text-gray-900'}`}>
-                            {email.template_name}
-                          </span>
+                          <span className={`text-sm font-medium ${isToday ? 'text-orange-800' : 'text-gray-900'}`}>{email.template_name}</span>
                         </div>
-                        {isToday && (
-                          <span className="px-2 py-0.5 bg-orange-200 border border-orange-400 text-orange-800 text-xs rounded">
-                            Today
-                          </span>
-                        )}
+                        {isToday && <span className="px-2 py-0.5 bg-orange-200 border border-orange-400 text-orange-800 text-xs rounded">Today</span>}
                       </div>
                       <div className="space-y-1 text-xs">
                         <div className="flex items-center gap-2 text-gray-600">
                           <Calendar size={12} />
-                          <span>
-                            {scheduledDate.toLocaleDateString('en-US', {
-                              weekday: 'short',
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </span>
+                          <span>{scheduledDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
                         </div>
                         <div className="flex items-center gap-2 text-gray-600">
                           <Clock size={12} />
-                          <span>
-                            {scheduledDate.toLocaleTimeString('en-US', {
-                              hour: 'numeric',
-                              minute: '2-digit',
-                              hour12: true
-                            })} ({email.timezone?.replace('America/', '').replace('_', ' ') || 'UTC'})
-                          </span>
+                          <span>{scheduledDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} ({email.timezone?.replace('America/', '').replace('_', ' ') || 'UTC'})</span>
                         </div>
-                        <div className="text-gray-500">
-                          Formula: {email.formula_name}
-                        </div>
+                        <div className="text-gray-500">Formula: {email.formula_name}</div>
                       </div>
                     </div>
                   );
@@ -1080,25 +778,15 @@ export default function Customers({ onBack }: CustomersProps) {
     return (
       <div className="min-h-screen bg-gray-100 p-6">
         <div className="max-w-2xl mx-auto">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors mb-6"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back
+          <button onClick={handleBack} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors mb-6">
+            <ArrowLeft className="w-5 h-5" /> Back
           </button>
-
           <div className="bg-white rounded-lg shadow-lg p-12 text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
               <Lock className="w-8 h-8 text-red-600" />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-            <p className="text-gray-600 mb-6">
-              You do not have permission to view Customers.
-            </p>
-            <p className="text-sm text-gray-500">
-              Please contact your administrator if you believe you should have access to this page.
-            </p>
+            <p className="text-gray-600 mb-6">You do not have permission to view Customers.</p>
           </div>
         </div>
       </div>
@@ -1106,73 +794,32 @@ export default function Customers({ onBack }: CustomersProps) {
   }
 
   if (viewingFiles) {
-    return (
-      <CustomerFiles
-        customerId={viewingFiles.id}
-        customerName={viewingFiles.name}
-        onBack={() => setViewingFiles(null)}
-      />
-    );
+    return <CustomerFiles customerId={viewingFiles.id} customerName={viewingFiles.name} onBack={() => setViewingFiles(null)} />;
   }
 
   if (showForm) {
     return (
       <div className="min-h-screen bg-gray-100 p-8">
         <div className="max-w-4xl mx-auto">
-          <button
-            onClick={() => setShowForm(false)}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-colors"
-          >
-            <ArrowLeft size={20} />
-            Back to Customers
+          <button onClick={() => setShowForm(false)} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-colors">
+            <ArrowLeft size={20} /> Back to Customers
           </button>
-
           <div className="bg-white rounded-lg shadow border border-gray-300 p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">
-              {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
-            </h2>
-
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Edit Customer</h2>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Customer Name *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="e.g., John Doe"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name *</label>
+                <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email Address *
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="e.g., john@example.com"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-2">Email Address *</label>
+                <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
               </div>
-
               <div className="flex gap-4">
-                <button
-                  type="submit"
-                  className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                >
-                  {editingCustomer ? 'Update Customer' : 'Add Customer'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="px-6 py-3 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg font-medium transition-colors"
-                >
-                  Cancel
-                </button>
+                <button type="submit" className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">Update Customer</button>
+                <button type="button" onClick={() => setShowForm(false)} className="px-6 py-3 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg font-medium transition-colors">Cancel</button>
               </div>
             </form>
           </div>
@@ -1182,773 +829,432 @@ export default function Customers({ onBack }: CustomersProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
       <div className="max-w-[95%] mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
-            <button
-              onClick={handleBack}
-              className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-blue-600" />
+            <button onClick={handleBack} className="p-2.5 hover:bg-white/80 rounded-xl transition-all duration-200 border border-transparent hover:border-gray-200 hover:shadow-sm">
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                {showTestCustomers ? 'Test Customers' : 'Customers & Analytics'}
-              </h1>
-              <p className="text-gray-600">
-                {showTestCustomers ? 'Email system test customers for testing email tracking' : 'Manage customers with real-time analytics and filtering'}
+              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Customers</h1>
+              <p className="text-sm text-gray-500 mt-0.5">
+                {grandTotalCustomers > 0 ? `${grandTotalCustomers.toLocaleString()} customers` : 'Loading...'}
+                {cachedStatsTime && !hasActiveFilters && (
+                  <span className="ml-2 text-gray-400">
+                    Updated {new Date(cachedStatsTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
               </p>
             </div>
           </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowAnalytics(!showAnalytics)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                showAnalytics ? 'bg-blue-600 text-white' : 'bg-white border-2 border-blue-600 text-blue-600'
-              }`}
-            >
-              <TrendingUp size={18} />
-              {showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
+          <div className="flex gap-2">
+            <button onClick={exportToExcel} disabled={loading || filteredCustomers.length === 0}
+              className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 border border-gray-200 rounded-xl transition-all duration-200 text-sm font-medium shadow-sm hover:shadow">
+              <Download size={16} /> Export
             </button>
-            <button
-              onClick={exportToExcel}
-              disabled={loading || filteredCustomers.length === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-            >
-              <Download size={18} />
-              Export to Excel
-            </button>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                showFilters ? 'bg-blue-600 text-white' : 'bg-white border-2 border-blue-600 text-blue-600'
-              }`}
-            >
-              <Filter size={18} />
-              Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
-            </button>
-            <button
-              onClick={() => loadCustomersWithAnalytics()}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors"
-            >
-              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-              Refresh
-            </button>
-            <button
-              onClick={handleCreate}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-            >
-              <Plus size={18} />
-              Add Customer
+            <button onClick={() => loadCustomersBatched()} disabled={loading}
+              className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl transition-all duration-200 text-sm font-medium shadow-sm hover:shadow">
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>
         </div>
 
-        {/* Customer Type Toggle */}
-        <div className="bg-white rounded-xl shadow-sm p-2 mb-4 border border-gray-200 inline-flex">
-          <button
-            onClick={() => { setShowTestCustomers(false); setCurrentPage(0); setSearchQuery(''); }}
-            className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              !showTestCustomers
-                ? 'bg-slate-800 text-white shadow-sm'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            All Customers
-          </button>
-          <button
-            onClick={() => { setShowTestCustomers(true); setCurrentPage(0); setSearchQuery(''); }}
-            className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              showTestCustomers
-                ? 'bg-teal-600 text-white shadow-sm'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            Test Customers
-          </button>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Customers</span>
+              <div className="p-1.5 bg-blue-50 rounded-lg"><Users className="w-3.5 h-3.5 text-blue-600" /></div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{stats.total_customers.toLocaleString()}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{stats.active_customers.toLocaleString()} active</p>
+          </div>
+          <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">With Debt</span>
+              <div className="p-1.5 bg-orange-50 rounded-lg"><FileText className="w-3.5 h-3.5 text-orange-600" /></div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{stats.customers_with_debt.toLocaleString()}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{stats.total_open_invoices.toLocaleString()} invoices</p>
+          </div>
+          <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Owed</span>
+              <div className="p-1.5 bg-emerald-50 rounded-lg"><DollarSign className="w-3.5 h-3.5 text-emerald-600" /></div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              ${stats.total_balance >= 1000000
+                ? `${(stats.total_balance / 1000000).toFixed(2)}M`
+                : stats.total_balance.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">{stats.customers_with_debt.toLocaleString()} customers</p>
+          </div>
+          <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Avg Balance</span>
+              <div className="p-1.5 bg-cyan-50 rounded-lg"><TrendingUp className="w-3.5 h-3.5 text-cyan-600" /></div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              ${stats.avg_balance.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">per debtor</p>
+          </div>
         </div>
 
-        {/* Credit Memo Toggle */}
-        <div className="bg-white rounded-xl shadow-sm p-4 mb-4 border border-gray-200">
-          <div className="flex items-center justify-between">
+        {/* Search + Filters Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
+          {/* Search Bar */}
+          <div className="p-4">
             <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 cursor-pointer">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                 <input
-                  type="checkbox"
-                  checked={excludeCreditMemos}
-                  onChange={(e) => setExcludeCreditMemos(e.target.checked)}
-                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  placeholder="Search by name, email, or customer ID..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all duration-200 text-sm"
                 />
-                <span className="text-sm font-semibold text-gray-700">
-                  Exclude Credit Memos from Balance Calculation
-                </span>
+              </div>
+              <button onClick={handleSearch} disabled={loading}
+                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:bg-gray-300 text-white rounded-xl transition-all duration-200 text-sm font-medium shadow-sm">
+                Search
+              </button>
+              {(isSearching || searchQuery) && (
+                <button onClick={() => { setSearchQuery(''); setIsSearching(false); setCurrentPage(0); }}
+                  className="px-3.5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl transition-all duration-200 text-sm">
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Quick Filters */}
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <Zap size={14} className="text-amber-500" />
+              {QUICK_FILTERS.map((qf, idx) => (
+                <button key={idx} onClick={() => applyQuickFilter(idx)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200 border ${
+                    activeQuickFilter === idx
+                      ? 'bg-slate-800 text-white border-slate-800 shadow-sm'
+                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                  }`}>
+                  {qf.label} <span className={activeQuickFilter === idx ? 'text-gray-300' : 'text-gray-400'}>{qf.desc}</span>
+                </button>
+              ))}
+
+              <div className="flex-1" />
+
+              {/* Credit memo toggle */}
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                <input type="checkbox" checked={excludeCreditMemos} onChange={(e) => setExcludeCreditMemos(e.target.checked)}
+                  className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+                Excl. Credit Memos
               </label>
-              <div className="px-3 py-1 bg-blue-50 border border-blue-200 rounded-lg">
-                <span className="text-xs font-medium text-blue-700">
-                  {excludeCreditMemos ? 'Showing Gross Balance (Invoices Only)' : 'Showing Net Balance (Invoices - Credit Memos)'}
+            </div>
+          </div>
+
+          {/* Advanced Filters Toggle */}
+          <button onClick={() => setShowFilters(!showFilters)}
+            className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50/80 border-t border-gray-100 hover:bg-gray-100/80 transition-all duration-200">
+            <div className="flex items-center gap-2">
+              <Filter size={14} className="text-gray-400" />
+              <span className="text-xs font-medium text-gray-500">Advanced Filters</span>
+              {activeFilterCount > 0 && (
+                <span className="inline-flex items-center justify-center w-5 h-5 bg-blue-600 text-white text-[10px] font-bold rounded-full">
+                  {activeFilterCount}
+                </span>
+              )}
+            </div>
+            <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${showFilters ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Advanced Filters Panel */}
+          {showFilters && (
+            <div className="px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/50">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Balance</label>
+                  <input type="number" value={filters.minBalance || ''} onChange={(e) => setFilters({ ...filters, minBalance: Number(e.target.value) || 0 })}
+                    placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Balance</label>
+                  <input type="number" value={filters.maxBalance === Infinity ? '' : filters.maxBalance} onChange={(e) => setFilters({ ...filters, maxBalance: e.target.value ? Number(e.target.value) : Infinity })}
+                    placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Invoices</label>
+                  <input type="number" value={filters.minInvoiceCount || ''} onChange={(e) => setFilters({ ...filters, minInvoiceCount: Number(e.target.value) || 0 })}
+                    placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Invoices</label>
+                  <input type="number" value={filters.maxInvoiceCount === Infinity ? '' : filters.maxInvoiceCount} onChange={(e) => setFilters({ ...filters, maxInvoiceCount: e.target.value ? Number(e.target.value) : Infinity })}
+                    placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Invoice Amt</label>
+                  <input type="number" value={filters.minInvoiceAmount || ''} onChange={(e) => setFilters({ ...filters, minInvoiceAmount: Number(e.target.value) || 0 })}
+                    placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Invoice Amt</label>
+                  <input type="number" value={filters.maxInvoiceAmount === Infinity ? '' : filters.maxInvoiceAmount} onChange={(e) => setFilters({ ...filters, maxInvoiceAmount: e.target.value ? Number(e.target.value) : Infinity })}
+                    placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Days Overdue</label>
+                  <input type="number" value={filters.minDaysOverdue || ''} onChange={(e) => setFilters({ ...filters, minDaysOverdue: Number(e.target.value) || 0 })}
+                    placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Days Overdue</label>
+                  <input type="number" value={filters.maxDaysOverdue === Infinity ? '' : filters.maxDaysOverdue} onChange={(e) => setFilters({ ...filters, maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
+                    placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Date From</label>
+                  <input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Date To</label>
+                  <input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Sort By</label>
+                  <select value={filters.sortBy} onChange={(e) => setFilters({ ...filters, sortBy: e.target.value as any })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
+                    <option value="balance">Balance</option>
+                    <option value="invoice_count">Invoice Count</option>
+                    <option value="max_days_overdue">Days Overdue</option>
+                    <option value="avg_days_to_collect">Avg Days to Collect</option>
+                    <option value="name">Customer Name</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Order</label>
+                  <select value={filters.sortOrder} onChange={(e) => setFilters({ ...filters, sortOrder: e.target.value as 'asc' | 'desc' })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
+                    <option value="desc">Highest First</option>
+                    <option value="asc">Lowest First</option>
+                  </select>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center justify-between">
+                <button onClick={resetFilters}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                  <X size={12} /> Reset All
+                </button>
+                <span className="text-xs text-gray-500">
+                  Showing <span className="font-semibold text-gray-800">{filteredCustomers.length.toLocaleString()}</span> of {grandTotalCustomers.toLocaleString()}
                 </span>
               </div>
-            </div>
-            <div className="text-xs text-gray-600">
-              {excludeCreditMemos
-                ? 'Balance shows total invoices without credit memo deductions'
-                : 'Balance shows invoices minus credit memos (actual amount owed)'
-              }
-            </div>
-          </div>
-        </div>
-
-        {/* Analytics Stats Cards */}
-        {showAnalytics && (
-          <div className="mb-6">
-          {cachedStatsLoaded && !hasActiveFilters && cachedStatsTime && (
-            <div className="flex items-center gap-1 text-xs text-gray-400 mb-2 justify-end">
-              <Clock size={12} />
-              Updated {new Date(cachedStatsTime).toLocaleTimeString()}
-              {loadingMore && <span className="text-blue-500 ml-1">-- refreshing live...</span>}
             </div>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-600 font-medium text-sm">Total Customers</span>
-                <Users className="w-5 h-5 text-blue-600" />
-              </div>
-              <p className="text-3xl font-bold text-gray-900">{stats.total_customers.toLocaleString()}</p>
-              <p className="text-sm text-gray-600 mt-1">{stats.active_customers.toLocaleString()} active</p>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-600 font-medium text-sm">With Debt</span>
-                <FileText className="w-5 h-5 text-orange-600" />
-              </div>
-              <p className="text-3xl font-bold text-gray-900">{stats.customers_with_debt.toLocaleString()}</p>
-              <p className="text-sm text-gray-600 mt-1">{stats.total_open_invoices.toLocaleString()} open invoices</p>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-600 font-medium text-sm">Total Owed (Invoices)</span>
-                <DollarSign className="w-5 h-5 text-green-600" />
-              </div>
-              <p className="text-3xl font-bold text-gray-900">
-                ${stats.total_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
-              <p className="text-sm text-gray-600 mt-1">{stats.customers_with_debt.toLocaleString()} customers</p>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-600 font-medium text-sm">Avg Balance</span>
-                <TrendingUp className="w-5 h-5 text-cyan-600" />
-              </div>
-              <p className="text-3xl font-bold text-gray-900">
-                ${stats.avg_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
-              <p className="text-sm text-gray-600 mt-1">per customer with debt</p>
-            </div>
-          </div>
-          </div>
-        )}
-
-        {/* Preset Filters */}
-        <div className="mb-4 flex flex-wrap gap-3">
-          {PRESET_FILTERS.map((preset, index) => (
-            <button
-              key={index}
-              onClick={() => applyPresetFilter(preset)}
-              className="px-4 py-2 bg-white border-2 border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-colors text-sm font-medium"
-            >
-              {preset.label}
-            </button>
-          ))}
         </div>
 
-        {/* Advanced Filters Panel */}
-        {showFilters && (
-          <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border border-gray-200">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">Advanced Filters</h3>
-              <button
-                onClick={() => setShowFilters(false)}
-                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="col-span-full">
-                <h4 className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-300">Customer Total Balance Range</h4>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Min Balance</label>
-                <input
-                  type="number"
-                  value={filters.minBalance || ''}
-                  onChange={(e) => setFilters({ ...filters, minBalance: Number(e.target.value) || 0 })}
-                  placeholder="e.g., 500"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Max Balance</label>
-                <input
-                  type="number"
-                  value={filters.maxBalance === Infinity ? '' : filters.maxBalance}
-                  onChange={(e) => setFilters({ ...filters, maxBalance: e.target.value ? Number(e.target.value) : Infinity })}
-                  placeholder="e.g., 10000"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div className="col-span-full mt-4">
-                <h4 className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-300">Individual Invoice Amount Range</h4>
-                <p className="text-xs text-gray-600 mb-3">
-                  Filter customers by their individual invoice amounts. Only invoices within this range will be counted.
-                  Example: Min $30, Max $2000 will show customers who have invoices between $30-$2000, and only those invoices will be included in the balance and count.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Min Invoice Amount</label>
-                <input
-                  type="number"
-                  value={filters.minInvoiceAmount || ''}
-                  onChange={(e) => setFilters({ ...filters, minInvoiceAmount: Number(e.target.value) || 0 })}
-                  placeholder="e.g., 30"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Max Invoice Amount</label>
-                <input
-                  type="number"
-                  value={filters.maxInvoiceAmount === Infinity ? '' : filters.maxInvoiceAmount}
-                  onChange={(e) => setFilters({ ...filters, maxInvoiceAmount: e.target.value ? Number(e.target.value) : Infinity })}
-                  placeholder="e.g., 2000"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div className="col-span-full mt-4">
-                <h4 className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-300">Invoice Count Range</h4>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Min Invoice Count</label>
-                <input
-                  type="number"
-                  value={filters.minInvoiceCount || ''}
-                  onChange={(e) => setFilters({ ...filters, minInvoiceCount: Number(e.target.value) || 0 })}
-                  placeholder="e.g., 10"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Max Invoice Count</label>
-                <input
-                  type="number"
-                  value={filters.maxInvoiceCount === Infinity ? '' : filters.maxInvoiceCount}
-                  onChange={(e) => setFilters({ ...filters, maxInvoiceCount: e.target.value ? Number(e.target.value) : Infinity })}
-                  placeholder="e.g., 50"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div className="col-span-full mt-4">
-                <h4 className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-300">Days Overdue Range</h4>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Min Days Overdue</label>
-                <input
-                  type="number"
-                  value={filters.minDaysOverdue || ''}
-                  onChange={(e) => setFilters({ ...filters, minDaysOverdue: Number(e.target.value) || 0 })}
-                  placeholder="e.g., 30"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Max Days Overdue</label>
-                <input
-                  type="number"
-                  value={filters.maxDaysOverdue === Infinity ? '' : filters.maxDaysOverdue}
-                  onChange={(e) => setFilters({ ...filters, maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
-                  placeholder="e.g., 90"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div className="col-span-full mt-4">
-                <h4 className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-300">Invoice Date Range</h4>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Invoice Date From</label>
-                <input
-                  type="date"
-                  value={filters.dateFrom}
-                  onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Invoice Date To</label>
-                <input
-                  type="date"
-                  value={filters.dateTo}
-                  onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div className="col-span-full mt-4">
-                <h4 className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-300">Additional Options</h4>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Filter Logic</label>
-                <select
-                  value={filters.logicOperator}
-                  onChange={(e) => setFilters({ ...filters, logicOperator: e.target.value as 'AND' | 'OR' })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="AND">AND (All conditions)</option>
-                  <option value="OR">OR (Any condition)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Sort By</label>
-                <select
-                  value={filters.sortBy}
-                  onChange={(e) => setFilters({ ...filters, sortBy: e.target.value as any })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="balance">Balance</option>
-                  <option value="invoice_count">Invoice Count</option>
-                  <option value="max_days_overdue">Days Overdue</option>
-                  <option value="avg_days_to_collect">Avg Days to Collect</option>
-                  <option value="name">Customer Name</option>
-                  <option value="email">Email</option>
-                  <option value="created_at">Created Date</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Sort Order</label>
-                <select
-                  value={filters.sortOrder}
-                  onChange={(e) => setFilters({ ...filters, sortOrder: e.target.value as 'asc' | 'desc' })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="desc">Highest First</option>
-                  <option value="asc">Lowest First</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-6 flex items-center gap-3">
-              <button
-                onClick={resetFilters}
-                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-              >
-                Reset All Filters
-              </button>
-              <div className="flex-1"></div>
-              <div className="text-sm text-gray-600 py-2">
-                Showing <span className="font-bold text-blue-600">{filteredCustomers.length}</span> of {grandTotalCustomers.toLocaleString()} customers
-              </div>
-            </div>
+        {/* Active Filter Banner */}
+        {hasActiveFilters && (
+          <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl">
+            <Filter size={14} className="text-blue-600" />
+            <span className="text-xs font-medium text-blue-700">
+              Filters active -- showing {filteredCustomers.length.toLocaleString()} of {grandTotalCustomers.toLocaleString()} customers
+            </span>
+            <button onClick={resetFilters} className="ml-auto text-xs text-blue-600 hover:text-blue-800 font-medium">Clear all</button>
           </div>
         )}
-
-        {/* Search Bar */}
-        <div className="bg-white rounded-xl shadow-sm p-4 mb-6 border border-gray-200">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Search by name, email, or customer ID..."
-                className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <button
-              onClick={handleSearch}
-              disabled={loading}
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
-            >
-              Search
-            </button>
-            {(isSearching || searchQuery) && (
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setIsSearching(false);
-                  setCurrentPage(0);
-                }}
-                className="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
 
         {/* Customers Table */}
         {loading ? (
-          <div className="bg-white rounded-xl shadow-sm p-12 text-center border border-gray-200">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading customers...</p>
+          <div className="bg-white rounded-xl shadow-sm p-16 text-center border border-gray-100">
+            <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600 mx-auto mb-4"></div>
+            <p className="text-sm text-gray-500">Loading customers...</p>
           </div>
         ) : filteredCustomers.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm p-12 text-center border border-gray-200">
-            <Users className="text-gray-400 mx-auto mb-4" size={48} />
-            <p className="text-gray-600 mb-4">No customers found</p>
-            {activeFilterCount > 0 ? (
-              <button
-                onClick={resetFilters}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-              >
+          <div className="bg-white rounded-xl shadow-sm p-16 text-center border border-gray-100">
+            <Users className="text-gray-300 mx-auto mb-4" size={48} />
+            <p className="text-gray-500 mb-4">No customers found</p>
+            {activeFilterCount > 0 && (
+              <button onClick={resetFilters}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors text-sm font-medium">
                 Reset Filters
-              </button>
-            ) : (
-              <button
-                onClick={handleCreate}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-              >
-                <Plus size={18} />
-                Add Your First Customer
               </button>
             )}
           </div>
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             {/* Pagination Top */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <button
-                onClick={goToPreviousPage}
-                disabled={currentPage === 0 || loading}
-                className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
-              >
-                <ChevronLeft size={20} />
-                Previous
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+              <button onClick={goToPreviousPage} disabled={currentPage === 0 || loading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed text-gray-600 border border-gray-200 rounded-lg transition-all text-sm">
+                <ChevronLeft size={16} /> Prev
               </button>
-              <span className="text-gray-600 font-medium flex items-center gap-2">
-                Page {currentPage + 1} of {Math.ceil(totalCount / pageSize)} • Showing {Math.min(currentPage * pageSize + 1, totalCount)}-{Math.min((currentPage + 1) * pageSize, totalCount)} of {totalCount}
+              <span className="text-xs text-gray-500 flex items-center gap-2">
+                <span className="font-medium text-gray-700">
+                  {Math.min(currentPage * PAGE_SIZE + 1, totalCount)}-{Math.min((currentPage + 1) * PAGE_SIZE, totalCount)}
+                </span>
+                of {totalCount.toLocaleString()}
                 {loadingMore && (
-                  <span className="inline-flex items-center gap-1 text-blue-600 text-sm">
-                    <RefreshCw size={14} className="animate-spin" />
-                    Loading more ({loadedCount} loaded)...
+                  <span className="inline-flex items-center gap-1 text-blue-600">
+                    <RefreshCw size={12} className="animate-spin" /> loading more...
                   </span>
                 )}
               </span>
-              <button
-                onClick={goToNextPage}
-                disabled={(currentPage + 1) * pageSize >= totalCount || loading}
-                className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
-              >
-                Next
-                <ChevronRight size={20} />
+              <button onClick={goToNextPage} disabled={(currentPage + 1) * PAGE_SIZE >= totalCount || loading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed text-gray-600 border border-gray-200 rounded-lg transition-all text-sm">
+                Next <ChevronRight size={16} />
               </button>
             </div>
 
             {/* Table */}
-            <div
-              className="max-h-[calc(100vh-400px)] overflow-x-auto overflow-y-auto"
-              style={{
-                scrollbarWidth: 'thin',
-                scrollbarColor: '#64748b #e2e8f0'
-              }}
-            >
+            <div className="max-h-[calc(100vh-420px)] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
               <table className="w-full">
-                <thead className="bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10">
+                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                   <tr>
-                    <th
-                      className="text-left py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => handleSort('name')}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span>Customer</span>
-                        {getSortIcon('name')}
-                      </div>
+                    <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('name')}>
+                      <div className="flex items-center gap-1.5">Customer {getSortIcon('name')}</div>
                     </th>
-                    <th
-                      className="text-left py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => handleSort('email')}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span>Email</span>
-                        {getSortIcon('email')}
-                      </div>
+                    <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('email')}>
+                      <div className="flex items-center gap-1.5">Email {getSortIcon('email')}</div>
                     </th>
-                    <th
-                      className="text-right py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => handleSort('invoice_count')}
-                    >
-                      <div className="flex items-center justify-end gap-2">
-                        <span>Invoices</span>
-                        {getSortIcon('invoice_count')}
-                      </div>
+                    <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('invoice_count')}>
+                      <div className="flex items-center justify-end gap-1.5">Invoices {getSortIcon('invoice_count')}</div>
                     </th>
-                    <th
-                      className="text-right py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => handleSort('balance')}
-                    >
-                      <div className="flex items-center justify-end gap-2">
-                        <span>Balance</span>
-                        {getSortIcon('balance')}
-                      </div>
+                    <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('balance')}>
+                      <div className="flex items-center justify-end gap-1.5">Balance {getSortIcon('balance')}</div>
                     </th>
-                    <th
-                      className="text-right py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => handleSort('max_days_overdue')}
-                    >
-                      <div className="flex items-center justify-end gap-2">
-                        <span>Days Overdue</span>
-                        {getSortIcon('max_days_overdue')}
-                      </div>
+                    <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('max_days_overdue')}>
+                      <div className="flex items-center justify-end gap-1.5">Overdue {getSortIcon('max_days_overdue')}</div>
                     </th>
-                    <th
-                      className="text-right py-3 px-4 text-gray-700 font-semibold text-sm cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => handleSort('avg_days_to_collect')}
-                    >
-                      <div className="flex items-center justify-end gap-2">
-                        <span>Avg Days to Collect</span>
-                        {getSortIcon('avg_days_to_collect')}
-                      </div>
+                    <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('avg_days_to_collect')}>
+                      <div className="flex items-center justify-end gap-1.5">Avg Collect {getSortIcon('avg_days_to_collect')}</div>
                     </th>
-                    <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm">Active</th>
-                    <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm">Responded</th>
-                    <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm" title="Exclude from Payment Analytics">
-                      <div className="flex items-center justify-center gap-1">
-                        <EyeOff size={14} />
-                        <span className="text-xs">Payment</span>
-                      </div>
+                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Active</th>
+                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Resp.</th>
+                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Exclude from Payment Analytics">
+                      <div className="flex items-center justify-center gap-1"><EyeOff size={12} /><span>Pay</span></div>
                     </th>
-                    <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm" title="Exclude from Customer Analytics">
-                      <div className="flex items-center justify-center gap-1">
-                        <EyeOff size={14} />
-                        <span className="text-xs">Customer</span>
-                      </div>
+                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Exclude from Customer Analytics">
+                      <div className="flex items-center justify-center gap-1"><EyeOff size={12} /><span>Cust</span></div>
                     </th>
-                    <th className="text-center py-3 px-4 text-gray-700 font-semibold text-sm">Actions</th>
+                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {customers.map((customer, index) => {
-                    // Check if customer exceeds their red threshold
+                <tbody className="divide-y divide-gray-100">
+                  {customers.map((customer) => {
                     const exceedsRedThreshold = (customer.max_days_overdue || 0) >= (customer.red_threshold_days || 30);
-
                     return (
-                    <tr key={customer.id} className={`border-b border-gray-200 transition-colors ${
-                      exceedsRedThreshold
-                        ? 'bg-red-50 hover:bg-red-100'
-                        : index % 2 === 0
-                          ? 'bg-white hover:bg-blue-50'
-                          : 'bg-gray-50 hover:bg-blue-50'
-                    }`}>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-full bg-blue-100">
-                            <Mail size={18} className="text-blue-600" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="text-gray-900 font-semibold cursor-pointer hover:text-blue-600 hover:underline"
-                                onClick={() => {
-                                  const cid = customer.customer_id || customer.id;
-                                  if (cid) {
-                                    navigate(`/customers?customer=${cid}`);
-                                  }
-                                }}
-                              >{customer.name}</span>
-                              {customersWithOpenTickets.has(customer.id) && (
-                                <button
-                                  onClick={() => navigate(`/collection-ticketing?customerId=${customer.id}`)}
-                                  className="flex items-center gap-1 px-2 py-0.5 bg-red-100 border border-red-300 hover:bg-red-200 rounded text-xs text-red-800 transition-colors"
-                                  title="Customer has open collection tickets - Click to view"
-                                >
-                                  <Ticket size={12} />
-                                  <span>Open Ticket</span>
-                                </button>
-                              )}
-                              {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
-                                <button
-                                  onClick={() => handleUnpostpone(customer.id)}
-                                  disabled={updating === customer.id}
-                                  className={`flex items-center gap-1 px-2 py-0.5 bg-yellow-100 border border-yellow-300 hover:bg-yellow-200 rounded text-xs text-yellow-800 transition-colors ${updating === customer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                  title={`${customer.postpone_reason || 'Postponed'} - Click to remove`}
-                                >
-                                  <PauseCircle size={12} />
-                                  <span>Until {new Date(customer.postpone_until).toLocaleDateString()}</span>
-                                </button>
-                              )}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {customer.oldest_invoice_date && customer.newest_invoice_date && (
-                                <span>{customer.oldest_invoice_date} → {customer.newest_invoice_date}</span>
-                              )}
+                      <tr key={customer.id} className={`transition-colors duration-150 ${exceedsRedThreshold ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-blue-50/40'}`}>
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm text-gray-900 font-semibold cursor-pointer hover:text-blue-600 transition-colors"
+                                  onClick={() => {
+                                    const cid = customer.customer_id || customer.id;
+                                    if (cid) navigate(`/customers?customer=${cid}`);
+                                  }}>{customer.name}</span>
+                                {customersWithOpenTickets.has(customer.id) && (
+                                  <button onClick={() => navigate(`/collection-ticketing?customerId=${customer.id}`)}
+                                    className="flex items-center gap-0.5 px-1.5 py-0.5 bg-red-100 border border-red-200 hover:bg-red-200 rounded text-[10px] text-red-700 transition-colors">
+                                    <Ticket size={10} /> Ticket
+                                  </button>
+                                )}
+                                {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
+                                  <button onClick={() => handleUnpostpone(customer.id)} disabled={updating === customer.id}
+                                    className="flex items-center gap-0.5 px-1.5 py-0.5 bg-yellow-100 border border-yellow-200 hover:bg-yellow-200 rounded text-[10px] text-yellow-700 transition-colors">
+                                    <PauseCircle size={10} /> {new Date(customer.postpone_until).toLocaleDateString()}
+                                  </button>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-gray-400">{customer.customer_id || customer.id}</span>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-gray-700 text-sm">{customer.email}</td>
-                      <td className="py-3 px-4 text-right text-gray-900 font-medium">
-                        {customer.invoice_count || 0}
-                      </td>
-                      <td className="py-3 px-4 text-right text-gray-900 font-bold">
-                        ${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <span className={`font-semibold ${
-                          (customer.max_days_overdue || 0) > 90 ? 'text-red-600' :
-                          (customer.max_days_overdue || 0) > 60 ? 'text-orange-600' :
-                          (customer.max_days_overdue || 0) > 30 ? 'text-yellow-600' :
-                          'text-gray-600'
-                        }`}>
-                          {customer.max_days_overdue || 0}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <span className="text-gray-600 font-medium">
-                          {customer.avg_days_to_collect !== null && customer.avg_days_to_collect !== undefined
-                            ? `${customer.avg_days_to_collect} days`
-                            : 'N/A'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex justify-center">
-                          <button
-                            onClick={() => handleToggleActive(customer.id, customer.is_active)}
-                            disabled={updating === customer.id}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                              customer.is_active ? 'bg-green-600' : 'bg-gray-300'
-                            } ${updating === customer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          >
-                            <span
-                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                customer.is_active ? 'translate-x-6' : 'translate-x-1'
-                              }`}
-                            />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex justify-center">
-                          <button
-                            onClick={() => handleToggleResponded(customer.id, customer.responded_this_month)}
-                            disabled={updating === customer.id}
-                            className={`p-1 rounded-lg transition-colors ${
-                              updating === customer.id ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'
-                            }`}
-                          >
-                            {customer.responded_this_month ? (
-                              <CheckSquare className="text-green-600" size={20} />
-                            ) : (
-                              <Square className="text-gray-400" size={20} />
-                            )}
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex justify-center">
-                          <button
-                            onClick={() => togglePaymentAnalyticsExclusion(customer.customer_id || customer.id, customer.exclude_from_payment_analytics || false)}
-                            disabled={updating === customer.customer_id || updating === customer.id}
-                            className={`p-1 rounded-lg transition-colors ${
-                              updating === customer.customer_id || updating === customer.id ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'
-                            }`}
-                            title={customer.exclude_from_payment_analytics ? "Excluded from payment analytics - Click to include" : "Included in payment analytics - Click to exclude"}
-                          >
-                            {customer.exclude_from_payment_analytics ? (
-                              <EyeOff className="text-red-600" size={20} />
-                            ) : (
-                              <Eye className="text-green-600" size={20} />
-                            )}
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex justify-center">
-                          <button
-                            onClick={() => toggleCustomerAnalyticsExclusion(customer.customer_id || customer.id, customer.exclude_from_customer_analytics || false)}
-                            disabled={updating === customer.customer_id || updating === customer.id}
-                            className={`p-1 rounded-lg transition-colors ${
-                              updating === customer.customer_id || updating === customer.id ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'
-                            }`}
-                            title={customer.exclude_from_customer_analytics ? "Excluded from customer analytics - Click to include" : "Included in customer analytics - Click to exclude"}
-                          >
-                            {customer.exclude_from_customer_analytics ? (
-                              <EyeOff className="text-red-600" size={20} />
-                            ) : (
-                              <Eye className="text-green-600" size={20} />
-                            )}
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex justify-center gap-1">
-                          {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
-                            <button
-                              onClick={() => handleUnpostpone(customer.id)}
-                              disabled={updating === customer.id}
-                              className={`p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors ${updating === customer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                              title="Remove Postponement"
-                            >
-                              <Play size={16} />
+                        </td>
+                        <td className="py-2.5 px-4 text-sm text-gray-600 truncate max-w-[200px]">{customer.email}</td>
+                        <td className="py-2.5 px-4 text-right text-sm text-gray-800 font-medium tabular-nums">{customer.invoice_count || 0}</td>
+                        <td className="py-2.5 px-4 text-right text-sm text-gray-900 font-bold tabular-nums">
+                          ${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-2.5 px-4 text-right">
+                          <span className={`text-sm font-semibold tabular-nums ${
+                            (customer.max_days_overdue || 0) > 90 ? 'text-red-600' :
+                            (customer.max_days_overdue || 0) > 60 ? 'text-orange-500' :
+                            (customer.max_days_overdue || 0) > 30 ? 'text-amber-500' : 'text-gray-500'
+                          }`}>{customer.max_days_overdue || 0}</span>
+                        </td>
+                        <td className="py-2.5 px-4 text-right text-sm text-gray-600 tabular-nums">
+                          {customer.avg_days_to_collect != null ? `${customer.avg_days_to_collect}d` : '--'}
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <div className="flex justify-center">
+                            <button onClick={() => handleToggleActive(customer.id, customer.is_active)} disabled={updating === customer.id}
+                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${customer.is_active ? 'bg-emerald-500' : 'bg-gray-300'} ${updating === customer.id ? 'opacity-50' : ''}`}>
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm ${customer.is_active ? 'translate-x-4.5' : 'translate-x-0.5'}`}
+                                style={{ transform: `translateX(${customer.is_active ? '18px' : '2px'})` }} />
                             </button>
-                          )}
-                          <button
-                            onClick={() => {
-                              setViewingSchedule({ id: customer.id, name: customer.name });
-                              loadScheduledEmails(customer.id);
-                            }}
-                            className="p-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
-                            title="View Schedule"
-                          >
-                            <Clock size={16} />
-                          </button>
-                          <button
-                            onClick={() => setViewingFiles({ id: customer.id, name: customer.name })}
-                            className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                            title="View Files"
-                          >
-                            <FileText size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleEdit(customer)}
-                            className="p-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
-                            title="Edit"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(customer.id)}
-                            className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <div className="flex justify-center">
+                            <button onClick={() => handleToggleResponded(customer.id, customer.responded_this_month)} disabled={updating === customer.id}
+                              className={`p-0.5 rounded transition-colors ${updating === customer.id ? 'opacity-50' : 'hover:bg-gray-100'}`}>
+                              {customer.responded_this_month ? <CheckSquare className="text-emerald-600" size={18} /> : <Square className="text-gray-400" size={18} />}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <div className="flex justify-center">
+                            <button onClick={() => togglePaymentAnalyticsExclusion(customer.customer_id || customer.id, customer.exclude_from_payment_analytics || false)}
+                              disabled={updating === customer.customer_id || updating === customer.id}
+                              className="p-0.5 rounded transition-colors hover:bg-gray-100"
+                              title={customer.exclude_from_payment_analytics ? "Excluded -- click to include" : "Included -- click to exclude"}>
+                              {customer.exclude_from_payment_analytics ? <EyeOff className="text-red-500" size={16} /> : <Eye className="text-emerald-500" size={16} />}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <div className="flex justify-center">
+                            <button onClick={() => toggleCustomerAnalyticsExclusion(customer.customer_id || customer.id, customer.exclude_from_customer_analytics || false)}
+                              disabled={updating === customer.customer_id || updating === customer.id}
+                              className="p-0.5 rounded transition-colors hover:bg-gray-100"
+                              title={customer.exclude_from_customer_analytics ? "Excluded -- click to include" : "Included -- click to exclude"}>
+                              {customer.exclude_from_customer_analytics ? <EyeOff className="text-red-500" size={16} /> : <Eye className="text-emerald-500" size={16} />}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <div className="flex justify-center gap-1">
+                            {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
+                              <button onClick={() => handleUnpostpone(customer.id)} disabled={updating === customer.id}
+                                className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors" title="Remove Postponement">
+                                <Play size={14} />
+                              </button>
+                            )}
+                            <button onClick={() => { setViewingSchedule({ id: customer.id, name: customer.name }); loadScheduledEmails(customer.id); }}
+                              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="View Schedule">
+                              <Clock size={14} />
+                            </button>
+                            <button onClick={() => setViewingFiles({ id: customer.id, name: customer.name })}
+                              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="View Files">
+                              <FileText size={14} />
+                            </button>
+                            <button onClick={() => handleEdit(customer)}
+                              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="Edit">
+                              <Edit2 size={14} />
+                            </button>
+                            <button onClick={() => handleDelete(customer.id)}
+                              className="p-1.5 bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 rounded-lg transition-colors" title="Delete">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -1956,31 +1262,18 @@ export default function Customers({ onBack }: CustomersProps) {
             </div>
 
             {/* Pagination Bottom */}
-            <div className="flex items-center justify-between p-4 border-t border-gray-200">
-              <button
-                onClick={goToPreviousPage}
-                disabled={currentPage === 0 || loading}
-                className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
-              >
-                <ChevronLeft size={20} />
-                Previous
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
+              <button onClick={goToPreviousPage} disabled={currentPage === 0 || loading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed text-gray-600 border border-gray-200 rounded-lg transition-all text-sm">
+                <ChevronLeft size={16} /> Prev
               </button>
-              <span className="text-gray-600 font-medium flex items-center gap-2">
-                Page {currentPage + 1} of {Math.ceil(totalCount / pageSize)}
-                {loadingMore && (
-                  <span className="inline-flex items-center gap-1 text-blue-600 text-sm">
-                    <RefreshCw size={14} className="animate-spin" />
-                    Loading more...
-                  </span>
-                )}
+              <span className="text-xs text-gray-500">
+                Page {currentPage + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
+                {loadingMore && <span className="text-blue-600 ml-1"><RefreshCw size={12} className="animate-spin inline" /></span>}
               </span>
-              <button
-                onClick={goToNextPage}
-                disabled={(currentPage + 1) * pageSize >= totalCount || loading}
-                className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-700 border border-gray-300 rounded-lg transition-colors"
-              >
-                Next
-                <ChevronRight size={20} />
+              <button onClick={goToNextPage} disabled={(currentPage + 1) * PAGE_SIZE >= totalCount || loading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed text-gray-600 border border-gray-200 rounded-lg transition-all text-sm">
+                Next <ChevronRight size={16} />
               </button>
             </div>
           </div>
