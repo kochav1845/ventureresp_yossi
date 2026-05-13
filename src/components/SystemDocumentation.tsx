@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, ChevronRight, ChevronDown, FileText, Database, Mail, RefreshCw,
   Bell, Users, DollarSign, BarChart3, Shield, Clock, Globe, Search,
   Settings, Layers, Zap, Server, Key, Inbox, Ticket, Activity,
-  CheckCircle2, AlertTriangle, BookOpen
+  CheckCircle2, AlertTriangle, BookOpen, Download
 } from 'lucide-react';
 
 interface SystemDocumentationProps {
@@ -232,7 +232,234 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
   const [activeSection, setActiveSection] = useState('overview');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['overview']));
   const [searchTerm, setSearchTerm] = useState('');
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  const generatePdf = useCallback(async () => {
+    if (!contentRef.current || isGeneratingPdf) return;
+    setIsGeneratingPdf(true);
+
+    try {
+      const content = contentRef.current;
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Please allow pop-ups to download the PDF.');
+        setIsGeneratingPdf(false);
+        return;
+      }
+
+      const tables = content.querySelectorAll('table');
+      let tableStyles = '';
+      tables.forEach(() => {
+        tableStyles += '';
+      });
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Venture Respiratory - System Documentation</title>
+          <style>
+            @page { margin: 0.75in; size: letter; }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              color: #1a1a2e;
+              line-height: 1.6;
+              font-size: 11px;
+              padding: 0;
+            }
+
+            .cover-page {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+              text-align: center;
+              page-break-after: always;
+              border-bottom: none;
+            }
+            .cover-page h1 {
+              font-size: 32px;
+              font-weight: 800;
+              color: #1e40af;
+              margin-bottom: 8px;
+              letter-spacing: -0.5px;
+            }
+            .cover-page .subtitle {
+              font-size: 18px;
+              color: #475569;
+              margin-bottom: 40px;
+            }
+            .cover-page .meta {
+              font-size: 12px;
+              color: #94a3b8;
+              margin-top: 60px;
+            }
+            .cover-page .meta strong { color: #64748b; }
+            .cover-page .divider {
+              width: 80px;
+              height: 3px;
+              background: linear-gradient(to right, #2563eb, #06b6d4);
+              border-radius: 2px;
+              margin: 24px auto;
+            }
+
+            .toc { page-break-after: always; padding-top: 40px; }
+            .toc h2 { font-size: 22px; color: #1e40af; margin-bottom: 20px; font-weight: 700; }
+            .toc-section {
+              padding: 6px 0;
+              border-bottom: 1px solid #f1f5f9;
+            }
+            .toc-section a {
+              text-decoration: none;
+              color: #334155;
+              font-weight: 600;
+              font-size: 13px;
+            }
+            .toc-sub { margin-left: 20px; padding: 3px 0; }
+            .toc-sub a { font-weight: 400; font-size: 11px; color: #64748b; }
+
+            h2 {
+              font-size: 20px;
+              font-weight: 700;
+              color: #1e293b;
+              margin-top: 32px;
+              margin-bottom: 12px;
+              padding-bottom: 6px;
+              border-bottom: 2px solid #e2e8f0;
+              page-break-after: avoid;
+            }
+            h3 {
+              font-size: 14px;
+              font-weight: 600;
+              color: #334155;
+              margin-top: 20px;
+              margin-bottom: 8px;
+              page-break-after: avoid;
+            }
+            h4 { font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+            p { margin-bottom: 8px; color: #334155; }
+            ul, ol { padding-left: 20px; margin-bottom: 8px; }
+            li { margin-bottom: 3px; color: #334155; }
+            strong { color: #1e293b; }
+            code {
+              background: #f1f5f9;
+              padding: 1px 4px;
+              border-radius: 3px;
+              font-size: 10px;
+              font-family: 'SF Mono', Monaco, Consolas, monospace;
+              color: #1e40af;
+            }
+
+            .info-card {
+              border: 1px solid #e2e8f0;
+              border-radius: 6px;
+              padding: 10px 12px;
+              margin-bottom: 10px;
+              background: #f8fafc;
+              page-break-inside: avoid;
+            }
+            .info-card h4 { margin-bottom: 4px; }
+            .info-card-blue { border-left: 3px solid #3b82f6; }
+            .info-card-green { border-left: 3px solid #22c55e; }
+            .info-card-amber { border-left: 3px solid #f59e0b; }
+            .info-card-gray { border-left: 3px solid #94a3b8; }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 12px;
+              font-size: 10px;
+              page-break-inside: auto;
+            }
+            thead { background: #f1f5f9; }
+            th { padding: 6px 8px; text-align: left; font-weight: 600; color: #475569; border: 1px solid #e2e8f0; }
+            td { padding: 4px 8px; border: 1px solid #e2e8f0; color: #334155; }
+            tr:nth-child(even) { background: #fafafa; }
+            tr { page-break-inside: avoid; }
+
+            .cron-row {
+              display: flex;
+              gap: 12px;
+              padding: 6px 8px;
+              border: 1px solid #e2e8f0;
+              border-radius: 4px;
+              margin-bottom: 4px;
+              page-break-inside: avoid;
+              background: #fff;
+            }
+            .cron-name { font-family: monospace; font-size: 10px; font-weight: 600; min-width: 200px; }
+            .cron-schedule { font-family: monospace; font-size: 9px; color: #2563eb; }
+            .cron-desc { font-size: 10px; color: #475569; }
+
+            .ef-row {
+              display: flex;
+              gap: 8px;
+              padding: 4px 8px;
+              border: 1px solid #e2e8f0;
+              border-radius: 4px;
+              margin-bottom: 3px;
+              page-break-inside: avoid;
+              background: #fff;
+            }
+            .ef-name { font-family: monospace; font-size: 10px; font-weight: 600; }
+            .ef-desc { font-size: 10px; color: #475569; }
+
+            .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+            .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+
+            @media print {
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="cover-page">
+            <h1>Venture Respiratory</h1>
+            <div class="divider"></div>
+            <div class="subtitle">AR Management System Documentation</div>
+            <p style="color: #64748b; font-size: 13px; max-width: 500px; line-height: 1.7;">
+              Complete reference guide for the Accounts Receivable management platform,
+              including Acumatica sync, collection ticketing, email automation,
+              analytics, and administration.
+            </p>
+            <div class="meta">
+              <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+              <p><strong>Version:</strong> Production</p>
+            </div>
+          </div>
+
+          <div class="toc">
+            <h2>Table of Contents</h2>
+            ${SECTIONS.map((s, i) => `
+              <div class="toc-section">
+                <a href="#${s.id}">${i + 1}. ${s.title}</a>
+                ${s.subsections ? s.subsections.map((sub, j) => `
+                  <div class="toc-sub"><a href="#${sub.id}">${i + 1}.${j + 1} ${sub.title}</a></div>
+                `).join('') : ''}
+              </div>
+            `).join('')}
+          </div>
+
+          ${content.innerHTML}
+
+        </body>
+        </html>
+      `);
+
+      printWindow.document.close();
+
+      setTimeout(() => {
+        printWindow.print();
+        setIsGeneratingPdf(false);
+      }, 500);
+    } catch (err) {
+      console.error('PDF generation error:', err);
+      setIsGeneratingPdf(false);
+    }
+  }, [isGeneratingPdf]);
 
   const handleBack = () => {
     if (onBack) onBack();
@@ -294,6 +521,14 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
               <p className="text-xs text-gray-500">Complete system reference for all modules, pages, and processes</p>
             </div>
           </div>
+          <button
+            onClick={generatePdf}
+            disabled={isGeneratingPdf}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4" />
+            {isGeneratingPdf ? 'Generating...' : 'Download PDF'}
+          </button>
         </div>
       </div>
 
@@ -367,8 +602,22 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
               <li><strong>Email:</strong> SendGrid (outbound) + Mailgun (inbound parsing)</li>
               <li><strong>AI:</strong> OpenAI GPT-4 for email intent analysis</li>
               <li><strong>ERP:</strong> Acumatica REST API (invoice, payment, customer sync)</li>
-              <li><strong>Scheduling:</strong> pg_cron for automated tasks (16 active cron jobs)</li>
+              <li><strong>Scheduling:</strong> pg_cron for automated tasks (17 active cron jobs)</li>
               <li><strong>Charts:</strong> Recharts for analytics visualization</li>
+            </ul>
+          </InfoCard>
+
+          <InfoCard title="Main Sidebar Navigation" color="blue">
+            <ul className="list-disc pl-4 space-y-1">
+              <li><strong>Customer Management:</strong> Customers, My Assignments</li>
+              <li><strong>Invoice Management:</strong> Invoice Analytics</li>
+              <li><strong>Payment Management:</strong> Payment Analytics</li>
+              <li><strong>Reminders:</strong> My Reminders</li>
+              <li><strong>Administration:</strong> Ticketing System</li>
+              <li><strong>Admin Dashboard (collapsible):</strong> Collector Dashboard, Customer Analytics, Invoice Analytics, Payment Analytics, Payment Breakdown, Invoice Breakdown</li>
+              <li><strong>Settings (collapsible):</strong> Invoice Color Settings, User Approval, Create New User, User Activity, Synchronization Status, Ticket Status Settings, Auto-Ticket Rules, Email Settings, Documentation</li>
+              <li><strong>Email System (collapsible):</strong> Inbox, Assignments, Formulas, Templates, Email Logs</li>
+              <li><strong>Developer Settings (collapsible):</strong> Developer Tools, System Health, Sync Change Logs, Scheduler, System Logs</li>
             </ul>
           </InfoCard>
 
@@ -650,8 +899,8 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
               <li><strong>Invoice Linking:</strong> One or more invoices are linked to a ticket via <code className="bg-gray-100 px-1 rounded text-xs">ticket_invoices</code> junction table</li>
               <li><strong>Working:</strong> Collector adds notes, changes statuses, sets promise dates, adds memos to individual invoices</li>
               <li><strong>Status Progression:</strong> open &rarr; pending &rarr; promised &rarr; paid &rarr; closed (customizable)</li>
-              <li><strong>Auto-Close:</strong> Tickets automatically close when all linked invoices are paid (balance = 0)</li>
-              <li><strong>Auto-Removal:</strong> Paid invoices are automatically removed from active tickets</li>
+              <li><strong>Auto-Close (Trigger):</strong> Real-time trigger on <code className="bg-gray-100 px-1 rounded text-xs">acumatica_invoices</code> fires when an invoice status changes to "Closed" or balance drops to 0. Checks if all invoices on linked tickets are paid and auto-closes the ticket.</li>
+              <li><strong>Auto-Close (Cron):</strong> Safety net cron (<code className="bg-gray-100 px-1 rounded text-xs">auto-close-paid-tickets</code>) runs every 10 minutes. Catches tickets missed by the trigger (e.g., invoices arriving already closed from Acumatica bulk sync, tickets with zero invoices, direct DB changes).</li>
             </ol>
           </InfoCard>
 
@@ -829,7 +1078,7 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
           <SectionHeading id="cron" title="Cron Jobs & Scheduled Tasks" />
 
           <SubHeading id="cron-list" title="All Cron Jobs" />
-          <p className="text-sm text-gray-700 mb-3">The system runs 16 scheduled cron jobs via the pg_cron PostgreSQL extension:</p>
+          <p className="text-sm text-gray-700 mb-3">The system runs 17 scheduled cron jobs via the pg_cron PostgreSQL extension:</p>
 
           <div className="space-y-1 mb-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Every Minute</p>
@@ -842,7 +1091,8 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
             <CronRow name="send-reminder-emails" schedule="*/5 * * * *" desc="Sends email notifications for reminders that have email notification enabled" />
             <CronRow name="auto-red-status-checker" schedule="*/5 * * * *" desc="Auto-marks invoices RED when past due or untouched 30+ days; clears RED when paid" />
 
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Every 10-15 Minutes</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Every 10 Minutes</p>
+            <CronRow name="auto-close-paid-tickets" schedule="*/10 * * * *" desc="Safety net: auto-closes collection tickets where all linked invoices are paid, closed, or voided. Catches cases missed by the real-time trigger (bulk syncs, direct DB updates, invoices arriving already closed)." />
             <CronRow name="refresh-payment-month-summary" schedule="*/10 * * * *" desc="Refreshes materialized view of monthly payment aggregates for Payment Breakdown page" />
 
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Hourly</p>
@@ -922,7 +1172,13 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
           <SectionHeading id="admin" title="Admin & System Pages" />
 
           <SubHeading id="admin-dashboard" title="Admin Dashboard" />
-          <p className="text-sm text-gray-700 mb-3">The Comprehensive Admin Dashboard shows high-level metrics across all systems: collector performance, revenue, customers, invoices, payments, user activity, emails, and cron job health. Quick navigation links to key pages.</p>
+          <InfoCard title="Admin Dashboard Structure" color="blue">
+            <p className="mb-2">The Admin Dashboard is organized into two main sections accessible from a left sidebar:</p>
+            <ul className="list-disc pl-4 space-y-1">
+              <li><strong>Analytics:</strong> My Assignments, Collector Dashboard, Invoice Analytics, Customer Analytics, Payment Analytics, Payment Breakdown, Invoice Breakdown</li>
+              <li><strong>Settings (collapsible):</strong> Invoice Color Settings, User Approval, Create New User, User Activity, Synchronization Status, Ticket Status Settings, Ticket Type Settings, Auto-Ticket Rules, Email Settings, Documentation</li>
+            </ul>
+          </InfoCard>
 
           <SubHeading id="admin-users" title="User Management" />
           <InfoCard title="User Management Features" color="blue">
