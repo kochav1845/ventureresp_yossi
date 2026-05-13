@@ -212,6 +212,7 @@ export default function InvoiceAnalyticsPage() {
     setTempSelectedCustomers(prev =>
       prev.includes(customerId) ? prev.filter(c => c !== customerId) : [...prev, customerId]
     );
+    setCustomerSearchTerm('');
   }, []);
 
   // Load data based on view

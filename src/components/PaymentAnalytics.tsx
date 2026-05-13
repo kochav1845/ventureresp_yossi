@@ -1628,6 +1628,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     setTempSelectedCustomers(prev =>
       prev.includes(customerId) ? prev.filter(c => c !== customerId) : [...prev, customerId]
     );
+    setCustomerFilterSearch('');
   }, []);
 
   const applyFilters = () => {
