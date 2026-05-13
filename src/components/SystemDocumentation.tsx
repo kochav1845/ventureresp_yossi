@@ -241,23 +241,13 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
     setIsGeneratingPdf(true);
 
     try {
-      const source = contentRef.current;
-
-      const container = document.createElement('div');
-      container.style.position = 'absolute';
-      container.style.left = '-9999px';
-      container.style.top = '0';
-      container.style.width = '800px';
-      container.style.fontFamily = '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif';
-      container.style.color = '#1a1a2e';
-      container.style.lineHeight = '1.6';
-      container.style.fontSize = '11px';
-      document.body.appendChild(container);
+      const target = contentRef.current;
 
       const cover = document.createElement('div');
-      cover.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:1040px;text-align:center;';
+      cover.setAttribute('data-pdf-cover', 'true');
+      cover.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:1040px;text-align:center;background:#fff;';
       cover.innerHTML = `
-        <h1 style="font-size:32px;font-weight:800;color:#1e40af;margin-bottom:8px;letter-spacing:-0.5px;">Venture Respiratory</h1>
+        <h1 style="font-size:32px;font-weight:800;color:#1e40af;margin-bottom:8px;">Venture Respiratory</h1>
         <div style="width:80px;height:3px;background:linear-gradient(to right,#2563eb,#06b6d4);border-radius:2px;margin:24px auto;"></div>
         <div style="font-size:18px;color:#475569;margin-bottom:40px;">AR Management System Documentation</div>
         <p style="color:#64748b;font-size:13px;max-width:500px;line-height:1.7;">
@@ -270,10 +260,10 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
           <p><strong style="color:#64748b;">Version:</strong> Production</p>
         </div>
       `;
-      container.appendChild(cover);
 
       const toc = document.createElement('div');
-      toc.style.cssText = 'padding-top:40px;';
+      toc.setAttribute('data-pdf-cover', 'true');
+      toc.style.cssText = 'padding:40px 20px;background:#fff;';
       toc.innerHTML = `
         <h2 style="font-size:22px;color:#1e40af;margin-bottom:20px;font-weight:700;">Table of Contents</h2>
         ${SECTIONS.map((s, i) => `
@@ -285,25 +275,32 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
           </div>
         `).join('')}
       `;
-      container.appendChild(toc);
 
-      const content = source.cloneNode(true) as HTMLElement;
-      content.querySelectorAll('button').forEach(btn => btn.remove());
-      content.querySelectorAll('svg').forEach(svg => svg.remove());
-      container.appendChild(content);
+      target.insertBefore(toc, target.firstChild);
+      target.insertBefore(cover, target.firstChild);
+
+      const buttons = target.querySelectorAll('button, [data-no-pdf]');
+      const hidden: { el: HTMLElement; prev: string }[] = [];
+      buttons.forEach(btn => {
+        const el = btn as HTMLElement;
+        hidden.push({ el, prev: el.style.display });
+        el.style.display = 'none';
+      });
 
       const filename = `Venture-Respiratory-Documentation-${new Date().toISOString().split('T')[0]}.pdf`;
 
       await html2pdf().set({
-        margin: [0.5, 0.6, 0.5, 0.6],
+        margin: [0.4, 0.5, 0.4, 0.5],
         filename,
-        image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
+        image: { type: 'jpeg', quality: 0.92 },
+        html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0, windowWidth: target.scrollWidth },
         jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-      }).from(container).save();
+      }).from(target).save();
 
-      document.body.removeChild(container);
+      hidden.forEach(({ el, prev }) => { el.style.display = prev; });
+      target.querySelectorAll('[data-pdf-cover]').forEach(el => el.remove());
+
       setIsGeneratingPdf(false);
     } catch (err) {
       console.error('PDF generation error:', err);
