@@ -375,6 +375,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     supabase
       .from('acumatica_customers')
       .select('customer_id, customer_name')
+      .range(0, 4999)
       .then(({ data }) => {
         if (data) {
           const map = new Map<string, string>();
