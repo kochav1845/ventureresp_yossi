@@ -188,6 +188,12 @@ export default function InvoiceAnalyticsPage() {
         bestName.set(id, name);
       }
     }
+    // When invoices are empty (monthly/yearly view), use customerNameMap as source
+    if (invoices.length === 0 && customerNameMap.size > 0) {
+      return Array.from(customerNameMap.entries())
+        .map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
     const ids = new Set(invoices.map(i => i.customer).filter(Boolean));
     return Array.from(ids)
       .map(id => ({ id, name: bestName.get(id) || id }))

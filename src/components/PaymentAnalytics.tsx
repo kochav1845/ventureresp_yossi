@@ -1604,6 +1604,12 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         bestName.set(id, p.customer_name);
       }
     }
+    // When payments are empty (monthly/yearly view), use customerNameMap as source
+    if (payments.length === 0 && customerNameMap.size > 0) {
+      return Array.from(customerNameMap.entries())
+        .map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
     const ids = new Set(payments.map(p => p.customer_id).filter(Boolean));
     return Array.from(ids)
       .map(id => ({ id, name: bestName.get(id) || id }))
