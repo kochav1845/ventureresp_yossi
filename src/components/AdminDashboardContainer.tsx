@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Users, Activity, FileText, DollarSign, UserCheck, BarChart3, Mail, RefreshCw, Ticket, Settings, Palette, Clock, CreditCard, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Users, Activity, FileText, DollarSign, UserCheck, BarChart3, Mail, RefreshCw, Ticket, Settings, Palette, Clock, CreditCard, ChevronDown, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUserPermissions, PERMISSION_KEYS } from '../lib/permissions';
 import PaymentAnalytics from './PaymentAnalytics';
@@ -16,6 +16,7 @@ import InvoiceColorStatusManagement from './InvoiceColorStatusManagement';
 import AutoTicketRules from './AutoTicketRules';
 import AdminCreateUser from './AdminCreateUser';
 import EmailSettings from './EmailSettings';
+import SystemDocumentation from './SystemDocumentation';
 import PaymentBreakdown from './PaymentBreakdown';
 import InvoiceBreakdown from './InvoiceBreakdown';
 
@@ -35,6 +36,7 @@ type AdminView =
   | 'auto-ticket-rules'
   | 'create-user'
   | 'email-settings'
+  | 'system-documentation'
   | 'payment-breakdown'
   | 'invoice-breakdown';
 
@@ -87,6 +89,7 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
     { id: 'ticket-type-management', label: 'Ticket Type Settings', icon: <Ticket size={18} />, permissionKey: null },
     { id: 'auto-ticket-rules', label: 'Auto-Ticket Rules', icon: <Clock size={18} />, permissionKey: null },
     { id: 'email-settings', label: 'Email Settings', icon: <Mail size={18} />, permissionKey: null },
+    { id: 'system-documentation', label: 'Documentation', icon: <BookOpen size={18} />, permissionKey: null },
   ];
 
   const hasAccess = (item: MenuItem) => {
@@ -136,6 +139,8 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
         return <AdminCreateUser onBack={() => setCurrentView('create-user')} />;
       case 'email-settings':
         return <EmailSettings />;
+      case 'system-documentation':
+        return <SystemDocumentation onBack={() => setCurrentView('system-documentation')} />;
       default:
         return <PaymentAnalytics onBack={() => setCurrentView('payment-analytics')} />;
     }

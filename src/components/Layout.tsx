@@ -213,6 +213,7 @@ export default function Layout() {
     { id: 'ticket-status-settings', name: 'Ticket Status Settings', icon: Settings },
     { id: 'auto-ticket-rules', name: 'Auto-Ticket Rules', icon: Clock },
     { id: 'email-settings', name: 'Email Settings', icon: Mail },
+    { id: 'system-documentation', name: 'Documentation', icon: FileText },
   ] : [];
 
   const developerItems = [
