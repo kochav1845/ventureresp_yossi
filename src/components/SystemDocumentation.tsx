@@ -241,51 +241,48 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
     setIsGeneratingPdf(true);
 
     try {
-      const target = contentRef.current;
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'position:fixed;top:0;left:0;width:816px;background:#fff;z-index:-9999;overflow:visible;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#1a1a2e;line-height:1.6;font-size:11px;';
+      document.body.appendChild(wrapper);
 
-      const cover = document.createElement('div');
-      cover.setAttribute('data-pdf-cover', 'true');
-      cover.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:1040px;text-align:center;background:#fff;';
-      cover.innerHTML = `
-        <h1 style="font-size:32px;font-weight:800;color:#1e40af;margin-bottom:8px;">Venture Respiratory</h1>
-        <div style="width:80px;height:3px;background:linear-gradient(to right,#2563eb,#06b6d4);border-radius:2px;margin:24px auto;"></div>
-        <div style="font-size:18px;color:#475569;margin-bottom:40px;">AR Management System Documentation</div>
-        <p style="color:#64748b;font-size:13px;max-width:500px;line-height:1.7;">
-          Complete reference guide for the Accounts Receivable management platform,
-          including Acumatica sync, collection ticketing, email automation,
-          analytics, and administration.
-        </p>
-        <div style="font-size:12px;color:#94a3b8;margin-top:60px;">
-          <p><strong style="color:#64748b;">Generated:</strong> ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-          <p><strong style="color:#64748b;">Version:</strong> Production</p>
-        </div>
-      `;
-
-      const toc = document.createElement('div');
-      toc.setAttribute('data-pdf-cover', 'true');
-      toc.style.cssText = 'padding:40px 20px;background:#fff;';
-      toc.innerHTML = `
-        <h2 style="font-size:22px;color:#1e40af;margin-bottom:20px;font-weight:700;">Table of Contents</h2>
-        ${SECTIONS.map((s, i) => `
-          <div style="padding:6px 0;border-bottom:1px solid #f1f5f9;">
-            <span style="color:#334155;font-weight:600;font-size:13px;">${i + 1}. ${s.title}</span>
-            ${s.subsections ? s.subsections.map((sub, j) => `
-              <div style="margin-left:20px;padding:3px 0;"><span style="font-size:11px;color:#64748b;">${i + 1}.${j + 1} ${sub.title}</span></div>
-            `).join('') : ''}
+      const coverHtml = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:1056px;text-align:center;page-break-after:always;">
+          <h1 style="font-size:32px;font-weight:800;color:#1e40af;margin-bottom:8px;letter-spacing:-0.5px;">Venture Respiratory</h1>
+          <div style="width:80px;height:3px;background:linear-gradient(to right,#2563eb,#06b6d4);border-radius:2px;margin:24px auto;"></div>
+          <div style="font-size:18px;color:#475569;margin-bottom:40px;">AR Management System Documentation</div>
+          <p style="color:#64748b;font-size:13px;max-width:500px;line-height:1.7;margin:0 auto;">
+            Complete reference guide for the Accounts Receivable management platform,
+            including Acumatica sync, collection ticketing, email automation,
+            analytics, and administration.
+          </p>
+          <div style="font-size:12px;color:#94a3b8;margin-top:60px;">
+            <p><strong style="color:#64748b;">Generated:</strong> ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p><strong style="color:#64748b;">Version:</strong> Production</p>
           </div>
-        `).join('')}
-      `;
+        </div>`;
 
-      target.insertBefore(toc, target.firstChild);
-      target.insertBefore(cover, target.firstChild);
+      const tocHtml = `
+        <div style="padding:40px 30px;page-break-after:always;">
+          <h2 style="font-size:22px;color:#1e40af;margin-bottom:20px;font-weight:700;">Table of Contents</h2>
+          ${SECTIONS.map((s, i) => `
+            <div style="padding:6px 0;border-bottom:1px solid #f1f5f9;">
+              <span style="color:#334155;font-weight:600;font-size:13px;">${i + 1}. ${s.title}</span>
+              ${s.subsections ? s.subsections.map((sub, j) => `
+                <div style="margin-left:20px;padding:3px 0;"><span style="font-size:11px;color:#64748b;">${i + 1}.${j + 1} ${sub.title}</span></div>
+              `).join('') : ''}
+            </div>
+          `).join('')}
+        </div>`;
 
-      const buttons = target.querySelectorAll('button, [data-no-pdf]');
-      const hidden: { el: HTMLElement; prev: string }[] = [];
-      buttons.forEach(btn => {
-        const el = btn as HTMLElement;
-        hidden.push({ el, prev: el.style.display });
-        el.style.display = 'none';
-      });
+      const contentClone = contentRef.current.cloneNode(true) as HTMLElement;
+      contentClone.querySelectorAll('button').forEach(el => el.remove());
+      contentClone.querySelectorAll('svg').forEach(el => el.remove());
+      contentClone.style.cssText = 'padding:20px 30px;';
+
+      wrapper.innerHTML = coverHtml + tocHtml;
+      wrapper.appendChild(contentClone);
+
+      await new Promise(r => setTimeout(r, 100));
 
       const filename = `Venture-Respiratory-Documentation-${new Date().toISOString().split('T')[0]}.pdf`;
 
@@ -293,14 +290,19 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
         margin: [0.4, 0.5, 0.4, 0.5],
         filename,
         image: { type: 'jpeg', quality: 0.92 },
-        html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0, windowWidth: target.scrollWidth },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          scrollY: -window.scrollY,
+          width: 816,
+          windowWidth: 816,
+        },
         jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-      }).from(target).save();
+      }).from(wrapper).save();
 
-      hidden.forEach(({ el, prev }) => { el.style.display = prev; });
-      target.querySelectorAll('[data-pdf-cover]').forEach(el => el.remove());
-
+      document.body.removeChild(wrapper);
       setIsGeneratingPdf(false);
     } catch (err) {
       console.error('PDF generation error:', err);
