@@ -254,12 +254,12 @@ export default function Customers({ onBack }: CustomersProps) {
     created_at: item.created_at,
     updated_at: item.updated_at,
     customer_id: item.customer_id,
-    balance: item.calculated_balance || 0,
+    balance: excludeCreditMemos ? (item.calculated_balance_excl_cm || item.gross_balance || 0) : (item.calculated_balance || 0),
     gross_balance: item.gross_balance || 0,
-    filtered_gross_balance: item.filtered_gross_balance || 0,
-    filtered_net_balance: item.filtered_net_balance ?? item.filtered_gross_balance ?? 0,
+    filtered_gross_balance: item.gross_balance || 0,
+    filtered_net_balance: excludeCreditMemos ? (item.calculated_balance_excl_cm || item.gross_balance || 0) : (item.calculated_balance || 0),
     invoice_count: item.open_invoice_count || 0,
-    filtered_invoice_count: item.filtered_invoice_count || 0,
+    filtered_invoice_count: item.open_invoice_count || 0,
     max_days_overdue: item.max_days_overdue || 0,
     red_threshold_days: item.red_threshold_days || 30,
     red_count: item.red_count || 0,
@@ -277,16 +277,17 @@ export default function Customers({ onBack }: CustomersProps) {
       let allData: any[] = [];
       let offset = 0;
       let batchNum = 0;
+      const balanceCol = excludeCreditMemos ? 'calculated_balance_excl_cm' : 'calculated_balance';
       while (true) {
         const { data, error } = await supabase
-          .rpc('get_customers_with_balance_fast', {
-            p_test_customers: false,
-            p_exclude_credit_memos: excludeCreditMemos
-          })
+          .from('cached_customer_balances')
+          .select('*')
+          .eq('is_test_customer', false)
+          .order(balanceCol, { ascending: false })
           .range(offset, offset + BATCH_SIZE - 1);
         if (error) throw error;
         if (!data || data.length === 0) {
-          if (batchNum === 0) { setLoading(false); }
+          if (batchNum === 0) setLoading(false);
           setLoadingMore(false);
           break;
         }
@@ -296,7 +297,7 @@ export default function Customers({ onBack }: CustomersProps) {
         setLoadedCount(merged.length);
         setGrandTotalCustomers(merged.length);
         setAllCustomers(merged);
-        if (batchNum === 1) { setLoading(false); }
+        if (batchNum === 1) setLoading(false);
         const isDone = data.length < BATCH_SIZE;
         setLoadingMore(!isDone);
         if (isDone) break;
