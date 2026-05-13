@@ -6,6 +6,8 @@ interface InvoiceFilters {
   dateTo: string;
   amountMin: string;
   amountMax: string;
+  daysOverdueMin: string;
+  daysOverdueMax: string;
   colorStatus: string;
   invoiceStatus: string;
   sortBy: string;
@@ -49,8 +51,18 @@ export default function InvoiceFilterPanel({
   activeTab,
   onQuickFilter
 }: InvoiceFilterPanelProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [hasActiveFilters, setHasActiveFilters] = useState(false);
+  const hasActive = !!(
+    filters.dateFrom ||
+    filters.dateTo ||
+    filters.amountMin ||
+    filters.amountMax ||
+    filters.daysOverdueMin ||
+    filters.daysOverdueMax ||
+    filters.colorStatus ||
+    filters.invoiceStatus
+  );
+  const [isExpanded, setIsExpanded] = useState(hasActive);
+  const [hasActiveFilters, setHasActiveFilters] = useState(hasActive);
 
   useEffect(() => {
     const active = !!(
@@ -58,6 +70,8 @@ export default function InvoiceFilterPanel({
       filters.dateTo ||
       filters.amountMin ||
       filters.amountMax ||
+      filters.daysOverdueMin ||
+      filters.daysOverdueMax ||
       filters.colorStatus ||
       filters.invoiceStatus
     );
@@ -89,6 +103,8 @@ export default function InvoiceFilterPanel({
       dateTo: '',
       amountMin: '',
       amountMax: '',
+      daysOverdueMin: '',
+      daysOverdueMax: '',
       colorStatus: '',
       invoiceStatus: '',
       sortBy: 'date',
@@ -227,7 +243,7 @@ export default function InvoiceFilterPanel({
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Date From</label>
                 <div className="relative">
@@ -281,6 +297,38 @@ export default function InvoiceFilterPanel({
                     placeholder="No limit"
                     min="0"
                     step="0.01"
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Min Days Overdue</label>
+                <div className="relative">
+                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="number"
+                    value={filters.daysOverdueMin}
+                    onChange={(e) => handleFilterChange('daysOverdueMin', e.target.value)}
+                    placeholder="0"
+                    min="0"
+                    step="1"
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Max Days Overdue</label>
+                <div className="relative">
+                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="number"
+                    value={filters.daysOverdueMax}
+                    onChange={(e) => handleFilterChange('daysOverdueMax', e.target.value)}
+                    placeholder="No limit"
+                    min="0"
+                    step="1"
                     className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                   />
                 </div>

@@ -144,6 +144,9 @@ export default function Customers({ onBack }: CustomersProps) {
   const [cachedStatsLoaded, setCachedStatsLoaded] = useState(() => cl?.cachedStatsLoaded ?? false);
   const [cachedStatsTime, setCachedStatsTime] = useState<string | null>(() => cl?.cachedStatsTime ?? null);
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
+  const hasInvoiceLevelFilters = filters.minInvoiceAmount > 0 || filters.maxInvoiceAmount !== Infinity ||
+    filters.minDaysOverdue > 0 || filters.maxDaysOverdue !== Infinity ||
+    !!filters.dateFrom || !!filters.dateTo;
   const [activeQuickFilter, setActiveQuickFilter] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '' });
@@ -256,10 +259,10 @@ export default function Customers({ onBack }: CustomersProps) {
     customer_id: item.customer_id,
     balance: excludeCreditMemos ? (item.calculated_balance_excl_cm || item.gross_balance || 0) : (item.calculated_balance || 0),
     gross_balance: item.gross_balance || 0,
-    filtered_gross_balance: item.gross_balance || 0,
-    filtered_net_balance: excludeCreditMemos ? (item.calculated_balance_excl_cm || item.gross_balance || 0) : (item.calculated_balance || 0),
+    filtered_gross_balance: item.filtered_gross_balance ?? item.gross_balance ?? 0,
+    filtered_net_balance: item.filtered_net_balance ?? (excludeCreditMemos ? (item.calculated_balance_excl_cm || item.gross_balance || 0) : (item.calculated_balance || 0)),
     invoice_count: item.open_invoice_count || 0,
-    filtered_invoice_count: item.open_invoice_count || 0,
+    filtered_invoice_count: item.filtered_invoice_count ?? item.open_invoice_count ?? 0,
     max_days_overdue: item.max_days_overdue || 0,
     red_threshold_days: item.red_threshold_days || 30,
     red_count: item.red_count || 0,
@@ -438,6 +441,17 @@ export default function Customers({ onBack }: CustomersProps) {
   if (customerIdParam && customerIdParam !== 'null' && customerIdParam !== 'undefined') {
     return <CustomerDetailView customerId={customerIdParam} onBack={() => navigate('/customers')} />;
   }
+
+  const buildCustomerUrl = (customerId: string) => {
+    const params = new URLSearchParams({ customer: customerId });
+    if (filters.minInvoiceAmount > 0) params.set('amountMin', String(filters.minInvoiceAmount));
+    if (filters.maxInvoiceAmount !== Infinity) params.set('amountMax', String(filters.maxInvoiceAmount));
+    if (filters.minDaysOverdue > 0) params.set('daysMin', String(filters.minDaysOverdue));
+    if (filters.maxDaysOverdue !== Infinity) params.set('daysMax', String(Math.round(filters.maxDaysOverdue)));
+    if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+    if (filters.dateTo) params.set('dateTo', filters.dateTo);
+    return `/customers?${params.toString()}`;
+  };
 
   const handleSearch = () => {
     setCurrentPage(0);
@@ -975,56 +989,60 @@ export default function Customers({ onBack }: CustomersProps) {
           {/* Advanced Filters Panel */}
           {showFilters && (
             <div className="px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/50">
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-2">Customer Filters</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                 <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Balance</label>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Customer Balance</label>
                   <input type="number" value={filters.minBalance || ''} onChange={(e) => setFilters({ ...filters, minBalance: Number(e.target.value) || 0 })}
                     placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Balance</label>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Customer Balance</label>
                   <input type="number" value={filters.maxBalance === Infinity ? '' : filters.maxBalance} onChange={(e) => setFilters({ ...filters, maxBalance: e.target.value ? Number(e.target.value) : Infinity })}
                     placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Invoices</label>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Invoice Count</label>
                   <input type="number" value={filters.minInvoiceCount || ''} onChange={(e) => setFilters({ ...filters, minInvoiceCount: Number(e.target.value) || 0 })}
                     placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Invoices</label>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Invoice Count</label>
                   <input type="number" value={filters.maxInvoiceCount === Infinity ? '' : filters.maxInvoiceCount} onChange={(e) => setFilters({ ...filters, maxInvoiceCount: e.target.value ? Number(e.target.value) : Infinity })}
                     placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
                 </div>
+              </div>
+              <p className="text-[10px] font-bold text-teal-600 uppercase tracking-widest mb-2">Invoice Filters</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Invoice Amt</label>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Invoice Amount</label>
                   <input type="number" value={filters.minInvoiceAmount || ''} onChange={(e) => setFilters({ ...filters, minInvoiceAmount: Number(e.target.value) || 0 })}
-                    placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                    placeholder="0" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Invoice Amt</label>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Invoice Amount</label>
                   <input type="number" value={filters.maxInvoiceAmount === Infinity ? '' : filters.maxInvoiceAmount} onChange={(e) => setFilters({ ...filters, maxInvoiceAmount: e.target.value ? Number(e.target.value) : Infinity })}
-                    placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                    placeholder="Any" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Days Overdue</label>
                   <input type="number" value={filters.minDaysOverdue || ''} onChange={(e) => setFilters({ ...filters, minDaysOverdue: Number(e.target.value) || 0 })}
-                    placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                    placeholder="0" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Days Overdue</label>
                   <input type="number" value={filters.maxDaysOverdue === Infinity ? '' : filters.maxDaysOverdue} onChange={(e) => setFilters({ ...filters, maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
-                    placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                    placeholder="Any" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Date From</label>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Invoice Date From</label>
                   <input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                    className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Date To</label>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Invoice Date To</label>
                   <input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                    className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Sort By</label>
@@ -1158,7 +1176,7 @@ export default function Customers({ onBack }: CustomersProps) {
                                 <span className="text-sm text-gray-900 font-semibold cursor-pointer hover:text-blue-600 transition-colors"
                                   onClick={() => {
                                     const cid = customer.customer_id || customer.id;
-                                    if (cid) navigate(`/customers?customer=${cid}`);
+                                    if (cid) navigate(buildCustomerUrl(cid));
                                   }}>{customer.name}</span>
                                 {customersWithOpenTickets.has(customer.id) && (
                                   <button onClick={() => navigate(`/collection-ticketing?customerId=${customer.id}`)}
@@ -1178,9 +1196,23 @@ export default function Customers({ onBack }: CustomersProps) {
                           </div>
                         </td>
                         <td className="py-2.5 px-4 text-sm text-gray-600 truncate max-w-[200px]">{customer.email}</td>
-                        <td className="py-2.5 px-4 text-right text-sm text-gray-800 font-medium tabular-nums">{customer.invoice_count || 0}</td>
+                        <td className="py-2.5 px-4 text-right text-sm text-gray-800 font-medium tabular-nums">
+                          {hasInvoiceLevelFilters ? (
+                            <span title={`${customer.filtered_invoice_count || 0} of ${customer.invoice_count || 0} invoices match filters`}>
+                              <span className="text-teal-700">{customer.filtered_invoice_count || 0}</span>
+                              <span className="text-gray-400 text-xs">/{customer.invoice_count || 0}</span>
+                            </span>
+                          ) : (customer.invoice_count || 0)}
+                        </td>
                         <td className="py-2.5 px-4 text-right text-sm text-gray-900 font-bold tabular-nums">
-                          ${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {hasInvoiceLevelFilters ? (
+                            <span title={`$${(customer.filtered_gross_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} of $${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} matches filters`}>
+                              <span className="text-teal-700">${(customer.filtered_gross_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <span className="text-gray-400 text-xs ml-1">of ${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </span>
+                          ) : (
+                            <>${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                          )}
                         </td>
                         <td className="py-2.5 px-4 text-right">
                           <span className={`text-sm font-semibold tabular-nums ${

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, Lock, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Ticket, ChevronRight, PauseCircle } from 'lucide-react';
 import { supabase, logActivity } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -105,11 +105,19 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const { profile } = useAuth();
   const { hasPermission } = useUserPermissions();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const handleBack = onBack || (() => navigate(-1));
   const hasAccess = hasPermission(PERMISSION_KEYS.CUSTOMERS_VIEW, 'view');
   const { getCachedState, setCachedState } = usePageCache(`customer-detail-${customerId}`);
   const cachedDetail = useRef(getCachedState());
   const cd = cachedDetail.current;
+
+  const inheritedAmountMin = searchParams.get('amountMin') || '';
+  const inheritedAmountMax = searchParams.get('amountMax') || '';
+  const inheritedDaysMin = searchParams.get('daysMin') || '';
+  const inheritedDaysMax = searchParams.get('daysMax') || '';
+  const inheritedDateFrom = searchParams.get('dateFrom') || '';
+  const inheritedDateTo = searchParams.get('dateTo') || '';
   const [customer, setCustomer] = useState<CustomerData | null>(() => cd?.customer ?? null);
   const [displayedInvoices, setDisplayedInvoices] = useState<InvoiceData[]>(() => cd?.displayedInvoices ?? []);
   const [payments, setPayments] = useState<PaymentData[]>(() => cd?.payments ?? []);
@@ -135,10 +143,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const ITEMS_PER_PAGE = 50;
 
   const [advancedFilters, setAdvancedFilters] = useState(() => cd?.advancedFilters ?? {
-    dateFrom: '',
-    dateTo: '',
-    amountMin: '',
-    amountMax: '',
+    dateFrom: inheritedDateFrom,
+    dateTo: inheritedDateTo,
+    amountMin: inheritedAmountMin,
+    amountMax: inheritedAmountMax,
+    daysOverdueMin: inheritedDaysMin,
+    daysOverdueMax: inheritedDaysMax,
     colorStatus: '',
     invoiceStatus: '',
     sortBy: 'date',
@@ -486,7 +496,9 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           p_amount_max: advancedFilters.amountMax ? parseFloat(advancedFilters.amountMax) : null,
           p_color_status: advancedFilters.colorStatus || null,
           p_invoice_status: advancedFilters.invoiceStatus || null,
-          p_exclude_credit_memos: excludeCreditMemos
+          p_exclude_credit_memos: excludeCreditMemos,
+          p_min_days_overdue: advancedFilters.daysOverdueMin ? parseInt(advancedFilters.daysOverdueMin) : null,
+          p_max_days_overdue: advancedFilters.daysOverdueMax ? parseInt(advancedFilters.daysOverdueMax) : null
         });
 
       if (error) throw error;
@@ -518,7 +530,9 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           p_sort_order: advancedFilters.sortOrder,
           p_limit: ITEMS_PER_PAGE,
           p_offset: offset,
-          p_exclude_credit_memos: excludeCreditMemos
+          p_exclude_credit_memos: excludeCreditMemos,
+          p_min_days_overdue: advancedFilters.daysOverdueMin ? parseInt(advancedFilters.daysOverdueMin) : null,
+          p_max_days_overdue: advancedFilters.daysOverdueMax ? parseInt(advancedFilters.daysOverdueMax) : null
         });
 
       if (error) throw error;
