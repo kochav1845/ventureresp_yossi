@@ -774,7 +774,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           p_type: filterType !== 'all' ? filterType : null,
           p_payment_method: filterPaymentMethod !== 'all' ? filterPaymentMethod : null,
           p_has_applications: filterInvoicePeriod !== 'all' ? filterInvoicePeriod : null,
-          p_excluded_customers: excludedCustomerArray
+          p_excluded_customers: excludedCustomerArray,
+          p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : []
         });
 
         if (filteredError) throw filteredError;
@@ -1009,7 +1010,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           p_type: filterType !== 'all' ? filterType : null,
           p_payment_method: filterPaymentMethod !== 'all' ? filterPaymentMethod : null,
           p_has_applications: filterInvoicePeriod !== 'all' ? filterInvoicePeriod : null,
-          p_excluded_customers: excludedCustomerArray
+          p_excluded_customers: excludedCustomerArray,
+          p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : []
         });
 
         if (filteredError) throw filteredError;

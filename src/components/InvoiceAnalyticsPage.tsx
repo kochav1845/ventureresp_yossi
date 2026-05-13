@@ -277,7 +277,7 @@ export default function InvoiceAnalyticsPage() {
       setYearlyAggregates([]);
       loadDailyData();
     }
-  }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, filterStatus, filterType]);
+  }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, filterStatus, filterType, selectedCustomers]);
 
   useEffect(() => {
     filterAndSortInvoices();
@@ -426,10 +426,96 @@ export default function InvoiceAnalyticsPage() {
     }
   };
 
+  const applyMonthlyAggregateData = (rows: any[], monthKey: string, amountKey: string, countKey: string, balanceKey: string, openBalanceKey: string, customerKey: string, cmAmountKey: string, cmCountKey: string, openInvBalKey: string, openInvCntKey: string, balInvBalKey: string, balInvCntKey: string, openCmBalKey: string, openCmCntKey: string, totalBalanceKey?: string) => {
+    const defaultAgg = { month: 0, total: 0, count: 0, balance: 0, openBalance: 0, customers: 0, creditMemoAmount: 0, creditMemoCount: 0, openInvoiceBalance: 0, openInvoiceCount: 0, balancedInvoiceBalance: 0, balancedInvoiceCount: 0, openCmBalance: 0, openCmCount: 0 };
+    const aggregates = Array.from({ length: 12 }, (_, idx) => ({ ...defaultAgg, month: idx }));
+    let totalAmount = 0;
+    let totalBalance = 0;
+    let totalCount = 0;
+    let totalCustomers = 0;
+    let totalCMAmount = 0;
+    let totalCMCount = 0;
+
+    rows.forEach((row: any) => {
+      const m = row[monthKey];
+      if (m >= 1 && m <= 12) {
+        const amt = parseFloat(row[amountKey]) || 0;
+        const bal = parseFloat(row[openBalanceKey]) || 0;
+        const cnt = parseInt(row[countKey]) || 0;
+        const cust = parseInt(row[customerKey]) || 0;
+        const cmAmt = parseFloat(row[cmAmountKey]) || 0;
+        const cmCnt = parseInt(row[cmCountKey]) || 0;
+        aggregates[m - 1] = {
+          month: m - 1,
+          total: amt,
+          count: cnt,
+          balance: totalBalanceKey ? (parseFloat(row[totalBalanceKey]) || 0) : 0,
+          openBalance: bal,
+          customers: cust,
+          creditMemoAmount: cmAmt,
+          creditMemoCount: cmCnt,
+          openInvoiceBalance: parseFloat(row[openInvBalKey]) || 0,
+          openInvoiceCount: parseInt(row[openInvCntKey]) || 0,
+          balancedInvoiceBalance: parseFloat(row[balInvBalKey]) || 0,
+          balancedInvoiceCount: parseInt(row[balInvCntKey]) || 0,
+          openCmBalance: parseFloat(row[openCmBalKey]) || 0,
+          openCmCount: parseInt(row[openCmCntKey]) || 0,
+        };
+        totalAmount += amt;
+        totalBalance += bal;
+        totalCount += cnt;
+        totalCustomers += cust;
+        totalCMAmount += cmAmt;
+        totalCMCount += cmCnt;
+      }
+    });
+
+    setMonthlyAggregates(aggregates);
+    setMonthlyTotal(totalAmount - totalCMAmount);
+    const totalOpenInv = aggregates.reduce((s, a) => s + a.openInvoiceBalance, 0);
+    const totalBalInv = aggregates.reduce((s, a) => s + a.balancedInvoiceBalance, 0);
+    const totalBalInvCnt = aggregates.reduce((s, a) => s + a.balancedInvoiceCount, 0);
+    const totalOpenCm = aggregates.reduce((s, a) => s + a.openCmBalance, 0);
+    const totalOpenCmCnt = aggregates.reduce((s, a) => s + a.openCmCount, 0);
+    setMonthlyBalance(totalOpenInv + totalBalInv - totalOpenCm);
+    setMonthlyInvoiceCount(totalCount - totalCMCount);
+    setMonthlyCustomerCount(totalCustomers);
+    setMonthlyCreditMemoTotal(totalCMAmount);
+    setMonthlyCreditMemoCount(totalCMCount);
+    setMonthlyOpenInvBalance(totalOpenInv);
+    setMonthlyBalancedInvBalance(totalBalInv);
+    setMonthlyBalancedInvCount(totalBalInvCnt);
+    setMonthlyOpenCmBalance(totalOpenCm);
+    setMonthlyOpenCmCount(totalOpenCmCnt);
+  };
+
   const loadMonthlyAggregates = async (year: number) => {
     setLoading(true);
     setLoadingBatchInfo('');
     try {
+      if (hasActiveFilters) {
+        const { data: filteredData, error: filteredError } = await supabase.rpc('get_filtered_invoice_aggregates', {
+          p_period_type: 'monthly',
+          p_year: year,
+          p_status: filterStatus !== 'all' ? filterStatus : null,
+          p_type: filterType !== 'all' ? filterType : null,
+          p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : [],
+          p_excluded_customers: []
+        });
+
+        if (filteredError) throw filteredError;
+
+        applyMonthlyAggregateData(
+          filteredData || [], 'agg_month', 'total_amount', 'invoice_count', 'total_balance', 'total_open_balance',
+          'unique_customers', 'credit_memo_amount', 'credit_memo_count',
+          'open_invoice_balance', 'open_invoice_count', 'balanced_invoice_balance', 'balanced_invoice_count',
+          'open_cm_balance', 'open_cm_count', 'total_balance'
+        );
+        setLoading(false);
+        setLoadingBatchInfo('');
+        return;
+      }
+
       const { data: cachedData, error } = await supabase
         .from('cached_invoice_analytics')
         .select('*')
@@ -440,65 +526,12 @@ export default function InvoiceAnalyticsPage() {
       if (error) throw error;
 
       if (cachedData && cachedData.length > 0) {
-        const defaultAgg = { month: 0, total: 0, count: 0, balance: 0, openBalance: 0, customers: 0, creditMemoAmount: 0, creditMemoCount: 0, openInvoiceBalance: 0, openInvoiceCount: 0, balancedInvoiceBalance: 0, balancedInvoiceCount: 0, openCmBalance: 0, openCmCount: 0 };
-        const aggregates = Array.from({ length: 12 }, (_, idx) => ({ ...defaultAgg, month: idx }));
-        let totalAmount = 0;
-        let totalBalance = 0;
-        let totalCount = 0;
-        let totalCustomers = 0;
-        let totalCMAmount = 0;
-        let totalCMCount = 0;
-
-        cachedData.forEach((row: any) => {
-          if (row.month >= 1 && row.month <= 12) {
-            const amt = parseFloat(row.total_amount) || 0;
-            const bal = parseFloat(row.total_open_balance) || 0;
-            const cnt = row.invoice_count || 0;
-            const cust = row.unique_customer_count || 0;
-            const cmAmt = parseFloat(row.credit_memo_amount) || 0;
-            const cmCnt = row.credit_memo_count || 0;
-            aggregates[row.month - 1] = {
-              month: row.month - 1,
-              total: amt,
-              count: cnt,
-              balance: parseFloat(row.total_balance) || 0,
-              openBalance: bal,
-              customers: cust,
-              creditMemoAmount: cmAmt,
-              creditMemoCount: cmCnt,
-              openInvoiceBalance: parseFloat(row.open_invoice_balance) || 0,
-              openInvoiceCount: row.open_invoice_count || 0,
-              balancedInvoiceBalance: parseFloat(row.balanced_invoice_balance) || 0,
-              balancedInvoiceCount: row.balanced_invoice_count || 0,
-              openCmBalance: parseFloat(row.open_cm_balance) || 0,
-              openCmCount: row.open_cm_count || 0,
-            };
-            totalAmount += amt;
-            totalBalance += bal;
-            totalCount += cnt;
-            totalCustomers += cust;
-            totalCMAmount += cmAmt;
-            totalCMCount += cmCnt;
-          }
-        });
-
-        setMonthlyAggregates(aggregates);
-        setMonthlyTotal(totalAmount - totalCMAmount);
-        const totalOpenInv = aggregates.reduce((s, a) => s + a.openInvoiceBalance, 0);
-        const totalBalInv = aggregates.reduce((s, a) => s + a.balancedInvoiceBalance, 0);
-        const totalBalInvCnt = aggregates.reduce((s, a) => s + a.balancedInvoiceCount, 0);
-        const totalOpenCm = aggregates.reduce((s, a) => s + a.openCmBalance, 0);
-        const totalOpenCmCnt = aggregates.reduce((s, a) => s + a.openCmCount, 0);
-        setMonthlyBalance(totalOpenInv + totalBalInv - totalOpenCm);
-        setMonthlyInvoiceCount(totalCount - totalCMCount);
-        setMonthlyCustomerCount(totalCustomers);
-        setMonthlyCreditMemoTotal(totalCMAmount);
-        setMonthlyCreditMemoCount(totalCMCount);
-        setMonthlyOpenInvBalance(totalOpenInv);
-        setMonthlyBalancedInvBalance(totalBalInv);
-        setMonthlyBalancedInvCount(totalBalInvCnt);
-        setMonthlyOpenCmBalance(totalOpenCm);
-        setMonthlyOpenCmCount(totalOpenCmCnt);
+        applyMonthlyAggregateData(
+          cachedData, 'month', 'total_amount', 'invoice_count', 'total_balance', 'total_open_balance',
+          'unique_customer_count', 'credit_memo_amount', 'credit_memo_count',
+          'open_invoice_balance', 'open_invoice_count', 'balanced_invoice_balance', 'balanced_invoice_count',
+          'open_cm_balance', 'open_cm_count', 'total_balance'
+        );
         if (cachedData[0].calculated_at) {
           setLastRefreshTime(new Date(cachedData[0].calculated_at));
         }
@@ -514,9 +547,72 @@ export default function InvoiceAnalyticsPage() {
     }
   };
 
+  const applyYearlyAggregateData = (rows: any[], yearKey: string, amountKey: string, countKey: string, balanceKey: string, openBalanceKey: string, customerKey: string, cmAmountKey: string, cmCountKey: string, openInvBalKey: string, openInvCntKey: string, balInvBalKey: string, balInvCntKey: string, openCmBalKey: string, openCmCntKey: string) => {
+    const aggregates = rows.map((row: any) => ({
+      year: row[yearKey],
+      total: parseFloat(row[amountKey]) || 0,
+      count: parseInt(row[countKey]) || 0,
+      balance: parseFloat(row[balanceKey]) || 0,
+      openBalance: parseFloat(row[openBalanceKey]) || 0,
+      customers: parseInt(row[customerKey]) || 0,
+      creditMemoAmount: parseFloat(row[cmAmountKey]) || 0,
+      creditMemoCount: parseInt(row[cmCountKey]) || 0,
+      openInvoiceBalance: parseFloat(row[openInvBalKey]) || 0,
+      openInvoiceCount: parseInt(row[openInvCntKey]) || 0,
+      balancedInvoiceBalance: parseFloat(row[balInvBalKey]) || 0,
+      balancedInvoiceCount: parseInt(row[balInvCntKey]) || 0,
+      openCmBalance: parseFloat(row[openCmBalKey]) || 0,
+      openCmCount: parseInt(row[openCmCntKey]) || 0,
+    })).sort((a: any, b: any) => b.year - a.year);
+
+    setYearlyAggregates(aggregates);
+    const totalAmount = aggregates.reduce((s, a) => s + a.total, 0);
+    const totalCount = aggregates.reduce((s, a) => s + a.count, 0);
+    const totalCM = aggregates.reduce((s, a) => s + a.creditMemoAmount, 0);
+    const totalCMCnt = aggregates.reduce((s, a) => s + a.creditMemoCount, 0);
+    setMonthlyTotal(totalAmount - totalCM);
+    setMonthlyInvoiceCount(totalCount - totalCMCnt);
+    const totalOpenInv = aggregates.reduce((s, a) => s + a.openInvoiceBalance, 0);
+    const totalBalInv = aggregates.reduce((s, a) => s + a.balancedInvoiceBalance, 0);
+    const totalBalInvCnt = aggregates.reduce((s, a) => s + a.balancedInvoiceCount, 0);
+    const totalOpenCm = aggregates.reduce((s, a) => s + a.openCmBalance, 0);
+    const totalOpenCmCnt = aggregates.reduce((s, a) => s + a.openCmCount, 0);
+    setMonthlyBalance(totalOpenInv + totalBalInv - totalOpenCm);
+    setMonthlyCustomerCount(0);
+    setMonthlyCreditMemoTotal(totalCM);
+    setMonthlyCreditMemoCount(totalCMCnt);
+    setMonthlyOpenInvBalance(totalOpenInv);
+    setMonthlyBalancedInvBalance(totalBalInv);
+    setMonthlyBalancedInvCount(totalBalInvCnt);
+    setMonthlyOpenCmBalance(totalOpenCm);
+    setMonthlyOpenCmCount(totalOpenCmCnt);
+  };
+
   const loadYearlyAggregates = async () => {
     setLoading(true);
     try {
+      if (hasActiveFilters) {
+        const { data: filteredData, error: filteredError } = await supabase.rpc('get_filtered_invoice_aggregates', {
+          p_period_type: 'yearly',
+          p_year: null,
+          p_status: filterStatus !== 'all' ? filterStatus : null,
+          p_type: filterType !== 'all' ? filterType : null,
+          p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : [],
+          p_excluded_customers: []
+        });
+
+        if (filteredError) throw filteredError;
+
+        applyYearlyAggregateData(
+          filteredData || [], 'agg_year', 'total_amount', 'invoice_count', 'total_balance', 'total_open_balance',
+          'unique_customers', 'credit_memo_amount', 'credit_memo_count',
+          'open_invoice_balance', 'open_invoice_count', 'balanced_invoice_balance', 'balanced_invoice_count',
+          'open_cm_balance', 'open_cm_count'
+        );
+        setLoading(false);
+        return;
+      }
+
       const { data: cachedData, error } = await supabase
         .from('cached_invoice_analytics')
         .select('*')
@@ -526,44 +622,12 @@ export default function InvoiceAnalyticsPage() {
       if (error) throw error;
 
       if (cachedData && cachedData.length > 0) {
-        const aggregates = cachedData.map((row: any) => ({
-          year: row.year,
-          total: parseFloat(row.total_amount) || 0,
-          count: row.invoice_count || 0,
-          balance: parseFloat(row.total_balance) || 0,
-          openBalance: parseFloat(row.total_open_balance) || 0,
-          customers: row.unique_customer_count || 0,
-          creditMemoAmount: parseFloat(row.credit_memo_amount) || 0,
-          creditMemoCount: row.credit_memo_count || 0,
-          openInvoiceBalance: parseFloat(row.open_invoice_balance) || 0,
-          openInvoiceCount: row.open_invoice_count || 0,
-          balancedInvoiceBalance: parseFloat(row.balanced_invoice_balance) || 0,
-          balancedInvoiceCount: row.balanced_invoice_count || 0,
-          openCmBalance: parseFloat(row.open_cm_balance) || 0,
-          openCmCount: row.open_cm_count || 0,
-        }));
-
-        setYearlyAggregates(aggregates);
-        const totalAmount = aggregates.reduce((s, a) => s + a.total, 0);
-        const totalCount = aggregates.reduce((s, a) => s + a.count, 0);
-        const totalCM = aggregates.reduce((s, a) => s + a.creditMemoAmount, 0);
-        const totalCMCnt = aggregates.reduce((s, a) => s + a.creditMemoCount, 0);
-        setMonthlyTotal(totalAmount - totalCM);
-        setMonthlyInvoiceCount(totalCount - totalCMCnt);
-        const totalOpenInv = aggregates.reduce((s, a) => s + a.openInvoiceBalance, 0);
-        const totalBalInv = aggregates.reduce((s, a) => s + a.balancedInvoiceBalance, 0);
-        const totalBalInvCnt = aggregates.reduce((s, a) => s + a.balancedInvoiceCount, 0);
-        const totalOpenCm = aggregates.reduce((s, a) => s + a.openCmBalance, 0);
-        const totalOpenCmCnt = aggregates.reduce((s, a) => s + a.openCmCount, 0);
-        setMonthlyBalance(totalOpenInv + totalBalInv - totalOpenCm);
-        setMonthlyCustomerCount(0);
-        setMonthlyCreditMemoTotal(totalCM);
-        setMonthlyCreditMemoCount(totalCMCnt);
-        setMonthlyOpenInvBalance(totalOpenInv);
-        setMonthlyBalancedInvBalance(totalBalInv);
-        setMonthlyBalancedInvCount(totalBalInvCnt);
-        setMonthlyOpenCmBalance(totalOpenCm);
-        setMonthlyOpenCmCount(totalOpenCmCnt);
+        applyYearlyAggregateData(
+          cachedData, 'year', 'total_amount', 'invoice_count', 'total_balance', 'total_open_balance',
+          'unique_customer_count', 'credit_memo_amount', 'credit_memo_count',
+          'open_invoice_balance', 'open_invoice_count', 'balanced_invoice_balance', 'balanced_invoice_count',
+          'open_cm_balance', 'open_cm_count'
+        );
         if (cachedData[0].calculated_at) {
           setLastRefreshTime(new Date(cachedData[0].calculated_at));
         }
