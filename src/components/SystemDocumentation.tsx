@@ -241,71 +241,103 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
     setIsGeneratingPdf(true);
 
     try {
-      const wrapper = document.createElement('div');
-      wrapper.style.cssText = 'position:fixed;top:0;left:0;width:816px;background:#fff;z-index:-9999;overflow:visible;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#1a1a2e;line-height:1.6;font-size:11px;';
-      document.body.appendChild(wrapper);
-
-      const coverHtml = `
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:1056px;text-align:center;page-break-after:always;">
-          <h1 style="font-size:32px;font-weight:800;color:#1e40af;margin-bottom:8px;letter-spacing:-0.5px;">Venture Respiratory</h1>
-          <div style="width:80px;height:3px;background:linear-gradient(to right,#2563eb,#06b6d4);border-radius:2px;margin:24px auto;"></div>
-          <div style="font-size:18px;color:#475569;margin-bottom:40px;">AR Management System Documentation</div>
-          <p style="color:#64748b;font-size:13px;max-width:500px;line-height:1.7;margin:0 auto;">
-            Complete reference guide for the Accounts Receivable management platform,
-            including Acumatica sync, collection ticketing, email automation,
-            analytics, and administration.
-          </p>
-          <div style="font-size:12px;color:#94a3b8;margin-top:60px;">
-            <p><strong style="color:#64748b;">Generated:</strong> ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-            <p><strong style="color:#64748b;">Version:</strong> Production</p>
-          </div>
-        </div>`;
-
-      const tocHtml = `
-        <div style="padding:40px 30px;page-break-after:always;">
-          <h2 style="font-size:22px;color:#1e40af;margin-bottom:20px;font-weight:700;">Table of Contents</h2>
-          ${SECTIONS.map((s, i) => `
-            <div style="padding:6px 0;border-bottom:1px solid #f1f5f9;">
-              <span style="color:#334155;font-weight:600;font-size:13px;">${i + 1}. ${s.title}</span>
-              ${s.subsections ? s.subsections.map((sub, j) => `
-                <div style="margin-left:20px;padding:3px 0;"><span style="font-size:11px;color:#64748b;">${i + 1}.${j + 1} ${sub.title}</span></div>
-              `).join('') : ''}
-            </div>
-          `).join('')}
-        </div>`;
+      const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const filename = `Venture-Respiratory-Documentation-${new Date().toISOString().split('T')[0]}.pdf`;
 
       const contentClone = contentRef.current.cloneNode(true) as HTMLElement;
       contentClone.querySelectorAll('button').forEach(el => el.remove());
       contentClone.querySelectorAll('svg').forEach(el => el.remove());
-      contentClone.style.cssText = 'padding:20px 30px;';
 
-      wrapper.innerHTML = coverHtml + tocHtml;
-      wrapper.appendChild(contentClone);
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:absolute;left:-9999px;top:0;width:780px;height:auto;border:none;';
+      document.body.appendChild(iframe);
 
-      await new Promise(r => setTimeout(r, 100));
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!iframeDoc) throw new Error('Could not access iframe document');
 
-      const filename = `Venture-Respiratory-Documentation-${new Date().toISOString().split('T')[0]}.pdf`;
+      iframeDoc.open();
+      iframeDoc.write(`<!DOCTYPE html><html><head><style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#1a1a2e; line-height:1.6; font-size:11px; background:#fff; width:780px; }
+        .cover { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:1020px; text-align:center; page-break-after:always; }
+        .cover h1 { font-size:32px; font-weight:800; color:#1e40af; margin-bottom:8px; }
+        .cover .line { width:80px; height:3px; background:linear-gradient(to right,#2563eb,#06b6d4); border-radius:2px; margin:24px auto; }
+        .cover .subtitle { font-size:18px; color:#475569; margin-bottom:40px; }
+        .cover .desc { color:#64748b; font-size:13px; max-width:500px; line-height:1.7; margin:0 auto; }
+        .cover .meta { font-size:12px; color:#94a3b8; margin-top:60px; }
+        .cover .meta strong { color:#64748b; }
+        .toc { padding:40px 20px; page-break-after:always; }
+        .toc h2 { font-size:22px; color:#1e40af; margin-bottom:20px; font-weight:700; }
+        .toc-item { padding:6px 0; border-bottom:1px solid #f1f5f9; }
+        .toc-item .main { color:#334155; font-weight:600; font-size:13px; }
+        .toc-item .sub { margin-left:20px; padding:3px 0; font-size:11px; color:#64748b; }
+        .content { padding:20px; }
+        .content h2 { font-size:18px; font-weight:700; color:#1e3a5f; border-bottom:2px solid #e2e8f0; padding-bottom:6px; margin-top:24px; margin-bottom:12px; page-break-after:avoid; }
+        .content h3 { font-size:14px; font-weight:600; color:#334155; margin-top:16px; margin-bottom:8px; page-break-after:avoid; }
+        .content h4 { font-size:12px; font-weight:600; color:#475569; margin-bottom:6px; }
+        .content p { margin-bottom:8px; font-size:11px; color:#374151; }
+        .content strong { color:#1e293b; }
+        .content ul, .content ol { margin-bottom:8px; padding-left:18px; }
+        .content li { margin-bottom:3px; font-size:11px; color:#374151; }
+        .content table { width:100%; border-collapse:collapse; margin-bottom:12px; font-size:10px; }
+        .content th { background:#f1f5f9; padding:4px 6px; text-align:left; font-weight:600; color:#334155; border:1px solid #e2e8f0; }
+        .content td { padding:3px 6px; border:1px solid #e2e8f0; color:#374151; }
+        .content tr:nth-child(even) td { background:#f8fafc; }
+        .content .rounded-lg { border-radius:0 !important; }
+        .content .grid { display:block !important; }
+        .content [class*="bg-"] { background:transparent !important; border:1px solid #e2e8f0; padding:8px; margin-bottom:8px; }
+        .content [class*="text-gray-"] { color:#374151 !important; }
+        .content [class*="text-blue-"] { color:#1e40af !important; }
+        .content [class*="font-mono"] { font-family:Menlo,Monaco,Consolas,monospace; font-size:10px; }
+      </style></head><body></body></html>`);
+      iframeDoc.close();
+
+      const coverEl = iframeDoc.createElement('div');
+      coverEl.className = 'cover';
+      coverEl.innerHTML = `
+        <h1>Venture Respiratory</h1>
+        <div class="line"></div>
+        <div class="subtitle">AR Management System Documentation</div>
+        <p class="desc">Complete reference guide for the Accounts Receivable management platform, including Acumatica sync, collection ticketing, email automation, analytics, and administration.</p>
+        <div class="meta"><p><strong>Generated:</strong> ${dateStr}</p><p><strong>Version:</strong> Production</p></div>`;
+      iframeDoc.body.appendChild(coverEl);
+
+      const tocEl = iframeDoc.createElement('div');
+      tocEl.className = 'toc';
+      tocEl.innerHTML = `<h2>Table of Contents</h2>` + SECTIONS.map((s, i) => `
+        <div class="toc-item">
+          <div class="main">${i + 1}. ${s.title}</div>
+          ${(s.subsections || []).map((sub, j) => `<div class="sub">${i + 1}.${j + 1} ${sub.title}</div>`).join('')}
+        </div>`).join('');
+      iframeDoc.body.appendChild(tocEl);
+
+      const contentDiv = iframeDoc.createElement('div');
+      contentDiv.className = 'content';
+      contentDiv.innerHTML = contentClone.innerHTML;
+      iframeDoc.body.appendChild(contentDiv);
+
+      await new Promise(r => setTimeout(r, 300));
 
       await html2pdf().set({
-        margin: [0.4, 0.5, 0.4, 0.5],
+        margin: [0.35, 0.4, 0.35, 0.4],
         filename,
-        image: { type: 'jpeg', quality: 0.92 },
+        image: { type: 'jpeg', quality: 0.95 },
         html2canvas: {
           scale: 2,
           useCORS: true,
           logging: false,
-          scrollY: -window.scrollY,
-          width: 816,
-          windowWidth: 816,
+          scrollY: 0,
+          width: 780,
+          windowWidth: 780,
         },
         jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-      }).from(wrapper).save();
+        pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', 'h2', 'h3', 'h4', '.toc-item'] }
+      }).from(iframeDoc.body).save();
 
-      document.body.removeChild(wrapper);
-      setIsGeneratingPdf(false);
+      document.body.removeChild(iframe);
     } catch (err) {
       console.error('PDF generation error:', err);
+    } finally {
       setIsGeneratingPdf(false);
     }
   }, [isGeneratingPdf]);
