@@ -56,7 +56,7 @@ export default function TicketDetailPage() {
   const [showAllInvoices, setShowAllInvoices] = useState(true);
   const [showPaidInvoices, setShowPaidInvoices] = useState(false);
 
-  const [memoModal, setMemoModal] = useState<Assignment | null>(null);
+  const [memoModal, setMemoModal] = useState<any | null>(null);
   const [ticketMemoModal, setTicketMemoModal] = useState(false);
   const [reminderModal, setReminderModal] = useState<{
     type: 'ticket' | 'invoice';
@@ -149,7 +149,7 @@ export default function TicketDetailPage() {
       if (invoiceRefs.length > 0) {
         const { data: invoices } = await supabase
           .from('acumatica_invoices')
-          .select('reference_number, date, due_date, amount, balance, description, status, type')
+          .select('reference_number, date, due_date, amount, balance, description, status, type, color_status, promise_date')
           .neq('status', 'On Hold')
           .in('reference_number', invoiceRefs);
 
@@ -158,41 +158,17 @@ export default function TicketDetailPage() {
         }
       }
 
-      let colorStatusMap = new Map<string, string>();
-      if (invoiceRefs.length > 0) {
-        const { data: colorData } = await supabase
-          .from('invoice_color_status')
-          .select('invoice_reference_number, color_status')
-          .in('invoice_reference_number', invoiceRefs);
-
-        if (colorData) {
-          colorData.forEach(c => colorStatusMap.set(c.invoice_reference_number, c.color_status));
-        }
-      }
-
-      let promiseDateMap = new Map<string, string>();
-      if (invoiceRefs.length > 0) {
-        const { data: promiseData } = await supabase
-          .from('invoice_promise_dates')
-          .select('invoice_reference_number, promise_date')
-          .in('invoice_reference_number', invoiceRefs);
-
-        if (promiseData) {
-          promiseData.forEach(p => promiseDateMap.set(p.invoice_reference_number, p.promise_date));
-        }
-      }
-
       let memoCountMap = new Map<string, number>();
       if (invoiceRefs.length > 0) {
         const { data: memoCounts } = await supabase
           .from('invoice_memos')
-          .select('invoice_reference_number')
-          .in('invoice_reference_number', invoiceRefs);
+          .select('invoice_reference')
+          .in('invoice_reference', invoiceRefs);
 
         if (memoCounts) {
           memoCounts.forEach(m => {
-            const count = memoCountMap.get(m.invoice_reference_number) || 0;
-            memoCountMap.set(m.invoice_reference_number, count + 1);
+            const count = memoCountMap.get(m.invoice_reference) || 0;
+            memoCountMap.set(m.invoice_reference, count + 1);
           });
         }
       }
@@ -233,10 +209,10 @@ export default function TicketDetailPage() {
           amount: inv?.amount || 0,
           balance: inv?.balance || 0,
           invoice_status: inv?.status || 'Unknown',
-          color_status: colorStatusMap.get(a.invoice_reference_number) || null,
+          color_status: inv?.color_status || null,
           description: inv?.description || '',
           assignment_notes: a.notes || '',
-          promise_date: promiseDateMap.get(a.invoice_reference_number) || null,
+          promise_date: inv?.promise_date || null,
           collection_date: appDataMap.get(a.invoice_reference_number) || null,
           memo_count: memoCountMap.get(a.invoice_reference_number) || 0,
         };
@@ -262,12 +238,12 @@ export default function TicketDetailPage() {
       const hasDocuments = noteData?.some(n => n.document_urls && n.document_urls.length > 0) || false;
 
       const { data: memoData } = await supabase
-        .from('invoice_memos')
-        .select('id, attachment_urls')
+        .from('ticket_memos')
+        .select('id, document_urls')
         .eq('ticket_id', ticketId);
 
       const ticketMemoCount = memoData?.length || 0;
-      const hasMemoAttachments = memoData?.some(m => m.attachment_urls && m.attachment_urls.length > 0) || false;
+      const hasMemoAttachments = memoData?.some(m => m.document_urls && m.document_urls.length > 0) || false;
 
       const { data: activityData } = await supabase
         .from('ticket_activity_log')
@@ -474,17 +450,11 @@ export default function TicketDetailPage() {
 
   const handleColorChange = async (refNumber: string, color: string | null) => {
     try {
-      if (color) {
-        await supabase.from('invoice_color_status').upsert({
-          invoice_reference_number: refNumber,
-          color_status: color,
-          updated_by: user?.id,
-        }, { onConflict: 'invoice_reference_number' });
-      } else {
-        await supabase.from('invoice_color_status')
-          .delete()
-          .eq('invoice_reference_number', refNumber);
-      }
+      await supabase
+        .from('acumatica_invoices')
+        .update({ color_status: color })
+        .eq('reference_number', refNumber);
+
       setChangingColorForInvoice(null);
       await loadTicketData();
     } catch (err) {
@@ -579,6 +549,24 @@ export default function TicketDetailPage() {
     }
   };
 
+  const handleOpenMemo = async (invoice: Assignment) => {
+    try {
+      const { data: invoiceData } = await supabase
+        .from('acumatica_invoices')
+        .select('id, reference_number, customer, customer_name, date, balance, status')
+        .eq('reference_number', invoice.invoice_reference_number)
+        .maybeSingle();
+
+      if (!invoiceData) {
+        alert('Invoice not found');
+        return;
+      }
+      setMemoModal(invoiceData);
+    } catch (err) {
+      console.error('Error opening memo:', err);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -634,19 +622,19 @@ export default function TicketDetailPage() {
 
       {memoModal && (
         <InvoiceMemoModal
-          invoiceReferenceNumber={memoModal.invoice_reference_number}
-          customerName={memoModal.customer_name}
-          ticketId={ticket.ticket_id}
+          invoice={memoModal}
           onClose={() => { setMemoModal(null); loadTicketData(); }}
         />
       )}
 
       {ticketMemoModal && (
         <TicketMemoModal
-          ticketId={ticket.ticket_id}
-          ticketNumber={ticket.ticket_number}
-          customerName={ticket.customer_name}
-          customerId={ticket.customer_id}
+          ticket={{
+            id: ticket.ticket_id,
+            ticket_number: ticket.ticket_number,
+            customer_name: ticket.customer_name,
+            customer_id: ticket.customer_id,
+          }}
           onClose={() => { setTicketMemoModal(false); loadTicketData(); }}
         />
       )}
@@ -669,15 +657,23 @@ export default function TicketDetailPage() {
           newStatus={statusChangeModal.newStatus}
           currentStatusDisplay={statusChangeModal.currentStatusDisplay}
           newStatusDisplay={statusChangeModal.newStatusDisplay}
-          onConfirm={async () => {
+          onConfirm={async (note: string) => {
             setChangingTicketStatus(true);
             try {
               await supabase.from('collection_tickets').update({ status: statusChangeModal.newStatus }).eq('id', statusChangeModal.ticketId);
+              await supabase.from('ticket_status_history').insert({
+                ticket_id: statusChangeModal.ticketId,
+                old_status: statusChangeModal.currentStatus,
+                new_status: statusChangeModal.newStatus,
+                changed_by: user?.id,
+                notes: note,
+              });
               await supabase.from('ticket_activity_log').insert({
                 ticket_id: statusChangeModal.ticketId,
                 activity_type: 'status_change',
-                description: `Status changed to ${statusChangeModal.newStatusDisplay || statusChangeModal.newStatus}`,
+                description: `Status changed from ${statusChangeModal.currentStatusDisplay || statusChangeModal.currentStatus} to ${statusChangeModal.newStatusDisplay || statusChangeModal.newStatus}: ${note}`,
                 created_by: user?.id,
+                metadata: { old_status: statusChangeModal.currentStatus, new_status: statusChangeModal.newStatus, note },
               });
               setStatusChangeModal(null);
               await loadTicketData();
@@ -1079,7 +1075,7 @@ export default function TicketDetailPage() {
                               <td className="px-2 py-1.5 text-center whitespace-nowrap">
                                 <div className="flex items-center justify-center gap-0.5">
                                   <button onClick={() => setReminderModal({ type: 'invoice', invoiceReference: invoice.invoice_reference_number, customerName: ticket.customer_name })} className="p-1 text-amber-600 hover:bg-amber-100 rounded transition-colors" title="Reminder"><Bell className="w-3.5 h-3.5" /></button>
-                                  <button onClick={() => setMemoModal(invoice)} className={`p-1 rounded transition-colors relative ${invoice.memo_count && invoice.memo_count > 0 ? 'text-amber-700 hover:bg-amber-100' : 'text-blue-600 hover:bg-blue-100'}`} title="Memos">
+                                  <button onClick={() => handleOpenMemo(invoice)} className={`p-1 rounded transition-colors relative ${invoice.memo_count && invoice.memo_count > 0 ? 'text-amber-700 hover:bg-amber-100' : 'text-blue-600 hover:bg-blue-100'}`} title="Memos">
                                     <MessageSquare className="w-3.5 h-3.5" />
                                     {invoice.memo_count && invoice.memo_count > 0 && <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[8px] rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">{invoice.memo_count}</span>}
                                   </button>
@@ -1148,7 +1144,7 @@ export default function TicketDetailPage() {
                                 <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">{invoice.collection_date ? <span className="text-green-600">{formatDate(invoice.collection_date)}</span> : '-'}</td>
                                 <td className="px-2 py-1.5 border-r border-gray-100 text-right whitespace-nowrap">${(invoice.amount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                                 <td className="px-2 py-1.5 border-r border-gray-100 text-right whitespace-nowrap text-green-700 font-medium">${(invoice.balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-2 py-1.5 text-center whitespace-nowrap"><button onClick={() => setMemoModal(invoice)} className="p-0.5 text-blue-500 hover:bg-blue-100 rounded transition-colors" title="Memos"><MessageSquare className="w-3 h-3" /></button></td>
+                                <td className="px-2 py-1.5 text-center whitespace-nowrap"><button onClick={() => handleOpenMemo(invoice)} className="p-0.5 text-blue-500 hover:bg-blue-100 rounded transition-colors" title="Memos"><MessageSquare className="w-3 h-3" /></button></td>
                               </tr>
                             ))}
                           </tbody>

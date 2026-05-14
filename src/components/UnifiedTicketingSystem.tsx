@@ -731,7 +731,7 @@ export default function UnifiedTicketingSystem({
       if (ticketNotes) {
         await supabase.from('ticket_notes').insert({
           ticket_id: newTicket.id,
-          created_by: user!.id,
+          created_by_user_id: user!.id,
           note_text: ticketNotes
         });
       }
