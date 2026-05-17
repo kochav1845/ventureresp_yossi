@@ -72,6 +72,38 @@ html,
   animation: scale-in 0.3s ease-out;
 }
 
+@keyframes chat-slide-up {
+  from {
+    transform: translateY(20px) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-in {
+  animation: chat-slide-up 0.3s ease-out;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 4px;
+}
+
+.chat-content strong {
+  color: #6ee7b7;
+}
+
 /* Custom Scrollbar Styling - Light Theme */
 ::-webkit-scrollbar {
   width: 10px;
