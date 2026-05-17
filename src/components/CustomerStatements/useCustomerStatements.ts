@@ -2,9 +2,27 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { StatementCustomer, StatementInvoice, ReportTemplate, SortField, SortOrder } from './types';
 
+const BATCH_SIZE = 200;
+
+function mapRow(row: any): StatementCustomer {
+  return {
+    customer_id: row.customer_id,
+    customer_name: row.customer_name || row.customer_id,
+    email: row.email || '',
+    terms: row.terms || '',
+    total_balance: Number(row.total_balance) || 0,
+    credit_memo_balance: Number(row.credit_memo_balance) || 0,
+    open_invoice_count: Number(row.open_invoice_count) || 0,
+    max_days_overdue: Number(row.max_days_overdue) || 0,
+    invoices: [],
+  };
+}
+
 export function useCustomerStatements() {
   const [customers, setCustomers] = useState<StatementCustomer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalLoaded, setTotalLoaded] = useState(0);
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -16,48 +34,52 @@ export function useCustomerStatements() {
   const [showTestCustomers, setShowTestCustomers] = useState(false);
   const [invoiceCache, setInvoiceCache] = useState<Record<string, StatementInvoice[]>>({});
   const [loadingInvoices, setLoadingInvoices] = useState<string | null>(null);
-  const loadedRef = useRef(false);
-  const testLoadedRef = useRef(false);
+  const abortRef = useRef(0);
 
   const loadData = useCallback(async (testMode: boolean) => {
-    if (testMode && testLoadedRef.current) return;
-    if (!testMode && loadedRef.current) return;
-    if (testMode) testLoadedRef.current = true;
-    else loadedRef.current = true;
+    const loadId = ++abortRef.current;
     setLoading(true);
+    setLoadingMore(false);
+    setCustomers([]);
+    setTotalLoaded(0);
 
     try {
-      let allData: any[] = [];
       let from = 0;
-      const pageSize = 1000;
+      let firstBatch = true;
       while (true) {
+        if (abortRef.current !== loadId) return;
+
         const { data, error } = await supabase.rpc('get_customer_statements', {
           p_test_mode: testMode,
-        }).range(from, from + pageSize - 1);
+        }).range(from, from + BATCH_SIZE - 1);
+
+        if (abortRef.current !== loadId) return;
         if (error) throw error;
         if (!data || data.length === 0) break;
-        allData = [...allData, ...data];
-        if (data.length < pageSize) break;
-        from += pageSize;
+
+        const mapped = data.map(mapRow);
+
+        setCustomers(prev => [...prev, ...mapped]);
+        setTotalLoaded(prev => prev + mapped.length);
+
+        if (firstBatch) {
+          setLoading(false);
+          firstBatch = false;
+          if (data.length === BATCH_SIZE) {
+            setLoadingMore(true);
+          }
+        }
+
+        if (data.length < BATCH_SIZE) break;
+        from += BATCH_SIZE;
       }
-
-      const mapped: StatementCustomer[] = allData.map((row: any) => ({
-        customer_id: row.customer_id,
-        customer_name: row.customer_name || row.customer_id,
-        email: row.email || '',
-        terms: row.terms || '',
-        total_balance: Number(row.total_balance) || 0,
-        credit_memo_balance: Number(row.credit_memo_balance) || 0,
-        open_invoice_count: Number(row.open_invoice_count) || 0,
-        max_days_overdue: Number(row.max_days_overdue) || 0,
-        invoices: [],
-      }));
-
-      setCustomers(mapped);
     } catch (err) {
       console.error('Error loading customer statements data:', err);
     } finally {
-      setLoading(false);
+      if (abortRef.current === loadId) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, []);
 
@@ -227,8 +249,7 @@ export function useCustomerStatements() {
   };
 
   const handleToggleTestCustomers = (value: boolean) => {
-    if (value) testLoadedRef.current = false;
-    else loadedRef.current = false;
+    abortRef.current++;
     setSelectedIds(new Set());
     setSearch('');
     setInvoiceCache({});
@@ -238,6 +259,8 @@ export function useCustomerStatements() {
   return {
     customers: filtered,
     loading,
+    loadingMore,
+    totalLoaded,
     loadingInvoices,
     templates,
     selectedTemplateId,

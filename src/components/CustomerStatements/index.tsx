@@ -1,4 +1,4 @@
-import { Search, X, ArrowUpDown, DollarSign, FileText, Users, Clock, CheckSquare, Square, FlaskConical } from 'lucide-react';
+import { Search, X, ArrowUpDown, DollarSign, FileText, Users, Clock, CheckSquare, Square, FlaskConical, Loader2 } from 'lucide-react';
 import { useCustomerStatements } from './useCustomerStatements';
 import CustomerStatementCard from './CustomerStatementCard';
 import StatementActions from './StatementActions';
@@ -9,7 +9,7 @@ const fmtCurrency = (n: number) =>
 
 export default function CustomerStatements() {
   const {
-    customers, loading, loadingInvoices, templates, selectedTemplateId, setSelectedTemplateId,
+    customers, loading, loadingMore, totalLoaded, loadingInvoices, templates, selectedTemplateId, setSelectedTemplateId,
     selectedIds, toggleCustomer, selectAll, deselectAll,
     search, setSearch, minBalance, setMinBalance,
     sortField, setSortField, sortOrder, setSortOrder,
@@ -23,7 +23,7 @@ export default function CustomerStatements() {
   const totalInvoices = customers.reduce((s, c) => s + c.open_invoice_count, 0);
   const overdueCount = customers.filter(c => c.max_days_overdue > 30).length;
 
-  if (loading) {
+  if (loading && customers.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
@@ -199,7 +199,16 @@ export default function CustomerStatements() {
           />
         ))}
 
-        {customers.length === 0 && (
+        {loadingMore && (
+          <div className="flex items-center justify-center py-4 bg-white rounded-xl border border-gray-200">
+            <Loader2 className="w-4 h-4 animate-spin text-blue-500 mr-2" />
+            <p className="text-sm text-gray-500">
+              Loading more customers... ({totalLoaded} loaded so far)
+            </p>
+          </div>
+        )}
+
+        {!loading && !loadingMore && customers.length === 0 && (
           <div className="text-center py-16 bg-white rounded-xl border border-gray-200">
             <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <h3 className="text-lg font-medium text-gray-700">No customers found</h3>
