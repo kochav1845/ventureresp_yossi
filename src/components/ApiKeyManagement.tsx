@@ -119,6 +119,7 @@ export default function ApiKeyManagement() {
         </div>
         <button
           onClick={() => setShowCreateForm(true)}
+          data-tour="api-key-create"
           className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
         >
           <Plus size={16} />
@@ -222,7 +223,7 @@ export default function ApiKeyManagement() {
       )}
 
       {/* Keys List */}
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-6">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-6" data-tour="api-key-list">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-700">
             Your API Keys ({keys.length})

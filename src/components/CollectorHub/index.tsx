@@ -291,12 +291,14 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
               placeholder="Search by name or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              data-tour="collector-search"
               className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
             />
           </div>
           <select
             value={dateRange}
             onChange={(e) => setDateRange(Number(e.target.value))}
+            data-tour="collector-date-range"
             className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white font-medium"
           >
             <option value={7}>Last 7 Days</option>
@@ -310,6 +312,7 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
+            data-tour="collector-sort"
             className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white font-medium"
           >
             <option value="collected">Sort: Total Collected</option>

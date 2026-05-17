@@ -457,6 +457,7 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
           <div className="flex gap-3">
             <button
               onClick={exportToExcel}
+              data-tour="analytics-export"
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             >
               <Download size={18} />
@@ -475,7 +476,7 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
         </div>
 
         {/* Preset Filters */}
-        <div className="mb-6 flex flex-wrap gap-3">
+        <div className="mb-6 flex flex-wrap gap-3" data-tour="analytics-presets">
           {PRESET_FILTERS.map((preset, index) => (
             <button
               key={index}
@@ -631,7 +632,7 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
               </div>
 
               {/* Sort By */}
-              <div>
+              <div data-tour="analytics-sort">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Sort By</label>
                 <select
                   value={filters.sortBy}

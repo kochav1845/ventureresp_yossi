@@ -319,6 +319,7 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
                 setShowCreateModal(true);
               }}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+              data-tour="reminder-create"
             >
               <Plus className="w-4 h-4" />
               New Reminder
@@ -326,7 +327,7 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
           </div>
         </div>
 
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2" data-tour="reminder-tabs">
           <button
             onClick={() => setFilter('all')}
             className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
@@ -399,7 +400,7 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
             <p className="text-slate-400 text-lg">No reminders found</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3" data-tour="reminder-list">
             {filteredReminders.map((reminder) => (
               <div
                 key={reminder.id}

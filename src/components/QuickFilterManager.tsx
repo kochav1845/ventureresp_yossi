@@ -651,6 +651,7 @@ export default function QuickFilterManager({ onClose, onFiltersUpdated }: QuickF
                 </p>
                 <button
                   onClick={startCreate}
+                  data-tour="quick-filter-create"
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
                 >
                   <Plus className="w-5 h-5" />
@@ -673,7 +674,7 @@ export default function QuickFilterManager({ onClose, onFiltersUpdated }: QuickF
                   </button>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-3" data-tour="quick-filter-list">
                   {filters.map((filter) => {
                     const IconComponent = getIconComponent(filter.icon);
                     return (

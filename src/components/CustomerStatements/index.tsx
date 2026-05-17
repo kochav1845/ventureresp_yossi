@@ -47,7 +47,7 @@ export default function CustomerStatements() {
               : 'Select customers to download or email their open balance statements'}
           </p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-1.5 border border-gray-200 inline-flex shrink-0">
+        <div className="bg-white rounded-xl shadow-sm p-1.5 border border-gray-200 inline-flex shrink-0" data-tour="statement-view-toggle">
           <button
             onClick={() => toggleTestCustomers(false)}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
@@ -72,7 +72,7 @@ export default function CustomerStatements() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-tour="statement-stats">
         <StatCard
           icon={<Users className="w-5 h-5 text-blue-600" />}
           iconBg="bg-blue-50"
@@ -176,15 +176,17 @@ export default function CustomerStatements() {
         </div>
       </div>
 
-      <StatementActions
-        selectedCustomers={selectedCustomers}
-        templates={templates}
-        selectedTemplateId={selectedTemplateId}
-        onTemplateChange={setSelectedTemplateId}
-        ensureInvoicesLoaded={ensureInvoicesLoaded}
-      />
+      <div data-tour="statement-actions">
+        <StatementActions
+          selectedCustomers={selectedCustomers}
+          templates={templates}
+          selectedTemplateId={selectedTemplateId}
+          onTemplateChange={setSelectedTemplateId}
+          ensureInvoicesLoaded={ensureInvoicesLoaded}
+        />
+      </div>
 
-      <div className="space-y-3">
+      <div className="space-y-3" data-tour="statement-list">
         {customers.map(customer => (
           <CustomerStatementCard
             key={customer.customer_id}

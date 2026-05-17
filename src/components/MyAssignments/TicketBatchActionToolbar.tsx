@@ -35,7 +35,7 @@ export default function TicketBatchActionToolbar({
 
   if (selectedCount === 0) {
     return (
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-4 flex items-center gap-3" data-tour="ticket-batch-actions">
         <button
           onClick={onToggleSelectAll}
           className="px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -47,7 +47,7 @@ export default function TicketBatchActionToolbar({
   }
 
   return (
-    <div className="mb-4 bg-blue-50 border-2 border-blue-300 rounded-lg p-4 sticky top-0 z-10">
+    <div className="mb-4 bg-blue-50 border-2 border-blue-300 rounded-lg p-4 sticky top-0 z-10" data-tour="ticket-batch-actions">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-4">
           <span className="font-semibold text-blue-900">

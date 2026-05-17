@@ -425,6 +425,7 @@ export default function EmailFormulas({ onBack }: EmailFormulasProps) {
                 </button>
                 <button
                   onClick={handleCreate}
+                  data-tour="formula-create"
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                 >
                   <Plus size={18} />
@@ -453,7 +454,7 @@ export default function EmailFormulas({ onBack }: EmailFormulasProps) {
                 </button>
               </div>
             ) : (
-              <div className="grid gap-4">
+              <div className="grid gap-4" data-tour="formula-list">
                 {formulas.map((formula) => (
                   <div
                     key={formula.id}

@@ -207,6 +207,7 @@ export default function InvoiceBreakdown() {
           <button
             onClick={handleExportCSV}
             disabled={filteredMonths.length === 0}
+            data-tour="ibreakdown-export"
             className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
           >
             <Download size={16} />
@@ -226,7 +227,7 @@ export default function InvoiceBreakdown() {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6 overflow-hidden">
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
-            <div className="relative flex-1 max-w-md">
+            <div className="relative flex-1 max-w-md" data-tour="ibreakdown-search">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
@@ -238,6 +239,7 @@ export default function InvoiceBreakdown() {
             </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
+              data-tour="ibreakdown-date-filter"
               className={`flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg transition-colors ${
                 showFilters || hasActiveFilters
                   ? 'bg-blue-50 border-blue-200 text-blue-700'
@@ -252,6 +254,7 @@ export default function InvoiceBreakdown() {
             </button>
             <button
               onClick={() => setShowBalance(!showBalance)}
+              data-tour="ibreakdown-balance-toggle"
               className={`flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg transition-colors ${
                 showBalance
                   ? 'bg-teal-50 border-teal-200 text-teal-700'

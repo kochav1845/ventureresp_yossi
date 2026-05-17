@@ -460,6 +460,7 @@ export default function EmailSettings() {
         <button
           onClick={handleSave}
           disabled={saving}
+          data-tour="email-save"
           className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium text-sm disabled:opacity-50 shadow-sm"
         >
           {saving ? (
@@ -484,7 +485,7 @@ export default function EmailSettings() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm" data-tour="email-ar-settings">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
               <Mail className="w-5 h-5 text-blue-600" />
@@ -771,7 +772,7 @@ export default function EmailSettings() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-tour="email-test-btns">
           {emailTests.map((test) => {
             const Icon = test.icon;
             const colors = colorMap[test.color];

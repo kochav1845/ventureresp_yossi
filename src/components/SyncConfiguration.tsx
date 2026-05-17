@@ -172,15 +172,17 @@ export default function SyncConfiguration({ onBack }: SyncConfigurationProps) {
         )}
 
         <div className="space-y-6">
-          <CredentialsCard
-            credentials={credentials}
-            hasCredentials={hasCredentials}
-            onUpdate={setCredentials}
-            onSaved={() => {
-              setHasCredentials(true);
-              loadCredentials();
-            }}
-          />
+          <div data-tour="sync-credentials">
+            <CredentialsCard
+              credentials={credentials}
+              hasCredentials={hasCredentials}
+              onUpdate={setCredentials}
+              onSaved={() => {
+                setHasCredentials(true);
+                loadCredentials();
+              }}
+            />
+          </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <div className="mb-6">
@@ -204,7 +206,7 @@ export default function SyncConfiguration({ onBack }: SyncConfigurationProps) {
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-4" data-tour="sync-entities">
             <h2 className="text-xl font-semibold text-slate-900">Entity Sync Settings</h2>
             {configs.map((config) => (
               <EntitySyncCard

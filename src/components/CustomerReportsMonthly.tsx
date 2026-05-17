@@ -565,7 +565,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
           </div>
         </div>
 
-        <div className="bg-slate-900 rounded-lg p-6 mb-6 border border-slate-800">
+        <div className="bg-slate-900 rounded-lg p-6 mb-6 border border-slate-800" data-tour="report-filters">
           <div className="flex items-center gap-2 mb-4">
             <Filter className="w-5 h-5" />
             <h2 className="text-xl font-semibold">Search & Filters</h2>
@@ -697,7 +697,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
             </div>
           </div>
 
-          <div className="flex gap-3 mt-6">
+          <div className="flex gap-3 mt-6" data-tour="report-select-all">
             <button
               onClick={selectAll}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors"
@@ -718,7 +718,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
         </div>
 
         <div className="bg-slate-900 rounded-lg p-6 mb-6 border border-slate-800">
-          <div className="mb-4 flex items-center gap-3">
+          <div className="mb-4 flex items-center gap-3" data-tour="report-template">
             <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
               <Mail className="w-4 h-4" />
               Email Template:
@@ -746,7 +746,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
               Manage Templates
             </button>
           </div>
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-4" data-tour="report-actions">
             <button
               onClick={generatePDFs}
               disabled={generatingPDFs || selectedCustomers.size === 0}
@@ -804,7 +804,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
             <span className="text-slate-400">Loading customers...</span>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-4" data-tour="report-list">
             {customers.map((customer) => {
               const isExpanded = expandedCustomers.has(customer.customer_id);
               const invoices = customerInvoices.get(customer.customer_id);

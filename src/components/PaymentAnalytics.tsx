@@ -2148,6 +2148,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                 ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-gray-700'
                 : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-300'
             }`}
+            data-tour="payment-dashboard"
           >
             <TrendingUp className="w-5 h-5" />
             {showAnalyticsDashboard ? 'Hide Analytics' : 'Show Analytics Dashboard'}
@@ -2909,7 +2910,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
       <div className="flex">
         {/* Sidebar */}
-        <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-gray-50 border-r border-gray-200 transition-all duration-300 overflow-hidden`}>
+        <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-gray-50 border-r border-gray-200 transition-all duration-300 overflow-hidden`} data-tour="payment-filters">
           <div className="p-4">
             <button
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -3230,7 +3231,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
             </div>
           </div>
 
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-6" data-tour="payment-date-nav">
             <button
               onClick={previousPeriod}
               className="p-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors"
@@ -3451,6 +3452,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                data-tour="payment-search"
               />
             </div>
             <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1 border border-gray-300">
@@ -3478,6 +3480,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
             <button
               onClick={exportToExcel}
               className="flex items-center gap-2 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all shadow-sm"
+              data-tour="payment-export"
             >
               <Download className="w-5 h-5" />
               Export Excel
@@ -3602,7 +3605,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
               </div>
             ) : (
               <table className="divide-y divide-gray-200" style={{ minWidth: '1400px', width: 'max-content' }}>
-                <thead>
+                <thead data-tour="payment-sort">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 border-r border-gray-200 sticky top-0 z-10">
                       <div className="w-8"></div>

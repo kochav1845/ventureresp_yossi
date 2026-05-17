@@ -225,6 +225,7 @@ export default function InvoiceColorStatusManagement({ onBack }: InvoiceColorSta
           {!addingNew && (
             <button
               onClick={() => setAddingNew(true)}
+              data-tour="color-add"
               className="mb-6 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               <Plus className="w-4 h-4" />
@@ -302,7 +303,7 @@ export default function InvoiceColorStatusManagement({ onBack }: InvoiceColorSta
               No color statuses found. Add your first one above.
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2" data-tour="color-list">
               {statuses.map((status, index) => (
                 <div
                   key={status.id}

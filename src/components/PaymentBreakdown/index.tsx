@@ -211,6 +211,7 @@ export default function PaymentBreakdown() {
           <button
             onClick={handleExportCSV}
             disabled={filteredMonths.length === 0}
+            data-tour="pbreakdown-export"
             className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
           >
             <Download size={16} />
@@ -230,7 +231,7 @@ export default function PaymentBreakdown() {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6 overflow-hidden">
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
-            <div className="relative flex-1 max-w-md">
+            <div className="relative flex-1 max-w-md" data-tour="pbreakdown-search">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
@@ -242,6 +243,7 @@ export default function PaymentBreakdown() {
             </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
+              data-tour="pbreakdown-date-filter"
               className={`flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg transition-colors ${
                 showFilters || hasActiveFilters
                   ? 'bg-blue-50 border-blue-200 text-blue-700'
@@ -256,6 +258,7 @@ export default function PaymentBreakdown() {
             </button>
             <button
               onClick={() => setExcludeCreditMemos(!excludeCreditMemos)}
+              data-tour="pbreakdown-exclude-cm"
               className={`flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg transition-colors ${
                 excludeCreditMemos
                   ? 'bg-amber-50 border-amber-200 text-amber-700'

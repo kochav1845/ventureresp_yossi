@@ -825,7 +825,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         Back to Customers
       </button>
 
-      <div className="bg-white rounded-lg shadow-md p-8 mb-6">
+      <div className="bg-white rounded-lg shadow-md p-8 mb-6" data-tour="detail-header">
         <div className="flex items-start justify-between mb-6">
           <div className="flex-1">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">{customer.customer_name}</h1>
@@ -1155,7 +1155,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       )}
 
       <div className="bg-white rounded-lg shadow-md mt-6">
-        <div className="border-b border-gray-200">
+        <div className="border-b border-gray-200" data-tour="detail-tabs">
           <nav className="flex">
             <button
               onClick={() => {
@@ -1243,7 +1243,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           </nav>
         </div>
 
-        <div className="p-6">
+        <div className="p-6" data-tour="detail-filters">
           <InvoiceFilterPanel
             filters={advancedFilters}
             onFiltersChange={handleAdvancedFiltersChange}
@@ -1353,7 +1353,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                               {invoice.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap relative">
+                          <td className="px-6 py-4 whitespace-nowrap relative" data-tour="detail-color-status">
                             <div className="relative inline-block color-picker-container">
                               <button
                                 onClick={() => setChangingColorForInvoice(changingColorForInvoice === invoice.id ? null : invoice.id)}
@@ -1787,7 +1787,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           </span>
         </div>
 
-        <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+        <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-lg" data-tour="detail-notes">
           <h3 className="text-lg font-semibold text-purple-900 mb-2">Add New Note</h3>
           <p className="text-sm text-purple-700 mb-4">
             Record internal information about this customer - outreach attempts, payment discussions, promises to pay, and more.

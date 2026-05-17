@@ -611,6 +611,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
           </button>
           <button
             onClick={handleOpenModal}
+            data-tour="rule-create"
             className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             <Plus className="w-4 h-4" />
@@ -619,7 +620,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4" data-tour="rule-schedule">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-blue-50">
@@ -706,7 +707,7 @@ export default function AutoTicketRules({ onBack }: AutoTicketRulesProps) {
           </button>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden table-scroll-container max-h-[calc(100vh-300px)]">
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden table-scroll-container max-h-[calc(100vh-300px)]" data-tour="rule-list">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>

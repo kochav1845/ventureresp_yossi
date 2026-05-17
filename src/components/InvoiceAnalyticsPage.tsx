@@ -1201,7 +1201,7 @@ export default function InvoiceAnalyticsPage() {
         <div className="flex-1 p-6 overflow-x-hidden max-w-full">
           {/* View Toggle */}
           <div className="flex justify-center mb-6">
-            <div className="inline-flex bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden">
+            <div className="inline-flex bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden" data-tour="invoice-view-toggle">
               <button
                 onClick={() => setCalendarView('daily')}
                 className={`px-6 py-2 text-sm font-medium transition-colors ${
@@ -1230,7 +1230,7 @@ export default function InvoiceAnalyticsPage() {
           </div>
 
           {/* Period Navigation */}
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-6" data-tour="invoice-date-nav">
             <button onClick={previousPeriod} className="p-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg transition-colors">
               <ChevronLeft className="w-5 h-5" />
             </button>
@@ -1256,6 +1256,7 @@ export default function InvoiceAnalyticsPage() {
                 disabled={refreshingAnalytics}
                 className={`p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors ${refreshingAnalytics ? 'opacity-50 cursor-not-allowed' : ''}`}
                 title="Refresh analytics data"
+                data-tour="invoice-refresh"
               >
                 <RefreshCw className={`w-5 h-5 ${refreshingAnalytics ? 'animate-spin' : ''}`} />
               </button>
@@ -1495,11 +1496,13 @@ export default function InvoiceAnalyticsPage() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                data-tour="invoice-search"
               />
             </div>
             <button
               onClick={exportToExcel}
               className="flex items-center gap-2 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all shadow-sm"
+              data-tour="invoice-export"
             >
               <Download className="w-5 h-5" />
               Export Excel
@@ -1522,7 +1525,7 @@ export default function InvoiceAnalyticsPage() {
                 </div>
               ) : (
                 <table className="divide-y divide-gray-200 w-full" style={{ minWidth: '1000px' }}>
-                  <thead>
+                  <thead data-tour="invoice-sort">
                     <tr className="bg-gray-50">
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-10 bg-gray-50 w-10"></th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-10 bg-gray-50">Customer</th>

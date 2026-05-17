@@ -195,7 +195,7 @@ export default function TicketSearchFilter({
               </select>
             </div>
 
-            <div>
+            <div data-tour="ticket-priority-filter">
               <label className="block text-xs font-medium text-gray-700 mb-1">Priority</label>
               <select
                 value={filters.priority}
@@ -210,7 +210,7 @@ export default function TicketSearchFilter({
               </select>
             </div>
 
-            <div>
+            <div data-tour="ticket-type-filter">
               <label className="block text-xs font-medium text-gray-700 mb-1">Ticket Type</label>
               <select
                 value={filters.ticketType}
@@ -253,7 +253,7 @@ export default function TicketSearchFilter({
             </div>
 
             {showAssignedToFilter && (
-              <div>
+              <div data-tour="ticket-collector-filter">
                 <label className="block text-xs font-medium text-gray-700 mb-1">Assigned To</label>
                 <select
                   value={filters.assignedTo}

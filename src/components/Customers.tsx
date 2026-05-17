@@ -916,7 +916,7 @@ export default function Customers({ onBack }: CustomersProps) {
             </div>
 
             {/* Quick Filters */}
-            <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <div className="flex items-center gap-2 mt-3 flex-wrap" data-tour="customer-quick-filters">
               <Zap size={14} className="text-amber-500" />
               {QUICK_FILTERS.map((qf, idx) => (
                 <button key={idx} onClick={() => applyQuickFilter(idx)}
@@ -932,7 +932,7 @@ export default function Customers({ onBack }: CustomersProps) {
               <div className="flex-1" />
 
               {/* Credit memo toggle */}
-              <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-500 hover:text-gray-700 transition-colors">
+              <label data-tour="customer-exclude-cm" className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-500 hover:text-gray-700 transition-colors">
                 <input type="checkbox" checked={excludeCreditMemos} onChange={(e) => setExcludeCreditMemos(e.target.checked)}
                   className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
                 Excl. Credit Memos
@@ -1016,6 +1016,7 @@ export default function Customers({ onBack }: CustomersProps) {
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Sort By</label>
                   <select value={filters.sortBy} onChange={(e) => setFilters({ ...filters, sortBy: e.target.value as any })}
+                    data-tour="customer-sort"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
                     <option value="balance">Balance</option>
                     <option value="invoice_count">Invoice Count</option>
@@ -1137,7 +1138,7 @@ export default function Customers({ onBack }: CustomersProps) {
                   {customers.map((customer) => {
                     const exceedsRedThreshold = (customer.max_days_overdue || 0) >= (customer.red_threshold_days || 30);
                     return (
-                      <tr key={customer.id} className={`transition-colors duration-150 ${exceedsRedThreshold ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-blue-50/40'}`}>
+                      <tr key={customer.id} data-tour="customer-row" className={`transition-colors duration-150 ${exceedsRedThreshold ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-blue-50/40'}`}>
                         <td className="py-2.5 px-4">
                           <div className="flex items-center gap-2.5">
                             <div>

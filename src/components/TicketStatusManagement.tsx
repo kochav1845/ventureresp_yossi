@@ -203,6 +203,7 @@ export default function TicketStatusManagement({ onBack }: TicketStatusManagemen
           <button
             onClick={() => setAddingNew(true)}
             disabled={addingNew}
+            data-tour="status-add"
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             <Plus className="w-4 h-4" />
@@ -279,7 +280,7 @@ export default function TicketStatusManagement({ onBack }: TicketStatusManagemen
           </div>
         )}
 
-        <div className="space-y-2">
+        <div className="space-y-2" data-tour="status-list">
           {statuses.map((status, index) => (
             <div
               key={status.id}
