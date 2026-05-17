@@ -156,6 +156,8 @@ export default function Layout() {
     }
   };
 
+  const settingsLocked = isComponentLocked(LOCKABLE_COMPONENTS.SETTINGS);
+
   const allMenuSections = [
     {
       title: 'Customer Management',
@@ -198,8 +200,6 @@ export default function Layout() {
     { id: 'templates', name: 'Templates', icon: Mail },
     { id: 'customer-email-tracking', name: 'Email Tracking', icon: MailCheck },
   ] : [];
-
-  const settingsLocked = isComponentLocked(LOCKABLE_COMPONENTS.SETTINGS);
 
   const adminDashboardItems = !settingsLocked ? [
     { id: 'collector-monitoring', name: 'Collector Dashboard', icon: Activity },
