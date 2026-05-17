@@ -252,6 +252,7 @@ export default function ChatWidget() {
   if (!isOpen) {
     return (
       <button
+        data-tour="chat-widget"
         onClick={() => {
           setIsOpen(true);
           setPulseAnimation(false);

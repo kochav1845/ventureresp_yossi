@@ -940,7 +940,7 @@ export default function InvoiceAnalyticsPage() {
 
       <div className="flex">
         {/* Sidebar */}
-        <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-gray-50 border-r border-gray-200 transition-all duration-300 overflow-hidden flex-shrink-0`}>
+        <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-gray-50 border-r border-gray-200 transition-all duration-300 overflow-hidden flex-shrink-0`} data-tour="invoice-sidebar">
           <div className="p-4">
             <button
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -1423,7 +1423,7 @@ export default function InvoiceAnalyticsPage() {
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 max-w-full">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 max-w-full" data-tour="invoice-summary">
             <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-lg p-4 overflow-hidden">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-blue-500/20 rounded-lg flex-shrink-0">
@@ -1507,7 +1507,7 @@ export default function InvoiceAnalyticsPage() {
           </div>
 
           {/* Customer-Grouped Invoice Table */}
-          <div className="bg-white border border-gray-200 shadow-lg rounded-xl overflow-hidden max-w-full">
+          <div className="bg-white border border-gray-200 shadow-lg rounded-xl overflow-hidden max-w-full" data-tour="invoice-list">
             <div className="max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
               {loading && filteredInvoices.length === 0 ? (
                 <div className="flex items-center justify-center py-20">

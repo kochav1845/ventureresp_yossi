@@ -34,6 +34,7 @@ import { supabase } from '../lib/supabase';
 import { useUserPermissions, LOCKABLE_COMPONENTS } from '../lib/permissions';
 import UserManagementSidebar from './UserManagementSidebar';
 import ChatWidget from './ChatWidget/ChatWidget';
+import TourLauncher from './GuidedTour/TourLauncher';
 
 export default function Layout() {
   const { profile, signOut, user, isImpersonating } = useAuth();
@@ -228,7 +229,7 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-white">
       {/* Sidebar */}
-      <aside className={`fixed left-0 h-screen bg-white border-r border-gray-200 shadow-sm flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'} ${isImpersonating ? 'top-16' : 'top-0'}`}>
+      <aside data-tour="sidebar" className={`fixed left-0 h-screen bg-white border-r border-gray-200 shadow-sm flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'} ${isImpersonating ? 'top-16' : 'top-0'}`}>
         {/* Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto">
           {/* Logo Header */}
@@ -246,6 +247,7 @@ export default function Layout() {
               </div>
             )}
             <button
+              data-tour="sidebar-collapse"
               onClick={toggleSidebar}
               className={`p-2 rounded-lg hover:bg-blue-50 text-blue-600 transition-all ${sidebarCollapsed ? 'mx-auto' : ''}`}
               title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -270,6 +272,7 @@ export default function Layout() {
                     return (
                       <li key={item.id} className="relative group">
                         <button
+                          data-tour={`nav-${item.id}`}
                           onClick={() => navigate(`/${item.id}`)}
                           className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                             isActive
@@ -434,6 +437,7 @@ export default function Layout() {
                         setEmailSystemOpen(!emailSystemOpen);
                       }
                     }}
+                    data-tour="nav-email-system"
                     className={`w-full flex items-center justify-between px-3 py-2 text-blue-700 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-all mb-2 ${sidebarCollapsed ? 'justify-center' : ''}`}
                   >
                     {sidebarCollapsed ? (
@@ -616,8 +620,12 @@ export default function Layout() {
       <main className={`min-h-screen transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} ${showReminders ? 'mr-96' : 'mr-0'} ${isImpersonating ? 'pt-16' : ''}`}>
         {/* Header with Global Search + Reminder Toggle */}
         <div className={`sticky z-10 bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-4 ${isImpersonating ? 'top-16' : 'top-0'}`}>
-          <GlobalSearchBar />
+          <div data-tour="global-search" className="flex-1">
+            <GlobalSearchBar />
+          </div>
+          <TourLauncher />
           <button
+            data-tour="reminders-btn"
             onClick={() => setShowReminders(!showReminders)}
             className={`relative flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all ${
               hasOverdueReminders

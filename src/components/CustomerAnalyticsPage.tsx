@@ -489,7 +489,7 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
 
         {/* Advanced Filters Panel */}
         {showFilters && (
-          <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border border-gray-200">
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border border-gray-200" data-tour="analytics-filters">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-gray-900">Advanced Filters</h3>
               <button
@@ -681,7 +681,7 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
         ) : (
           <div className="space-y-6">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6" data-tour="analytics-stats">
               <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-gray-600 font-medium">Total Customers</span>
@@ -713,7 +713,7 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
             </div>
 
             {/* Filtered Customers Table */}
-            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200" data-tour="analytics-chart">
               <h2 className="text-xl font-bold text-gray-900 mb-6">
                 Filtered Customers ({filteredCustomers.length})
               </h2>

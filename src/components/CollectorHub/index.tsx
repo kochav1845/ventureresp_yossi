@@ -325,7 +325,7 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
             <p className="mt-4 text-gray-600">Loading collector data...</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-4" data-tour="collector-cards">
             {filtered.map((collector) => (
               <CollectorCard
                 key={collector.user_id}

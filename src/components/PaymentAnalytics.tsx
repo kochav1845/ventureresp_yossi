@@ -3196,7 +3196,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         <div className="flex-1 p-6 overflow-x-hidden max-w-full">
           {/* View Toggle */}
           <div className="flex justify-center mb-6">
-            <div className="inline-flex bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden">
+            <div className="inline-flex bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden" data-tour="payment-view-toggle">
               <button
                 onClick={() => setCalendarView('daily')}
                 className={`px-6 py-2 text-sm font-medium transition-colors ${
@@ -3275,7 +3275,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           </div>
 
           {/* Calendar Grid */}
-          <div className="mb-6 max-w-full">
+          <div className="mb-6 max-w-full" data-tour="payment-calendar">
             {calendarView === 'daily' ? (
               <>
                 {/* Day Headers */}

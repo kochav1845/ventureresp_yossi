@@ -834,6 +834,7 @@ export default function Customers({ onBack }: CustomersProps) {
           </div>
           <div className="flex gap-2">
             <button onClick={exportToExcel} disabled={loading || filteredCustomers.length === 0}
+              data-tour="customer-export"
               className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 border border-gray-200 rounded-xl transition-all duration-200 text-sm font-medium shadow-sm hover:shadow">
               <Download size={16} /> Export
             </button>
@@ -845,7 +846,7 @@ export default function Customers({ onBack }: CustomersProps) {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" data-tour="customer-stats">
           <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Customers</span>
@@ -889,7 +890,7 @@ export default function Customers({ onBack }: CustomersProps) {
         {/* Search + Filters Section */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
           {/* Search Bar */}
-          <div className="p-4">
+          <div className="p-4" data-tour="customer-search">
             <div className="flex items-center gap-3">
               <div className="flex-1 relative">
                 <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
@@ -956,7 +957,7 @@ export default function Customers({ onBack }: CustomersProps) {
 
           {/* Advanced Filters Panel */}
           {showFilters && (
-            <div className="px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/50">
+            <div className="px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/50" data-tour="customer-filters">
               <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-2">Customer Filters</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                 <div>
@@ -1074,7 +1075,7 @@ export default function Customers({ onBack }: CustomersProps) {
             )}
           </div>
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-tour="customer-list">
             {/* Pagination Top */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
               <button onClick={goToPreviousPage} disabled={currentPage === 0 || loading}

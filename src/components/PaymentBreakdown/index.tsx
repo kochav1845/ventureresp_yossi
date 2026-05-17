@@ -318,7 +318,7 @@ export default function PaymentBreakdown() {
           </div>
         ) : (
           <>
-            <div className="p-4">
+            <div className="p-4" data-tour="breakdown-summary">
               <MonthSummaryCards months={filteredMonths} />
             </div>
 
@@ -347,7 +347,7 @@ export default function PaymentBreakdown() {
               </div>
             )}
 
-            <div className="border-t border-gray-100">
+            <div className="border-t border-gray-100" data-tour="breakdown-table">
               <div className="px-4 py-3 flex items-center justify-between bg-gray-50/50">
                 <h3 className="text-sm font-semibold text-gray-700">
                   Month Comparison ({filteredMonths.length} months)

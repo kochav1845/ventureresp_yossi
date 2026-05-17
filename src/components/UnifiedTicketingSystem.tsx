@@ -1317,9 +1317,10 @@ export default function UnifiedTicketingSystem({
         <div className="bg-white rounded-lg shadow-sm mb-6">
           {!showOnlyAssigned && (
             <div className="border-b border-gray-200">
-              <div className="flex gap-1 p-1">
+              <div className="flex gap-1 p-1" data-tour="ticket-tabs">
                 <button
                   onClick={() => { setActiveTab('create'); setSelectedTickets(new Set()); }}
+                  data-tour="ticket-create"
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                     activeTab === 'create'
                       ? 'bg-blue-600 text-white'
@@ -1616,7 +1617,7 @@ export default function UnifiedTicketingSystem({
           )}
 
           {(showOnlyAssigned || activeTab === 'tickets' || activeTab === 'overdue' || activeTab === 'closed') && (
-            <div className="p-6">
+            <div className="p-6" data-tour="ticket-search">
               <TicketSearchFilter
                 filters={filters}
                 onFiltersChange={setFilters}
@@ -1637,7 +1638,7 @@ export default function UnifiedTicketingSystem({
                 />
               </div>
 
-              <div className="mt-6 space-y-6">
+              <div className="mt-6 space-y-6" data-tour="ticket-list">
                 {(() => {
                   const displayTickets = showOnlyAssigned
                     ? filteredTickets

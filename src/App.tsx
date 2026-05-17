@@ -86,6 +86,8 @@ import TicketDetailPage from './components/TicketDetailPage';
 import CustomerStatements from './components/CustomerStatements';
 import ApiKeyManagement from './components/ApiKeyManagement';
 import InvoiceAnalyticsPage from './components/InvoiceAnalyticsPage';
+import { TourProvider } from './components/GuidedTour/TourProvider';
+import TourOverlay from './components/GuidedTour/TourOverlay';
 
 function LoadingScreen() {
   return (
@@ -228,7 +230,10 @@ function App() {
       <ToastProvider>
         <AuthProvider>
           <PageCacheProvider>
-            <AppContent />
+            <TourProvider>
+              <AppContent />
+              <TourOverlay />
+            </TourProvider>
           </PageCacheProvider>
         </AuthProvider>
       </ToastProvider>
