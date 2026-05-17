@@ -104,6 +104,26 @@ html,
   color: #6ee7b7;
 }
 
+/* Sticky table headers - any table inside a .table-scroll-container gets sticky thead */
+.table-scroll-container {
+  overflow-y: auto;
+  position: relative;
+}
+
+.table-scroll-container thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.table-scroll-container thead th {
+  background-color: inherit;
+}
+
+.table-scroll-container thead tr {
+  background-color: inherit;
+}
+
 /* Custom Scrollbar Styling - Light Theme */
 ::-webkit-scrollbar {
   width: 10px;

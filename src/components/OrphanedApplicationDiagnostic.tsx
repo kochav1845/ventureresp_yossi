@@ -219,9 +219,9 @@ export default function OrphanedApplicationDiagnostic({ onBack }: { onBack: () =
                       </button>
                     </div>
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto table-scroll-container max-h-[calc(100vh-300px)]">
                     <table className="w-full">
-                      <thead className="bg-gray-50">
+                      <thead className="bg-gray-50 sticky top-0 z-10">
                         <tr>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment Ref</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Missing Invoice Ref</th>

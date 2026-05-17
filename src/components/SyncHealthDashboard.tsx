@@ -272,9 +272,9 @@ const SyncHealthDashboard: React.FC = () => {
         <div className="px-4 py-3 border-b border-gray-200">
           <h3 className="font-semibold text-gray-900">Recent Sync History</h3>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto table-scroll-container max-h-[calc(100vh-300px)]">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Entity</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Started</th>

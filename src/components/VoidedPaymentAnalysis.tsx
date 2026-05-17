@@ -247,26 +247,26 @@ export default function VoidedPaymentAnalysis({ onBack }: VoidedPaymentAnalysisP
               No dual-entry payments found matching your filters
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="table-scroll-container max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto">
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider bg-slate-50">
                       Reference #
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider bg-slate-50">
                       Customer
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider bg-slate-50">
                       Date
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider bg-slate-50">
                       Entries
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-600 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-600 uppercase tracking-wider bg-slate-50">
                       Net Amount
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-slate-600 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-center text-xs font-medium text-slate-600 uppercase tracking-wider bg-slate-50">
                       Status
                     </th>
                   </tr>

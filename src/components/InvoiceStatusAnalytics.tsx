@@ -359,23 +359,23 @@ export default function InvoiceStatusAnalytics({ onBack }: InvoiceStatusAnalytic
             <Users className="w-5 h-5" />
             User Activity Leaderboard
           </h2>
-          <div className="overflow-x-auto">
+          <div className="table-scroll-container max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto">
             <table className="w-full">
-              <thead>
+              <thead className="bg-slate-900 sticky top-0 z-10">
                 <tr className="border-b border-slate-800">
-                  <th className="text-left py-3 px-4">Rank</th>
-                  <th className="text-left py-3 px-4">User</th>
-                  <th className="text-right py-3 px-4">Total Changes</th>
-                  <th className="text-right py-3 px-4">
+                  <th className="text-left py-3 px-4 bg-slate-900">Rank</th>
+                  <th className="text-left py-3 px-4 bg-slate-900">User</th>
+                  <th className="text-right py-3 px-4 bg-slate-900">Total Changes</th>
+                  <th className="text-right py-3 px-4 bg-slate-900">
                     <span className="inline-block w-3 h-3 rounded bg-red-500 mr-1"></span>Red
                   </th>
-                  <th className="text-right py-3 px-4">
+                  <th className="text-right py-3 px-4 bg-slate-900">
                     <span className="inline-block w-3 h-3 rounded bg-orange-500 mr-1"></span>Orange
                   </th>
-                  <th className="text-right py-3 px-4">
+                  <th className="text-right py-3 px-4 bg-slate-900">
                     <span className="inline-block w-3 h-3 rounded bg-yellow-500 mr-1"></span>Yellow
                   </th>
-                  <th className="text-right py-3 px-4">
+                  <th className="text-right py-3 px-4 bg-slate-900">
                     <span className="inline-block w-3 h-3 rounded bg-green-500 mr-1"></span>Green
                   </th>
                 </tr>

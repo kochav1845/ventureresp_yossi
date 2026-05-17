@@ -79,9 +79,9 @@ export default function MonthComparisonTable({
   );
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto table-scroll-container max-h-[calc(100vh-300px)]">
       <table className="w-full">
-        <thead>
+        <thead className="bg-gray-50">
           <tr className="bg-gray-50 border-b border-gray-200">
             <SortHeader field="month" className="text-left text-gray-600 sticky left-0 bg-gray-50 z-10">Month</SortHeader>
             <SortHeader field="total" className="text-right text-gray-600">Total</SortHeader>

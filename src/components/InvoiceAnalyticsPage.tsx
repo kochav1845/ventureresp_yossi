@@ -1508,7 +1508,7 @@ export default function InvoiceAnalyticsPage() {
 
           {/* Customer-Grouped Invoice Table */}
           <div className="bg-white border border-gray-200 shadow-lg rounded-xl overflow-hidden max-w-full" data-tour="invoice-list">
-            <div className="max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+            <div className="table-scroll-container max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
               {loading && filteredInvoices.length === 0 ? (
                 <div className="flex items-center justify-center py-20">
                   <div className="text-center">

@@ -376,9 +376,9 @@ export default function ApiKeyManagement() {
           {/* Step 3: Endpoints */}
           <div>
             <h4 className="text-sm font-semibold text-gray-800 mb-2">3. Available Endpoints</h4>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto table-scroll-container max-h-[calc(100vh-300px)]">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-white">
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-2 px-3 font-semibold text-gray-600">Method</th>
                     <th className="text-left py-2 px-3 font-semibold text-gray-600">Path</th>

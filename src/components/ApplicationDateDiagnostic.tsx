@@ -168,9 +168,9 @@ export default function ApplicationDateDiagnostic({ onBack }: ApplicationDateDia
 
                       <div>
                         <h4 className="text-lg font-semibold text-purple-400 mb-3">All Fields with Values:</h4>
-                        <div className="bg-slate-800 rounded p-4 max-h-96 overflow-y-auto">
+                        <div className="bg-slate-800 rounded p-4 max-h-96 overflow-y-auto table-scroll-container">
                           <table className="w-full text-sm">
-                            <thead className="border-b border-slate-600">
+                            <thead className="bg-slate-800 border-b border-slate-600 sticky top-0 z-10">
                               <tr>
                                 <th className="text-left py-2 text-slate-300">Field Name</th>
                                 <th className="text-left py-2 text-slate-300">Value</th>

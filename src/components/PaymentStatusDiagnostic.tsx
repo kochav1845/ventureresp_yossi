@@ -365,9 +365,9 @@ export default function PaymentStatusDiagnostic() {
             {result.acumaticaData?.ApplicationHistory && result.acumaticaData.ApplicationHistory.length > 0 && (
               <div className="mt-4">
                 <h4 className="font-medium text-gray-900 mb-2">Acumatica Application History:</h4>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto table-scroll-container max-h-[calc(100vh-300px)]">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 sticky top-0 z-10">
                       <tr>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Doc Type</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Ref Number</th>
@@ -394,9 +394,9 @@ export default function PaymentStatusDiagnostic() {
             {result.dbApplications && result.dbApplications.length > 0 && (
               <div className="mt-4">
                 <h4 className="font-medium text-gray-900 mb-2">Database Applications:</h4>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto table-scroll-container max-h-[calc(100vh-300px)]">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 sticky top-0 z-10">
                       <tr>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Doc Type</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Ref Number</th>

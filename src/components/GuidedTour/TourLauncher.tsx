@@ -75,7 +75,7 @@ export default function TourLauncher() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-[400px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-50 animate-scale-in">
+        <div className="absolute right-0 top-full mt-2 w-[400px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-[60] animate-scale-in">
           {/* Header */}
           <div className="px-5 py-4 bg-gradient-to-r from-gray-900 to-gray-800 text-white">
             <div className="flex items-center justify-between">

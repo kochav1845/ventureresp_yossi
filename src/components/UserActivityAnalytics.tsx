@@ -182,15 +182,15 @@ export default function UserActivityAnalytics({ onBack }: UserActivityAnalyticsP
               <div className="p-6">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">User Activity Details</h2>
               </div>
-              <div className="overflow-x-auto">
+              <div className="table-scroll-container max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">User</th>
-                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Logins</th>
-                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Total Actions</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Most Common Action</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Last Login</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 bg-gray-50">User</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700 bg-gray-50">Logins</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700 bg-gray-50">Total Actions</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 bg-gray-50">Most Common Action</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 bg-gray-50">Last Login</th>
                     </tr>
                   </thead>
                   <tbody>

@@ -389,9 +389,9 @@ export default function SyncStatusDashboard({ onBack }: SyncStatusDashboardProps
 
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
           <h2 className="text-2xl font-bold text-white mb-4">Recent Sync History</h2>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto table-scroll-container max-h-[calc(100vh-300px)]">
             <table className="w-full">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-slate-800">
                 <tr className="border-b border-slate-700">
                   <th className="text-left p-3 text-slate-400 font-medium">Entity</th>
                   <th className="text-left p-3 text-slate-400 font-medium">Started</th>

@@ -343,9 +343,9 @@ export default function SyncDiagnostic({ onBack }: Props) {
 
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 mb-6">
           <h3 className="text-xl font-semibold text-white mb-4">Sync Status</h3>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto table-scroll-container max-h-[calc(100vh-300px)]">
             <table className="w-full">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-slate-800">
                 <tr className="border-b border-slate-700">
                   <th className="text-left p-3 text-slate-400">Entity</th>
                   <th className="text-left p-3 text-slate-400">Status</th>
@@ -390,9 +390,9 @@ export default function SyncDiagnostic({ onBack }: Props) {
 
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
           <h3 className="text-xl font-semibold text-white mb-4">Recent Sync Logs</h3>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto table-scroll-container max-h-[calc(100vh-300px)]">
             <table className="w-full">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-slate-800">
                 <tr className="border-b border-slate-700">
                   <th className="text-left p-3 text-slate-400">Entity</th>
                   <th className="text-left p-3 text-slate-400">Status</th>

@@ -717,15 +717,15 @@ export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageP
               <h2 className="text-xl font-bold text-gray-900 mb-6">
                 Filtered Customers ({filteredCustomers.length})
               </h2>
-              <div className="overflow-x-auto">
+              <div className="table-scroll-container max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto">
                 <table className="w-full">
-                  <thead>
+                  <thead className="bg-white sticky top-0 z-10">
                     <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Rank</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Customer</th>
-                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Open Invoices</th>
-                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Balance</th>
-                      <th className="text-center py-3 px-4 font-semibold text-gray-700">Date Range</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 bg-white">Rank</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 bg-white">Customer</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700 bg-white">Open Invoices</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700 bg-white">Balance</th>
+                      <th className="text-center py-3 px-4 font-semibold text-gray-700 bg-white">Date Range</th>
                     </tr>
                   </thead>
                   <tbody>

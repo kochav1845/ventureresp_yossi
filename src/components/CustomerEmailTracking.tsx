@@ -291,29 +291,29 @@ export default function CustomerEmailTracking({ onBack }: CustomerEmailTrackingP
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="table-scroll-container max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto">
           <table className="w-full">
-            <thead>
+            <thead className="bg-white sticky top-0 z-10">
               <tr className="border-b border-slate-200">
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider bg-white">
                   Customer
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider bg-white">
                   Subject
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider bg-white">
                   Template
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider bg-white">
                   Status
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider bg-white">
                   Sent
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider bg-white">
                   Opened
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider bg-white">
                   Details
                 </th>
               </tr>

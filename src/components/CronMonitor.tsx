@@ -243,9 +243,9 @@ export default function CronMonitor({ onBack }: Props) {
                 <p className="text-slate-500 text-sm mt-2">The scheduler will run every minute automatically</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto table-scroll-container max-h-[calc(100vh-300px)]">
                 <table className="w-full">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-slate-800">
                     <tr className="border-b border-slate-700">
                       <th className="text-left py-3 px-4 text-slate-300 font-semibold">Status</th>
                       <th className="text-left py-3 px-4 text-slate-300 font-semibold">Executed At</th>

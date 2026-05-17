@@ -188,9 +188,9 @@ export default function OrphanedInvoiceFixer({ onBack }: { onBack: () => void })
                 <div className="bg-gray-50 px-6 py-3 border-b border-gray-200">
                   <h3 className="font-semibold text-gray-900">Invoice Details</h3>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto table-scroll-container max-h-[calc(100vh-300px)]">
                   <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
+                    <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Invoice #</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
