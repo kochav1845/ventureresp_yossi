@@ -12,8 +12,20 @@ import {
   VolumeX,
   RotateCcw,
   Minimize2,
+  FileSpreadsheet,
+  FileText,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+
+interface ReportData {
+  __report: boolean;
+  title: string;
+  report_type: string;
+  columns: string[];
+  rows: any[][];
+  row_count: number;
+  generated_at: string;
+}
 
 interface ChatMessage {
   id: string;
@@ -21,6 +33,7 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   isLoading?: boolean;
+  report?: ReportData;
 }
 
 const SUGGESTED_QUESTIONS = [
@@ -49,6 +62,62 @@ const SUGGESTED_QUESTIONS = [
     question: 'What is the monthly payment collection trend for this year?',
   },
 ];
+
+function downloadExcel(report: ReportData) {
+  import('xlsx').then((XLSX) => {
+    const wsData = [report.columns, ...report.rows];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Auto-size columns
+    const colWidths = report.columns.map((col, i) => {
+      const maxLen = Math.max(
+        col.length,
+        ...report.rows.map(r => String(r[i] ?? '').length)
+      );
+      return { wch: Math.min(maxLen + 2, 40) };
+    });
+    ws['!cols'] = colWidths;
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Report');
+    XLSX.writeFile(wb, `${report.title.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`);
+  });
+}
+
+function downloadPDF(report: ReportData) {
+  const html = `
+    <div style="font-family: Arial, sans-serif; padding: 20px;">
+      <h1 style="font-size: 20px; color: #1a1a1a; margin-bottom: 4px;">${report.title}</h1>
+      <p style="font-size: 12px; color: #666; margin-bottom: 16px;">Generated: ${new Date(report.generated_at).toLocaleString()} | ${report.row_count} records</p>
+      <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+        <thead>
+          <tr>${report.columns.map(c => `<th style="border: 1px solid #ddd; padding: 6px 8px; background: #f5f5f5; text-align: left; font-weight: 600;">${c}</th>`).join('')}</tr>
+        </thead>
+        <tbody>
+          ${report.rows.map((row, i) => `<tr style="background: ${i % 2 ? '#fafafa' : '#fff'};">${row.map(cell => {
+            const val = typeof cell === 'number' ? cell.toLocaleString('en-US', cell % 1 ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : {}) : cell ?? '';
+            return `<td style="border: 1px solid #ddd; padding: 5px 8px;">${val}</td>`;
+          }).join('')}</tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  import('html2pdf.js').then((html2pdfModule) => {
+    const html2pdf = html2pdfModule.default;
+    const el = document.createElement('div');
+    el.innerHTML = html;
+    document.body.appendChild(el);
+    html2pdf().set({
+      margin: 10,
+      filename: `${report.title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`,
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: report.columns.length > 6 ? 'landscape' : 'portrait' },
+    }).from(el).save().then(() => {
+      document.body.removeChild(el);
+    });
+  });
+}
 
 function formatMessage(content: string): string {
   return content
@@ -144,7 +213,7 @@ export default function ChatWidget() {
       setMessages(prev =>
         prev.map(m =>
           m.id === loadingMsg.id
-            ? { ...m, content: data.reply, isLoading: false }
+            ? { ...m, content: data.reply, isLoading: false, report: data.report || undefined }
             : m
         )
       );
@@ -387,10 +456,35 @@ export default function ChatWidget() {
                   <span className="text-gray-400 text-xs">Analyzing data...</span>
                 </div>
               ) : (
-                <div
-                  className="whitespace-pre-wrap break-words chat-content"
-                  dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}
-                />
+                <>
+                  <div
+                    className="whitespace-pre-wrap break-words chat-content"
+                    dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}
+                  />
+                  {msg.report && (
+                    <div className="mt-3 pt-3 border-t border-gray-700/50">
+                      <p className="text-xs text-gray-400 mb-2">
+                        Report ready: {msg.report.row_count} records
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => downloadExcel(msg.report!)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs font-medium transition-colors"
+                        >
+                          <FileSpreadsheet size={13} />
+                          Excel
+                        </button>
+                        <button
+                          onClick={() => downloadPDF(msg.report!)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 rounded-lg text-blue-400 text-xs font-medium transition-colors"
+                        >
+                          <FileText size={13} />
+                          PDF
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

@@ -200,6 +200,30 @@ const tools = [
   {
     type: "function",
     function: {
+      name: "generate_report",
+      description:
+        "Generate a downloadable report (Excel/PDF) from data. Use this when the user asks to export, download, generate a spreadsheet, PDF, or report. Returns structured data that the frontend will convert to a file. Supported report types: customer_balances (top customers by balance), invoices (invoice list with filters), payments (payment list with filters), aging_report (AR aging summary), payment_trend (monthly payment trend), collector_performance (collector metrics).",
+      parameters: {
+        type: "object",
+        properties: {
+          report_type: {
+            type: "string",
+            enum: ["customer_balances", "invoices", "payments", "aging_report", "payment_trend", "collector_performance"],
+            description: "Type of report to generate",
+          },
+          title: { type: "string", description: "Report title" },
+          filters: {
+            type: "object",
+            description: "Optional filters: date_from, date_to, customer_id, status, type, limit",
+          },
+        },
+        required: ["report_type", "title"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "run_sql_query",
       description:
         "Run a read-only SQL query for advanced questions. Only SELECT statements allowed. Key tables: acumatica_invoices (customer, customer_name, reference_number, type, status, amount, balance, date, due_date), acumatica_payments (customer_id, customer_name, reference_number, type, status, payment_amount, application_date, doc_date), acumatica_customers (customer_id, customer_name, customer_class, general_email, credit_limit, terms), collection_tickets (ticket_number, customer_id, customer_name, status, priority, ticket_type, assigned_collector_id), payment_invoice_applications (payment_reference_number, invoice_reference_number, amount_paid). Join acumatica_customers ON customer_id = acumatica_invoices.customer for real customer names.",
@@ -378,16 +402,14 @@ async function executeTool(
       const { data: totals } = await supabase.rpc("get_api_total_outstanding");
       const outstanding = totals?.[0] || { total_balance: 0, customer_count: 0, invoice_count: 0 };
 
-      const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-        .toISOString().split("T")[0];
-
-      const { data: recentPayments } = await supabase
-        .from("acumatica_payments")
-        .select("payment_amount")
-        .eq("type", "Payment")
-        .gte("application_date", monthStart);
-
-      const paymentsThisMonth = recentPayments?.reduce((s: number, p: any) => s + (p.payment_amount || 0), 0) || 0;
+      // Get this month's payments via the payment_month_summary table (pre-aggregated, accurate)
+      const now = new Date();
+      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const { data: monthSummary } = await supabase
+        .from("payment_month_summary")
+        .select("total_amount, payment_count")
+        .eq("month_key", currentMonthKey)
+        .maybeSingle();
 
       return {
         total_customers: customerCount || 0,
@@ -395,8 +417,8 @@ async function executeTool(
         customers_with_balance: outstanding.customer_count || 0,
         total_open_invoices: outstanding.invoice_count || 0,
         open_tickets: openTicketCount || 0,
-        payments_collected_this_month: Math.round(paymentsThisMonth * 100) / 100,
-        payment_count_this_month: recentPayments?.length || 0,
+        payments_collected_this_month: parseFloat(monthSummary?.total_amount) || 0,
+        payment_count_this_month: parseInt(monthSummary?.payment_count) || 0,
       };
     }
 
@@ -464,45 +486,67 @@ async function executeTool(
     }
 
     case "get_payment_summary": {
-      // Use SQL aggregation for accuracy
-      const { data, error } = await supabase.rpc("get_filtered_payment_aggregates", {
-        p_start_date: args.date_from,
-        p_end_date: args.date_to,
-        p_type_filter: null,
-        p_has_applications: null,
-        p_included_customers: null,
-      });
+      // Use the pre-aggregated payment_month_summary table for accuracy
+      // Parse date range into month keys
+      const startDate = new Date(args.date_from);
+      const endDate = new Date(args.date_to);
+      const monthKeys: string[] = [];
+      const d = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      while (d <= endDate) {
+        monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+        d.setMonth(d.getMonth() + 1);
+      }
 
-      if (error) {
-        // Fallback: direct query with limit
-        const { data: payments } = await supabase
-          .from("acumatica_payments")
-          .select("type, payment_amount")
-          .gte("application_date", args.date_from)
-          .lte("application_date", args.date_to)
-          .eq("status", "Released");
+      const { data: months, error } = await supabase
+        .from("payment_month_summary")
+        .select("*")
+        .in("month_key", monthKeys)
+        .order("month_key", { ascending: true });
 
-        const byType: Record<string, { count: number; total: number }> = {};
-        let grandTotal = 0;
-        for (const p of payments || []) {
-          const t = p.type || "Unknown";
-          if (!byType[t]) byType[t] = { count: 0, total: 0 };
-          byType[t].count++;
-          byType[t].total += p.payment_amount || 0;
-          if (t === "Payment" || t === "Prepayment") grandTotal += p.payment_amount || 0;
-        }
-        for (const v of Object.values(byType)) v.total = Math.round(v.total * 100) / 100;
+      if (error) return { error: error.message };
+
+      let totalCollected = 0;
+      let totalPaymentAmt = 0;
+      let totalPrepaymentAmt = 0;
+      let totalVoidedAmt = 0;
+      let totalRefundAmt = 0;
+      let totalCount = 0;
+
+      const monthlyBreakdown = (months || []).map((m: any) => {
+        const payAmt = parseFloat(m.payment_amount) || 0;
+        const preAmt = parseFloat(m.prepayment_amount) || 0;
+        const voidAmt = parseFloat(m.voided_amount) || 0;
+        const refAmt = parseFloat(m.refund_amount) || 0;
+        const totAmt = parseFloat(m.total_amount) || 0;
+        const cnt = parseInt(m.total_payments) || 0;
+
+        totalCollected += totAmt;
+        totalPaymentAmt += payAmt;
+        totalPrepaymentAmt += preAmt;
+        totalVoidedAmt += voidAmt;
+        totalRefundAmt += refAmt;
+        totalCount += cnt;
 
         return {
-          period: `${args.date_from} to ${args.date_to}`,
-          total_collected: Math.round(grandTotal * 100) / 100,
-          by_type: byType,
+          month: m.month_label,
+          total_collected: totAmt,
+          payment_amount: payAmt,
+          prepayment_amount: preAmt,
+          voided_amount: voidAmt,
+          refund_amount: refAmt,
+          payment_count: cnt,
         };
-      }
+      });
 
       return {
         period: `${args.date_from} to ${args.date_to}`,
-        summary: data,
+        total_collected: Math.round(totalCollected * 100) / 100,
+        total_payments: Math.round(totalPaymentAmt * 100) / 100,
+        total_prepayments: Math.round(totalPrepaymentAmt * 100) / 100,
+        total_voided: Math.round(totalVoidedAmt * 100) / 100,
+        total_refunds: Math.round(totalRefundAmt * 100) / 100,
+        total_count: totalCount,
+        monthly_breakdown: monthlyBreakdown,
       };
     }
 
@@ -631,10 +675,160 @@ async function executeTool(
     }
 
     case "get_monthly_summary": {
-      const rpcName = args.entity === "payments" ? "get_payment_month_summary" : "get_invoice_month_summary";
-      const { data, error } = await supabase.rpc(rpcName);
-      if (error) return { error: error.message };
-      return { entity: args.entity, monthly_data: data };
+      if (args.entity === "payments") {
+        const { data, error } = await supabase.rpc("get_payment_month_summary");
+        if (error) return { error: error.message };
+        const formatted = (data || []).map((row: any) => ({
+          month: row.month_label,
+          total_collected: parseFloat(row.total_amount) || 0,
+          payment_amount: parseFloat(row.payment_amount) || 0,
+          prepayment_amount: parseFloat(row.prepayment_amount) || 0,
+          voided_amount: parseFloat(row.voided_amount) || 0,
+          refund_amount: parseFloat(row.refund_amount) || 0,
+          credit_memo_amount: parseFloat(row.credit_memo_amount) || 0,
+          total_payments: parseInt(row.total_payments) || 0,
+          payment_count: parseInt(row.payment_count) || 0,
+        }));
+        return { entity: "payments", monthly_data: formatted };
+      } else {
+        const { data, error } = await supabase.rpc("get_invoice_month_summary");
+        if (error) return { error: error.message };
+        const formatted = (data || []).map((row: any) => ({
+          month: row.month_label,
+          total_invoiced: parseFloat(row.total_amount) || 0,
+          invoice_count: parseInt(row.invoice_count) || 0,
+          open_balance: parseFloat(row.open_balance) || 0,
+        }));
+        return { entity: "invoices", monthly_data: formatted };
+      }
+    }
+
+    case "generate_report": {
+      const filters = args.filters || {};
+      const limit = Math.min(filters.limit || 500, 1000);
+      let columns: string[] = [];
+      let rows: any[] = [];
+
+      switch (args.report_type) {
+        case "customer_balances": {
+          const { data } = await supabase.rpc("get_api_customer_balances", {
+            p_search: filters.search || "",
+            p_sort_by: "balance",
+            p_sort_asc: false,
+            p_limit: limit,
+            p_offset: 0,
+          });
+          columns = ["Customer ID", "Customer Name", "Class", "Outstanding Balance", "Open Invoices", "Terms"];
+          rows = (data || []).map((c: any) => ([
+            c.customer_id,
+            c.customer_name,
+            c.customer_class || "",
+            parseFloat(c.invoice_balance) || 0,
+            parseInt(c.open_invoice_count) || 0,
+            c.terms || "",
+          ]));
+          break;
+        }
+        case "invoices": {
+          let query = supabase
+            .from("acumatica_invoices")
+            .select("reference_number, type, status, customer, customer_name, date, due_date, amount, balance");
+          if (filters.status) query = query.eq("status", filters.status);
+          if (filters.type) query = query.eq("type", filters.type);
+          if (filters.customer_id) query = query.eq("customer", filters.customer_id);
+          if (filters.date_from) query = query.gte("date", filters.date_from);
+          if (filters.date_to) query = query.lte("date", filters.date_to);
+          const { data } = await query.order("date", { ascending: false }).limit(limit);
+          columns = ["Reference #", "Type", "Status", "Customer ID", "Customer Name", "Date", "Due Date", "Amount", "Balance"];
+          rows = (data || []).map((i: any) => ([
+            i.reference_number, i.type, i.status, i.customer, i.customer_name,
+            i.date, i.due_date, parseFloat(i.amount) || 0, parseFloat(i.balance) || 0,
+          ]));
+          break;
+        }
+        case "payments": {
+          let query = supabase
+            .from("acumatica_payments")
+            .select("reference_number, type, status, customer_id, customer_name, payment_amount, application_date, payment_method, payment_ref");
+          if (filters.type) query = query.eq("type", filters.type);
+          if (filters.customer_id) query = query.eq("customer_id", filters.customer_id);
+          if (filters.date_from) query = query.gte("application_date", filters.date_from);
+          if (filters.date_to) query = query.lte("application_date", filters.date_to);
+          const { data } = await query.order("application_date", { ascending: false }).limit(limit);
+          columns = ["Reference #", "Type", "Status", "Customer ID", "Customer Name", "Amount", "Date", "Method", "Payment Ref"];
+          rows = (data || []).map((p: any) => ([
+            p.reference_number, p.type, p.status, p.customer_id, p.customer_name,
+            parseFloat(p.payment_amount) || 0, p.application_date, p.payment_method || "", p.payment_ref || "",
+          ]));
+          break;
+        }
+        case "aging_report": {
+          const { data } = await supabase.rpc("get_customers_unpaid_summary", {
+            p_search: "",
+            p_sort_by: "balance",
+            p_sort_asc: false,
+            p_limit: limit,
+            p_offset: 0,
+          });
+          columns = ["Customer ID", "Customer Name", "Outstanding Balance", "Open Invoices", "Max Days Overdue", "Aging Bucket"];
+          rows = (data || []).map((c: any) => {
+            const days = parseInt(c.max_days_overdue) || 0;
+            let bucket = "Current";
+            if (days > 365) bucket = "365+ Days";
+            else if (days > 120) bucket = "121-365 Days";
+            else if (days > 90) bucket = "91-120 Days";
+            else if (days > 60) bucket = "61-90 Days";
+            else if (days > 30) bucket = "31-60 Days";
+            else if (days > 0) bucket = "1-30 Days";
+            return [
+              c.customer_id, c.customer_name, parseFloat(c.total_balance) || 0,
+              parseInt(c.open_invoice_count) || 0, days, bucket,
+            ];
+          });
+          break;
+        }
+        case "payment_trend": {
+          const { data } = await supabase.rpc("get_payment_month_summary");
+          columns = ["Month", "Total Collected", "Payments", "Prepayments", "Voided", "Refunds", "Count"];
+          rows = (data || []).map((m: any) => ([
+            m.month_label,
+            parseFloat(m.total_amount) || 0,
+            parseFloat(m.payment_amount) || 0,
+            parseFloat(m.prepayment_amount) || 0,
+            parseFloat(m.voided_amount) || 0,
+            parseFloat(m.refund_amount) || 0,
+            parseInt(m.total_payments) || 0,
+          ]));
+          break;
+        }
+        case "collector_performance": {
+          const { data: collectors } = await supabase
+            .from("user_profiles")
+            .select("id, full_name, email, role")
+            .in("role", ["collector", "admin", "manager"])
+            .eq("account_status", "approved");
+          columns = ["Name", "Role", "Assigned Customers", "Open Tickets", "Closed Tickets"];
+          for (const c of collectors || []) {
+            const [aRes, oRes, cRes] = await Promise.all([
+              supabase.from("collector_customer_assignments").select("customer_id", { count: "exact", head: true }).eq("assigned_collector_id", c.id),
+              supabase.from("collection_tickets").select("id", { count: "exact", head: true }).eq("assigned_collector_id", c.id).in("status", ["open", "in_progress"]),
+              supabase.from("collection_tickets").select("id", { count: "exact", head: true }).eq("assigned_collector_id", c.id).eq("status", "closed"),
+            ]);
+            rows.push([c.full_name || c.email, c.role, aRes.count || 0, oRes.count || 0, cRes.count || 0]);
+          }
+          break;
+        }
+      }
+
+      return {
+        __report: true,
+        title: args.title,
+        report_type: args.report_type,
+        columns,
+        rows,
+        row_count: rows.length,
+        generated_at: new Date().toISOString(),
+      };
     }
 
     case "run_sql_query": {
@@ -710,6 +904,8 @@ IMPORTANT RULES:
 - For "best collector" questions, use get_collector_performance.
 - For aging analysis, use get_aging_report.
 - NEVER compute balances yourself by summing individual invoice rows - always use the tools which use server-side aggregation.
+- When the user asks to "generate", "export", "download", "create a spreadsheet", "make a PDF", or "create a report", ALWAYS use the generate_report tool. The frontend will convert the data into downloadable Excel or PDF files.
+- For monthly payment trend questions, use get_monthly_summary with entity "payments". The data is pre-aggregated and accurate.
 
 Key terminology:
 - "Balance" = remaining unpaid amount on an invoice
@@ -799,9 +995,24 @@ When answering:
       assistantMessage = result.choices?.[0]?.message;
     }
 
+    // Check if any tool returned report data
+    let reportData = null;
+    for (const msg of messages) {
+      if (msg.role === "tool" && msg.content) {
+        try {
+          const parsed = JSON.parse(msg.content);
+          if (parsed.__report) {
+            reportData = parsed;
+            break;
+          }
+        } catch {}
+      }
+    }
+
     return jsonResponse({
       reply: assistantMessage?.content || "I could not generate a response.",
       tools_used: rounds > 0,
+      report: reportData,
     });
   } catch (error: any) {
     console.error("AI Chat error:", error);
