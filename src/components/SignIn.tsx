@@ -1,7 +1,114 @@
-import { useState } from 'react';
-import { Mail, Lock, AlertCircle, Clock, CheckCircle, User, ArrowLeft } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Mail, Lock, AlertCircle, Clock, CheckCircle, User, ArrowLeft, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { logActivity, supabase } from '../lib/supabase';
+
+const CAROUSEL_IMAGES = [
+  {
+    url: 'https://images.pexels.com/photos/6129150/pexels-photo-6129150.jpeg?auto=compress&cs=tinysrgb&w=1920&h=1080&dpr=1',
+    label: 'Healthcare',
+    caption: 'Medical professionals delivering exceptional patient care',
+  },
+  {
+    url: 'https://images.pexels.com/photos/13890649/pexels-photo-13890649.jpeg?auto=compress&cs=tinysrgb&w=1920&h=1080&dpr=1',
+    label: 'Construction',
+    caption: 'Building the infrastructure that shapes our world',
+  },
+  {
+    url: 'https://images.pexels.com/photos/12902858/pexels-photo-12902858.jpeg?auto=compress&cs=tinysrgb&w=1920&h=1080&dpr=1',
+    label: 'Office & Administration',
+    caption: 'Empowering teams with streamlined operations',
+  },
+  {
+    url: 'https://images.pexels.com/photos/7731318/pexels-photo-7731318.jpeg?auto=compress&cs=tinysrgb&w=1920&h=1080&dpr=1',
+    label: 'Insurance',
+    caption: 'Protecting what matters most to your clients',
+  },
+];
+
+function ImageCarousel() {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [fadeState, setFadeState] = useState<'visible' | 'fading'>('visible');
+
+  const advanceSlide = useCallback(() => {
+    setFadeState('fading');
+    setTimeout(() => {
+      setCurrentIndex((prev) => (prev + 1) % CAROUSEL_IMAGES.length);
+      setFadeState('visible');
+    }, 1000);
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(advanceSlide, 6000);
+    return () => clearInterval(interval);
+  }, [advanceSlide]);
+
+  const current = CAROUSEL_IMAGES[currentIndex];
+
+  return (
+    <div className="relative w-full h-full overflow-hidden bg-gray-900">
+      {CAROUSEL_IMAGES.map((img, idx) => (
+        <div
+          key={idx}
+          className="absolute inset-0 transition-opacity duration-1000 ease-in-out"
+          style={{ opacity: idx === currentIndex ? (fadeState === 'visible' ? 1 : 0) : 0 }}
+        >
+          <img
+            src={img.url}
+            alt={img.label}
+            className="w-full h-full object-cover"
+          />
+        </div>
+      ))}
+
+      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/40" />
+
+      <div className="absolute top-8 left-8 right-8">
+        <img
+          src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
+          alt="Logo"
+          className="h-14 w-auto drop-shadow-lg"
+        />
+      </div>
+
+      <div className="absolute bottom-0 left-0 right-0 p-8">
+        <div
+          className={`transition-opacity duration-700 ${fadeState === 'visible' ? 'opacity-100' : 'opacity-0'}`}
+        >
+          <span className="inline-block px-3 py-1 bg-white/20 backdrop-blur-sm text-white text-xs font-semibold uppercase tracking-wider rounded-full mb-3">
+            {current.label}
+          </span>
+          <p className="text-white text-lg font-medium leading-relaxed max-w-md">
+            {current.caption}
+          </p>
+        </div>
+
+        <div className="flex gap-2 mt-6">
+          {CAROUSEL_IMAGES.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => {
+                if (idx !== currentIndex) {
+                  setFadeState('fading');
+                  setTimeout(() => {
+                    setCurrentIndex(idx);
+                    setFadeState('visible');
+                  }, 500);
+                }
+              }}
+              className={`h-1.5 rounded-full transition-all duration-500 ${
+                idx === currentIndex
+                  ? 'bg-white w-8'
+                  : 'bg-white/40 w-4 hover:bg-white/60'
+              }`}
+              aria-label={`Go to slide ${idx + 1}`}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
@@ -56,8 +163,7 @@ export default function SignIn() {
 
     try {
       if (isSignUp) {
-        // Save to pending_users table for admin approval
-        const { data: existingPending, error: checkError } = await supabase
+        const { data: existingPending } = await supabase
           .from('pending_users')
           .select('*')
           .eq('email', email)
@@ -83,7 +189,6 @@ export default function SignIn() {
           setAccountStatus('pending');
         }
       } else {
-        // Check if user is in pending_users first
         const { data: pendingUser } = await supabase
           .from('pending_users')
           .select('*')
@@ -103,7 +208,6 @@ export default function SignIn() {
           }
         }
 
-        // Try to sign in normally if approved or not in pending table
         const { data, error } = await signIn(email, password);
 
         if (error) {
@@ -119,363 +223,315 @@ export default function SignIn() {
     }
   };
 
-  if (resetEmailSent) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-white via-blue-50 to-white flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-8 text-white">
-              <div className="flex items-center justify-center">
-                <img
-                  src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
-                  alt="Logo"
-                  className="h-20 w-auto"
-                />
-              </div>
-            </div>
-
-            <div className="p-8 text-center">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <CheckCircle className="w-10 h-10 text-green-600" />
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">Check Your Email</h2>
-              <p className="text-gray-600 mb-6">
-                We've sent a password reset link to <strong>{email}</strong>
-              </p>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                <p className="text-sm text-blue-800">
-                  Click the link in the email to reset your password. The link will expire after use or when you sign in.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setResetEmailSent(false);
-                  setIsForgotPassword(false);
-                  setEmail('');
-                }}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-              >
-                Back to Sign In
-              </button>
-            </div>
+  const renderFormContent = () => {
+    if (resetEmailSent) {
+      return (
+        <div className="text-center">
+          <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-5">
+            <CheckCircle className="w-8 h-8 text-emerald-600" />
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (isForgotPassword) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-white via-blue-50 to-white flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-8 text-white">
-              <div className="flex items-center justify-center">
-                <img
-                  src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
-                  alt="Logo"
-                  className="h-20 w-auto"
-                />
-              </div>
-            </div>
-
-            <div className="p-8">
-              <button
-                onClick={() => {
-                  setIsForgotPassword(false);
-                  setError('');
-                }}
-                className="flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium mb-6 transition-colors"
-              >
-                <ArrowLeft size={16} />
-                Back to Sign In
-              </button>
-
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Reset Password</h2>
-              <p className="text-gray-600 mb-6">
-                Enter your email address and we'll send you a link to reset your password.
-              </p>
-
-              {error && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-start gap-3 mb-2">
-                    <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                    <p className="text-red-800 text-sm">{error}</p>
-                  </div>
-                  {(error.includes('fetch') || error.includes('network') || error.includes('Failed to')) && (
-                    <a
-                      href="/connection-test"
-                      className="text-sm text-blue-600 hover:text-blue-800 underline ml-8 inline-block"
-                    >
-                      Run connection diagnostic →
-                    </a>
-                  )}
-                </div>
-              )}
-
-              <form onSubmit={handleForgotPassword} className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-blue-900 mb-2">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600" size={20} />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-11 pr-4 py-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                      placeholder="you@example.com"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-cyan-700 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                >
-                  {loading ? 'Sending...' : 'Send Reset Link'}
-                </button>
-              </form>
-            </div>
-          </div>
-
-          <p className="text-center text-blue-600 text-sm mt-6">
-            Secure authentication powered by Supabase
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Check Your Email</h2>
+          <p className="text-gray-500 mb-6 text-sm leading-relaxed">
+            We've sent a password reset link to <span className="font-semibold text-gray-700">{email}</span>
           </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (accountStatus === 'pending') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-white via-blue-50 to-white flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-8 text-white">
-              <div className="flex items-center justify-center">
-                <img
-                  src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
-                  alt="Logo"
-                  className="h-20 w-auto"
-                />
-              </div>
-            </div>
-
-            <div className="p-8 text-center">
-              <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Clock className="w-10 h-10 text-yellow-600" />
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">Account Pending Approval</h2>
-              <p className="text-gray-600 mb-6">
-                Thank you for creating an account! Your registration is currently being reviewed by an administrator.
-              </p>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                <p className="text-sm text-blue-800">
-                  You will receive access once your account has been approved. This usually takes 1-2 business days.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setAccountStatus(null);
-                  setEmail('');
-                  setPassword('');
-                  setFullName('');
-                  setIsSignUp(false);
-                }}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-              >
-                Back to Sign In
-              </button>
-            </div>
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
+            <p className="text-sm text-blue-700">
+              Click the link in the email to reset your password. The link will expire after use.
+            </p>
           </div>
+          <button
+            onClick={() => {
+              setResetEmailSent(false);
+              setIsForgotPassword(false);
+              setEmail('');
+            }}
+            className="text-blue-600 hover:text-blue-700 text-sm font-medium transition-colors"
+          >
+            Back to Sign In
+          </button>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  if (accountStatus === 'rejected') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-white via-blue-50 to-white flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-8 text-white">
-              <div className="flex items-center justify-center">
-                <img
-                  src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
-                  alt="Logo"
-                  className="h-20 w-auto"
-                />
-              </div>
+    if (accountStatus === 'pending') {
+      return (
+        <div className="text-center">
+          <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-5">
+            <Clock className="w-8 h-8 text-amber-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Pending Approval</h2>
+          <p className="text-gray-500 mb-6 text-sm leading-relaxed">
+            Your registration is being reviewed by an administrator.
+          </p>
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 mb-6">
+            <p className="text-sm text-amber-700">
+              You will receive access once approved. This usually takes 1-2 business days.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setAccountStatus(null);
+              setEmail('');
+              setPassword('');
+              setFullName('');
+              setIsSignUp(false);
+            }}
+            className="text-blue-600 hover:text-blue-700 text-sm font-medium transition-colors"
+          >
+            Back to Sign In
+          </button>
+        </div>
+      );
+    }
+
+    if (accountStatus === 'rejected') {
+      return (
+        <div className="text-center">
+          <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-5">
+            <AlertCircle className="w-8 h-8 text-red-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Account Not Approved</h2>
+          <p className="text-gray-500 mb-4 text-sm leading-relaxed">
+            Your registration was not approved by the administrator.
+          </p>
+          {rejectionReason && (
+            <div className="bg-red-50 border border-red-100 rounded-xl p-4 mb-4">
+              <p className="text-xs font-semibold text-red-800 mb-1">Reason:</p>
+              <p className="text-sm text-red-700">{rejectionReason}</p>
             </div>
+          )}
+          <p className="text-xs text-gray-400 mb-6">
+            If you believe this is an error, please contact your administrator.
+          </p>
+          <button
+            onClick={() => {
+              setAccountStatus(null);
+              setRejectionReason('');
+              setEmail('');
+              setPassword('');
+            }}
+            className="text-blue-600 hover:text-blue-700 text-sm font-medium transition-colors"
+          >
+            Back to Sign In
+          </button>
+        </div>
+      );
+    }
 
-            <div className="p-8 text-center">
-              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <AlertCircle className="w-10 h-10 text-red-600" />
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">Account Not Approved</h2>
-              <p className="text-gray-600 mb-6">
-                Your account registration was not approved by the administrator.
-              </p>
-              {rejectionReason && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-                  <p className="text-sm font-medium text-red-900 mb-1">Reason:</p>
-                  <p className="text-sm text-red-800">{rejectionReason}</p>
-                </div>
+    if (isForgotPassword) {
+      return (
+        <>
+          <button
+            onClick={() => {
+              setIsForgotPassword(false);
+              setError('');
+            }}
+            className="flex items-center gap-1.5 text-gray-500 hover:text-gray-700 text-sm font-medium mb-6 transition-colors"
+          >
+            <ArrowLeft size={15} />
+            Back
+          </button>
+
+          <h2 className="text-2xl font-bold text-gray-900 mb-1">Reset Password</h2>
+          <p className="text-gray-500 text-sm mb-6">
+            Enter your email and we'll send a reset link.
+          </p>
+
+          {error && <ErrorMessage error={error} />}
+
+          <form onSubmit={handleForgotPassword} className="space-y-5">
+            <InputField
+              label="Email Address"
+              type="email"
+              value={email}
+              onChange={setEmail}
+              placeholder="you@example.com"
+              icon={<Mail size={18} />}
+            />
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              {loading ? 'Sending...' : 'Send Reset Link'}
+            </button>
+          </form>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">
+          {isSignUp ? 'Create Account' : 'Welcome back'}
+        </h2>
+        <p className="text-gray-500 text-sm mb-8">
+          {isSignUp ? 'Submit your details for admin approval.' : 'Sign in to your account to continue.'}
+        </p>
+
+        {error && <ErrorMessage error={error} />}
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {isSignUp && (
+            <InputField
+              label="Full Name"
+              type="text"
+              value={fullName}
+              onChange={setFullName}
+              placeholder="John Doe"
+              icon={<User size={18} />}
+            />
+          )}
+
+          <InputField
+            label="Email Address"
+            type="email"
+            value={email}
+            onChange={setEmail}
+            placeholder="you@example.com"
+            icon={<Mail size={18} />}
+          />
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-sm font-medium text-gray-700">
+                Password
+              </label>
+              {!isSignUp && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotPassword(true);
+                    setError('');
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                >
+                  Forgot Password?
+                </button>
               )}
-              <p className="text-sm text-gray-600 mb-6">
-                If you believe this is an error, please contact your administrator.
-              </p>
-              <button
-                onClick={() => {
-                  setAccountStatus(null);
-                  setRejectionReason('');
-                  setEmail('');
-                  setPassword('');
-                }}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-              >
-                Back to Sign In
-              </button>
             </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-white via-blue-50 to-white flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-8 text-white">
-            <div className="flex items-center justify-center">
-              <img
-                src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
-                alt="Logo"
-                className="h-20 w-auto"
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white transition-all text-sm"
+                placeholder="Enter your password"
+                required
+                minLength={6}
               />
             </div>
           </div>
 
-          <div className="p-8">
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex items-start gap-3 mb-2">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                  <p className="text-red-800 text-sm">{error}</p>
-                </div>
-                {(error.includes('fetch') || error.includes('network') || error.includes('Failed to')) && (
-                  <a
-                    href="/connection-test"
-                    className="text-sm text-blue-600 hover:text-blue-800 underline ml-8 inline-block"
-                  >
-                    Run connection diagnostic →
-                  </a>
-                )}
-              </div>
-            )}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          >
+            {loading ? 'Please wait...' : isSignUp ? 'Request Account' : 'Sign In'}
+          </button>
+        </form>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {isSignUp && (
-                <div>
-                  <label className="block text-sm font-medium text-blue-900 mb-2">
-                    Full Name
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600" size={20} />
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="w-full pl-11 pr-4 py-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                      placeholder="John Doe"
-                      required
-                    />
-                  </div>
-                </div>
-              )}
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => {
+              setIsSignUp(!isSignUp);
+              setError('');
+            }}
+            className="text-gray-500 hover:text-gray-700 text-sm transition-colors"
+          >
+            {isSignUp
+              ? 'Already have an account? '
+              : "Don't have an account? "}
+            <span className="font-semibold text-blue-600 hover:text-blue-700">
+              {isSignUp ? 'Sign in' : 'Sign up'}
+            </span>
+          </button>
+        </div>
+      </>
+    );
+  };
 
-              <div>
-                <label className="block text-sm font-medium text-blue-900 mb-2">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600" size={20} />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    placeholder="you@example.com"
-                    required
-                  />
-                </div>
-              </div>
+  return (
+    <div className="min-h-screen flex">
+      {/* Left side - Image Carousel */}
+      <div className="hidden lg:block lg:w-1/2 xl:w-[55%]">
+        <ImageCarousel />
+      </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-blue-900">
-                    Password
-                  </label>
-                  {!isSignUp && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsForgotPassword(true);
-                        setError('');
-                      }}
-                      className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
-                    >
-                      Forgot Password?
-                    </button>
-                  )}
-                </div>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600" size={20} />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    placeholder="••••••••"
-                    required
-                    minLength={6}
-                  />
-                </div>
-              </div>
+      {/* Right side - Form */}
+      <div className="w-full lg:w-1/2 xl:w-[45%] flex flex-col bg-white">
+        {/* Mobile-only logo */}
+        <div className="lg:hidden flex items-center justify-center py-6 border-b border-gray-100">
+          <img
+            src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
+            alt="Logo"
+            className="h-12 w-auto"
+          />
+        </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-cyan-700 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-              >
-                {loading ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
-              </button>
-            </form>
-
-            <div className="mt-6 text-center">
-              <button
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setError('');
-                }}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium transition-colors"
-              >
-                {isSignUp
-                  ? 'Already have an account? Sign in'
-                  : "Don't have an account? Sign up"}
-              </button>
-            </div>
+        <div className="flex-1 flex items-center justify-center px-6 py-12 sm:px-12 lg:px-16">
+          <div className="w-full max-w-md">
+            {renderFormContent()}
           </div>
         </div>
 
-        <p className="text-center text-blue-600 text-sm mt-6">
-          Secure authentication powered by Supabase
-        </p>
+        <div className="px-6 py-4 border-t border-gray-100">
+          <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
+            <Shield size={12} />
+            <span>Secure authentication</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InputField({
+  label,
+  type,
+  value,
+  onChange,
+  placeholder,
+  icon,
+}: {
+  label: string;
+  type: string;
+  value: string;
+  onChange: (val: string) => void;
+  placeholder: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+        {label}
+      </label>
+      <div className="relative">
+        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+          {icon}
+        </span>
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white transition-all text-sm"
+          placeholder={placeholder}
+          required
+        />
+      </div>
+    </div>
+  );
+}
+
+function ErrorMessage({ error }: { error: string }) {
+  return (
+    <div className="mb-5 p-3.5 bg-red-50 border border-red-100 rounded-xl">
+      <div className="flex items-start gap-2.5">
+        <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
+        <p className="text-red-700 text-sm">{error}</p>
       </div>
     </div>
   );
