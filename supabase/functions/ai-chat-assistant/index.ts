@@ -19,17 +19,18 @@ function errorResponse(message: string, status = 400) {
   return jsonResponse({ error: message }, status);
 }
 
+// ── Tool definitions ────────────────────────────────────────────────
 const tools = [
   {
     type: "function",
     function: {
       name: "get_top_customers_by_balance",
       description:
-        "Get the top customers ranked by outstanding balance (highest first). Uses server-side aggregation so it is always accurate. Use this for questions like 'who owes the most', 'highest balance', 'top debtors', etc.",
+        "Get top customers ranked by outstanding balance. Uses server-side aggregation so it is always accurate.",
       parameters: {
         type: "object",
         properties: {
-          search: { type: "string", description: "Optional search term to filter customer name or ID" },
+          search: { type: "string", description: "Optional search term" },
           limit: { type: "number", description: "Max results (default 10, max 50)" },
         },
       },
@@ -40,11 +41,29 @@ const tools = [
     function: {
       name: "get_customer_detail",
       description:
-        "Get full details for a specific customer including balance breakdown, recent invoices, payments, and tickets.",
+        "Full details for a specific customer: balance breakdown, recent invoices, payments, tickets, invoice stats (highest/lowest/oldest/most overdue invoice).",
       parameters: {
         type: "object",
         properties: {
-          customer_id: { type: "string", description: "The customer ID" },
+          customer_id: { type: "string", description: "The customer ID (e.g. 'C000123')" },
+        },
+        required: ["customer_id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_customer_timeline",
+      description:
+        "Get a historical balance/payments/invoices timeline for a specific customer, grouped by day/week/month.",
+      parameters: {
+        type: "object",
+        properties: {
+          customer_id: { type: "string" },
+          date_from: { type: "string", description: "YYYY-MM-DD" },
+          date_to: { type: "string", description: "YYYY-MM-DD" },
+          grouping: { type: "string", enum: ["day", "week", "month"], description: "Default: month" },
         },
         required: ["customer_id"],
       },
@@ -59,17 +78,18 @@ const tools = [
       parameters: {
         type: "object",
         properties: {
-          search: { type: "string", description: "Search term for reference number or customer" },
-          status: { type: "string", enum: ["Open", "Closed", "Voided"] },
-          type: { type: "string", enum: ["Invoice", "Credit Memo", "Debit Memo"] },
+          search: { type: "string", description: "Reference number or customer name" },
+          status: { type: "string", enum: ["Open", "Closed", "Voided", "Balanced"] },
+          type: { type: "string", enum: ["Invoice", "Credit Memo", "Debit Memo", "Credit WO"] },
           customer_id: { type: "string" },
           date_from: { type: "string", description: "YYYY-MM-DD" },
           date_to: { type: "string", description: "YYYY-MM-DD" },
           min_balance: { type: "number" },
           min_amount: { type: "number" },
+          color_status: { type: "string", enum: ["red", "yellow", "orange", "green", "blue", "none"] },
           sort_by: { type: "string", enum: ["date", "amount", "balance", "due_date"] },
           sort_order: { type: "string", enum: ["asc", "desc"] },
-          limit: { type: "number", description: "Max results (default 25)" },
+          limit: { type: "number", description: "Max results (default 25, max 100)" },
         },
       },
     },
@@ -84,11 +104,11 @@ const tools = [
         properties: {
           search: { type: "string" },
           customer_id: { type: "string" },
-          type: { type: "string", enum: ["Payment", "Prepayment", "Credit Memo", "Voided Check"] },
+          type: { type: "string", enum: ["Payment", "Prepayment", "Credit Memo", "Voided Check", "Refund"] },
           date_from: { type: "string", description: "YYYY-MM-DD" },
           date_to: { type: "string", description: "YYYY-MM-DD" },
           min_amount: { type: "number" },
-          sort_by: { type: "string", enum: ["application_date", "payment_amount"] },
+          sort_by: { type: "string", enum: ["application_date", "payment_amount", "doc_date"] },
           sort_order: { type: "string", enum: ["asc", "desc"] },
           limit: { type: "number" },
         },
@@ -99,7 +119,7 @@ const tools = [
     type: "function",
     function: {
       name: "get_analytics_overview",
-      description: "Get high-level dashboard metrics: total customers, outstanding balances, open tickets, payments this month.",
+      description: "High-level dashboard metrics: total customers, outstanding balances, open tickets, payments this month, open invoice stats.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -107,7 +127,7 @@ const tools = [
     type: "function",
     function: {
       name: "get_aging_report",
-      description: "Get AR aging report with buckets (current, 1-30, 31-60, 61-90, 91-120, 121-365, 365+ days) and top customers. Uses SQL aggregation for accuracy.",
+      description: "AR aging report with buckets (current, 1-30, 31-60, 61-90, 91-120, 121-365, 365+) and top customers by balance.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -115,7 +135,7 @@ const tools = [
     type: "function",
     function: {
       name: "get_payment_summary",
-      description: "Get payment totals for a date range. For 'how much did we collect' type questions.",
+      description: "Payment totals and monthly breakdown for a date range. For 'how much collected' questions.",
       parameters: {
         type: "object",
         properties: {
@@ -130,7 +150,7 @@ const tools = [
     type: "function",
     function: {
       name: "get_collector_performance",
-      description: "Get performance metrics for all collectors: assigned customers, open/closed tickets.",
+      description: "Performance metrics for all collectors: assigned customers, open/closed tickets, total collected, invoices paid, avg days to close.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -138,12 +158,12 @@ const tools = [
     type: "function",
     function: {
       name: "get_overdue_customers",
-      description: "Find customers with the oldest unpaid invoices. Uses SQL aggregation for accuracy over all invoices.",
+      description: "Find customers with the oldest unpaid invoices or highest balances. Uses SQL aggregation.",
       parameters: {
         type: "object",
         properties: {
-          min_days_overdue: { type: "number", description: "Minimum days overdue (default 365)" },
-          min_balance: { type: "number", description: "Minimum outstanding balance (default 500000)" },
+          min_days_overdue: { type: "number", description: "Minimum days overdue (default 90)" },
+          min_balance: { type: "number", description: "Minimum outstanding balance (default 0)" },
           limit: { type: "number" },
         },
       },
@@ -158,7 +178,7 @@ const tools = [
         type: "object",
         properties: {
           search: { type: "string" },
-          status: { type: "string" },
+          status: { type: "string", enum: ["open", "in_progress", "closed", "on_hold"] },
           priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
           customer_id: { type: "string" },
           limit: { type: "number" },
@@ -187,7 +207,7 @@ const tools = [
     type: "function",
     function: {
       name: "get_monthly_summary",
-      description: "Get month-by-month summary of invoices or payments.",
+      description: "Month-by-month summary of invoices or payments. Pre-aggregated and accurate.",
       parameters: {
         type: "object",
         properties: {
@@ -200,24 +220,47 @@ const tools = [
   {
     type: "function",
     function: {
-      name: "generate_report",
+      name: "get_customer_level_analytics",
       description:
-        "Generate a downloadable report (Excel/PDF) from data. Use this when the user asks to export, download, generate a spreadsheet, PDF, or report. Returns structured data that the frontend will convert to a file. Supported report types: customer_balances (top customers by balance), invoices (invoice list with filters), payments (payment list with filters), aging_report (AR aging summary), payment_trend (monthly payment trend), collector_performance (collector metrics).",
+        "Per-customer performance breakdown: total invoiced, total paid, current balance, invoice/payment counts, last invoice/payment dates, avg days to pay. Great for comparing customers.",
       parameters: {
         type: "object",
         properties: {
-          report_type: {
-            type: "string",
-            enum: ["customer_balances", "invoices", "payments", "aging_report", "payment_trend", "collector_performance"],
-            description: "Type of report to generate",
-          },
-          title: { type: "string", description: "Report title" },
-          filters: {
-            type: "object",
-            description: "Optional filters: date_from, date_to, customer_id, status, type, limit",
-          },
+          date_from: { type: "string", description: "YYYY-MM-DD" },
+          date_to: { type: "string", description: "YYYY-MM-DD" },
+          limit: { type: "number", description: "Max results (default 50)" },
         },
-        required: ["report_type", "title"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_invoice_counts_by_type",
+      description: "Count of invoices grouped by type (Invoice, Credit Memo, Debit Memo, etc.) within a date range.",
+      parameters: {
+        type: "object",
+        properties: {
+          start_date: { type: "string", description: "YYYY-MM-DD" },
+          end_date: { type: "string", description: "YYYY-MM-DD" },
+        },
+        required: ["start_date", "end_date"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "global_search",
+      description:
+        "Search across ALL categories at once: customers, invoices, payments, tickets, and collectors. Returns ranked results with routes to each item. Use for broad searches.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search term" },
+          max_per_category: { type: "number", description: "Max results per category (default 6)" },
+        },
+        required: ["query"],
       },
     },
   },
@@ -226,39 +269,59 @@ const tools = [
     function: {
       name: "run_sql_query",
       description:
-        "Run a read-only SQL query for advanced questions. Only SELECT statements allowed. Key tables: acumatica_invoices (customer, customer_name, reference_number, type, status, amount, balance, date, due_date), acumatica_payments (customer_id, customer_name, reference_number, type, status, payment_amount, application_date, doc_date), acumatica_customers (customer_id, customer_name, customer_class, general_email, credit_limit, terms), collection_tickets (ticket_number, customer_id, customer_name, status, priority, ticket_type, assigned_collector_id), payment_invoice_applications (payment_reference_number, invoice_reference_number, amount_paid). Join acumatica_customers ON customer_id = acumatica_invoices.customer for real customer names.",
+        "Run a read-only SQL query for advanced analysis not covered by other tools. Only SELECT allowed. Key tables: acumatica_invoices (customer, customer_name, reference_number, type, status, amount, balance, date, due_date, color_status, description, terms), acumatica_payments (customer_id, customer_name, reference_number, type, status, payment_amount, application_date, doc_date, payment_method, payment_ref), acumatica_customers (customer_id, customer_name, customer_class, email_address, credit_limit, terms, customer_status, country, city, is_test_customer), collection_tickets (ticket_number, customer_id, customer_name, status, priority, ticket_type, notes, due_date, assigned_collector_id, created_at, resolved_at), payment_invoice_applications (payment_reference_number, invoice_reference_number, amount_paid, doc_type), collector_customer_assignments (customer_id, assigned_collector_id), user_profiles (id, full_name, email, role, account_status), invoice_color_status_history (invoice_id, old_status, new_status, changed_at, changed_by_user_id), invoice_memos (invoice_reference_number, memo_text, created_by_user_id, created_at).",
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "SELECT SQL query" },
-          explanation: { type: "string" },
+          query: { type: "string", description: "SELECT SQL query (max 200 rows returned)" },
+          explanation: { type: "string", description: "Brief explanation of what this query does" },
         },
         required: ["query", "explanation"],
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "generate_report",
+      description:
+        "Generate a downloadable report (Excel/PDF). Use when user asks to export, download, generate a spreadsheet/PDF/report. Returns structured data the frontend converts to files. Report types: customer_balances, invoices, payments, aging_report, payment_trend, collector_performance, overdue_customers, customer_analytics.",
+      parameters: {
+        type: "object",
+        properties: {
+          report_type: {
+            type: "string",
+            enum: ["customer_balances", "invoices", "payments", "aging_report", "payment_trend", "collector_performance", "overdue_customers", "customer_analytics"],
+          },
+          title: { type: "string", description: "Report title for the file" },
+          filters: {
+            type: "object",
+            description: "Optional filters: date_from, date_to, customer_id, status, type, min_balance, limit",
+          },
+        },
+        required: ["report_type", "title"],
+      },
+    },
+  },
 ];
 
+// ── Tool implementations ────────────────────────────────────────────
 async function executeTool(
-  supabase: ReturnType<typeof createClient>,
+  sb: ReturnType<typeof createClient>,
   name: string,
   args: Record<string, any>
 ): Promise<any> {
   switch (name) {
     case "get_top_customers_by_balance": {
       const limit = Math.min(args.limit || 10, 50);
-      const search = args.search || "";
-
-      const { data, error } = await supabase.rpc("get_api_customer_balances", {
-        p_search: search,
+      const { data, error } = await sb.rpc("get_api_customer_balances", {
+        p_search: args.search || "",
         p_sort_by: "balance",
         p_sort_asc: false,
         p_limit: limit,
         p_offset: 0,
       });
-
       if (error) return { error: error.message };
-
       return {
         customers: (data || []).map((c: any) => ({
           customer_id: c.customer_id,
@@ -268,83 +331,57 @@ async function executeTool(
           open_invoice_count: parseInt(c.open_invoice_count) || 0,
           terms: c.terms,
         })),
-        total: (data || []).length,
+        count: (data || []).length,
       };
     }
 
     case "get_customer_detail": {
-      const { data: customer } = await supabase
-        .from("acumatica_customers")
-        .select("*")
-        .eq("customer_id", args.customer_id)
-        .maybeSingle();
-
-      if (!customer) return { error: "Customer not found" };
-
-      // Get balance via RPC for accuracy
-      const { data: balanceData } = await supabase.rpc("get_api_customer_balances", {
-        p_search: args.customer_id,
-        p_sort_by: "balance",
-        p_sort_asc: false,
-        p_limit: 1,
-        p_offset: 0,
-      });
-
-      const balance = balanceData?.[0];
-
-      const [invoicesRes, paymentsRes, ticketsRes] = await Promise.all([
-        supabase
-          .from("acumatica_invoices")
-          .select("reference_number, type, status, amount, balance, date, due_date")
-          .eq("customer", args.customer_id)
-          .order("date", { ascending: false })
-          .limit(50),
-        supabase
-          .from("acumatica_payments")
-          .select("reference_number, type, payment_amount, application_date, status")
-          .eq("customer_id", args.customer_id)
-          .order("application_date", { ascending: false })
-          .limit(20),
-        supabase
-          .from("collection_tickets")
-          .select("ticket_number, status, priority, ticket_type, created_at")
-          .eq("customer_id", args.customer_id)
-          .order("created_at", { ascending: false })
-          .limit(10),
+      const cid = args.customer_id;
+      const [custRes, balRes, invStatsRes, invoicesRes, paymentsRes, ticketsRes] = await Promise.all([
+        sb.from("acumatica_customers").select("customer_id, customer_name, customer_class, email_address, billing_email, general_email, credit_limit, terms, customer_status, country, city, customer_color_status, days_from_invoice_threshold").eq("customer_id", cid).maybeSingle(),
+        sb.rpc("get_api_customer_balances", { p_search: cid, p_sort_by: "balance", p_sort_asc: false, p_limit: 1, p_offset: 0 }),
+        sb.rpc("get_customer_invoice_stats", { p_customer_id: cid }),
+        sb.from("acumatica_invoices").select("reference_number, type, status, amount, balance, date, due_date, color_status").eq("customer", cid).neq("status", "On Hold").order("date", { ascending: false }).limit(30),
+        sb.from("acumatica_payments").select("reference_number, type, payment_amount, application_date, doc_date, status, payment_method").eq("customer_id", cid).order("application_date", { ascending: false }).limit(20),
+        sb.from("collection_tickets").select("ticket_number, status, priority, ticket_type, notes, due_date, created_at, resolved_at").eq("customer_id", cid).order("created_at", { ascending: false }).limit(10),
       ]);
 
+      if (!custRes.data) return { error: `Customer '${cid}' not found` };
+      const bal = balRes.data?.[0];
+      const invStats = invStatsRes.data?.[0];
+
       return {
-        customer: {
-          customer_id: customer.customer_id,
-          customer_name: customer.customer_name,
-          customer_class: customer.customer_class,
-          general_email: customer.general_email,
-          billing_email: customer.billing_email,
-          credit_limit: customer.credit_limit,
-          terms: customer.terms,
-          customer_status: customer.customer_status,
+        customer: custRes.data,
+        balance: {
+          outstanding: bal ? parseFloat(bal.invoice_balance) : 0,
+          open_invoices: bal ? parseInt(bal.open_invoice_count) : 0,
         },
-        outstanding_balance: balance ? parseFloat(balance.invoice_balance) : 0,
-        open_invoice_count: balance ? parseInt(balance.open_invoice_count) : 0,
-        invoices: invoicesRes.data || [],
+        invoice_stats: invStats || null,
+        recent_invoices: invoicesRes.data || [],
         recent_payments: paymentsRes.data || [],
         tickets: ticketsRes.data || [],
       };
     }
 
+    case "get_customer_timeline": {
+      const { data, error } = await sb.rpc("get_single_customer_timeline", {
+        p_customer_id: args.customer_id,
+        p_date_from: args.date_from || null,
+        p_date_to: args.date_to || null,
+        p_grouping: args.grouping || "month",
+      });
+      if (error) return { error: error.message };
+      return { timeline: data || [] };
+    }
+
     case "search_invoices": {
       const limit = Math.min(args.limit || 25, 100);
-      let query = supabase
+      let query = sb
         .from("acumatica_invoices")
-        .select(
-          "reference_number, type, status, customer, customer_name, date, due_date, amount, balance, color_status",
-          { count: "exact" }
-        );
+        .select("reference_number, type, status, customer, customer_name, date, due_date, amount, balance, color_status, description", { count: "exact" })
+        .neq("status", "On Hold");
 
-      if (args.search)
-        query = query.or(
-          `reference_number.ilike.%${args.search}%,customer_name.ilike.%${args.search}%,customer.ilike.%${args.search}%`
-        );
+      if (args.search) query = query.or(`reference_number.ilike.%${args.search}%,customer_name.ilike.%${args.search}%,customer.ilike.%${args.search}%`);
       if (args.status) query = query.eq("status", args.status);
       if (args.type) query = query.eq("type", args.type);
       if (args.customer_id) query = query.eq("customer", args.customer_id);
@@ -352,27 +389,21 @@ async function executeTool(
       if (args.date_to) query = query.lte("date", args.date_to);
       if (args.min_balance) query = query.gte("balance", args.min_balance);
       if (args.min_amount) query = query.gte("amount", args.min_amount);
+      if (args.color_status) query = query.eq("color_status", args.color_status);
 
       const sortBy = args.sort_by || "date";
       const ascending = args.sort_order === "asc";
-
       const { data, count } = await query.order(sortBy, { ascending }).limit(limit);
       return { invoices: data || [], total: count };
     }
 
     case "search_payments": {
       const limit = Math.min(args.limit || 25, 100);
-      let query = supabase
+      let query = sb
         .from("acumatica_payments")
-        .select(
-          "reference_number, type, status, customer_id, customer_name, payment_amount, application_date, doc_date, payment_ref, payment_method",
-          { count: "exact" }
-        );
+        .select("reference_number, type, status, customer_id, customer_name, payment_amount, application_date, doc_date, payment_ref, payment_method", { count: "exact" });
 
-      if (args.search)
-        query = query.or(
-          `reference_number.ilike.%${args.search}%,customer_name.ilike.%${args.search}%,customer_id.ilike.%${args.search}%`
-        );
+      if (args.search) query = query.or(`reference_number.ilike.%${args.search}%,customer_name.ilike.%${args.search}%,customer_id.ilike.%${args.search}%`);
       if (args.customer_id) query = query.eq("customer_id", args.customer_id);
       if (args.type) query = query.eq("type", args.type);
       if (args.date_from) query = query.gte("application_date", args.date_from);
@@ -381,70 +412,42 @@ async function executeTool(
 
       const sortBy = args.sort_by || "application_date";
       const ascending = args.sort_order === "asc";
-
       const { data, count } = await query.order(sortBy, { ascending }).limit(limit);
       return { payments: data || [], total: count };
     }
 
     case "get_analytics_overview": {
-      const { count: customerCount } = await supabase
-        .from("acumatica_customers")
-        .select("id", { count: "exact", head: true });
+      const [customerRes, openStats, ticketRes, totalsRes, monthRes] = await Promise.all([
+        sb.from("acumatica_customers").select("id", { count: "exact", head: true }).eq("is_test_customer", false),
+        sb.rpc("get_open_invoice_stats"),
+        sb.from("collection_tickets").select("id", { count: "exact", head: true }).in("status", ["open", "in_progress"]),
+        sb.rpc("get_api_total_outstanding"),
+        (() => {
+          const now = new Date();
+          const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+          return sb.from("payment_month_summary").select("total_amount, payment_count").eq("month_key", key).maybeSingle();
+        })(),
+      ]);
 
-      const { data: openStats } = await supabase.rpc("get_open_invoice_stats");
-
-      const { count: openTicketCount } = await supabase
-        .from("collection_tickets")
-        .select("id", { count: "exact", head: true })
-        .in("status", ["open", "in_progress"]);
-
-      // Get total outstanding via RPC
-      const { data: totals } = await supabase.rpc("get_api_total_outstanding");
-      const outstanding = totals?.[0] || { total_balance: 0, customer_count: 0, invoice_count: 0 };
-
-      // Get this month's payments via the payment_month_summary table (pre-aggregated, accurate)
-      const now = new Date();
-      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const { data: monthSummary } = await supabase
-        .from("payment_month_summary")
-        .select("total_amount, payment_count")
-        .eq("month_key", currentMonthKey)
-        .maybeSingle();
-
+      const outstanding = totalsRes.data?.[0] || { total_balance: 0, customer_count: 0, invoice_count: 0 };
       return {
-        total_customers: customerCount || 0,
+        total_customers: customerRes.count || 0,
         total_outstanding_balance: parseFloat(outstanding.total_balance) || 0,
         customers_with_balance: outstanding.customer_count || 0,
         total_open_invoices: outstanding.invoice_count || 0,
-        open_tickets: openTicketCount || 0,
-        payments_collected_this_month: parseFloat(monthSummary?.total_amount) || 0,
-        payment_count_this_month: parseInt(monthSummary?.payment_count) || 0,
+        open_invoice_stats: openStats.data || {},
+        open_tickets: ticketRes.count || 0,
+        payments_collected_this_month: parseFloat(monthRes.data?.total_amount) || 0,
+        payment_count_this_month: parseInt(monthRes.data?.payment_count) || 0,
       };
     }
 
     case "get_aging_report": {
-      // Use SQL for accurate aggregation across all invoices
-      const { data, error } = await supabase.rpc("get_open_invoice_stats");
+      const [topCustRes, agingRes] = await Promise.all([
+        sb.rpc("get_api_customer_balances", { p_search: "", p_sort_by: "balance", p_sort_asc: false, p_limit: 15, p_offset: 0 }),
+        sb.rpc("get_customers_unpaid_summary", { p_search: "", p_sort_by: "balance", p_sort_order: "desc", p_limit: 2000, p_offset: 0 }),
+      ]);
 
-      // Also get top customers by balance
-      const { data: topCustomers } = await supabase.rpc("get_api_customer_balances", {
-        p_search: "",
-        p_sort_by: "balance",
-        p_sort_asc: false,
-        p_limit: 15,
-        p_offset: 0,
-      });
-
-      // Get aging via direct SQL
-      const { data: agingData } = await supabase.rpc("get_customers_unpaid_summary", {
-        p_search: "",
-        p_sort_by: "balance",
-        p_sort_asc: false,
-        p_limit: 500,
-        p_offset: 0,
-      });
-
-      // Build aging buckets from the unpaid summary
       const buckets: Record<string, { count: number; balance: number }> = {
         "current": { count: 0, balance: 0 },
         "1-30 days": { count: 0, balance: 0 },
@@ -455,7 +458,7 @@ async function executeTool(
         "365+ days": { count: 0, balance: 0 },
       };
 
-      for (const cust of agingData || []) {
+      for (const cust of agingRes.data || []) {
         const days = parseInt(cust.max_days_overdue) || 0;
         const bal = parseFloat(cust.total_balance) || 0;
         let bucket: string;
@@ -466,17 +469,17 @@ async function executeTool(
         else if (days <= 120) bucket = "91-120 days";
         else if (days <= 365) bucket = "121-365 days";
         else bucket = "365+ days";
-
         buckets[bucket].count++;
         buckets[bucket].balance += bal;
       }
 
-      for (const b of Object.values(buckets))
-        b.balance = Math.round(b.balance * 100) / 100;
+      for (const b of Object.values(buckets)) b.balance = Math.round(b.balance * 100) / 100;
 
       return {
         aging_buckets: buckets,
-        top_customers_by_balance: (topCustomers || []).map((c: any) => ({
+        total_ar: Object.values(buckets).reduce((s, b) => s + b.balance, 0),
+        total_customers: Object.values(buckets).reduce((s, b) => s + b.count, 0),
+        top_customers_by_balance: (topCustRes.data || []).map((c: any) => ({
           customer_id: c.customer_id,
           customer_name: c.customer_name,
           outstanding_balance: parseFloat(c.invoice_balance) || 0,
@@ -486,8 +489,6 @@ async function executeTool(
     }
 
     case "get_payment_summary": {
-      // Use the pre-aggregated payment_month_summary table for accuracy
-      // Parse date range into month keys
       const startDate = new Date(args.date_from);
       const endDate = new Date(args.date_to);
       const monthKeys: string[] = [];
@@ -497,21 +498,10 @@ async function executeTool(
         d.setMonth(d.getMonth() + 1);
       }
 
-      const { data: months, error } = await supabase
-        .from("payment_month_summary")
-        .select("*")
-        .in("month_key", monthKeys)
-        .order("month_key", { ascending: true });
-
+      const { data: months, error } = await sb.from("payment_month_summary").select("*").in("month_key", monthKeys).order("month_key", { ascending: true });
       if (error) return { error: error.message };
 
-      let totalCollected = 0;
-      let totalPaymentAmt = 0;
-      let totalPrepaymentAmt = 0;
-      let totalVoidedAmt = 0;
-      let totalRefundAmt = 0;
-      let totalCount = 0;
-
+      let totalCollected = 0, totalPaymentAmt = 0, totalPrepaymentAmt = 0, totalVoidedAmt = 0, totalRefundAmt = 0, totalCount = 0;
       const monthlyBreakdown = (months || []).map((m: any) => {
         const payAmt = parseFloat(m.payment_amount) || 0;
         const preAmt = parseFloat(m.prepayment_amount) || 0;
@@ -519,23 +509,13 @@ async function executeTool(
         const refAmt = parseFloat(m.refund_amount) || 0;
         const totAmt = parseFloat(m.total_amount) || 0;
         const cnt = parseInt(m.total_payments) || 0;
-
         totalCollected += totAmt;
         totalPaymentAmt += payAmt;
         totalPrepaymentAmt += preAmt;
         totalVoidedAmt += voidAmt;
         totalRefundAmt += refAmt;
         totalCount += cnt;
-
-        return {
-          month: m.month_label,
-          total_collected: totAmt,
-          payment_amount: payAmt,
-          prepayment_amount: preAmt,
-          voided_amount: voidAmt,
-          refund_amount: refAmt,
-          payment_count: cnt,
-        };
+        return { month: m.month_label, total: totAmt, payments: payAmt, prepayments: preAmt, voided: voidAmt, refunds: refAmt, count: cnt };
       });
 
       return {
@@ -551,93 +531,81 @@ async function executeTool(
     }
 
     case "get_collector_performance": {
-      const { data: collectors } = await supabase
+      const { data: collectors } = await sb
         .from("user_profiles")
         .select("id, full_name, email, role")
         .in("role", ["collector", "admin", "manager"])
         .eq("account_status", "approved");
 
-      const results = [];
-      for (const c of collectors || []) {
-        const [assignmentsRes, openRes, closedRes] = await Promise.all([
-          supabase
-            .from("collector_customer_assignments")
-            .select("customer_id", { count: "exact", head: true })
-            .eq("assigned_collector_id", c.id),
-          supabase
-            .from("collection_tickets")
-            .select("id", { count: "exact", head: true })
-            .eq("assigned_collector_id", c.id)
-            .in("status", ["open", "in_progress"]),
-          supabase
-            .from("collection_tickets")
-            .select("id", { count: "exact", head: true })
-            .eq("assigned_collector_id", c.id)
-            .eq("status", "closed"),
-        ]);
+      const { data: collSummary } = await sb.rpc("get_all_collectors_collection_summary");
 
-        results.push({
-          name: c.full_name || c.email,
-          role: c.role,
-          assigned_customers: assignmentsRes.count || 0,
-          open_tickets: openRes.count || 0,
-          closed_tickets: closedRes.count || 0,
-        });
-      }
+      const summaryMap = new Map<string, any>();
+      for (const s of collSummary || []) summaryMap.set(s.collector_id, s);
 
-      results.sort((a, b) => b.closed_tickets - a.closed_tickets);
+      const results = await Promise.all(
+        (collectors || []).map(async (c: any) => {
+          const [assignRes, openRes, closedRes] = await Promise.all([
+            sb.from("collector_customer_assignments").select("customer_id", { count: "exact", head: true }).eq("assigned_collector_id", c.id),
+            sb.from("collection_tickets").select("id", { count: "exact", head: true }).eq("assigned_collector_id", c.id).in("status", ["open", "in_progress"]),
+            sb.from("collection_tickets").select("id", { count: "exact", head: true }).eq("assigned_collector_id", c.id).eq("status", "closed"),
+          ]);
+
+          const sm = summaryMap.get(c.id);
+          return {
+            name: c.full_name || c.email,
+            role: c.role,
+            assigned_customers: assignRes.count || 0,
+            open_tickets: openRes.count || 0,
+            closed_tickets: closedRes.count || 0,
+            total_collected: sm ? parseFloat(sm.total_collected) || 0 : 0,
+            invoices_paid: sm ? parseInt(sm.invoices_paid_count) || 0 : 0,
+            avg_days_to_close: sm ? parseFloat(sm.avg_days_to_close) || 0 : 0,
+          };
+        })
+      );
+
+      results.sort((a, b) => b.total_collected - a.total_collected);
       return { collectors: results };
     }
 
     case "get_overdue_customers": {
-      const minDays = args.min_days_overdue || 365;
-      const minBalance = args.min_balance || 500000;
-      const limit = Math.min(args.limit || 25, 100);
+      const minDays = args.min_days_overdue ?? 90;
+      const minBalance = args.min_balance ?? 0;
+      const limit = Math.min(args.limit || 50, 200);
 
-      // Use the unpaid summary RPC for accuracy
-      const { data: customers } = await supabase.rpc("get_customers_unpaid_summary", {
+      const { data } = await sb.rpc("get_customers_unpaid_summary", {
         p_search: "",
         p_sort_by: "balance",
-        p_sort_asc: false,
-        p_limit: 200,
+        p_sort_order: "desc",
+        p_limit: 500,
         p_offset: 0,
       });
 
-      const filtered = (customers || [])
+      const filtered = (data || [])
         .filter((c: any) => {
           const days = parseInt(c.max_days_overdue) || 0;
           const bal = parseFloat(c.total_balance) || 0;
-          return days >= minDays || bal >= minBalance;
+          return days >= minDays || (minBalance > 0 && bal >= minBalance);
         })
         .slice(0, limit)
         .map((c: any) => ({
           customer_id: c.customer_id,
           customer_name: c.customer_name,
           outstanding_balance: parseFloat(c.total_balance) || 0,
-          oldest_invoice_days_overdue: parseInt(c.max_days_overdue) || 0,
-          open_invoice_count: parseInt(c.open_invoice_count) || 0,
+          days_overdue: parseInt(c.max_days_overdue) || 0,
+          open_invoices: parseInt(c.invoice_count) || 0,
         }));
 
-      return {
-        criteria: `Overdue >= ${minDays} days OR balance >= $${minBalance.toLocaleString()}`,
-        customers: filtered,
-        total_found: filtered.length,
-      };
+      return { criteria: `Overdue >= ${minDays} days${minBalance > 0 ? ` OR balance >= $${minBalance.toLocaleString()}` : ""}`, customers: filtered, total: filtered.length };
     }
 
     case "search_tickets": {
       const limit = Math.min(args.limit || 25, 50);
-      let query = supabase
+      let query = sb
         .from("collection_tickets")
-        .select(
-          "id, ticket_number, customer_id, customer_name, status, priority, ticket_type, notes, due_date, created_at, resolved_at",
-          { count: "exact" }
-        );
+        .select("id, ticket_number, customer_id, customer_name, status, priority, ticket_type, notes, due_date, created_at, resolved_at", { count: "exact" });
 
-      if (args.search)
-        query = query.or(
-          `ticket_number.ilike.%${args.search}%,customer_name.ilike.%${args.search}%,notes.ilike.%${args.search}%`
-        );
+      if (args.search) query = query.or(`ticket_number.ilike.%${args.search}%,customer_name.ilike.%${args.search}%,notes.ilike.%${args.search}%`);
       if (args.status) query = query.eq("status", args.status);
       if (args.priority) query = query.eq("priority", args.priority);
       if (args.customer_id) query = query.eq("customer_id", args.customer_id);
@@ -647,175 +615,184 @@ async function executeTool(
     }
 
     case "create_ticket": {
-      const { data: customer } = await supabase
-        .from("acumatica_customers")
-        .select("customer_id, customer_name")
-        .eq("customer_id", args.customer_id)
-        .maybeSingle();
-
+      const { data: customer } = await sb.from("acumatica_customers").select("customer_id, customer_name").eq("customer_id", args.customer_id).maybeSingle();
       if (!customer) return { error: `Customer '${args.customer_id}' not found` };
 
       const ticketNumber = `TKT-${Date.now().toString(36).toUpperCase()}`;
-      const { data: ticket, error } = await supabase
+      const { data: ticket, error } = await sb
         .from("collection_tickets")
-        .insert({
-          ticket_number: ticketNumber,
-          customer_id: customer.customer_id,
-          customer_name: customer.customer_name,
-          status: "open",
-          priority: args.priority || "medium",
-          ticket_type: args.ticket_type || "Collection",
-          notes: args.notes,
-        })
+        .insert({ ticket_number: ticketNumber, customer_id: customer.customer_id, customer_name: customer.customer_name, status: "open", priority: args.priority || "medium", ticket_type: args.ticket_type || "Collection", notes: args.notes })
         .select()
         .single();
 
-      if (error) return { error: `Failed to create ticket: ${error.message}` };
-      return { message: "Ticket created successfully", ticket_number: ticketNumber, ticket };
+      if (error) return { error: `Failed: ${error.message}` };
+      return { message: "Ticket created", ticket_number: ticketNumber, ticket };
     }
 
     case "get_monthly_summary": {
       if (args.entity === "payments") {
-        const { data, error } = await supabase.rpc("get_payment_month_summary");
+        const { data, error } = await sb.rpc("get_payment_month_summary");
         if (error) return { error: error.message };
-        const formatted = (data || []).map((row: any) => ({
-          month: row.month_label,
-          total_collected: parseFloat(row.total_amount) || 0,
-          payment_amount: parseFloat(row.payment_amount) || 0,
-          prepayment_amount: parseFloat(row.prepayment_amount) || 0,
-          voided_amount: parseFloat(row.voided_amount) || 0,
-          refund_amount: parseFloat(row.refund_amount) || 0,
-          credit_memo_amount: parseFloat(row.credit_memo_amount) || 0,
-          total_payments: parseInt(row.total_payments) || 0,
-          payment_count: parseInt(row.payment_count) || 0,
-        }));
-        return { entity: "payments", monthly_data: formatted };
+        return {
+          entity: "payments",
+          months: (data || []).map((r: any) => ({
+            month: r.month_label,
+            total: parseFloat(r.total_amount) || 0,
+            payments: parseFloat(r.payment_amount) || 0,
+            prepayments: parseFloat(r.prepayment_amount) || 0,
+            voided: parseFloat(r.voided_amount) || 0,
+            refunds: parseFloat(r.refund_amount) || 0,
+            credit_memos: parseFloat(r.credit_memo_amount) || 0,
+            count: parseInt(r.total_payments) || 0,
+          })),
+        };
       } else {
-        const { data, error } = await supabase.rpc("get_invoice_month_summary");
+        const { data, error } = await sb.rpc("get_invoice_month_summary");
         if (error) return { error: error.message };
-        const formatted = (data || []).map((row: any) => ({
-          month: row.month_label,
-          total_invoiced: parseFloat(row.total_amount) || 0,
-          invoice_count: parseInt(row.invoice_count) || 0,
-          open_balance: parseFloat(row.open_balance) || 0,
-        }));
-        return { entity: "invoices", monthly_data: formatted };
+        return {
+          entity: "invoices",
+          months: (data || []).map((r: any) => ({
+            month: r.month_label,
+            total_invoiced: parseFloat(r.total_amount) || 0,
+            count: parseInt(r.invoice_count) || 0,
+            open_balance: parseFloat(r.open_balance) || 0,
+          })),
+        };
       }
+    }
+
+    case "get_customer_level_analytics": {
+      const { data, error } = await sb.rpc("get_customer_level_analytics", {
+        p_date_from: args.date_from || null,
+        p_date_to: args.date_to || null,
+        p_limit: Math.min(args.limit || 50, 100),
+      });
+      if (error) return { error: error.message };
+      return { customers: data || [] };
+    }
+
+    case "get_invoice_counts_by_type": {
+      const { data, error } = await sb.rpc("get_invoice_counts_by_type", {
+        p_start_date: args.start_date,
+        p_end_date: args.end_date,
+      });
+      if (error) return { error: error.message };
+      return { counts: data || [] };
+    }
+
+    case "global_search": {
+      const { data, error } = await sb.rpc("global_search", {
+        search_query: args.query,
+        max_per_category: args.max_per_category || 6,
+      });
+      if (error) return { error: error.message };
+
+      const grouped: Record<string, any[]> = {};
+      for (const row of data || []) {
+        if (!grouped[row.category]) grouped[row.category] = [];
+        grouped[row.category].push({ id: row.item_id, title: row.title, subtitle: row.subtitle, meta: row.meta_line });
+      }
+      return { results: grouped, total: (data || []).length };
+    }
+
+    case "run_sql_query": {
+      const query = (args.query || "").trim();
+      if (!query.toUpperCase().startsWith("SELECT")) return { error: "Only SELECT queries are allowed." };
+      const forbidden = ["insert", "update", "delete", "drop", "alter", "create", "truncate", "grant", "revoke"];
+      const lower = query.toLowerCase();
+      for (const word of forbidden) {
+        if (lower.includes(` ${word} `) || lower.startsWith(`${word} `)) return { error: `Forbidden keyword: ${word}` };
+      }
+
+      const limited = query.match(/\blimit\b/i) ? query : `${query} LIMIT 200`;
+
+      const { data, error } = await sb.rpc("execute_readonly_sql", { sql_query: limited });
+      if (error) return { error: error.message, query: limited };
+      return { rows: data, row_count: Array.isArray(data) ? data.length : 0, query: limited };
     }
 
     case "generate_report": {
       const filters = args.filters || {};
-      const limit = Math.min(filters.limit || 500, 1000);
+      const limit = Math.min(filters.limit || 500, 2000);
       let columns: string[] = [];
-      let rows: any[] = [];
+      let rows: any[][] = [];
+      const seen = new Set<string>();
+
+      function dedup(rowArr: any[][], keyIndex: number): any[][] {
+        const out: any[][] = [];
+        for (const row of rowArr) {
+          const key = String(row[keyIndex] ?? "");
+          if (key && seen.has(key)) continue;
+          if (key) seen.add(key);
+          out.push(row);
+        }
+        return out;
+      }
 
       switch (args.report_type) {
         case "customer_balances": {
-          const { data } = await supabase.rpc("get_api_customer_balances", {
-            p_search: filters.search || "",
-            p_sort_by: "balance",
-            p_sort_asc: false,
-            p_limit: limit,
-            p_offset: 0,
-          });
+          const { data } = await sb.rpc("get_api_customer_balances", { p_search: filters.search || "", p_sort_by: "balance", p_sort_asc: false, p_limit: limit, p_offset: 0 });
           columns = ["Customer ID", "Customer Name", "Class", "Outstanding Balance", "Open Invoices", "Terms"];
-          rows = (data || []).map((c: any) => ([
-            c.customer_id,
-            c.customer_name,
-            c.customer_class || "",
-            parseFloat(c.invoice_balance) || 0,
-            parseInt(c.open_invoice_count) || 0,
-            c.terms || "",
-          ]));
+          rows = dedup((data || []).map((c: any) => [c.customer_id, c.customer_name, c.customer_class || "", parseFloat(c.invoice_balance) || 0, parseInt(c.open_invoice_count) || 0, c.terms || ""]), 0);
           break;
         }
         case "invoices": {
-          let query = supabase
-            .from("acumatica_invoices")
-            .select("reference_number, type, status, customer, customer_name, date, due_date, amount, balance");
-          if (filters.status) query = query.eq("status", filters.status);
-          if (filters.type) query = query.eq("type", filters.type);
-          if (filters.customer_id) query = query.eq("customer", filters.customer_id);
-          if (filters.date_from) query = query.gte("date", filters.date_from);
-          if (filters.date_to) query = query.lte("date", filters.date_to);
-          const { data } = await query.order("date", { ascending: false }).limit(limit);
+          let q = sb.from("acumatica_invoices").select("reference_number, type, status, customer, customer_name, date, due_date, amount, balance").neq("status", "On Hold");
+          if (filters.status) q = q.eq("status", filters.status);
+          if (filters.type) q = q.eq("type", filters.type);
+          if (filters.customer_id) q = q.eq("customer", filters.customer_id);
+          if (filters.date_from) q = q.gte("date", filters.date_from);
+          if (filters.date_to) q = q.lte("date", filters.date_to);
+          if (filters.min_balance) q = q.gte("balance", filters.min_balance);
+          const { data } = await q.order("date", { ascending: false }).limit(limit);
           columns = ["Reference #", "Type", "Status", "Customer ID", "Customer Name", "Date", "Due Date", "Amount", "Balance"];
-          rows = (data || []).map((i: any) => ([
-            i.reference_number, i.type, i.status, i.customer, i.customer_name,
-            i.date, i.due_date, parseFloat(i.amount) || 0, parseFloat(i.balance) || 0,
-          ]));
+          rows = dedup((data || []).map((i: any) => [i.reference_number, i.type, i.status, i.customer, i.customer_name, i.date, i.due_date, parseFloat(i.amount) || 0, parseFloat(i.balance) || 0]), 0);
           break;
         }
         case "payments": {
-          let query = supabase
-            .from("acumatica_payments")
-            .select("reference_number, type, status, customer_id, customer_name, payment_amount, application_date, payment_method, payment_ref");
-          if (filters.type) query = query.eq("type", filters.type);
-          if (filters.customer_id) query = query.eq("customer_id", filters.customer_id);
-          if (filters.date_from) query = query.gte("application_date", filters.date_from);
-          if (filters.date_to) query = query.lte("application_date", filters.date_to);
-          const { data } = await query.order("application_date", { ascending: false }).limit(limit);
+          let q = sb.from("acumatica_payments").select("reference_number, type, status, customer_id, customer_name, payment_amount, application_date, payment_method, payment_ref");
+          if (filters.type) q = q.eq("type", filters.type);
+          if (filters.customer_id) q = q.eq("customer_id", filters.customer_id);
+          if (filters.date_from) q = q.gte("application_date", filters.date_from);
+          if (filters.date_to) q = q.lte("application_date", filters.date_to);
+          const { data } = await q.order("application_date", { ascending: false }).limit(limit);
           columns = ["Reference #", "Type", "Status", "Customer ID", "Customer Name", "Amount", "Date", "Method", "Payment Ref"];
-          rows = (data || []).map((p: any) => ([
-            p.reference_number, p.type, p.status, p.customer_id, p.customer_name,
-            parseFloat(p.payment_amount) || 0, p.application_date, p.payment_method || "", p.payment_ref || "",
-          ]));
+          rows = dedup((data || []).map((p: any) => [p.reference_number, p.type, p.status, p.customer_id, p.customer_name, parseFloat(p.payment_amount) || 0, p.application_date, p.payment_method || "", p.payment_ref || ""]), 0);
           break;
         }
         case "aging_report": {
-          const { data } = await supabase.rpc("get_customers_unpaid_summary", {
-            p_search: "",
-            p_sort_by: "balance",
-            p_sort_asc: false,
-            p_limit: limit,
-            p_offset: 0,
-          });
+          const { data } = await sb.rpc("get_customers_unpaid_summary", { p_search: "", p_sort_by: "balance", p_sort_order: "desc", p_limit: limit, p_offset: 0 });
           columns = ["Customer ID", "Customer Name", "Outstanding Balance", "Open Invoices", "Max Days Overdue", "Aging Bucket"];
-          rows = (data || []).map((c: any) => {
+          rows = dedup((data || []).map((c: any) => {
             const days = parseInt(c.max_days_overdue) || 0;
             let bucket = "Current";
-            if (days > 365) bucket = "365+ Days";
-            else if (days > 120) bucket = "121-365 Days";
-            else if (days > 90) bucket = "91-120 Days";
-            else if (days > 60) bucket = "61-90 Days";
-            else if (days > 30) bucket = "31-60 Days";
-            else if (days > 0) bucket = "1-30 Days";
-            return [
-              c.customer_id, c.customer_name, parseFloat(c.total_balance) || 0,
-              parseInt(c.open_invoice_count) || 0, days, bucket,
-            ];
-          });
+            if (days > 365) bucket = "365+ Days"; else if (days > 120) bucket = "121-365 Days"; else if (days > 90) bucket = "91-120 Days"; else if (days > 60) bucket = "61-90 Days"; else if (days > 30) bucket = "31-60 Days"; else if (days > 0) bucket = "1-30 Days";
+            return [c.customer_id, c.customer_name, parseFloat(c.total_balance) || 0, parseInt(c.invoice_count) || 0, days, bucket];
+          }), 0);
           break;
         }
         case "payment_trend": {
-          const { data } = await supabase.rpc("get_payment_month_summary");
+          const { data } = await sb.rpc("get_payment_month_summary");
           columns = ["Month", "Total Collected", "Payments", "Prepayments", "Voided", "Refunds", "Count"];
-          rows = (data || []).map((m: any) => ([
-            m.month_label,
-            parseFloat(m.total_amount) || 0,
-            parseFloat(m.payment_amount) || 0,
-            parseFloat(m.prepayment_amount) || 0,
-            parseFloat(m.voided_amount) || 0,
-            parseFloat(m.refund_amount) || 0,
-            parseInt(m.total_payments) || 0,
-          ]));
+          rows = (data || []).map((m: any) => [m.month_label, parseFloat(m.total_amount) || 0, parseFloat(m.payment_amount) || 0, parseFloat(m.prepayment_amount) || 0, parseFloat(m.voided_amount) || 0, parseFloat(m.refund_amount) || 0, parseInt(m.total_payments) || 0]);
           break;
         }
         case "collector_performance": {
-          const { data: collectors } = await supabase
-            .from("user_profiles")
-            .select("id, full_name, email, role")
-            .in("role", ["collector", "admin", "manager"])
-            .eq("account_status", "approved");
-          columns = ["Name", "Role", "Assigned Customers", "Open Tickets", "Closed Tickets"];
-          for (const c of collectors || []) {
-            const [aRes, oRes, cRes] = await Promise.all([
-              supabase.from("collector_customer_assignments").select("customer_id", { count: "exact", head: true }).eq("assigned_collector_id", c.id),
-              supabase.from("collection_tickets").select("id", { count: "exact", head: true }).eq("assigned_collector_id", c.id).in("status", ["open", "in_progress"]),
-              supabase.from("collection_tickets").select("id", { count: "exact", head: true }).eq("assigned_collector_id", c.id).eq("status", "closed"),
-            ]);
-            rows.push([c.full_name || c.email, c.role, aRes.count || 0, oRes.count || 0, cRes.count || 0]);
-          }
+          const perfResult = await executeTool(sb, "get_collector_performance", {});
+          columns = ["Name", "Role", "Assigned Customers", "Open Tickets", "Closed Tickets", "Total Collected", "Invoices Paid", "Avg Days to Close"];
+          rows = (perfResult.collectors || []).map((c: any) => [c.name, c.role, c.assigned_customers, c.open_tickets, c.closed_tickets, c.total_collected, c.invoices_paid, c.avg_days_to_close]);
+          break;
+        }
+        case "overdue_customers": {
+          const overdueResult = await executeTool(sb, "get_overdue_customers", { min_days_overdue: filters.min_days_overdue || 30, min_balance: filters.min_balance || 0, limit });
+          columns = ["Customer ID", "Customer Name", "Outstanding Balance", "Days Overdue", "Open Invoices"];
+          rows = (overdueResult.customers || []).map((c: any) => [c.customer_id, c.customer_name, c.outstanding_balance, c.days_overdue, c.open_invoices]);
+          break;
+        }
+        case "customer_analytics": {
+          const analyticsResult = await executeTool(sb, "get_customer_level_analytics", { date_from: filters.date_from, date_to: filters.date_to, limit });
+          columns = ["Customer ID", "Customer Name", "Total Invoiced", "Total Paid", "Current Balance", "Invoice Count", "Payment Count", "Avg Days to Pay"];
+          rows = (analyticsResult.customers || []).map((c: any) => [c.customer_id, c.customer_name, parseFloat(c.total_invoice_amount) || 0, parseFloat(c.total_payment_amount) || 0, parseFloat(c.current_balance) || 0, parseInt(c.invoice_count) || 0, parseInt(c.payment_count) || 0, parseFloat(c.avg_days_to_pay) || 0]);
           break;
         }
       }
@@ -831,37 +808,12 @@ async function executeTool(
       };
     }
 
-    case "run_sql_query": {
-      const query = args.query?.trim() || "";
-      if (!query.toUpperCase().startsWith("SELECT")) {
-        return { error: "Only SELECT queries are allowed." };
-      }
-      const forbidden = ["insert", "update", "delete", "drop", "alter", "create", "truncate", "grant", "revoke"];
-      const lower = query.toLowerCase();
-      for (const word of forbidden) {
-        if (lower.includes(` ${word} `) || lower.startsWith(`${word} `)) {
-          return { error: `Forbidden keyword '${word}'.` };
-        }
-      }
-
-      const limited = query.toUpperCase().includes("LIMIT") ? query : `${query} LIMIT 100`;
-
-      // Execute via Supabase SQL
-      const { data, error } = await supabase.from("acumatica_invoices").select("reference_number").limit(0);
-
-      // We can't run raw SQL through the JS client without an RPC.
-      // Return guidance instead.
-      return {
-        note: "Direct SQL execution is not available through this tool. Please use the other specialized tools (get_top_customers_by_balance, search_invoices, search_payments, get_aging_report, etc.) to answer this question, or rephrase your question so I can use the right tool.",
-        attempted_query: args.query,
-      };
-    }
-
     default:
       return { error: `Unknown tool: ${name}` };
   }
 }
 
+// ── Main handler ────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -872,9 +824,7 @@ Deno.serve(async (req: Request) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
 
-    if (!openaiKey) {
-      return errorResponse("OpenAI API key not configured", 500);
-    }
+    if (!openaiKey) return errorResponse("OpenAI API key not configured", 500);
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return errorResponse("Authorization required", 401);
@@ -887,37 +837,31 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json();
     const { message, conversation_history } = body;
-
     if (!message) return errorResponse("Message is required");
 
     const today = new Date().toISOString().split("T")[0];
     const currentMonth = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
 
-    const systemPrompt = `You are an AI assistant for a collections management application (Venture Respiratory). You help users analyze accounts receivable data, find customer information, track payments, manage collection tickets, and generate reports.
+    const systemPrompt = `You are an AI assistant for a collections management application (Venture Respiratory). You help users analyze AR data, find customer information, track payments, and manage collection tickets.
 
-Today's date is ${today} (${currentMonth}).
+Today: ${today} (${currentMonth}).
 
-IMPORTANT RULES:
-- For "who has the highest balance" or "top customers by balance" questions, ALWAYS use get_top_customers_by_balance. This uses server-side SQL aggregation and is always accurate.
-- For "how much did we collect" questions, use get_payment_summary with the correct date range.
-- For "bad customers" or "delinquent accounts", use get_overdue_customers which finds customers overdue by 1+ year or owing $500k+.
-- For "best collector" questions, use get_collector_performance.
-- For aging analysis, use get_aging_report.
-- NEVER compute balances yourself by summing individual invoice rows - always use the tools which use server-side aggregation.
-- When the user asks to "generate", "export", "download", "create a spreadsheet", "make a PDF", or "create a report", ALWAYS use the generate_report tool. The frontend will convert the data into downloadable Excel or PDF files.
-- For monthly payment trend questions, use get_monthly_summary with entity "payments". The data is pre-aggregated and accurate.
-
-Key terminology:
-- "Balance" = remaining unpaid amount on an invoice
-- "Open" invoices = unpaid invoices
-- "Closed" invoices = fully paid
-- Color statuses (Red, Yellow, Green, Blue) indicate collection priority
-
-When answering:
-- Format currency with $ and commas (e.g., $1,234,567.89)
-- Be specific with numbers
-- List results in a clear, readable format
-- Offer to create tickets or drill deeper when relevant`;
+RULES:
+- ALWAYS use tools to query data. Never guess or make up numbers.
+- For "who owes the most" use get_top_customers_by_balance.
+- For "how much collected" use get_payment_summary with date range.
+- For overdue/delinquent accounts use get_overdue_customers.
+- For collector/rep performance use get_collector_performance.
+- For aging analysis use get_aging_report.
+- For monthly trends use get_monthly_summary.
+- For broad searches use global_search.
+- For deep customer analysis use get_customer_detail then get_customer_timeline.
+- For customer comparisons use get_customer_level_analytics.
+- For complex queries not covered by other tools, use run_sql_query.
+- When asked to export/download/generate a report, use generate_report.
+- NEVER compute balances by summing rows yourself.
+- Format currency as $1,234.56. Be specific with numbers.
+- List results clearly. Offer follow-up actions when relevant.`;
 
     const messages: any[] = [{ role: "system", content: systemPrompt }];
 
@@ -926,35 +870,21 @@ When answering:
         messages.push({ role: msg.role, content: msg.content });
       }
     }
-
     messages.push({ role: "user", content: message });
 
     let response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${openaiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages,
-        tools,
-        tool_choice: "auto",
-        temperature: 0.3,
-        max_tokens: 4096,
-      }),
+      headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-4o", messages, tools, tool_choice: "auto", temperature: 0.3, max_tokens: 4096 }),
     });
 
     let result = await response.json();
-
-    if (result.error) {
-      return errorResponse(`OpenAI error: ${result.error.message}`, 500);
-    }
+    if (result.error) return errorResponse(`OpenAI error: ${result.error.message}`, 500);
 
     let assistantMessage = result.choices?.[0]?.message;
-
     let rounds = 0;
-    while (assistantMessage?.tool_calls?.length > 0 && rounds < 5) {
+
+    while (assistantMessage?.tool_calls?.length > 0 && rounds < 8) {
       rounds++;
       messages.push(assistantMessage);
 
@@ -962,11 +892,7 @@ When answering:
         assistantMessage.tool_calls.map(async (tc: any) => {
           const args = JSON.parse(tc.function.arguments || "{}");
           const result = await executeTool(supabase, tc.function.name, args);
-          return {
-            role: "tool",
-            tool_call_id: tc.id,
-            content: JSON.stringify(result),
-          };
+          return { role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) };
         })
       );
 
@@ -974,37 +900,21 @@ When answering:
 
       response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${openaiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages,
-          tools,
-          tool_choice: "auto",
-          temperature: 0.3,
-          max_tokens: 4096,
-        }),
+        headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-4o", messages, tools, tool_choice: "auto", temperature: 0.3, max_tokens: 4096 }),
       });
 
       result = await response.json();
-      if (result.error) {
-        return errorResponse(`OpenAI error: ${result.error.message}`, 500);
-      }
+      if (result.error) return errorResponse(`OpenAI error: ${result.error.message}`, 500);
       assistantMessage = result.choices?.[0]?.message;
     }
 
-    // Check if any tool returned report data
     let reportData = null;
     for (const msg of messages) {
       if (msg.role === "tool" && msg.content) {
         try {
           const parsed = JSON.parse(msg.content);
-          if (parsed.__report) {
-            reportData = parsed;
-            break;
-          }
+          if (parsed.__report) { reportData = parsed; break; }
         } catch {}
       }
     }
