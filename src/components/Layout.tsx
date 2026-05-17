@@ -24,7 +24,18 @@ import {
   Code,
   ChevronLeft,
   ChevronRight,
-  Palette
+  Palette,
+  ClipboardList,
+  TrendingUp,
+  MailCheck,
+  Gauge,
+  Key,
+  Webhook,
+  Ban,
+  FileBarChart,
+  Send,
+  Sliders,
+  HeartPulse,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import RemindersSidebar from './RemindersSidebar';
@@ -151,6 +162,7 @@ export default function Layout() {
       items: [
         { id: 'customers', name: 'Customers', icon: Users },
         ...(canBeAssignedAsCollector ? [{ id: 'my-assignments', name: 'My Assignments', icon: Ticket }] : []),
+        ...(!settingsLocked ? [{ id: 'customer-statements', name: 'Statements', icon: Send }] : []),
       ]
     },
     ...(!isComponentLocked(LOCKABLE_COMPONENTS.INVOICE_ANALYTICS) ? [{
@@ -184,35 +196,45 @@ export default function Layout() {
     { id: 'assignments', name: 'Assignments', icon: LinkIcon },
     { id: 'formulas', name: 'Formulas', icon: Calendar },
     { id: 'templates', name: 'Templates', icon: Mail },
-    { id: 'email-logs', name: 'Email Logs', icon: Clock },
+    { id: 'customer-email-tracking', name: 'Email Tracking', icon: MailCheck },
   ] : [];
 
   const settingsLocked = isComponentLocked(LOCKABLE_COMPONENTS.SETTINGS);
 
   const adminDashboardItems = !settingsLocked ? [
     { id: 'collector-monitoring', name: 'Collector Dashboard', icon: Activity },
+    { id: 'collector-control-panel', name: 'Collector Control Panel', icon: Sliders },
     { id: 'customer-analytics', name: 'Customer Analytics', icon: Users },
+    { id: 'revenue-analytics', name: 'Revenue Analytics', icon: TrendingUp },
     ...(!isComponentLocked(LOCKABLE_COMPONENTS.INVOICE_ANALYTICS) ? [
       { id: 'invoice-analytics', name: 'Invoice Analytics', icon: FileText },
+      { id: 'invoice-breakdown', name: 'Invoice Breakdown', icon: FileBarChart },
+      { id: 'invoice-status-analytics', name: 'Invoice Status Analytics', icon: BarChart3 },
     ] : []),
     ...(!isComponentLocked(LOCKABLE_COMPONENTS.PAYMENT_ANALYTICS) ? [
       { id: 'payment-analytics', name: 'Payment Analytics', icon: DollarSign },
       { id: 'payment-breakdown', name: 'Payment Breakdown', icon: CreditCard },
+      { id: 'voided-payment-analysis', name: 'Voided Payment Analysis', icon: Ban },
     ] : []),
-    ...(!isComponentLocked(LOCKABLE_COMPONENTS.INVOICE_ANALYTICS) ? [
-      { id: 'invoice-breakdown', name: 'Invoice Breakdown', icon: FileText },
-    ] : []),
+    { id: 'email-analytics', name: 'Email Analytics', icon: MailCheck },
   ] : [];
 
   const adminSettingsItems = !settingsLocked ? [
     { id: 'invoice-color-settings', name: 'Invoice Color Settings', icon: Palette },
+    { id: 'invoice-status-admin', name: 'Invoice Status Admin', icon: ClipboardList },
+    { id: 'ticket-status-settings', name: 'Ticket Status Settings', icon: Settings },
+    { id: 'auto-ticket-rules', name: 'Auto-Ticket Rules', icon: Clock },
     { id: 'user-approval', name: 'User Approval', icon: Shield },
     { id: 'create-user', name: 'Create New User', icon: Users },
     { id: 'user-activity', name: 'User Activity', icon: Activity },
-    { id: 'sync-status', name: 'Synchronization Status', icon: RefreshCw },
-    { id: 'ticket-status-settings', name: 'Ticket Status Settings', icon: Settings },
-    { id: 'auto-ticket-rules', name: 'Auto-Ticket Rules', icon: Clock },
+    { id: 'customer-reports', name: 'Customer Reports', icon: FileBarChart },
+    { id: 'customer-report-templates', name: 'Report Templates', icon: FileText },
+    { id: 'sync-status', name: 'Sync Status', icon: RefreshCw },
+    { id: 'sync-config', name: 'Sync Configuration', icon: Sliders },
+    { id: 'sync-health', name: 'Sync Health', icon: HeartPulse },
     { id: 'email-settings', name: 'Email Settings', icon: Mail },
+    { id: 'webhooks', name: 'Webhooks', icon: Webhook },
+    { id: 'api-keys', name: 'API Keys', icon: Key },
     { id: 'system-documentation', name: 'Documentation', icon: FileText },
   ] : [];
 
@@ -220,8 +242,12 @@ export default function Layout() {
     ...(isAdmin ? [{ id: 'developer-tools', name: 'Developer Tools', icon: Code }] : []),
     { id: 'sync-status', name: 'System Health', icon: Activity },
     { id: 'sync-logs', name: 'Sync Change Logs', icon: RefreshCw },
+    { id: 'sync-diagnostic', name: 'Sync Diagnostic', icon: Gauge },
+    { id: 'live-sync-monitor', name: 'Live Sync Monitor', icon: HeartPulse },
     { id: 'schedule', name: 'Scheduler', icon: Clock },
     { id: 'logs', name: 'System Logs', icon: Database },
+    { id: 'auto-backfill', name: 'Auto Backfill Monitor', icon: RefreshCw },
+    { id: 'payment-sync-health', name: 'Payment Sync Health', icon: HeartPulse },
   ] : [];
 
   const menuSections = allMenuSections.filter(section => section.items.length > 0);
