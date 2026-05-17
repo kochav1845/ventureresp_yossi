@@ -141,9 +141,6 @@ export default function Customers({ onBack }: CustomersProps) {
   const [cachedStatsLoaded, setCachedStatsLoaded] = useState(() => cl?.cachedStatsLoaded ?? false);
   const [cachedStatsTime, setCachedStatsTime] = useState<string | null>(() => cl?.cachedStatsTime ?? null);
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
-  const hasInvoiceLevelFilters = filters.minInvoiceAmount > 0 || filters.maxInvoiceAmount !== Infinity ||
-    filters.minDaysOverdue > 0 || filters.maxDaysOverdue !== Infinity ||
-    !!filters.dateFrom || !!filters.dateTo;
   const [activeQuickFilter, setActiveQuickFilter] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '' });
@@ -159,6 +156,9 @@ export default function Customers({ onBack }: CustomersProps) {
   });
 
   const [filters, setFilters] = useState<FilterConfig>(() => cl?.filters ?? { ...DEFAULT_FILTERS });
+  const hasInvoiceLevelFilters = filters.minInvoiceAmount > 0 || filters.maxInvoiceAmount !== Infinity ||
+    filters.minDaysOverdue > 0 || filters.maxDaysOverdue !== Infinity ||
+    !!filters.dateFrom || !!filters.dateTo;
 
   const loadCachedStats = async () => {
     try {
