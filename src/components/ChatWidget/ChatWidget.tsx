@@ -27,32 +27,26 @@ const SUGGESTED_QUESTIONS = [
   {
     label: 'High-risk customers',
     question: 'Who are the customers that haven\'t paid invoices in more than a year or owe more than $500,000?',
-    icon: '🔴',
   },
   {
     label: 'Best collector',
     question: 'Which representative is performing the best based on closed tickets and collections?',
-    icon: '🏆',
   },
   {
     label: 'Recent payments',
     question: 'How much in payments have we received in the past two months?',
-    icon: '💰',
   },
   {
     label: 'Aging summary',
     question: 'Give me the accounts receivable aging summary with bucket totals.',
-    icon: '📊',
   },
   {
     label: 'Top balances',
     question: 'Show me the top 10 customers by outstanding balance.',
-    icon: '📋',
   },
   {
     label: 'Monthly trend',
     question: 'What is the monthly payment collection trend for this year?',
-    icon: '📈',
   },
 ];
 
@@ -363,14 +357,11 @@ export default function ChatWidget() {
                   onClick={() => sendMessage(sq.question)}
                   className="w-full text-left px-3.5 py-2.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 hover:border-gray-700 rounded-xl transition-all group"
                 >
-                  <div className="flex items-start gap-2.5">
-                    <span className="text-sm mt-0.5 flex-shrink-0">{sq.icon}</span>
-                    <div>
-                      <p className="text-white text-sm font-medium group-hover:text-emerald-400 transition-colors">
-                        {sq.label}
-                      </p>
-                      <p className="text-gray-500 text-xs mt-0.5 line-clamp-1">{sq.question}</p>
-                    </div>
+                  <div>
+                    <p className="text-white text-sm font-medium group-hover:text-emerald-400 transition-colors">
+                      {sq.label}
+                    </p>
+                    <p className="text-gray-500 text-xs mt-0.5 line-clamp-1">{sq.question}</p>
                   </div>
                 </button>
               ))}
