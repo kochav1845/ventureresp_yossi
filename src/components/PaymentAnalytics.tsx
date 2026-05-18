@@ -122,8 +122,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [customerFilterSearch, setCustomerFilterSearch] = useState('');
   const [customerNameMap, setCustomerNameMap] = useState<Map<string, string>>(new Map());
 
-  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterPaymentMethod !== 'all' || filterInvoicePeriod !== 'all' || selectedCustomers.length > 0 || sidebarExcludedCustomers.length > 0;
-
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(null);
   const [invoiceApplications, setInvoiceApplications] = useState<InvoiceApplication[]>([]);
@@ -193,6 +191,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [defaultFiltersActive, setDefaultFiltersActive] = useState(false);
   const [hasDefaultFilters, setHasDefaultFilters] = useState(false);
   const [savingDefaults, setSavingDefaults] = useState(false);
+
+  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterPaymentMethod !== 'all' || filterInvoicePeriod !== 'all' || selectedCustomers.length > 0 || sidebarExcludedCustomers.length > 0;
 
   // Payment applications cache
   const [paymentApplicationsCache, setPaymentApplicationsCache] = useState<Map<string, InvoiceApplication[]>>(new Map());
