@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, X, ExternalLink, Check } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, X, ExternalLink, Check, Save, Settings, Ban, UserMinus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { usePageCache } from '../contexts/PageCacheContext';
+import { useAuth } from '../contexts/AuthContext';
 import * as XLSX from 'xlsx';
 
 interface InvoiceRow {
@@ -48,6 +49,7 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 
 export default function InvoiceAnalyticsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { getCachedState, setCachedState } = usePageCache('invoice-analytics');
   const cachedState = useRef(getCachedState());
   const c = cachedState.current;
@@ -103,7 +105,18 @@ export default function InvoiceAnalyticsPage() {
   const [tempSelectedCustomers, setTempSelectedCustomers] = useState<string[]>(() => c?.selectedCustomers ?? []);
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
 
-  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || selectedCustomers.length > 0;
+  // Excluded customers
+  const [excludedCustomers, setExcludedCustomers] = useState<string[]>(() => c?.excludedCustomers ?? []);
+  const [tempExcludedCustomers, setTempExcludedCustomers] = useState<string[]>(() => c?.excludedCustomers ?? []);
+  const [excludeSearchTerm, setExcludeSearchTerm] = useState('');
+
+  // Default filters
+  const [defaultFiltersActive, setDefaultFiltersActive] = useState(false);
+  const [hasDefaultFilters, setHasDefaultFilters] = useState(false);
+  const [showDefaultFilterMenu, setShowDefaultFilterMenu] = useState(false);
+  const [savingDefaults, setSavingDefaults] = useState(false);
+
+  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || selectedCustomers.length > 0 || excludedCustomers.length > 0;
 
   const monthName = `${MONTH_NAMES[selectedMonth.getMonth()]} ${selectedMonth.getFullYear()}`;
 
@@ -215,6 +228,108 @@ export default function InvoiceAnalyticsPage() {
     setCustomerSearchTerm('');
   }, []);
 
+  const filteredExcludeOptions = useMemo(() => {
+    if (!excludeSearchTerm) return [];
+    const search = excludeSearchTerm.toLowerCase();
+    return uniqueCustomers.filter(c =>
+      (c.name.toLowerCase().includes(search) || c.id.toLowerCase().includes(search)) &&
+      !tempExcludedCustomers.includes(c.id)
+    );
+  }, [uniqueCustomers, excludeSearchTerm, tempExcludedCustomers]);
+
+  const addExcludedCustomer = useCallback((customerId: string) => {
+    setTempExcludedCustomers(prev => prev.includes(customerId) ? prev : [...prev, customerId]);
+    setTempSelectedCustomers(prev => prev.filter(c => c !== customerId));
+    setExcludeSearchTerm('');
+  }, []);
+
+  const removeExcludedCustomer = useCallback((customerId: string) => {
+    setTempExcludedCustomers(prev => prev.filter(c => c !== customerId));
+  }, []);
+
+  // Default filter functions
+  const loadDefaultFilters = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('user_analytics_default_filters')
+      .select('filters, excluded_customers')
+      .eq('user_id', user.id)
+      .eq('page', 'invoice_analytics')
+      .maybeSingle();
+    if (data) {
+      setHasDefaultFilters(true);
+      if (!c) {
+        const f = data.filters as any;
+        if (f.filterStatus) { setFilterStatus(f.filterStatus); setTempFilterStatus(f.filterStatus); }
+        if (f.filterType) { setFilterType(f.filterType); setTempFilterType(f.filterType); }
+        if (f.dateFrom) { setDateFrom(f.dateFrom); setTempDateFrom(f.dateFrom); }
+        if (f.dateTo) { setDateTo(f.dateTo); setTempDateTo(f.dateTo); }
+        if (f.selectedCustomers?.length) { setSelectedCustomers(f.selectedCustomers); setTempSelectedCustomers(f.selectedCustomers); }
+        if (data.excluded_customers?.length) { setExcludedCustomers(data.excluded_customers); setTempExcludedCustomers(data.excluded_customers); }
+        setDefaultFiltersActive(true);
+      }
+    }
+  }, [user]);
+
+  useEffect(() => { loadDefaultFilters(); }, [loadDefaultFilters]);
+
+  const saveAsDefaultFilters = async () => {
+    if (!user) return;
+    setSavingDefaults(true);
+    const filters = {
+      filterStatus: tempFilterStatus,
+      filterType: tempFilterType,
+      dateFrom: tempDateFrom,
+      dateTo: tempDateTo,
+      selectedCustomers: tempSelectedCustomers,
+    };
+    await supabase.from('user_analytics_default_filters').upsert({
+      user_id: user.id,
+      page: 'invoice_analytics',
+      filters,
+      excluded_customers: tempExcludedCustomers,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,page' });
+    setHasDefaultFilters(true);
+    setDefaultFiltersActive(true);
+    setSavingDefaults(false);
+    setShowDefaultFilterMenu(false);
+  };
+
+  const applyDefaultFilters = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('user_analytics_default_filters')
+      .select('filters, excluded_customers')
+      .eq('user_id', user.id)
+      .eq('page', 'invoice_analytics')
+      .maybeSingle();
+    if (data) {
+      const f = data.filters as any;
+      setTempFilterStatus(f.filterStatus || 'all');
+      setTempFilterType(f.filterType || 'all');
+      setTempDateFrom(f.dateFrom || '');
+      setTempDateTo(f.dateTo || '');
+      setTempSelectedCustomers(f.selectedCustomers || []);
+      setTempExcludedCustomers(data.excluded_customers || []);
+      setFilterStatus(f.filterStatus || 'all');
+      setFilterType(f.filterType || 'all');
+      setDateFrom(f.dateFrom || '');
+      setDateTo(f.dateTo || '');
+      setSelectedCustomers(f.selectedCustomers || []);
+      setExcludedCustomers(data.excluded_customers || []);
+      setDefaultFiltersActive(true);
+    }
+  };
+
+  const removeDefaultFilters = async () => {
+    if (!user) return;
+    await supabase.from('user_analytics_default_filters').delete().eq('user_id', user.id).eq('page', 'invoice_analytics');
+    setHasDefaultFilters(false);
+    setDefaultFiltersActive(false);
+    setShowDefaultFilterMenu(false);
+  };
+
   // Load data based on view
   const restoredFromCache = useRef(!!c);
 
@@ -249,6 +364,7 @@ export default function InvoiceAnalyticsPage() {
       dateFrom,
       dateTo,
       selectedCustomers,
+      excludedCustomers,
       selectedDate: selectedDate?.toISOString() ?? null,
       lastRefreshTime: lastRefreshTime?.toISOString() ?? null,
     };
@@ -277,11 +393,11 @@ export default function InvoiceAnalyticsPage() {
       setYearlyAggregates([]);
       loadDailyData();
     }
-  }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, filterStatus, filterType, selectedCustomers]);
+  }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, filterStatus, filterType, selectedCustomers, excludedCustomers]);
 
   useEffect(() => {
     filterAndSortInvoices();
-  }, [invoices, searchTerm, sortField, sortDirection, filterStatus, filterType, selectedDate, selectedCustomers]);
+  }, [invoices, searchTerm, sortField, sortDirection, filterStatus, filterType, selectedDate, selectedCustomers, excludedCustomers]);
 
   useEffect(() => {
     if (calendarView === 'daily') {
@@ -706,6 +822,10 @@ export default function InvoiceAnalyticsPage() {
       const customerSet = new Set(selectedCustomers);
       filtered = filtered.filter(i => customerSet.has(i.customer));
     }
+    if (excludedCustomers.length > 0) {
+      const excludeSet = new Set(excludedCustomers);
+      filtered = filtered.filter(i => !excludeSet.has(i.customer));
+    }
 
     filtered.sort((a, b) => {
       const aVal = a[sortField];
@@ -743,6 +863,7 @@ export default function InvoiceAnalyticsPage() {
     setDateFrom(tempDateFrom);
     setDateTo(tempDateTo);
     setSelectedCustomers(tempSelectedCustomers);
+    setExcludedCustomers(tempExcludedCustomers);
   };
 
   const clearFilters = () => {
@@ -751,13 +872,17 @@ export default function InvoiceAnalyticsPage() {
     setTempDateFrom('');
     setTempDateTo('');
     setTempSelectedCustomers([]);
+    setTempExcludedCustomers([]);
     setCustomerSearchTerm('');
+    setExcludeSearchTerm('');
     setFilterStatus('all');
     setFilterType('all');
     setDateFrom('');
     setDateTo('');
     setSelectedCustomers([]);
+    setExcludedCustomers([]);
     setSelectedDate(null);
+    setDefaultFiltersActive(false);
   };
 
   const previousPeriod = () => {
@@ -1078,26 +1203,105 @@ export default function InvoiceAnalyticsPage() {
                         ) : (
                           filteredCustomerOptions.map(cust => {
                             const isSelected = tempSelectedCustomers.includes(cust.id);
+                            const isExcluded = tempExcludedCustomers.includes(cust.id);
                             return (
-                              <button
+                              <div
                                 key={cust.id}
-                                onClick={() => toggleTempCustomer(cust.id)}
-                                className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors ${isSelected ? 'bg-blue-50' : ''}`}
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm border-b border-gray-100 last:border-b-0 ${isSelected ? 'bg-blue-50' : isExcluded ? 'bg-red-50' : 'hover:bg-gray-50'}`}
                               >
-                                <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
-                                  {isSelected && <Check className="w-3 h-3 text-white" />}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <span className={`block truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}`}>
-                                    {cust.name}
-                                  </span>
-                                  {cust.name !== cust.id && (
-                                    <span className="block text-[10px] text-gray-400 truncate">{cust.id}</span>
-                                  )}
-                                </div>
-                              </button>
+                                <button
+                                  onClick={() => toggleTempCustomer(cust.id)}
+                                  className="flex items-center gap-2 min-w-0 flex-1"
+                                >
+                                  <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                    {isSelected && <Check className="w-3 h-3 text-white" />}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <span className={`block truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}`}>
+                                      {cust.name}
+                                    </span>
+                                    {cust.name !== cust.id && (
+                                      <span className="block text-[10px] text-gray-400 truncate">{cust.id}</span>
+                                    )}
+                                  </div>
+                                </button>
+                                <button
+                                  onClick={() => addExcludedCustomer(cust.id)}
+                                  className="flex-shrink-0 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                  title="Exclude this customer"
+                                >
+                                  <Ban className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             );
                           })
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Excluded Customers */}
+                  <div className="space-y-2 pt-3 border-t border-gray-200">
+                    <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1.5">
+                      <UserMinus className="w-3.5 h-3.5 text-red-400" />
+                      Excluded Customers {tempExcludedCustomers.length > 0 && (
+                        <span className="ml-1 px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-bold">
+                          {tempExcludedCustomers.length}
+                        </span>
+                      )}
+                    </label>
+
+                    {tempExcludedCustomers.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 p-2 bg-red-50/50 border border-red-200 rounded-lg">
+                        {tempExcludedCustomers.map(id => {
+                          const cust = uniqueCustomers.find(c => c.id === id);
+                          const displayName = cust?.name || id;
+                          return (
+                            <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-800 rounded-md text-xs font-medium max-w-full">
+                              <span className="truncate">{displayName}</span>
+                              <button onClick={() => removeExcludedCustomer(id)} className="flex-shrink-0 hover:text-red-600 ml-0.5">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          );
+                        })}
+                        <button
+                          onClick={() => setTempExcludedCustomers([])}
+                          className="text-[10px] text-red-500 hover:text-red-600 font-medium px-1.5 py-1"
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search customer to exclude..."
+                        value={excludeSearchTerm}
+                        onChange={(e) => setExcludeSearchTerm(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 bg-white border border-red-200 rounded-lg text-gray-700 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-400"
+                      />
+                    </div>
+                    {excludeSearchTerm && (
+                      <div className="max-h-36 overflow-y-auto border border-gray-200 rounded-lg bg-white">
+                        {filteredExcludeOptions.length === 0 ? (
+                          <p className="text-xs text-gray-400 p-3 text-center">No customers found</p>
+                        ) : (
+                          filteredExcludeOptions.map(cust => (
+                            <button
+                              key={cust.id}
+                              onClick={() => addExcludedCustomer(cust.id)}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-red-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                            >
+                              <Ban className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <span className="block truncate text-gray-700">{cust.name}</span>
+                                {cust.name !== cust.id && <span className="block text-[10px] text-gray-400 truncate">{cust.id}</span>}
+                              </div>
+                            </button>
+                          ))
                         )}
                       </div>
                     )}
@@ -1156,6 +1360,53 @@ export default function InvoiceAnalyticsPage() {
                     </button>
                   </div>
 
+                  {defaultFiltersActive && (
+                    <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                      <span className="text-xs font-medium text-blue-700">Default filters active</span>
+                      <button
+                        onClick={() => { clearFilters(); setDefaultFiltersActive(false); }}
+                        className="text-blue-400 hover:text-blue-600 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="border-t border-gray-200 pt-3 space-y-2">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Default Filters</p>
+                    {hasDefaultFilters ? (
+                      <>
+                        <button
+                          onClick={applyDefaultFilters}
+                          className="w-full px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-sm font-medium transition-colors"
+                        >
+                          Apply Default Filters
+                        </button>
+                        <button
+                          onClick={saveAsDefaultFilters}
+                          disabled={savingDefaults}
+                          className="w-full px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                        >
+                          {savingDefaults ? 'Saving...' : 'Update Defaults with Current'}
+                        </button>
+                        <button
+                          onClick={removeDefaultFilters}
+                          className="w-full px-3 py-1.5 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          Remove Saved Defaults
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={saveAsDefaultFilters}
+                        disabled={savingDefaults}
+                        className="w-full px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                      >
+                        {savingDefaults ? 'Saving...' : 'Save Current as Default'}
+                      </button>
+                    )}
+                  </div>
+
                   {hasActiveFilters && (
                     <div className="bg-amber-50 border border-amber-300 rounded-lg p-2 space-y-1">
                       <p className="text-xs font-medium text-amber-700">
@@ -1164,6 +1415,11 @@ export default function InvoiceAnalyticsPage() {
                       {selectedCustomers.length > 0 && (
                         <p className="text-[10px] text-amber-600">
                           {selectedCustomers.length} customer{selectedCustomers.length !== 1 ? 's' : ''} selected
+                        </p>
+                      )}
+                      {excludedCustomers.length > 0 && (
+                        <p className="text-[10px] text-amber-600">
+                          {excludedCustomers.length} customer{excludedCustomers.length !== 1 ? 's' : ''} excluded
                         </p>
                       )}
                     </div>
