@@ -494,8 +494,19 @@ export default function InvoiceAnalyticsPage() {
           .order('reference_number', { ascending: false })
           .range(offset, offset + batchSize - 1);
 
+        if (filterStatus !== 'all') {
+          query = query.eq('status', filterStatus);
+        }
         if (filterType !== 'all') {
           query = query.eq('type', filterType);
+        }
+        if (selectedCustomers.length > 0) {
+          query = query.in('customer', selectedCustomers);
+        }
+        if (excludedCustomers.length > 0) {
+          for (const cust of excludedCustomers) {
+            query = query.neq('customer', cust);
+          }
         }
 
         const { data: batch, error } = await query;
@@ -617,7 +628,7 @@ export default function InvoiceAnalyticsPage() {
           p_status: filterStatus !== 'all' ? filterStatus : null,
           p_type: filterType !== 'all' ? filterType : null,
           p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : [],
-          p_excluded_customers: []
+          p_excluded_customers: excludedCustomers.length > 0 ? excludedCustomers : []
         });
 
         if (filteredError) throw filteredError;
@@ -715,7 +726,7 @@ export default function InvoiceAnalyticsPage() {
           p_status: filterStatus !== 'all' ? filterStatus : null,
           p_type: filterType !== 'all' ? filterType : null,
           p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : [],
-          p_excluded_customers: []
+          p_excluded_customers: excludedCustomers.length > 0 ? excludedCustomers : []
         });
 
         if (filteredError) throw filteredError;

@@ -424,7 +424,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       }
     };
     loadViewData();
-  }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, excludedCustomerIds, filterStatus, filterType, filterPaymentMethod, filterInvoicePeriod, selectedCustomers]);
+  }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, excludedCustomerIds, filterStatus, filterType, filterPaymentMethod, filterInvoicePeriod, selectedCustomers, sidebarExcludedCustomers]);
 
   useEffect(() => {
     filterAndSortPayments();
@@ -780,7 +780,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     setLoadingBatchInfo('');
     try {
       if (hasActiveFilters) {
-        const excludedCustomerArray = Array.from(excludedCustomerIds);
+        const allExcluded = [...Array.from(excludedCustomerIds), ...sidebarExcludedCustomers];
+        const uniqueExcluded = [...new Set(allExcluded)];
         const { data: filteredData, error: filteredError } = await supabase.rpc('get_filtered_payment_aggregates', {
           p_period_type: 'monthly',
           p_year: year,
@@ -788,7 +789,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           p_type: filterType !== 'all' ? filterType : null,
           p_payment_method: filterPaymentMethod !== 'all' ? filterPaymentMethod : null,
           p_has_applications: filterInvoicePeriod !== 'all' ? filterInvoicePeriod : null,
-          p_excluded_customers: excludedCustomerArray,
+          p_excluded_customers: uniqueExcluded,
           p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : []
         });
 
@@ -1016,7 +1017,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       const currentYear = new Date().getFullYear();
 
       if (hasActiveFilters) {
-        const excludedCustomerArray = Array.from(excludedCustomerIds);
+        const allExcluded = [...Array.from(excludedCustomerIds), ...sidebarExcludedCustomers];
+        const uniqueExcluded = [...new Set(allExcluded)];
         const { data: filteredData, error: filteredError } = await supabase.rpc('get_filtered_payment_aggregates', {
           p_period_type: 'yearly',
           p_year: null,
@@ -1024,7 +1026,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           p_type: filterType !== 'all' ? filterType : null,
           p_payment_method: filterPaymentMethod !== 'all' ? filterPaymentMethod : null,
           p_has_applications: filterInvoicePeriod !== 'all' ? filterInvoicePeriod : null,
-          p_excluded_customers: excludedCustomerArray,
+          p_excluded_customers: uniqueExcluded,
           p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : []
         });
 
