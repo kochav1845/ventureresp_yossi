@@ -186,30 +186,24 @@ export default function InvoiceAnalyticsPage() {
   }, [invoices]);
 
   const uniqueCustomers = useMemo(() => {
-    const bestName = new Map<string, string>();
-    for (const inv of invoices) {
-      if (!inv.customer) continue;
-      const id = inv.customer;
-      if (bestName.has(id)) continue;
-      const fromMap = customerNameMap.get(id);
-      if (fromMap) {
-        bestName.set(id, fromMap);
-        continue;
-      }
-      const name = inv.customer_name;
-      if (name && name !== id && name !== 'N/A') {
-        bestName.set(id, name);
-      }
-    }
-    // When invoices are empty (monthly/yearly view), use customerNameMap as source
-    if (invoices.length === 0 && customerNameMap.size > 0) {
+    if (customerNameMap.size > 0) {
       return Array.from(customerNameMap.entries())
         .map(([id, name]) => ({ id, name }))
         .sort((a, b) => a.name.localeCompare(b.name));
     }
-    const ids = new Set(invoices.map(i => i.customer).filter(Boolean));
-    return Array.from(ids)
-      .map(id => ({ id, name: bestName.get(id) || id }))
+    const nameFromInvoices = new Map<string, string>();
+    for (const inv of invoices) {
+      if (!inv.customer) continue;
+      if (nameFromInvoices.has(inv.customer)) continue;
+      const name = inv.customer_name;
+      if (name && name !== inv.customer && name !== 'N/A') {
+        nameFromInvoices.set(inv.customer, name);
+      } else {
+        nameFromInvoices.set(inv.customer, inv.customer);
+      }
+    }
+    return Array.from(nameFromInvoices.entries())
+      .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [invoices, customerNameMap]);
 
