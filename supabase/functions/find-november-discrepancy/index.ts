@@ -15,14 +15,15 @@ function padRefNbr(refNbr: string): string {
   return refNbr;
 }
 
-async function getDbInvoicesForDateRange(supabase: any, startDate: string, endDate: string): Promise<any[]> {
+async function getDbInvoicesForDateRange(supabase: any, startDate: string, endDate: string, includeAmounts = false): Promise<any[]> {
   let allRecords: any[] = [];
   let from = 0;
   const PAGE_SIZE = 1000;
+  const selectFields = includeAmounts ? 'reference_number, type, amount, balance' : 'reference_number, type';
   while (true) {
     const { data: page } = await supabase
       .from('acumatica_invoices')
-      .select('reference_number, type')
+      .select(selectFields)
       .gte('date', startDate)
       .lt('date', endDate)
       .range(from, from + PAGE_SIZE - 1);
@@ -42,6 +43,8 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json().catch(() => ({}));
     const fix = body.fix === true;
+    const targetMonth = body.month;
+    const compareAmounts = body.compareAmounts === true;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -73,21 +76,28 @@ Deno.serve(async (req: Request) => {
       branch: credentials.branch || '',
     };
 
-    // Scan all months from Jan 2024 to current
+    // Scan all months from Jan 2024 to current, or just one if specified
     const months: { startDate: string; endDate: string; label: string }[] = [];
     const now = new Date();
-    for (let year = 2024; year <= now.getFullYear(); year++) {
-      const maxMonth = year === now.getFullYear() ? now.getMonth() + 1 : 12;
-      for (let month = 1; month <= maxMonth; month++) {
-        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-        const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
-        const lastDay = new Date(year, month, 0).getDate();
-        const endDateForApi = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
-        months.push({ startDate, endDate: nextMonth, label: `${year}-${String(month).padStart(2, '0')}` });
+
+    if (targetMonth) {
+      const [y, m] = targetMonth.split('-').map(Number);
+      const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
+      const nextMonth = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+      months.push({ startDate, endDate: nextMonth, label: targetMonth });
+    } else {
+      for (let year = 2024; year <= now.getFullYear(); year++) {
+        const maxMonth = year === now.getFullYear() ? now.getMonth() + 1 : 12;
+        for (let month = 1; month <= maxMonth; month++) {
+          const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+          const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+          months.push({ startDate, endDate: nextMonth, label: `${year}-${String(month).padStart(2, '0')}` });
+        }
       }
     }
 
     const allDiscrepancies: any[] = [];
+    const allAmountMismatches: any[] = [];
     const summary: any[] = [];
 
     for (const monthInfo of months) {
@@ -100,7 +110,8 @@ Deno.serve(async (req: Request) => {
       const endDateApi = `${monthInfo.startDate.substring(0, 8)}${lastDayOfMonth}`;
       const dateFilterFixed = `Date ge datetimeoffset'${monthInfo.startDate}T00:00:00' and Date le datetimeoffset'${endDateApi}T23:59:59'`;
 
-      const listUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${dateFilterFixed}&$select=ReferenceNbr,Type,Date`;
+      const selectFields = compareAmounts ? 'ReferenceNbr,Type,Date,Amount,Balance,Status' : 'ReferenceNbr,Type,Date';
+      const listUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${dateFilterFixed}&$select=${selectFields}`;
 
       const response = await sessionManager.makeAuthenticatedRequest(creds, listUrl, {
         method: "GET",
@@ -115,32 +126,49 @@ Deno.serve(async (req: Request) => {
       const acumaticaData = await response.json();
       const acumaticaInvoices = Array.isArray(acumaticaData) ? acumaticaData : [];
 
-      const dbInvoices = await getDbInvoicesForDateRange(supabase, monthInfo.startDate, monthInfo.endDate);
+      const dbInvoices = await getDbInvoicesForDateRange(supabase, monthInfo.startDate, monthInfo.endDate, compareAmounts);
       const dbSet = new Set(dbInvoices.map((inv: any) => `${inv.type}:${inv.reference_number}`));
+      const dbAmountMap = new Map(dbInvoices.map((inv: any) => [
+        `${inv.type}:${inv.reference_number}`,
+        { amount: parseFloat(inv.amount || '0'), balance: parseFloat(inv.balance || '0') }
+      ]));
 
       const mismatched: any[] = [];
+      const amountMismatches: any[] = [];
       for (const inv of acumaticaInvoices) {
         const ref = padRefNbr(inv.ReferenceNbr?.value || '');
         const type = inv.Type?.value || '';
         const acumaticaDate = inv.Date?.value || '';
         if (!ref || !type) continue;
-        if (!dbSet.has(`${type}:${ref}`)) {
+        const key = `${type}:${ref}`;
+        if (!dbSet.has(key)) {
           mismatched.push({ ref, type, acumaticaDate });
+        } else if (compareAmounts) {
+          const acuAmount = parseFloat(inv.Amount?.value || '0');
+          const acuBalance = parseFloat(inv.Balance?.value || '0');
+          const dbVals = dbAmountMap.get(key);
+          if (dbVals && (Math.abs(dbVals.amount - acuAmount) > 0.001 || Math.abs(dbVals.balance - acuBalance) > 0.001)) {
+            amountMismatches.push({
+              ref, type,
+              dbAmount: dbVals.amount, acuAmount,
+              dbBalance: dbVals.balance, acuBalance,
+              status: inv.Status?.value || '',
+            });
+          }
         }
       }
 
       if (mismatched.length > 0) {
-        // Look up where these actually are in our DB
         const refs = mismatched.map(m => m.ref);
         const { data: dbRecords } = await supabase
           .from('acumatica_invoices')
           .select('reference_number, type, date')
           .in('reference_number', refs);
 
-        const dbMap = new Map((dbRecords || []).map((r: any) => [`${r.type}:${r.reference_number}`, r.date]));
+        const dbDateMap = new Map((dbRecords || []).map((r: any) => [`${r.type}:${r.reference_number}`, r.date]));
 
         for (const m of mismatched) {
-          const ourDate = dbMap.get(`${m.type}:${m.ref}`) || 'NOT_FOUND';
+          const ourDate = dbDateMap.get(`${m.type}:${m.ref}`) || 'NOT_FOUND';
           const correctDate = m.acumaticaDate.split('T')[0];
           allDiscrepancies.push({
             ref: m.ref,
@@ -150,16 +178,25 @@ Deno.serve(async (req: Request) => {
             month: monthInfo.label,
           });
         }
-
-        summary.push({ month: monthInfo.label, acumaticaCount: acumaticaInvoices.length, dbCount: dbInvoices.length, discrepancies: mismatched.length });
-      } else {
-        summary.push({ month: monthInfo.label, acumaticaCount: acumaticaInvoices.length, dbCount: dbInvoices.length, discrepancies: 0 });
       }
+
+      for (const m of amountMismatches) {
+        allAmountMismatches.push({ ...m, month: monthInfo.label });
+      }
+
+      summary.push({
+        month: monthInfo.label,
+        acumaticaCount: acumaticaInvoices.length,
+        dbCount: dbInvoices.length,
+        discrepancies: mismatched.length,
+        amountMismatches: amountMismatches.length,
+      });
     }
 
     // Fix if requested
     let fixed = 0;
-    if (fix && allDiscrepancies.length > 0) {
+    let amountsFixed = 0;
+    if (fix) {
       for (const d of allDiscrepancies) {
         if (d.ourDate === 'NOT_FOUND') continue;
         const { error } = await supabase
@@ -169,13 +206,24 @@ Deno.serve(async (req: Request) => {
           .eq('type', d.type);
         if (!error) fixed++;
       }
+      for (const m of allAmountMismatches) {
+        const { error } = await supabase
+          .from('acumatica_invoices')
+          .update({ amount: m.acuAmount, balance: m.acuBalance })
+          .eq('reference_number', m.ref)
+          .eq('type', m.type);
+        if (!error) amountsFixed++;
+      }
     }
 
     return new Response(JSON.stringify({
       totalDiscrepancies: allDiscrepancies.length,
+      totalAmountMismatches: allAmountMismatches.length,
       fixed,
+      amountsFixed,
       discrepancies: allDiscrepancies,
-      summary: summary.filter(s => s.discrepancies > 0 || s.error),
+      amountMismatches: allAmountMismatches,
+      summary: summary.filter(s => (s.discrepancies > 0) || (s.amountMismatches > 0) || s.error),
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
