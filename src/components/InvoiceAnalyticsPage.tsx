@@ -483,7 +483,8 @@ export default function InvoiceAnalyticsPage() {
           .select('id, reference_number, type, status, date, due_date, amount, balance, customer, customer_name, description, color_status')
           .gte('date', startStr)
           .lt('date', endStr)
-          .neq('status', 'On Hold')
+          .in('type', ['Invoice', 'Debit Memo', 'Credit Memo'])
+          .in('status', ['Balanced', 'Credit Hold', 'Open', 'Closed', 'Voided', 'Canceled'])
           .order('date', { ascending: false })
           .order('reference_number', { ascending: false })
           .range(offset, offset + batchSize - 1);
