@@ -186,23 +186,25 @@ export default function InvoiceAnalyticsPage() {
   }, [invoices]);
 
   const uniqueCustomers = useMemo(() => {
-    if (customerNameMap.size > 0) {
-      return Array.from(customerNameMap.entries())
-        .map(([id, name]) => ({ id, name }))
-        .sort((a, b) => a.name.localeCompare(b.name));
+    const merged = new Map<string, string>();
+
+    // Start with ALL customers from the authoritative customer table
+    for (const [id, name] of customerNameMap.entries()) {
+      merged.set(id, name);
     }
-    const nameFromInvoices = new Map<string, string>();
+
+    // Add any customers from invoices not already in the map
     for (const inv of invoices) {
-      if (!inv.customer) continue;
-      if (nameFromInvoices.has(inv.customer)) continue;
+      if (!inv.customer || merged.has(inv.customer)) continue;
       const name = inv.customer_name;
       if (name && name !== inv.customer && name !== 'N/A') {
-        nameFromInvoices.set(inv.customer, name);
+        merged.set(inv.customer, name);
       } else {
-        nameFromInvoices.set(inv.customer, inv.customer);
+        merged.set(inv.customer, inv.customer);
       }
     }
-    return Array.from(nameFromInvoices.entries())
+
+    return Array.from(merged.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [invoices, customerNameMap]);
@@ -426,22 +428,28 @@ export default function InvoiceAnalyticsPage() {
     setTempDateTo(dateTo);
     setTempSelectedCustomers(selectedCustomers);
 
-    // Load authoritative customer names
-    supabase
-      .from('acumatica_customers')
-      .select('customer_id, customer_name')
-      .range(0, 4999)
-      .then(({ data }) => {
-        if (data) {
-          const map = new Map<string, string>();
-          for (const c of data) {
-            if (c.customer_id && c.customer_name) {
-              map.set(c.customer_id, c.customer_name);
-            }
+    // Load ALL customers - paginate to avoid Supabase row limits
+    (async () => {
+      const map = new Map<string, string>();
+      let from = 0;
+      const PAGE_SIZE = 1000;
+      while (true) {
+        const { data } = await supabase
+          .from('acumatica_customers')
+          .select('customer_id, customer_name')
+          .order('customer_name')
+          .range(from, from + PAGE_SIZE - 1);
+        if (!data || data.length === 0) break;
+        for (const c of data) {
+          if (c.customer_id && c.customer_name) {
+            map.set(c.customer_id, c.customer_name);
           }
-          setCustomerNameMap(map);
         }
-      });
+        if (data.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+      setCustomerNameMap(map);
+    })();
   }, []);
 
   const loadDailyData = async () => {
