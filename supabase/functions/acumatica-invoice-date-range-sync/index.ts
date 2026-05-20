@@ -132,9 +132,8 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
     const acumaticaInvoices = Array.isArray(listData) ? listData : [];
 
     // Step 2: Check which of the Acumatica refs already exist in our DB
-    // Query by reference_number+type (NOT by date) to avoid false "missing" detection
-    // when Acumatica's date filter returns invoices whose actual Date differs
-    const dbSet = new Set<string>();
+    // Also track dates to detect stale records that need updating
+    const dbMap = new Map<string, string>(); // key: "type:ref", value: date
     const refNumbers = acumaticaInvoices.map((inv: any) => padRefNbr(inv.ReferenceNbr?.value || '')).filter(Boolean);
     const BATCH_QUERY_SIZE = 200;
 
@@ -142,7 +141,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
       const batch = refNumbers.slice(i, i + BATCH_QUERY_SIZE);
       const { data: page, error: dbError } = await supabase
         .from('acumatica_invoices')
-        .select('reference_number, type')
+        .select('reference_number, type, date')
         .in('reference_number', batch);
 
       if (dbError) {
@@ -150,19 +149,54 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
       }
 
       for (const inv of (page || [])) {
-        dbSet.add(`${inv.type}:${inv.reference_number}`);
+        dbMap.set(`${inv.type}:${inv.reference_number}`, inv.date || '');
       }
     }
 
-    // Step 3: Find which invoices are missing from our DB
-    const missingInvoices = acumaticaInvoices.filter((inv: any) => {
+    // Step 3: Find which invoices are missing from our DB OR have stale dates
+    const missingInvoices: any[] = [];
+    const staleDateInvoices: any[] = [];
+
+    for (const inv of acumaticaInvoices) {
       const refNbr = padRefNbr(inv.ReferenceNbr?.value || '');
       const type = inv.Type?.value || '';
-      if (!refNbr || !type) return false;
-      return !dbSet.has(`${type}:${refNbr}`);
-    });
+      if (!refNbr || !type) continue;
 
-    console.log(`[invoice-sync] Acumatica has ${acumaticaInvoices.length}, DB has ${dbSet.size}, missing: ${missingInvoices.length}`);
+      const key = `${type}:${refNbr}`;
+      if (!dbMap.has(key)) {
+        missingInvoices.push(inv);
+      } else {
+        // Check if date differs
+        const acumaticaDate = (inv.Date?.value || '').split('T')[0];
+        const dbDate = dbMap.get(key) || '';
+        if (acumaticaDate && dbDate && acumaticaDate !== dbDate) {
+          staleDateInvoices.push(inv);
+        }
+      }
+    }
+
+    console.log(`[invoice-sync] Acumatica has ${acumaticaInvoices.length}, DB has ${dbMap.size}, missing: ${missingInvoices.length}, stale dates: ${staleDateInvoices.length}`);
+
+    // Fix stale dates immediately (lightweight update, no full re-fetch needed)
+    let staleDatesFixed = 0;
+    for (const inv of staleDateInvoices) {
+      const refNbr = padRefNbr(inv.ReferenceNbr?.value || '');
+      const type = inv.Type?.value || '';
+      const correctDate = (inv.Date?.value || '').split('T')[0];
+      if (!refNbr || !type || !correctDate) continue;
+
+      const { error } = await supabase
+        .from('acumatica_invoices')
+        .update({ date: correctDate })
+        .eq('reference_number', refNbr)
+        .eq('type', type);
+
+      if (!error) staleDatesFixed++;
+    }
+
+    if (staleDatesFixed > 0) {
+      console.log(`[invoice-sync] Fixed ${staleDatesFixed} stale dates`);
+    }
 
     if (missingInvoices.length === 0) {
       await supabase
@@ -170,7 +204,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
         .update({
           status: 'completed',
           completed_at: new Date().toISOString(),
-          progress: { created: 0, updated: 0, total: 0, skipped: acumaticaInvoices.length, errors: [] },
+          progress: { created: 0, updated: 0, total: 0, skipped: acumaticaInvoices.length, staleDatesFixed, errors: [] },
         })
         .eq('id', jobId);
 
