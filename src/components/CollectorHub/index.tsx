@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Search, Users, Activity, DollarSign, FileText, TrendingUp, Banknote, LogIn,
   MessageSquare, Palette
@@ -14,7 +14,15 @@ interface CollectorHubProps {
 }
 
 export default function CollectorHub({ onBack }: CollectorHubProps) {
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const [collectors, setCollectors] = useState<CollectorCombined[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState(30);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -63,7 +63,15 @@ export default function UnifiedTicketingSystem({
   title = 'Ticketing System'
 }: UnifiedTicketingSystemProps) {
   const { user, profile } = useAuth();
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const location = useLocation();
 
   // View states

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Database, CheckCircle, XCircle, Loader } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -16,7 +16,15 @@ interface FetchResult {
 }
 
 export default function AcumaticaInvoiceTest({ onBack }: Props) {
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const [acumaticaUrl, setAcumaticaUrl] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');

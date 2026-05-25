@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Image, File, ArrowUp, ArrowDown } from 'lucide-react';
 import { formatDistanceToNow, format as dateFnsFormat } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
@@ -68,7 +68,15 @@ export default function TicketCard({
   isTicketSelected = false,
   onToggleTicketSelection
 }: TicketCardProps) {
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const [colorPickerAnchor, setColorPickerAnchor] = useState<DOMRect | null>(null);
   const [localTicketStatus, setLocalTicketStatus] = useState(ticket.ticket_status);
   const [localTicketPriority, setLocalTicketPriority] = useState(ticket.ticket_priority);

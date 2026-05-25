@@ -10,7 +10,7 @@ interface AdminCreateUserProps {
 
 export default function AdminCreateUser({ onBack }: AdminCreateUserProps) {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const handleBack = onBack || (() => navigate(-1));
 
   const [email, setEmail] = useState('');
@@ -102,6 +102,7 @@ export default function AdminCreateUser({ onBack }: AdminCreateUserProps) {
             account_status: 'approved',
             approved_by: user?.id,
             approved_at: new Date().toISOString(),
+            organization_id: profile?.organization_id || null,
           });
 
         if (insertError) throw insertError;
@@ -114,6 +115,7 @@ export default function AdminCreateUser({ onBack }: AdminCreateUserProps) {
             account_status: 'approved',
             approved_by: user?.id,
             approved_at: new Date().toISOString(),
+            organization_id: profile?.organization_id || null,
           })
           .eq('id', authData.user.id);
 

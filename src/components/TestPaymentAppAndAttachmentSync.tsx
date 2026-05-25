@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { PlayCircle, Loader2, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 interface TestResult {
   step: string;
@@ -11,7 +11,15 @@ interface TestResult {
 }
 
 export function TestPaymentAppAndAttachmentSync() {
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const [testing, setTesting] = useState(false);
   const [results, setResults] = useState<TestResult[]>([]);
   const [paymentInfo, setPaymentInfo] = useState<any>(null);

@@ -31,8 +31,15 @@ interface ColorStatusOption {
 }
 
 export default function TicketDetailPage() {
-  const { ticketId } = useParams<{ ticketId: string }>();
-  const navigate = useNavigate();
+  const { ticketId, orgSlug } = useParams<{ ticketId: string; orgSlug: string }>();
+  const rawNavigate = useNavigate();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const { user, profile } = useAuth();
 
   const [ticket, setTicket] = useState<TicketGroup | null>(null);
@@ -585,7 +592,7 @@ export default function TicketDetailPage() {
         <h2 className="text-xl font-bold text-gray-900 mb-2">Ticket Not Found</h2>
         <p className="text-gray-500 mb-6">{error || 'The ticket you are looking for does not exist.'}</p>
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => rawNavigate(-1)}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           Go Back
@@ -686,7 +693,7 @@ export default function TicketDetailPage() {
       )}
 
       <div className="flex items-center gap-3" data-tour="ticket-detail-header">
-        <button onClick={() => navigate(-1)} className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 transition-colors">
+        <button onClick={() => rawNavigate(-1)} className="p-1.5 rounded border border-gray-300 hover:bg-gray-50 transition-colors">
           <ArrowLeft className="w-4 h-4 text-gray-600" />
         </button>
         <Ticket className="w-5 h-5 text-gray-700" />

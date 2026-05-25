@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
+import { useOrgNavigation } from '../hooks/useOrgNavigation';
 import {
   LogOut,
   BarChart3,
@@ -49,7 +50,7 @@ import TourLauncher from './GuidedTour/TourLauncher';
 
 export default function Layout() {
   const { profile, signOut, user, isImpersonating } = useAuth();
-  const navigate = useNavigate();
+  const { navigate } = useOrgNavigation();
   const location = useLocation();
   const { isComponentLocked, isAdmin } = useUserPermissions();
   const isCollector = profile?.role === 'collector';
@@ -64,7 +65,8 @@ export default function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [cronJobHealthy, setCronJobHealthy] = useState(true);
 
-  const currentView = location.pathname.substring(1) || 'dashboard';
+  const pathParts = location.pathname.split('/').filter(Boolean);
+  const currentView = pathParts.length > 1 ? pathParts.slice(1).join('/') : pathParts[0] || 'dashboard';
 
   useEffect(() => {
     loadSidebarPreference();

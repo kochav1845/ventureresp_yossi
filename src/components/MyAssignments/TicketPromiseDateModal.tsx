@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { X, Calendar, Bell } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { formatDate, getLocalToday } from '../../lib/dateUtils';
@@ -19,7 +19,15 @@ export default function TicketPromiseDateModal({
   onClose,
   onSuccess
 }: TicketPromiseDateModalProps) {
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const [promiseDate, setPromiseDate] = useState('');
   const [createReminder, setCreateReminder] = useState(true);
   const [saving, setSaving] = useState(false);

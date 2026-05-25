@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, DollarSign, TrendingUp, CreditCard, BarChart3 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -23,7 +23,15 @@ interface PaymentTypeStats {
 }
 
 export default function RevenueAnalytics({ onBack, onNavigate }: RevenueAnalyticsProps) {
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const [monthlyData, setMonthlyData] = useState<MonthlyRevenue[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<PaymentTypeStats[]>([]);
   const [totalRevenue, setTotalRevenue] = useState(0);

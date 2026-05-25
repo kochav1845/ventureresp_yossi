@@ -57,6 +57,8 @@ export type UserProfile = {
   full_name?: string;
   assigned_color?: string;
   can_be_assigned_as_collector?: boolean;
+  is_super_admin?: boolean;
+  organization_id?: string;
   created_at: string;
   updated_at: string;
 };

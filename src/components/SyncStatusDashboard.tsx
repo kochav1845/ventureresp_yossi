@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Activity, CheckCircle, XCircle, Clock, Play, ChevronLeft, ChevronRight, Stethoscope } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import CronJobControl from './CronJobControl';
@@ -38,7 +38,15 @@ interface SyncLog {
 }
 
 export default function SyncStatusDashboard({ onBack }: SyncStatusDashboardProps) {
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const handleBack = onBack || (() => navigate(-1));
   const [syncStatuses, setSyncStatuses] = useState<SyncStatus[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);

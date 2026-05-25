@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Users, LogIn, Activity, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -18,7 +18,15 @@ interface UserActivity {
 }
 
 export default function UserActivityAnalytics({ onBack }: UserActivityAnalyticsProps) {
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const [activities, setActivities] = useState<UserActivity[]>([]);
   const [totalUsers, setTotalUsers] = useState(0);
   const [activeToday, setActiveToday] = useState(0);

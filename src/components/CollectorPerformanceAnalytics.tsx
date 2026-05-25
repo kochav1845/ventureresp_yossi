@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Users, TrendingUp, Calendar, CheckCircle, AlertCircle, Ticket, Eye } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import CollectorDetailedProgress from './CollectorDetailedProgress';
@@ -25,7 +25,15 @@ interface CollectorStats {
 }
 
 export default function CollectorPerformanceAnalytics({ onBack }: CollectorPerformanceAnalyticsProps) {
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const [collectorStats, setCollectorStats] = useState<CollectorStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState('30');

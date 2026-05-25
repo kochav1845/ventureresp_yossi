@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, Clock, CheckCircle, User, ArrowLeft, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { logActivity, supabase } from '../lib/supabase';
@@ -111,6 +112,7 @@ function ImageCarousel() {
 }
 
 export default function SignIn() {
+  const { orgSlug } = useParams<{ orgSlug: string }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -175,12 +177,24 @@ export default function SignIn() {
           return;
         }
 
+        // Look up org id from slug
+        let orgId: string | null = null;
+        if (orgSlug) {
+          const { data: orgData } = await supabase
+            .from('organizations')
+            .select('id')
+            .eq('slug', orgSlug)
+            .maybeSingle();
+          orgId = orgData?.id || null;
+        }
+
         const { error: insertError } = await supabase
           .from('pending_users')
           .insert({
             full_name: fullName,
             email: email,
-            status: 'pending'
+            status: 'pending',
+            organization_id: orgId
           });
 
         if (insertError) {

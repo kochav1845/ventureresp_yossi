@@ -67,6 +67,17 @@ Deno.serve(async (req: Request) => {
 
     const temporaryPassword = generatePassword();
 
+    // Look up org slug if pending user has an organization_id
+    let orgSlug: string | null = null;
+    if (pendingUser.organization_id) {
+      const { data: orgData } = await supabaseAdmin
+        .from('organizations')
+        .select('slug')
+        .eq('id', pendingUser.organization_id)
+        .single();
+      orgSlug = orgData?.slug || null;
+    }
+
     // Create the auth user with metadata flag for approval
     const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: pendingUser.email,
@@ -74,7 +85,8 @@ Deno.serve(async (req: Request) => {
       email_confirm: true,
       user_metadata: {
         full_name: pendingUser.full_name,
-        approved_from_pending: true  // Flag for trigger to recognize approved user
+        approved_from_pending: true,
+        org_slug: orgSlug
       }
     });
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { AlertTriangle, CheckCircle, Clock, XCircle, RefreshCw, Play, ArrowLeft } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 interface SyncLog {
   id: string;
@@ -23,7 +23,15 @@ interface SyncStatus {
 }
 
 const SyncHealthDashboard: React.FC = () => {
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const [syncStatuses, setSyncStatuses] = useState<SyncStatus[]>([]);
   const [stuckSyncs, setStuckSyncs] = useState<SyncLog[]>([]);
   const [recentSyncs, setRecentSyncs] = useState<SyncLog[]>([]);

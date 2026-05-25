@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Users, DollarSign, FileText, TrendingUp, AlertCircle, Filter, X, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { usePageCache } from '../contexts/PageCacheContext';
@@ -50,7 +50,15 @@ const PRESET_FILTERS = [
 ];
 
 export default function CustomerAnalyticsPage({ onBack }: CustomerAnalyticsPageProps) {
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const { getCachedState, setCachedState } = usePageCache('customer-analytics');
   const cachedState = useRef(getCachedState());
   const c = cachedState.current;

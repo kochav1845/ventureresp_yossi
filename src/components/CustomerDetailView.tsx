@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Ticket, ChevronRight, PauseCircle } from 'lucide-react';
 import { supabase, logActivity } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -102,9 +102,17 @@ interface TicketData {
 
 export default function CustomerDetailView({ customerId, onBack }: CustomerDetailViewProps) {
   const { profile } = useAuth();
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const [searchParams] = useSearchParams();
-  const handleBack = onBack || (() => navigate(-1));
+  const handleBack = onBack || (() => rawNavigate(-1));
   const { getCachedState, setCachedState } = usePageCache(`customer-detail-${customerId}`);
   const cachedDetail = useRef(getCachedState());
   const cd = cachedDetail.current;

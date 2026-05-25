@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, X, ExternalLink, Check, Save, Settings, Ban, UserMinus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
@@ -48,7 +48,15 @@ const formatCurrencyFull = (amount: number) =>
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export default function InvoiceAnalyticsPage() {
-  const navigate = useNavigate();
+  const rawNavigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const navigate = (path: string, options?: any) => {
+    if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
+      rawNavigate(`/${orgSlug}${path}`, options);
+    } else {
+      rawNavigate(path, options);
+    }
+  };
   const { user } = useAuth();
   const { getCachedState, setCachedState } = usePageCache('invoice-analytics');
   const cachedState = useRef(getCachedState());

@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { PageCacheProvider } from './contexts/PageCacheContext';
+import { OrgProvider } from './contexts/OrgContext';
 import SignIn from './components/SignIn';
 import ResetPassword from './components/ResetPassword';
 import Layout from './components/Layout';
@@ -53,7 +54,6 @@ import CustomerAnalyticsPage from './components/CustomerAnalyticsPage';
 import UserActivityAnalytics from './components/UserActivityAnalytics';
 import EmailAnalytics from './components/EmailAnalytics';
 import CollectorControlPanel from './components/CollectorControlPanel';
-// AdminCollectorMonitoring and CollectorActivityMonitor merged into CollectorHub
 import UserApprovalPanel from './components/UserApprovalPanel';
 import PaymentApplicationDiagnostic from './components/PaymentApplicationDiagnostic';
 import PasswordResetTester from './components/PasswordResetTester';
@@ -86,6 +86,8 @@ import TicketDetailPage from './components/TicketDetailPage';
 import CustomerStatements from './components/CustomerStatements';
 import ApiKeyManagement from './components/ApiKeyManagement';
 import InvoiceAnalyticsPage from './components/InvoiceAnalyticsPage';
+import LandingPage from './components/LandingPage';
+import SuperAdminDashboard from './components/SuperAdminDashboard';
 import { TourProvider } from './components/GuidedTour/TourProvider';
 import TourOverlay from './components/GuidedTour/TourOverlay';
 
@@ -100,18 +102,19 @@ function LoadingScreen() {
   );
 }
 
-function getDefaultRouteForRole(role: string): string {
+function getDefaultRouteForRole(role: string, orgSlug: string): string {
   switch (role) {
     case 'admin':
-      return '/payment-analytics';
+      return `/${orgSlug}/payment-analytics`;
     case 'collector':
-      return '/my-assignments';
+      return `/${orgSlug}/my-assignments`;
     default:
-      return '/customers';
+      return `/${orgSlug}/customers`;
   }
 }
 
-function AppContent() {
+function OrgAppContent() {
+  const { orgSlug } = useParams<{ orgSlug: string }>();
   const { user, profile, loading } = useAuth();
 
   if (loading) {
@@ -121,19 +124,19 @@ function AppContent() {
   if (!user || !profile) {
     return (
       <Routes>
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/connection-test" element={<ConnectionDiagnostic />} />
+        <Route path="reset-password" element={<ResetPassword />} />
+        <Route path="connection-test" element={<ConnectionDiagnostic />} />
         <Route path="*" element={<SignIn />} />
       </Routes>
     );
   }
 
-  const defaultRoute = getDefaultRouteForRole(profile.role);
+  const defaultRoute = getDefaultRouteForRole(profile.role, orgSlug || '');
 
   return (
     <Routes>
-      <Route path="/signin" element={<Navigate to={defaultRoute} replace />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="signin" element={<Navigate to={defaultRoute} replace />} />
+      <Route path="reset-password" element={<ResetPassword />} />
 
       <Route path="/" element={<Layout />}>
         <Route index element={<Navigate to={defaultRoute} replace />} />
@@ -224,17 +227,30 @@ function AppContent() {
   );
 }
 
+function OrgWrapper() {
+  return (
+    <OrgProvider>
+      <PageCacheProvider>
+        <TourProvider>
+          <OrgAppContent />
+          <TourOverlay />
+        </TourProvider>
+      </PageCacheProvider>
+    </OrgProvider>
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
       <ToastProvider>
         <AuthProvider>
-          <PageCacheProvider>
-            <TourProvider>
-              <AppContent />
-              <TourOverlay />
-            </TourProvider>
-          </PageCacheProvider>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/super-admin" element={<SuperAdminDashboard />} />
+            <Route path="/connection-test" element={<ConnectionDiagnostic />} />
+            <Route path="/:orgSlug/*" element={<OrgWrapper />} />
+          </Routes>
         </AuthProvider>
       </ToastProvider>
     </BrowserRouter>
