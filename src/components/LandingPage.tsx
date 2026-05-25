@@ -1,105 +1,131 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Building2, ArrowRight, Shield } from 'lucide-react';
+import { useState } from 'react';
+import { FileText, Send, CheckCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
-
-interface Organization {
-  id: string;
-  slug: string;
-  name: string;
-}
 
 export default function LandingPage() {
-  const navigate = useNavigate();
-  const { user, profile } = useAuth();
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [company, setCompany] = useState('');
+  const [message, setMessage] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    loadOrganizations();
-  }, []);
-
-  useEffect(() => {
-    if (user && profile && profile.organization_id) {
-      // If logged in and belongs to an org, redirect there
-      const loadUserOrg = async () => {
-        const { data } = await supabase
-          .from('organizations')
-          .select('slug')
-          .eq('id', profile.organization_id)
-          .maybeSingle();
-        if (data?.slug) {
-          navigate(`/${data.slug}`, { replace: true });
-        }
-      };
-      loadUserOrg();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !email.trim() || !company.trim()) {
+      setError('Please fill in all required fields.');
+      return;
     }
-  }, [user, profile, navigate]);
+    setLoading(true);
+    setError('');
 
-  const loadOrganizations = async () => {
-    const { data } = await supabase
-      .from('organizations')
-      .select('id, slug, name')
-      .eq('is_active', true)
-      .order('name');
-    setOrganizations(data || []);
+    const { error: insertError } = await supabase
+      .from('interest_requests')
+      .insert({
+        name: name.trim(),
+        email: email.trim(),
+        company: company.trim(),
+        message: message.trim() || null,
+      });
+
+    if (insertError) {
+      setError('Something went wrong. Please try again later.');
+      setLoading(false);
+      return;
+    }
+
+    setSubmitted(true);
     setLoading(false);
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600/20 border border-blue-500/30 mb-5">
-            <Building2 className="w-8 h-8 text-blue-400" />
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600/20 border border-blue-500/30 mb-5">
+            <FileText className="w-7 h-7 text-blue-400" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Collections Portal</h1>
-          <p className="text-slate-400">Select your organization to continue</p>
+          <h1 className="text-2xl font-bold text-white mb-2">Accounts Receivable System</h1>
+          <p className="text-slate-400 text-sm leading-relaxed max-w-sm mx-auto">
+            Welcome! You've reached the starting point of our accounts receivable platform.
+            If you'd like to create an account, please fill out the form below and we will get back to you.
+          </p>
         </div>
 
         <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm">
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          {submitted ? (
+            <div className="text-center py-6">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-500/20 border border-green-500/30 mb-4">
+                <CheckCircle className="w-6 h-6 text-green-400" />
+              </div>
+              <h3 className="text-white font-semibold mb-2">Request Received</h3>
+              <p className="text-slate-400 text-sm">
+                Thank you for your interest. We'll review your request and get back to you shortly.
+              </p>
             </div>
-          ) : organizations.length === 0 ? (
-            <p className="text-slate-400 text-center py-8">No organizations available</p>
           ) : (
-            <div className="space-y-3">
-              {organizations.map(org => (
-                <button
-                  key={org.id}
-                  onClick={() => navigate(`/${org.slug}`)}
-                  className="w-full flex items-center justify-between px-5 py-4 bg-slate-700/40 hover:bg-slate-700/70 border border-slate-600/30 hover:border-blue-500/40 rounded-xl transition-all duration-200 group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
-                      <Building2 className="w-5 h-5 text-blue-400" />
-                    </div>
-                    <div className="text-left">
-                      <p className="text-white font-medium">{org.name}</p>
-                      <p className="text-slate-400 text-sm">/{org.slug}</p>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-5 h-5 text-slate-500 group-hover:text-blue-400 transition-colors" />
-                </button>
-              ))}
-            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm text-slate-300 mb-1.5">Full Name *</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="John Smith"
+                  className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-300 mb-1.5">Email Address *</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="john@company.com"
+                  className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-300 mb-1.5">Company Name *</label>
+                <input
+                  type="text"
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  placeholder="Acme Corp"
+                  className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-300 mb-1.5">Message (optional)</label>
+                <textarea
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="Tell us a bit about your needs..."
+                  rows={3}
+                  className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
+                />
+              </div>
+
+              {error && (
+                <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" />
+                {loading ? 'Submitting...' : 'Submit Request'}
+              </button>
+            </form>
           )}
         </div>
 
-        {user && profile?.is_super_admin && (
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => navigate('/super-admin')}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm text-amber-400 hover:text-amber-300 border border-amber-500/30 hover:border-amber-500/50 rounded-lg transition-colors"
-            >
-              <Shield className="w-4 h-4" />
-              Super Admin Panel
-            </button>
-          </div>
-        )}
+        <p className="text-center text-slate-600 text-xs mt-6">
+          Already have an account? Use your organization's direct link to sign in.
+        </p>
       </div>
     </div>
   );

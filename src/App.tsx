@@ -247,7 +247,7 @@ function App() {
         <AuthProvider>
           <Routes>
             <Route path="/" element={<LandingPage />} />
-            <Route path="/super-admin" element={<SuperAdminDashboard />} />
+            <Route path="/developer" element={<SuperAdminDashboard />} />
             <Route path="/connection-test" element={<ConnectionDiagnostic />} />
             <Route path="/:orgSlug/*" element={<OrgWrapper />} />
           </Routes>
