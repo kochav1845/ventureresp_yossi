@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileText, Send, CheckCircle } from 'lucide-react';
+import { FileText, Send, CheckCircle, Mail, Lock, User, Building2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export default function LandingPage() {
@@ -46,10 +46,10 @@ export default function LandingPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600/20 border border-blue-500/30 mb-5">
             <FileText className="w-7 h-7 text-blue-400" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Accounts Receivable System</h1>
+          <h1 className="text-2xl font-bold text-white mb-3">Accounts Receivable System</h1>
           <p className="text-slate-400 text-sm leading-relaxed max-w-sm mx-auto">
-            Welcome! You've reached the starting point of our accounts receivable platform.
-            If you'd like to create an account, please fill out the form below and we will get back to you.
+            Welcome! If you already have an account, please use your organization's direct link to sign in.
+            Otherwise, fill out the form below to request access.
           </p>
         </div>
 
@@ -59,15 +59,18 @@ export default function LandingPage() {
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-500/20 border border-green-500/30 mb-4">
                 <CheckCircle className="w-6 h-6 text-green-400" />
               </div>
-              <h3 className="text-white font-semibold mb-2">Request Received</h3>
+              <h3 className="text-white font-semibold mb-2">Request Submitted</h3>
               <p className="text-slate-400 text-sm">
-                Thank you for your interest. We'll review your request and get back to you shortly.
+                Thank you! We'll review your request and get back to you shortly.
               </p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
+              <h3 className="text-white font-semibold text-sm mb-1">Request an Account</h3>
               <div>
-                <label className="block text-sm text-slate-300 mb-1.5">Full Name *</label>
+                <label className="block text-sm text-slate-300 mb-1.5">
+                  <span className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Full Name</span>
+                </label>
                 <input
                   type="text"
                   value={name}
@@ -77,7 +80,9 @@ export default function LandingPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-slate-300 mb-1.5">Email Address *</label>
+                <label className="block text-sm text-slate-300 mb-1.5">
+                  <span className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email Address</span>
+                </label>
                 <input
                   type="email"
                   value={email}
@@ -87,7 +92,9 @@ export default function LandingPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-slate-300 mb-1.5">Company Name *</label>
+                <label className="block text-sm text-slate-300 mb-1.5">
+                  <span className="flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" /> Company Name</span>
+                </label>
                 <input
                   type="text"
                   value={company}
@@ -101,7 +108,7 @@ export default function LandingPage() {
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Tell us a bit about your needs..."
+                  placeholder="Tell us about your needs..."
                   rows={3}
                   className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
                 />

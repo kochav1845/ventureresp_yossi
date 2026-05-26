@@ -384,6 +384,14 @@ export default function SignIn() {
           {isSignUp ? 'Submit your details for admin approval.' : 'Sign in to your account to continue.'}
         </p>
 
+        {orgSlug === 'demo' && !isSignUp && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-blue-800 text-xs font-medium mb-1">Demo Access</p>
+            <p className="text-blue-700 text-xs">Email: <span className="font-mono">demo@demo.com</span></p>
+            <p className="text-blue-700 text-xs">Password: <span className="font-mono">demo1234</span></p>
+          </div>
+        )}
+
         {error && <ErrorMessage error={error} />}
 
         <form onSubmit={handleSubmit} className="space-y-5">

@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { PageCacheProvider } from './contexts/PageCacheContext';
-import { OrgProvider } from './contexts/OrgContext';
+import { OrgProvider, useOrg } from './contexts/OrgContext';
 import SignIn from './components/SignIn';
 import ResetPassword from './components/ResetPassword';
 import Layout from './components/Layout';
@@ -227,15 +227,31 @@ function OrgAppContent() {
   );
 }
 
+function OrgGate() {
+  const { org, loading, error } = useOrg();
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
+  if (error || !org) {
+    return <LandingPage />;
+  }
+
+  return (
+    <PageCacheProvider>
+      <TourProvider>
+        <OrgAppContent />
+        <TourOverlay />
+      </TourProvider>
+    </PageCacheProvider>
+  );
+}
+
 function OrgWrapper() {
   return (
     <OrgProvider>
-      <PageCacheProvider>
-        <TourProvider>
-          <OrgAppContent />
-          <TourOverlay />
-        </TourProvider>
-      </PageCacheProvider>
+      <OrgGate />
     </OrgProvider>
   );
 }
