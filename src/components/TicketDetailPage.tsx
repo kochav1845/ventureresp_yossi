@@ -11,6 +11,7 @@ import {
 import { formatDistanceToNow, format as dateFnsFormat } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useOrg } from '../contexts/OrgContext';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { formatDate, isDatePast } from '../lib/dateUtils';
 import InvoiceMemoModal from './InvoiceMemoModal';
@@ -32,6 +33,7 @@ interface ColorStatusOption {
 
 export default function TicketDetailPage() {
   const { ticketId, orgSlug } = useParams<{ ticketId: string; orgSlug: string }>();
+  const { org, loading: orgLoading } = useOrg();
   const rawNavigate = useNavigate();
   const navigate = (path: string, options?: any) => {
     if (path.startsWith('/') && orgSlug && !path.startsWith(`/${orgSlug}`)) {
@@ -384,9 +386,10 @@ export default function TicketDetailPage() {
   }, []);
 
   useEffect(() => {
+    if (orgLoading || !org) return;
     loadTicketData();
     loadOptions();
-  }, [loadTicketData, loadOptions]);
+  }, [loadTicketData, loadOptions, orgLoading, org]);
 
   const handleTicketStatusChange = async (newStatus: string) => {
     if (!ticket) return;
