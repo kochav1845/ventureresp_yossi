@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { supabase, setSupabaseOrgHeader } from '../lib/supabase';
 
 interface Organization {
   id: string;
@@ -23,6 +23,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const [org, setOrg] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const prevOrgId = useRef<string | null>(null);
 
   useEffect(() => {
     if (!orgSlug) {
@@ -51,6 +52,11 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       } else {
         setOrg(data);
         setError(null);
+        // Set org header for all subsequent Supabase requests
+        if (data.id !== prevOrgId.current) {
+          prevOrgId.current = data.id;
+          setSupabaseOrgHeader(data.id);
+        }
       }
       setLoading(false);
     };

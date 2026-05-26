@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+let currentOrgId: string | null = null;
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
@@ -38,17 +40,27 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     headers: {
       'X-Client-Info': 'supabase-js-web',
     },
+    fetch: (url, options = {}) => {
+      const headers = new Headers(options.headers);
+      if (currentOrgId) {
+        headers.set('x-org-id', currentOrgId);
+      }
+      return fetch(url, { ...options, headers });
+    },
   },
   db: {
     schema: 'public',
   },
   realtime: {
-    // Disable realtime to reduce connection overhead
     params: {
       eventsPerSecond: 2,
     },
   },
 });
+
+export function setSupabaseOrgHeader(orgId: string) {
+  currentOrgId = orgId;
+}
 
 export type UserProfile = {
   id: string;
