@@ -262,7 +262,7 @@ function App() {
       <ToastProvider>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<LandingPage />} />
+            <Route path="/" element={<Navigate to="/demo" replace />} />
             <Route path="/developer" element={<SuperAdminDashboard />} />
             <Route path="/connection-test" element={<ConnectionDiagnostic />} />
             <Route path="/:orgSlug/*" element={<OrgWrapper />} />

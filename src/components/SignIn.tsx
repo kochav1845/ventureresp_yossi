@@ -116,7 +116,7 @@ export default function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(orgSlug === 'demo');
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [error, setError] = useState('');
@@ -165,42 +165,57 @@ export default function SignIn() {
 
     try {
       if (isSignUp) {
-        const { data: existingPending } = await supabase
-          .from('pending_users')
-          .select('*')
-          .eq('email', email)
-          .maybeSingle();
-
-        if (existingPending) {
-          setError('An account request with this email already exists. Please check your status or contact an administrator.');
-          setLoading(false);
-          return;
-        }
-
-        // Look up org id from slug
-        let orgId: string | null = null;
-        if (orgSlug) {
-          const { data: orgData } = await supabase
-            .from('organizations')
-            .select('id')
-            .eq('slug', orgSlug)
-            .maybeSingle();
-          orgId = orgData?.id || null;
-        }
-
-        const { error: insertError } = await supabase
-          .from('pending_users')
-          .insert({
-            full_name: fullName,
-            email: email,
-            status: 'pending',
-            organization_id: orgId
-          });
-
-        if (insertError) {
-          setError(insertError.message || 'Error creating account request');
+        if (orgSlug === 'demo') {
+          // Demo org: create real user immediately
+          const { error: signUpError } = await signUp(email, password, fullName, 'demo');
+          if (signUpError) {
+            setError(signUpError.message || 'Error creating account');
+          } else {
+            // Auto sign in after creating account
+            const { error: signInError } = await signIn(email, password);
+            if (signInError) {
+              setError('Account created! Please sign in.');
+              setIsSignUp(false);
+            }
+          }
         } else {
-          setAccountStatus('pending');
+          const { data: existingPending } = await supabase
+            .from('pending_users')
+            .select('*')
+            .eq('email', email)
+            .maybeSingle();
+
+          if (existingPending) {
+            setError('An account request with this email already exists. Please check your status or contact an administrator.');
+            setLoading(false);
+            return;
+          }
+
+          // Look up org id from slug
+          let orgId: string | null = null;
+          if (orgSlug) {
+            const { data: orgData } = await supabase
+              .from('organizations')
+              .select('id')
+              .eq('slug', orgSlug)
+              .maybeSingle();
+            orgId = orgData?.id || null;
+          }
+
+          const { error: insertError } = await supabase
+            .from('pending_users')
+            .insert({
+              full_name: fullName,
+              email: email,
+              status: 'pending',
+              organization_id: orgId
+            });
+
+          if (insertError) {
+            setError(insertError.message || 'Error creating account request');
+          } else {
+            setAccountStatus('pending');
+          }
         }
       } else {
         const { data: pendingUser } = await supabase
@@ -378,19 +393,13 @@ export default function SignIn() {
     return (
       <>
         <h2 className="text-2xl font-bold text-gray-900 mb-1">
-          {isSignUp ? 'Create Account' : 'Welcome back'}
+          {isSignUp ? (orgSlug === 'demo' ? 'Please create an account.' : 'Create Account') : 'Welcome back'}
         </h2>
         <p className="text-gray-500 text-sm mb-8">
-          {isSignUp ? 'Submit your details for admin approval.' : 'Sign in to your account to continue.'}
+          {isSignUp
+            ? (orgSlug === 'demo' ? 'Create your free account to explore the system.' : 'Submit your details for admin approval.')
+            : 'Sign in to your account to continue.'}
         </p>
-
-        {orgSlug === 'demo' && !isSignUp && (
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-blue-800 text-xs font-medium mb-1">Demo Access</p>
-            <p className="text-blue-700 text-xs">Email: <span className="font-mono">demo@demo.com</span></p>
-            <p className="text-blue-700 text-xs">Password: <span className="font-mono">demo1234</span></p>
-          </div>
-        )}
 
         {error && <ErrorMessage error={error} />}
 
@@ -452,7 +461,7 @@ export default function SignIn() {
             disabled={loading}
             className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
           >
-            {loading ? 'Please wait...' : isSignUp ? 'Request Account' : 'Sign In'}
+            {loading ? 'Please wait...' : isSignUp ? (orgSlug === 'demo' ? 'Create Account' : 'Request Account') : 'Sign In'}
           </button>
         </form>
 

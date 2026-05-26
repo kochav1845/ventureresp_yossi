@@ -12,7 +12,7 @@ interface AuthContextType {
   isImpersonating: boolean;
   originalProfile: UserProfile | null;
   signIn: (email: string, password: string) => Promise<{ data: any; error: AuthError | null }>;
-  signUp: (email: string, password: string) => Promise<{ data: any; error: AuthError | null }>;
+  signUp: (email: string, password: string, fullName?: string, orgSlug?: string) => Promise<{ data: any; error: AuthError | null }>;
   signOut: () => Promise<void>;
   impersonateUser: (userId: string) => Promise<void>;
   stopImpersonation: () => Promise<void>;
@@ -274,8 +274,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { data, error };
   };
 
-  const signUp = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+  const signUp = async (email: string, password: string, fullName?: string, orgSlug?: string) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName || '',
+          org_slug: orgSlug || '',
+        },
+      },
+    });
     return { data, error };
   };
 
