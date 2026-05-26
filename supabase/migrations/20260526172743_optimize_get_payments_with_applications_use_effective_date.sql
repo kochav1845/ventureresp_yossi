@@ -1,0 +1,81 @@
+/*
+  # Optimize get_payments_with_applications
+
+  Use the stored effective_date column instead of the function call,
+  allowing index usage. Also ensure proper index exists.
+*/
+
+CREATE OR REPLACE FUNCTION get_payments_with_applications(
+  p_start_date date,
+  p_end_date date,
+  p_type text DEFAULT NULL,
+  p_exclude_credit_memos boolean DEFAULT true
+)
+RETURNS TABLE(
+  id uuid, reference_number text, type text, status text, hold boolean,
+  application_date timestamptz, doc_date timestamptz,
+  payment_amount numeric, available_balance numeric,
+  customer_id text, customer_name text, payment_method text,
+  payment_ref text, description text,
+  invoice_applications jsonb, total_applied numeric, application_count integer
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_org_id uuid := get_user_org_id();
+BEGIN
+  RETURN QUERY
+  SELECT
+    p.id,
+    p.reference_number,
+    p.type,
+    p.status,
+    p.hold,
+    p.application_date,
+    p.doc_date,
+    p.payment_amount,
+    p.available_balance,
+    p.customer_id,
+    COALESCE(c.customer_name, p.customer_name, p.customer_id) as customer_name,
+    p.payment_method,
+    p.payment_ref,
+    p.description,
+    COALESCE(pa.applications, '[]'::jsonb) as invoice_applications,
+    COALESCE(pa.total_applied, 0::numeric) as total_applied,
+    COALESCE(pa.app_count, 0) as application_count
+  FROM acumatica_payments p
+  LEFT JOIN acumatica_customers c ON c.customer_id = p.customer_id AND c.organization_id = v_org_id
+  LEFT JOIN LATERAL (
+    SELECT
+      jsonb_agg(
+        jsonb_build_object(
+          'invoice_reference_number', pia.invoice_reference_number,
+          'doc_type', pia.doc_type,
+          'amount_paid', pia.amount_paid,
+          'application_date', pia.application_date
+        ) ORDER BY pia.application_date DESC
+      ) as applications,
+      SUM(CASE WHEN pia.doc_type = 'Invoice' THEN pia.amount_paid ELSE 0 END) as total_applied,
+      COUNT(*)::integer as app_count
+    FROM payment_invoice_applications pia
+    WHERE pia.payment_id = p.id
+  ) pa ON true
+  WHERE p.organization_id = v_org_id
+    AND p.effective_date >= p_start_date
+    AND p.effective_date < p_end_date
+    AND (
+      (p_type IS NOT NULL AND p.type = p_type)
+      OR (
+        p_type IS NULL
+        AND p.type NOT IN ('Balance WO', 'Cash Sale', 'Cash Return')
+        AND (p_exclude_credit_memos = false OR p.type != 'Credit Memo')
+      )
+    )
+  ORDER BY p.effective_date DESC, p.id DESC;
+END;
+$$;
+
+-- Ensure index exists for the query pattern
+CREATE INDEX IF NOT EXISTS idx_payments_org_effective_date 
+ON acumatica_payments (organization_id, effective_date DESC);
