@@ -1,4 +1,5 @@
 import UnifiedTicketingSystem from '../UnifiedTicketingSystem';
+import CollectorCalendar from './CollectorCalendar';
 
 interface MyAssignmentsProps {
   onBack?: () => void;
@@ -6,10 +7,13 @@ interface MyAssignmentsProps {
 
 export default function MyAssignments({ onBack }: MyAssignmentsProps) {
   return (
-    <UnifiedTicketingSystem
-      showOnlyAssigned={true}
-      onBack={onBack}
-      title="My Assignments"
-    />
+    <div>
+      <CollectorCalendar />
+      <UnifiedTicketingSystem
+        showOnlyAssigned={true}
+        onBack={onBack}
+        title="My Assignments"
+      />
+    </div>
   );
 }
