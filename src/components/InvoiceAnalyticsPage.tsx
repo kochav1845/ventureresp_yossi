@@ -1568,8 +1568,8 @@ export default function InvoiceAnalyticsPage() {
                     const cmTotal = cms.reduce((sum, i) => sum + i.amount, 0);
                     const invoiceTotal = nonCMs.reduce((sum, i) => sum + i.amount, 0);
                     const netTotal = invoiceTotal - cmTotal;
-                    const openInvBal = dayInvoices.filter(i => i.type === 'Invoice' && i.status === 'Open').reduce((s, i) => s + i.balance, 0);
-                    const balancedInvBal = dayInvoices.filter(i => i.type === 'Invoice' && i.status === 'Balanced').reduce((s, i) => s + i.balance, 0);
+                    const openInvBal = dayInvoices.filter(i => i.type !== 'Credit Memo' && i.status === 'Open').reduce((s, i) => s + i.balance, 0);
+                    const balancedInvBal = dayInvoices.filter(i => i.type !== 'Credit Memo' && i.status === 'Balanced').reduce((s, i) => s + i.balance, 0);
                     const openCmBal = cms.filter(i => i.status === 'Open' || i.status === 'Balanced').reduce((s, i) => s + i.balance, 0);
                     const netOpenBal = openInvBal + balancedInvBal - openCmBal;
 
