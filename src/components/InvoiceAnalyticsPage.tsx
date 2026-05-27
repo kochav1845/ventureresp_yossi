@@ -108,7 +108,6 @@ export default function InvoiceAnalyticsPage() {
   const [dateTo, setDateTo] = useState(() => c?.dateTo ?? '');
 
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
-  const [customerGroupsLimit, setCustomerGroupsLimit] = useState(25);
 
   // Customer filter
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>(() => c?.selectedCustomers ?? []);
@@ -398,7 +397,6 @@ export default function InvoiceAnalyticsPage() {
 
   useEffect(() => {
     filterAndSortInvoices();
-    setCustomerGroupsLimit(25);
   }, [invoices, searchTerm, sortField, sortDirection, filterStatus, filterType, selectedDate, selectedCustomers, excludedCustomers]);
 
   useEffect(() => {
@@ -1814,7 +1812,7 @@ export default function InvoiceAnalyticsPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white">
-                    {customerGroups.slice(0, customerGroupsLimit).map((group) => {
+                    {customerGroups.map((group) => {
                       const isExpanded = expandedCustomers.has(group.customerId);
                       const paidPct = group.totalAmount > 0 ? Math.round(((group.totalAmount - group.totalBalance) / group.totalAmount) * 100) : 100;
 
@@ -1931,18 +1929,6 @@ export default function InvoiceAnalyticsPage() {
                         </Fragment>
                       );
                     })}
-                    {customerGroups.length > customerGroupsLimit && (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => setCustomerGroupsLimit(prev => prev + 25)}
-                            className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
-                          >
-                            Show More ({customerGroups.length - customerGroupsLimit} remaining)
-                          </button>
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                   <tfoot className="bg-gray-50 border-t-2 border-gray-300">
                     {loadingBatchInfo && (
