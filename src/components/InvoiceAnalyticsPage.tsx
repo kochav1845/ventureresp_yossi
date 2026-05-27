@@ -80,6 +80,7 @@ export default function InvoiceAnalyticsPage() {
   const [monthlyCreditMemoTotal, setMonthlyCreditMemoTotal] = useState(() => c?.monthlyCreditMemoTotal ?? 0);
   const [monthlyCreditMemoCount, setMonthlyCreditMemoCount] = useState(() => c?.monthlyCreditMemoCount ?? 0);
   const [monthlyOpenInvBalance, setMonthlyOpenInvBalance] = useState(() => c?.monthlyOpenInvBalance ?? 0);
+  const [monthlyOpenInvCount, setMonthlyOpenInvCount] = useState(() => c?.monthlyOpenInvCount ?? 0);
   const [monthlyBalancedInvBalance, setMonthlyBalancedInvBalance] = useState(() => c?.monthlyBalancedInvBalance ?? 0);
   const [monthlyBalancedInvCount, setMonthlyBalancedInvCount] = useState(() => c?.monthlyBalancedInvCount ?? 0);
   const [monthlyOpenCmBalance, setMonthlyOpenCmBalance] = useState(() => c?.monthlyOpenCmBalance ?? 0);
@@ -356,6 +357,7 @@ export default function InvoiceAnalyticsPage() {
       monthlyCreditMemoTotal,
       monthlyCreditMemoCount,
       monthlyOpenInvBalance,
+      monthlyOpenInvCount,
       monthlyBalancedInvBalance,
       monthlyBalancedInvCount,
       monthlyOpenCmBalance,
@@ -712,6 +714,7 @@ export default function InvoiceAnalyticsPage() {
     setMonthlyTotal(totalAmount - totalCM);
     setMonthlyInvoiceCount(totalCount - totalCMCnt);
     const totalOpenInv = aggregates.reduce((s, a) => s + a.openInvoiceBalance, 0);
+    const totalOpenInvCnt = aggregates.reduce((s, a) => s + a.openInvoiceCount, 0);
     const totalBalInv = aggregates.reduce((s, a) => s + a.balancedInvoiceBalance, 0);
     const totalBalInvCnt = aggregates.reduce((s, a) => s + a.balancedInvoiceCount, 0);
     const totalOpenCm = aggregates.reduce((s, a) => s + a.openCmBalance, 0);
@@ -721,6 +724,7 @@ export default function InvoiceAnalyticsPage() {
     setMonthlyCreditMemoTotal(totalCM);
     setMonthlyCreditMemoCount(totalCMCnt);
     setMonthlyOpenInvBalance(totalOpenInv);
+    setMonthlyOpenInvCount(totalOpenInvCnt + totalBalInvCnt);
     setMonthlyBalancedInvBalance(totalBalInv);
     setMonthlyBalancedInvCount(totalBalInvCnt);
     setMonthlyOpenCmBalance(totalOpenCm);
@@ -1113,7 +1117,7 @@ export default function InvoiceAnalyticsPage() {
                     )}
                   </div>
                   <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-lg p-3">
-                    <p className="text-xs text-gray-500">Open Balance</p>
+                    <p className="text-xs text-gray-500">Open Balance ({monthlyOpenInvCount} invoices)</p>
                     <p className="text-xl font-bold text-gray-700">{formatCurrency(monthlyBalance)}</p>
                     {monthlyOpenCmBalance > 0 && (
                       <p className="text-xs text-red-500 mt-1">CM: -{formatCurrency(monthlyOpenCmBalance)} ({monthlyOpenCmCount})</p>
@@ -1590,7 +1594,7 @@ export default function InvoiceAnalyticsPage() {
                               <div className="text-xs text-red-500 font-medium">CM: -{formatCurrency(cmTotal)}</div>
                             )}
                             {netOpenBal > 0 && (
-                              <div className="text-xs text-amber-600 font-medium">{formatCurrency(netOpenBal)} open</div>
+                              <div className="text-xs text-amber-600 font-medium">{formatCurrency(netOpenBal)} open ({dayInvoices.filter(i => (i.status === 'Open' || i.status === 'Balanced') && i.type !== 'Credit Memo').length})</div>
                             )}
                             <div className="text-xs text-gray-500">{nonCMs.length} inv{cms.length > 0 ? `, ${cms.length} CM` : ''}</div>
                           </div>
@@ -1629,7 +1633,7 @@ export default function InvoiceAnalyticsPage() {
                           {(monthData.openInvoiceBalance + monthData.balancedInvoiceBalance) > 0 && (
                             <div className="mt-1.5 pt-1.5 border-t border-gray-200">
                               <div className="text-sm font-bold text-amber-600">
-                                {formatCurrency(monthData.openInvoiceBalance + monthData.balancedInvoiceBalance - monthData.openCmBalance)} open
+                                {formatCurrency(monthData.openInvoiceBalance + monthData.balancedInvoiceBalance - monthData.openCmBalance)} open ({monthData.openInvoiceCount + monthData.balancedInvoiceCount})
                               </div>
                               {monthData.openCmBalance > 0 && (
                                 <div className="text-xs text-red-500">CM: -{formatCurrency(monthData.openCmBalance)} ({monthData.openCmCount})</div>
@@ -1677,7 +1681,7 @@ export default function InvoiceAnalyticsPage() {
                           {(yearData.openInvoiceBalance + yearData.balancedInvoiceBalance) > 0 && (
                             <div className="mt-1 pt-2 border-t border-gray-200">
                               <div className="text-lg font-bold text-amber-600">
-                                {formatCurrency(yearData.openInvoiceBalance + yearData.balancedInvoiceBalance - yearData.openCmBalance)} open
+                                {formatCurrency(yearData.openInvoiceBalance + yearData.balancedInvoiceBalance - yearData.openCmBalance)} open ({yearData.openInvoiceCount + yearData.balancedInvoiceCount})
                               </div>
                               {yearData.openCmBalance > 0 && (
                                 <div className="text-sm text-red-500">CM: -{formatCurrency(yearData.openCmBalance)} ({yearData.openCmCount})</div>
@@ -1724,7 +1728,7 @@ export default function InvoiceAnalyticsPage() {
                   <TrendingUp className="w-5 h-5 text-amber-600" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-gray-500 text-xs mb-1">Open Balance</p>
+                  <p className="text-gray-500 text-xs mb-1">Open Balance ({monthlyOpenInvCount} invoices)</p>
                   <p className="text-base font-bold text-gray-700 break-words">{formatCurrency(monthlyBalance)}</p>
                   {monthlyOpenCmBalance > 0 && (
                     <p className="text-xs text-red-500 mt-0.5">CM: -{formatCurrency(monthlyOpenCmBalance)} ({monthlyOpenCmCount})</p>
