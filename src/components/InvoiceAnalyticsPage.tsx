@@ -184,15 +184,9 @@ export default function InvoiceAnalyticsPage() {
   }, [filteredInvoices, resolveCustomerName]);
 
   // Unique filter values
-  const uniqueStatuses = useMemo(() => {
-    const set = new Set(invoices.map(i => i.status).filter(Boolean));
-    return ['all', ...Array.from(set).sort()];
-  }, [invoices]);
+  const uniqueStatuses = ['all', 'Balanced', 'Canceled', 'Closed', 'Credit Hold', 'Open', 'Voided'];
 
-  const uniqueTypes = useMemo(() => {
-    const set = new Set(invoices.map(i => i.type).filter(Boolean));
-    return ['all', ...Array.from(set).sort()];
-  }, [invoices]);
+  const uniqueTypes = ['all', 'Credit Memo', 'Debit Memo', 'Invoice'];
 
   const uniqueCustomers = useMemo(() => {
     const merged = new Map<string, string>();
@@ -647,8 +641,8 @@ export default function InvoiceAnalyticsPage() {
         if (filteredError) throw filteredError;
 
         applyMonthlyAggregateData(
-          filteredData || [], 'agg_month', 'total_amount', 'invoice_count', 'total_balance', 'total_open_balance',
-          'unique_customers', 'credit_memo_amount', 'credit_memo_count',
+          filteredData || [], 'month', 'total_amount', 'invoice_count', 'total_balance', 'open_balance',
+          'customer_count', 'credit_memo_amount', 'credit_memo_count',
           'open_invoice_balance', 'open_invoice_count', 'balanced_invoice_balance', 'balanced_invoice_count',
           'open_cm_balance', 'open_cm_count', 'total_balance'
         );
@@ -747,8 +741,8 @@ export default function InvoiceAnalyticsPage() {
         if (filteredError) throw filteredError;
 
         applyYearlyAggregateData(
-          filteredData || [], 'agg_year', 'total_amount', 'invoice_count', 'total_balance', 'total_open_balance',
-          'unique_customers', 'credit_memo_amount', 'credit_memo_count',
+          filteredData || [], 'year', 'total_amount', 'invoice_count', 'total_balance', 'open_balance',
+          'customer_count', 'credit_memo_amount', 'credit_memo_count',
           'open_invoice_balance', 'open_invoice_count', 'balanced_invoice_balance', 'balanced_invoice_count',
           'open_cm_balance', 'open_cm_count'
         );
