@@ -76,7 +76,7 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
   }, []);
 
   useEffect(() => {
-    if (autoOpenHandled.current || loading || customers.length === 0) return;
+    if (autoOpenHandled.current || loading) return;
     const customerName = searchParams.get('customer_name');
     const customerId = searchParams.get('customer_id');
     const ticketId = searchParams.get('ticket_id');
@@ -94,14 +94,20 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
         c => c.name.toLowerCase() === customerName.toLowerCase()
       );
 
-      if (!matchedCustomer && customerId) {
-        const { data: acuCustomer } = await supabase
-          .from('acumatica_customers')
-          .select('customer_name, email_address')
-          .eq('customer_id', customerId)
-          .maybeSingle();
-
-        const email = acuCustomer?.email_address || `${customerName.toLowerCase().replace(/\s+/g, '.')}@unknown.com`;
+      if (!matchedCustomer) {
+        // Look up email from acumatica_customers
+        let email = '';
+        if (customerId) {
+          const { data: acuCustomer } = await supabase
+            .from('acumatica_customers')
+            .select('customer_name, email_address')
+            .eq('customer_id', customerId)
+            .maybeSingle();
+          email = acuCustomer?.email_address || '';
+        }
+        if (!email) {
+          email = `${customerName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@pending.com`;
+        }
 
         const { data: newCustomer, error } = await supabase
           .from('customers')
@@ -112,11 +118,24 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
         if (!error && newCustomer) {
           matchedCustomer = newCustomer as Customer;
           setCustomers(prev => [...prev, matchedCustomer!]);
+        } else if (error) {
+          // May already exist with different casing, try to find by email or name pattern
+          const { data: existing } = await supabase
+            .from('customers')
+            .select('id, name, email')
+            .ilike('name', customerName)
+            .maybeSingle();
+          if (existing) {
+            matchedCustomer = existing as Customer;
+          }
         }
       }
 
       if (matchedCustomer) {
         setFormData(prev => ({ ...prev, customer_id: matchedCustomer!.id }));
+        setShowForm(true);
+      } else {
+        // Still open the form even if customer couldn't be matched
         setShowForm(true);
       }
 
