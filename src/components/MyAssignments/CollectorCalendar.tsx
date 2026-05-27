@@ -98,72 +98,45 @@ export default function CollectorCalendar() {
       const startStr = format(rangeStart, 'yyyy-MM-dd');
       const endStr = format(rangeEnd, 'yyyy-MM-dd');
 
-      const [promisesRes, remindersRes, notesRes] = await Promise.all([
-        supabase
-          .from('collection_tickets')
-          .select('id, ticket_number, customer_name, promise_date, ticket_status')
-          .eq('assigned_collector_id', user.id)
-          .not('promise_date', 'is', null)
-          .gte('promise_date', startStr)
-          .lte('promise_date', endStr),
-        supabase
-          .from('invoice_reminders')
-          .select('id, reminder_date, reminder_message, is_triggered, title')
-          .eq('user_id', user.id)
-          .gte('reminder_date', startStr + 'T00:00:00')
-          .lte('reminder_date', endStr + 'T23:59:59'),
-        supabase
-          .from('collector_calendar_notes')
-          .select('id, note_date, content')
-          .eq('user_id', user.id)
-          .gte('note_date', startStr)
-          .lte('note_date', endStr)
-      ]);
+      const { data: result, error } = await supabase.rpc('get_collector_calendar_data', {
+        p_user_id: user.id,
+        p_start_date: startStr,
+        p_end_date: endStr
+      });
+
+      if (error) throw error;
 
       const map = new Map<string, DayData>();
 
-      // Also get invoice balances for promise tickets
-      const ticketIds = (promisesRes.data || []).map(t => t.id);
-      let ticketBalances: Record<string, number> = {};
-      if (ticketIds.length > 0) {
-        const { data: invoiceData } = await supabase
-          .from('collection_ticket_invoices')
-          .select('ticket_id, acumatica_invoices(balance)')
-          .in('ticket_id', ticketIds);
+      const promises: any[] = result?.promises || [];
+      const reminders: any[] = result?.reminders || [];
+      const notes: any[] = result?.notes || [];
 
-        if (invoiceData) {
-          for (const row of invoiceData) {
-            const bal = (row as any).acumatica_invoices?.balance || 0;
-            ticketBalances[row.ticket_id] = (ticketBalances[row.ticket_id] || 0) + parseFloat(bal);
-          }
-        }
-      }
-
-      for (const ticket of promisesRes.data || []) {
+      for (const ticket of promises) {
         const dateKey = ticket.promise_date.split('T')[0];
         if (!map.has(dateKey)) map.set(dateKey, { promises: [], reminders: [] });
         map.get(dateKey)!.promises.push({
-          ticket_id: ticket.id,
+          ticket_id: ticket.ticket_id,
           ticket_number: ticket.ticket_number,
           customer_name: ticket.customer_name,
           promise_date: ticket.promise_date,
-          total_balance: ticketBalances[ticket.id] || 0,
+          total_balance: parseFloat(ticket.total_balance) || 0,
           ticket_status: ticket.ticket_status
         });
       }
 
-      for (const reminder of remindersRes.data || []) {
+      for (const reminder of reminders) {
         const dateKey = reminder.reminder_date.split('T')[0];
         if (!map.has(dateKey)) map.set(dateKey, { promises: [], reminders: [] });
         map.get(dateKey)!.reminders.push({
           id: reminder.id,
           reminder_date: reminder.reminder_date,
-          reminder_message: reminder.reminder_message || (reminder as any).title || '',
+          reminder_message: reminder.reminder_message || '',
           is_triggered: reminder.is_triggered
         });
       }
 
-      for (const note of notesRes.data || []) {
+      for (const note of notes) {
         const dateKey = note.note_date;
         if (!map.has(dateKey)) map.set(dateKey, { promises: [], reminders: [] });
         map.get(dateKey)!.note = note;
