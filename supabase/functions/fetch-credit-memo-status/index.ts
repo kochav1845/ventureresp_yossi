@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { AcumaticaSessionManager } from "../_shared/acumatica-session.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,43 +27,61 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    let acumaticaUrl = Deno.env.get("ACUMATICA_URL") || "";
-    const username = Deno.env.get("ACUMATICA_USERNAME") || "";
-    const password = Deno.env.get("ACUMATICA_PASSWORD") || "";
-    const company = Deno.env.get("ACUMATICA_COMPANY") || "";
-    const branch = Deno.env.get("ACUMATICA_BRANCH") || "";
+    // Load credentials from database (same as other sync functions)
+    const { data: config } = await supabase
+      .from("acumatica_sync_credentials")
+      .select("*")
+      .limit(1)
+      .maybeSingle();
 
-    if (!acumaticaUrl || !username || !password) {
+    if (!config) {
       return new Response(
-        JSON.stringify({ success: false, error: "Missing Acumatica credentials in environment" }),
+        JSON.stringify({ success: false, error: "No Acumatica credentials found in database" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    let acumaticaUrl = config.acumatica_url;
     if (!acumaticaUrl.startsWith("http://") && !acumaticaUrl.startsWith("https://")) {
       acumaticaUrl = `https://${acumaticaUrl}`;
     }
 
-    // Login to Acumatica
-    const loginBody: Record<string, string> = {
-      name: username,
-      password: password,
+    const credentials = {
+      acumaticaUrl,
+      username: config.username,
+      password: config.password,
+      company: config.company || "",
+      branch: config.branch || "",
     };
-    if (company) loginBody.company = company;
-    if (branch) loginBody.branch = branch;
 
-    const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(loginBody),
-    });
+    // Use session manager like other functions
+    const sessionManager = new AcumaticaSessionManager(supabaseUrl, supabaseKey);
+    let cookies: string;
+    try {
+      cookies = await sessionManager.getSession(credentials);
+    } catch {
+      // Fallback to direct login
+      const loginBody: Record<string, string> = {
+        name: credentials.username,
+        password: credentials.password,
+      };
+      if (credentials.company) loginBody.company = credentials.company;
+      if (credentials.branch) loginBody.branch = credentials.branch;
 
-    if (!loginResponse.ok) {
-      throw new Error(`Login failed: ${loginResponse.statusText}`);
+      const loginResponse = await fetch(`${acumaticaUrl}/entity/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(loginBody),
+      });
+
+      if (!loginResponse.ok) {
+        const errText = await loginResponse.text();
+        throw new Error(`Login failed: ${loginResponse.status} - ${errText}`);
+      }
+
+      cookies = loginResponse.headers.get("set-cookie") || "";
+      if (!cookies) throw new Error("No session cookie received");
     }
-
-    const cookies = loginResponse.headers.get("set-cookie");
-    if (!cookies) throw new Error("No session cookie received");
 
     const results: Record<string, any> = {};
 
@@ -125,7 +144,7 @@ Deno.serve(async (req: Request) => {
     await fetch(`${acumaticaUrl}/entity/auth/logout`, {
       method: "POST",
       headers: { Cookie: cookies },
-    });
+    }).catch(() => {});
 
     return new Response(
       JSON.stringify({ success: true, results }),
