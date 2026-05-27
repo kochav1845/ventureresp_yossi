@@ -282,35 +282,17 @@ export default function Customers({ onBack }: CustomersProps) {
     setIsSearching(false);
     setLoadedCount(0);
     try {
-      let allData: any[] = [];
-      let offset = 0;
-      let batchNum = 0;
       const balanceCol = excludeCreditMemos ? 'calculated_balance_excl_cm' : 'calculated_balance';
-      while (true) {
-        const { data, error } = await supabase
-          .from('cached_customer_balances')
-          .select('*')
-          .eq('is_test_customer', false)
-          .order(balanceCol, { ascending: false })
-          .range(offset, offset + BATCH_SIZE - 1);
-        if (error) throw error;
-        if (!data || data.length === 0) {
-          if (batchNum === 0) setLoading(false);
-          setLoadingMore(false);
-          break;
-        }
-        allData = allData.concat(data);
-        batchNum++;
-        const merged = allData.map(item => mapCustomerRow(item));
-        setLoadedCount(merged.length);
-        setGrandTotalCustomers(merged.length);
-        setAllCustomers(merged);
-        if (batchNum === 1) setLoading(false);
-        const isDone = data.length < BATCH_SIZE;
-        setLoadingMore(!isDone);
-        if (isDone) break;
-        offset += BATCH_SIZE;
-      }
+      const { data, error } = await supabase
+        .from('cached_customer_balances')
+        .select('*')
+        .eq('is_test_customer', false)
+        .order(balanceCol, { ascending: false });
+      if (error) throw error;
+      const merged = (data || []).map(item => mapCustomerRow(item));
+      setLoadedCount(merged.length);
+      setGrandTotalCustomers(merged.length);
+      setAllCustomers(merged);
     } catch (error) {
       console.error('Error loading customers:', error);
     } finally {
@@ -388,31 +370,15 @@ export default function Customers({ onBack }: CustomersProps) {
           p_test_customers: false
         };
 
-        let allAnalytics: any[] = [];
-        let offset = 0;
-        let batchNum = 0;
-        while (true) {
-          const { data, error } = await supabase
-            .rpc('get_customers_with_balance', { ...rpcParams, p_limit: BATCH_SIZE, p_offset: offset });
-          if (error) throw error;
-          if (!data || data.length === 0) {
-            setLoadingMore(false);
-            break;
-          }
-          allAnalytics = allAnalytics.concat(data);
-          batchNum++;
-          const filtered = allAnalytics.map(item => mapCustomerRow(item));
-          setLoadedCount(filtered.length);
-          setFilteredCustomers(filtered);
-          setTotalCount(filtered.length);
-          const start = currentPage * PAGE_SIZE;
-          setCustomers(filtered.slice(start, start + PAGE_SIZE));
-          if (batchNum === 1) setLoading(false);
-          const isDone = data.length < BATCH_SIZE;
-          setLoadingMore(!isDone);
-          if (isDone) break;
-          offset += BATCH_SIZE;
-        }
+        const { data, error } = await supabase
+          .rpc('get_customers_with_balance', { ...rpcParams, p_limit: 5000, p_offset: 0 });
+        if (error) throw error;
+        const filtered = (data || []).map(item => mapCustomerRow(item));
+        setLoadedCount(filtered.length);
+        setFilteredCustomers(filtered);
+        setTotalCount(filtered.length);
+        const start = currentPage * PAGE_SIZE;
+        setCustomers(filtered.slice(start, start + PAGE_SIZE));
       } catch (error) {
         console.error('Error applying filters:', error);
       } finally {
