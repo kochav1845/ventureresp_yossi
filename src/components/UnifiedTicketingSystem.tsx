@@ -27,6 +27,7 @@ import BatchNoteModal from './MyAssignments/BatchNoteModal';
 import PromiseDateModal from './MyAssignments/PromiseDateModal';
 import { sortTicketsByPriority } from './MyAssignments/utils';
 import TicketSearchFilter, { TicketFilters, filterTickets } from './TicketSearchFilter';
+import CollectorCalendar from './MyAssignments/CollectorCalendar';
 import { format } from 'date-fns';
 import { isDatePast, formatDate as formatDateUtil } from '../lib/dateUtils';
 
@@ -34,6 +35,7 @@ interface UnifiedTicketingSystemProps {
   showOnlyAssigned?: boolean;
   onBack?: () => void;
   title?: string;
+  showCalendar?: boolean;
 }
 
 interface Customer {
@@ -60,7 +62,8 @@ interface Collector {
 export default function UnifiedTicketingSystem({
   showOnlyAssigned = false,
   onBack,
-  title = 'Ticketing System'
+  title = 'Ticketing System',
+  showCalendar = false
 }: UnifiedTicketingSystemProps) {
   const { user, profile } = useAuth();
   const rawNavigate = useNavigate();
@@ -1321,6 +1324,8 @@ export default function UnifiedTicketingSystem({
             <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
           </div>
         </div>
+
+        {showCalendar && <CollectorCalendar />}
 
         <div className="bg-white rounded-lg shadow-sm mb-6">
           {!showOnlyAssigned && (
