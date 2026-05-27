@@ -201,12 +201,26 @@ Deno.serve(async (req: Request) => {
 
           const { data: existing } = await supabase
             .from('acumatica_invoices')
-            .select('id, status')
+            .select('id, status, date')
             .eq('reference_number', mappedInvoice.reference_number)
             .eq('type', mappedInvoice.type)
             .maybeSingle();
 
           if (existing) {
+            // Guard against 5-digit/6-digit reference number collisions:
+            // Old invoices (pre-2022) padded from 5 to 6 digits can collide with
+            // newer invoices that natively have 6 digits. If the incoming record
+            // was created before 2022 but our DB record has a date from 2024+, skip.
+            const incomingCreated = invoice.CreatedDateTime?.value;
+            if (incomingCreated) {
+              const incomingYear = new Date(incomingCreated).getFullYear();
+              const existingYear = existing.date ? new Date(existing.date).getFullYear() : 0;
+              if (incomingYear < 2022 && existingYear >= 2024) {
+                console.log(`Skipping collision: incoming invoice ${mappedInvoice.reference_number} created ${incomingCreated} would overwrite existing record dated ${existing.date}`);
+                continue;
+              }
+            }
+
             const oldStatus = existing.status;
             const { error } = await supabase
               .from('acumatica_invoices')
