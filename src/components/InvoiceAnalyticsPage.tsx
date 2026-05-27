@@ -997,31 +997,29 @@ export default function InvoiceAnalyticsPage() {
       rows.push({
         Customer_ID: group.customerId,
         Customer_Name: group.customerName,
-        Invoice_Count: group.invoices.length,
-        Total_Amount: group.totalAmount,
-        Total_Balance: group.totalBalance,
-        Date: '',
-        Reference: '',
+        Invoice_Number: '',
         Type: '',
         Status: '',
+        Date: '',
         Due_Date: '',
+        Amount: group.totalAmount,
+        Balance: group.totalBalance,
+        Invoice_Count: group.invoices.length,
         Description: '',
       });
       for (const inv of group.invoices) {
         rows.push({
           Customer_ID: '',
           Customer_Name: '',
-          Invoice_Count: '',
-          Total_Amount: '',
-          Total_Balance: '',
-          Date: formatDateString(inv.date),
-          Reference: inv.reference_number,
+          Invoice_Number: inv.reference_number,
           Type: inv.type,
           Status: inv.status,
+          Date: formatDateString(inv.date),
           Due_Date: formatDateString(inv.due_date),
-          Description: inv.description,
           Amount: inv.amount,
           Balance: inv.balance,
+          Invoice_Count: '',
+          Description: inv.description,
         });
       }
     }
