@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Image, File, ArrowUp, ArrowDown } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Image, File, ArrowUp, ArrowDown, Mail } from 'lucide-react';
 import { formatDistanceToNow, format as dateFnsFormat } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance, sortInvoices } from './utils';
@@ -584,6 +584,22 @@ export default function TicketCard({
             >
               <Bell className="w-3 h-3" />
               Remind
+            </button>
+            <button
+              onClick={() => {
+                const params = new URLSearchParams({
+                  customer_name: ticket.customer_name,
+                  customer_id: ticket.customer_id,
+                  ticket_id: ticket.ticket_id,
+                  ticket_number: ticket.ticket_number
+                });
+                navigate(`/assignments?${params.toString()}`);
+              }}
+              className="px-2 py-1 bg-blue-600 text-white rounded text-[11px] hover:bg-blue-700 transition-colors flex items-center gap-1"
+              title="Setup email reminders for this customer"
+            >
+              <Mail className="w-3 h-3" />
+              Emails
             </button>
           </div>
         </div>

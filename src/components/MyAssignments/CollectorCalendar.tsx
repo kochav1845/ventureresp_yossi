@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useOrgNavigation } from '../../hooks/useOrgNavigation';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -12,7 +13,8 @@ import {
   Save,
   Plus,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Mail
 } from 'lucide-react';
 import {
   startOfMonth,
@@ -61,14 +63,26 @@ interface DayNote {
   content: string;
 }
 
+interface EmailScheduleEvent {
+  assignment_id: string;
+  customer_name: string;
+  customer_email: string;
+  formula_name: string;
+  ticket_number: string | null;
+  ticket_id: string | null;
+  time: string;
+}
+
 interface DayData {
   promises: PromiseEvent[];
   reminders: ReminderEvent[];
+  emails: EmailScheduleEvent[];
   note?: DayNote;
 }
 
 export default function CollectorCalendar() {
   const { user } = useAuth();
+  const { navigate: orgNavigate } = useOrgNavigation();
   const [view, setView] = useState<CalendarView>('monthly');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -107,14 +121,18 @@ export default function CollectorCalendar() {
       if (error) throw error;
 
       const map = new Map<string, DayData>();
+      const ensureDay = (key: string) => {
+        if (!map.has(key)) map.set(key, { promises: [], reminders: [], emails: [] });
+      };
 
       const promises: any[] = result?.promises || [];
       const reminders: any[] = result?.reminders || [];
       const notes: any[] = result?.notes || [];
+      const emailSchedules: any[] = result?.email_schedules || [];
 
       for (const ticket of promises) {
         const dateKey = ticket.promise_date.split('T')[0];
-        if (!map.has(dateKey)) map.set(dateKey, { promises: [], reminders: [] });
+        ensureDay(dateKey);
         map.get(dateKey)!.promises.push({
           ticket_id: ticket.ticket_id,
           ticket_number: ticket.ticket_number,
@@ -127,7 +145,7 @@ export default function CollectorCalendar() {
 
       for (const reminder of reminders) {
         const dateKey = reminder.reminder_date.split('T')[0];
-        if (!map.has(dateKey)) map.set(dateKey, { promises: [], reminders: [] });
+        ensureDay(dateKey);
         map.get(dateKey)!.reminders.push({
           id: reminder.id,
           reminder_date: reminder.reminder_date,
@@ -138,8 +156,39 @@ export default function CollectorCalendar() {
 
       for (const note of notes) {
         const dateKey = note.note_date;
-        if (!map.has(dateKey)) map.set(dateKey, { promises: [], reminders: [] });
+        ensureDay(dateKey);
         map.get(dateKey)!.note = note;
+      }
+
+      // Compute email schedule dates from formulas
+      for (const sched of emailSchedules) {
+        if (!sched.formula_schedule || !Array.isArray(sched.formula_schedule)) continue;
+        const scheduleDays: Array<{ day: number; times: string[] }> = sched.formula_schedule;
+
+        // For each day in the visible range, check if it matches a formula day
+        const rangeStartDate = rangeStart;
+        const rangeEndDate = rangeEnd;
+        const days = eachDayOfInterval({ start: rangeStartDate, end: rangeEndDate });
+
+        for (const d of days) {
+          const dayOfMonth = d.getDate();
+          const matchingSchedule = scheduleDays.find(s => s.day === dayOfMonth);
+          if (matchingSchedule) {
+            const dateKey = format(d, 'yyyy-MM-dd');
+            ensureDay(dateKey);
+            for (const time of matchingSchedule.times) {
+              map.get(dateKey)!.emails.push({
+                assignment_id: sched.assignment_id,
+                customer_name: sched.customer_name,
+                customer_email: sched.customer_email,
+                formula_name: sched.formula_name,
+                ticket_number: sched.ticket_number,
+                ticket_id: sched.ticket_id,
+                time
+              });
+            }
+          }
+        }
       }
 
       setDayData(map);
@@ -340,6 +389,7 @@ export default function CollectorCalendar() {
               setNoteText(dayData.get(dateStr)?.note?.content || '');
             }}
             onClose={() => setSelectedDate(null)}
+            onNavigate={orgNavigate}
           />
         )}
       </div>
@@ -390,6 +440,7 @@ function MonthlyView({
           const today = isToday(day);
           const hasPromises = (data?.promises.length || 0) > 0;
           const hasReminders = (data?.reminders.length || 0) > 0;
+          const hasEmails = (data?.emails?.length || 0) > 0;
           const hasNote = !!data?.note;
           const totalPromise = data?.promises.reduce((s, p) => s + p.total_balance, 0) || 0;
 
@@ -427,6 +478,12 @@ function MonthlyView({
                   <div className="flex items-center gap-0.5 px-1 py-0.5 bg-amber-50 rounded text-[10px] text-amber-700 font-medium">
                     <Bell className="w-2.5 h-2.5 flex-shrink-0" />
                     <span>{data!.reminders.length}</span>
+                  </div>
+                )}
+                {hasEmails && (
+                  <div className="flex items-center gap-0.5 px-1 py-0.5 bg-sky-50 rounded text-[10px] text-sky-700 font-medium">
+                    <Mail className="w-2.5 h-2.5 flex-shrink-0" />
+                    <span>{data!.emails.length}</span>
                   </div>
                 )}
                 {hasNote && (
@@ -617,7 +674,8 @@ function DayDetailPanel({
   onEditNote,
   onSaveNote,
   onCancelEdit,
-  onClose
+  onClose,
+  onNavigate
 }: {
   date: Date;
   dayData?: DayData;
@@ -629,6 +687,7 @@ function DayDetailPanel({
   onSaveNote: () => void;
   onCancelEdit: () => void;
   onClose: () => void;
+  onNavigate: (path: string) => void;
 }) {
   const promises = dayData?.promises || [];
   const reminders = dayData?.reminders || [];
@@ -728,6 +787,41 @@ function DayDetailPanel({
         </div>
       )}
 
+      {/* Scheduled Emails */}
+      {(dayData?.emails?.length || 0) > 0 && (
+        <div className="mb-4">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Mail className="w-3.5 h-3.5 text-sky-600" />
+            <span className="text-xs font-semibold text-sky-800 uppercase tracking-wide">
+              Scheduled Emails ({dayData!.emails.length})
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {dayData!.emails.map((email, i) => (
+              <div
+                key={i}
+                className="px-3 py-2 rounded-lg border bg-sky-50 border-sky-200 text-xs text-sky-800"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{email.customer_name}</span>
+                  <span className="text-[10px] text-sky-600">{email.time.slice(0, 5)}</span>
+                </div>
+                <div className="text-[10px] mt-0.5 opacity-75">
+                  Formula: {email.formula_name}
+                  {email.ticket_number && <span> | Ticket #{email.ticket_number}</span>}
+                </div>
+                <button
+                  onClick={() => onNavigate('/assignments')}
+                  className="inline-flex items-center gap-1 mt-1 text-[10px] text-sky-600 hover:text-sky-800 font-medium underline"
+                >
+                  Manage assignment
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Notes */}
       <div>
         <div className="flex items-center gap-1.5 mb-2">
@@ -793,7 +887,7 @@ function DayDetailPanel({
       </div>
 
       {/* Empty state */}
-      {promises.length === 0 && reminders.length === 0 && !dayData?.note && !editingNote && (
+      {promises.length === 0 && reminders.length === 0 && (dayData?.emails?.length || 0) === 0 && !dayData?.note && !editingNote && (
         <div className="text-center py-4 text-gray-400 text-xs mt-2">
           No events scheduled for this day
         </div>

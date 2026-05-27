@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Plus, Edit2, Trash2, Link as LinkIcon, RefreshCw, Calendar, Mail, User, Clock, PauseCircle, Users } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Link as LinkIcon, RefreshCw, Calendar, Mail, User, Clock, PauseCircle, Users, Ticket } from 'lucide-react';
 import ManageCustomersModal from './ManageCustomersModal';
 
 type Customer = {
@@ -42,6 +42,7 @@ type CustomerAssignmentsProps = {
 
 export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [formulas, setFormulas] = useState<EmailFormula[]>([]);
@@ -50,6 +51,7 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
   const [showForm, setShowForm] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [ticketContext, setTicketContext] = useState<{ ticketId: string; ticketNumber: string } | null>(null);
 
   const [showManageCustomers, setShowManageCustomers] = useState(false);
 
@@ -58,6 +60,8 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
     formula_id: '',
     template_id: '',
   });
+
+  const autoOpenHandled = useRef(false);
 
   const handleBack = () => {
     if (onBack) {
@@ -70,6 +74,55 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (autoOpenHandled.current || loading || customers.length === 0) return;
+    const customerName = searchParams.get('customer_name');
+    const customerId = searchParams.get('customer_id');
+    const ticketId = searchParams.get('ticket_id');
+    const ticketNumber = searchParams.get('ticket_number');
+
+    if (!customerName) return;
+    autoOpenHandled.current = true;
+
+    if (ticketId && ticketNumber) {
+      setTicketContext({ ticketId, ticketNumber });
+    }
+
+    (async () => {
+      let matchedCustomer = customers.find(
+        c => c.name.toLowerCase() === customerName.toLowerCase()
+      );
+
+      if (!matchedCustomer && customerId) {
+        const { data: acuCustomer } = await supabase
+          .from('acumatica_customers')
+          .select('customer_name, email_address')
+          .eq('customer_id', customerId)
+          .maybeSingle();
+
+        const email = acuCustomer?.email_address || `${customerName.toLowerCase().replace(/\s+/g, '.')}@unknown.com`;
+
+        const { data: newCustomer, error } = await supabase
+          .from('customers')
+          .insert({ name: customerName, email })
+          .select()
+          .maybeSingle();
+
+        if (!error && newCustomer) {
+          matchedCustomer = newCustomer as Customer;
+          setCustomers(prev => [...prev, matchedCustomer!]);
+        }
+      }
+
+      if (matchedCustomer) {
+        setFormData(prev => ({ ...prev, customer_id: matchedCustomer!.id }));
+        setShowForm(true);
+      }
+
+      setSearchParams({}, { replace: true });
+    })();
+  }, [loading, customers, searchParams]);
 
   const loadData = async () => {
     setLoading(true);
@@ -204,13 +257,18 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
     }
 
     try {
-      const assignmentData = {
+      const assignmentData: any = {
         customer_id: formData.customer_id,
         formula_id: formData.formula_id,
         template_id: formData.template_id,
         start_day_of_month: 1,
         timezone: 'America/New_York',
       };
+
+      if (ticketContext && !editingAssignment) {
+        assignmentData.source_ticket_id = ticketContext.ticketId;
+        assignmentData.source_ticket_number = ticketContext.ticketNumber;
+      }
 
       if (editingAssignment) {
         const { error } = await supabase
@@ -257,6 +315,20 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
             <h2 className="text-2xl font-bold text-white mb-6">
               {editingAssignment ? 'Edit Assignment' : 'Create New Assignment'}
             </h2>
+
+            {ticketContext && !editingAssignment && (
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-6 flex items-center gap-3">
+                <Ticket className="w-5 h-5 text-blue-400 flex-shrink-0" />
+                <div>
+                  <p className="text-blue-300 text-sm font-medium">
+                    Creating email schedule from Ticket #{ticketContext.ticketNumber}
+                  </p>
+                  <p className="text-blue-400/70 text-xs mt-0.5">
+                    Select a formula and template below. The customer will receive automated emails on the schedule defined by the formula.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {customers.length === 0 || formulas.length === 0 || templates.length === 0 ? (
               <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 mb-6">
