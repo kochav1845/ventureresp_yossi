@@ -260,18 +260,11 @@ export default function Layout() {
       <aside data-tour="sidebar" className={`fixed left-0 h-screen bg-white border-r border-gray-200 shadow-sm flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'} ${isImpersonating ? 'top-16' : 'top-0'}`}>
         {/* Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto">
-          {/* Logo Header */}
+          {/* Header */}
           <div className="p-4 border-b border-blue-100 flex items-center justify-between">
             {!sidebarCollapsed && (
               <div className="flex-1">
-                <div className="flex items-center justify-center mb-2">
-                  <img
-                    src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
-                    alt="Venture Respiratory"
-                    className="h-12 w-auto"
-                  />
-                </div>
-                <p className="text-center text-xs text-blue-600 font-medium">Admin Portal</p>
+                <p className="text-center text-sm text-blue-700 font-semibold">Collections Portal</p>
               </div>
             )}
             <button
