@@ -415,7 +415,8 @@ export default function InvoiceAnalyticsPage() {
       const total = nonCM.reduce((sum, i) => sum + i.amount, 0);
       const cmTotal = cms.reduce((sum, i) => sum + i.amount, 0);
       const customers = new Set(allFilteredInvoices.map(i => i.customer).filter(Boolean));
-      const openInvBal = allFilteredInvoices.filter(i => i.type === 'Invoice' && i.status === 'Open').reduce((s, i) => s + i.balance, 0);
+      const openInv = allFilteredInvoices.filter(i => i.type === 'Invoice' && i.status === 'Open');
+      const openInvBal = openInv.reduce((s, i) => s + i.balance, 0);
       const balInv = allFilteredInvoices.filter(i => i.type === 'Invoice' && i.status === 'Balanced');
       const balInvBal = balInv.reduce((s, i) => s + i.balance, 0);
       const openCms = cms.filter(i => i.status === 'Open' || i.status === 'Balanced');
@@ -427,6 +428,7 @@ export default function InvoiceAnalyticsPage() {
       setMonthlyCreditMemoTotal(cmTotal);
       setMonthlyCreditMemoCount(cms.length);
       setMonthlyOpenInvBalance(openInvBal);
+      setMonthlyOpenInvCount(openInv.length + balInv.length);
       setMonthlyBalancedInvBalance(balInvBal);
       setMonthlyBalancedInvCount(balInv.length);
       setMonthlyOpenCmBalance(openCmBal);
@@ -617,6 +619,7 @@ export default function InvoiceAnalyticsPage() {
     setMonthlyAggregates(aggregates);
     setMonthlyTotal(totalAmount - totalCMAmount);
     const totalOpenInv = aggregates.reduce((s, a) => s + a.openInvoiceBalance, 0);
+    const totalOpenInvCnt = aggregates.reduce((s, a) => s + a.openInvoiceCount, 0);
     const totalBalInv = aggregates.reduce((s, a) => s + a.balancedInvoiceBalance, 0);
     const totalBalInvCnt = aggregates.reduce((s, a) => s + a.balancedInvoiceCount, 0);
     const totalOpenCm = aggregates.reduce((s, a) => s + a.openCmBalance, 0);
@@ -627,6 +630,7 @@ export default function InvoiceAnalyticsPage() {
     setMonthlyCreditMemoTotal(totalCMAmount);
     setMonthlyCreditMemoCount(totalCMCount);
     setMonthlyOpenInvBalance(totalOpenInv);
+    setMonthlyOpenInvCount(totalOpenInvCnt + totalBalInvCnt);
     setMonthlyBalancedInvBalance(totalBalInv);
     setMonthlyBalancedInvCount(totalBalInvCnt);
     setMonthlyOpenCmBalance(totalOpenCm);
