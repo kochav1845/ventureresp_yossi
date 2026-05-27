@@ -147,21 +147,40 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
   const loadData = async () => {
     setLoading(true);
     try {
-      const [assignmentsRes, customersRes, formulasRes, templatesRes, acuCustomersRes] = await Promise.all([
+      const [assignmentsRes, customersRes, formulasRes, templatesRes] = await Promise.all([
         supabase.from('customer_assignments').select('*').order('created_at', { ascending: false }),
         supabase.from('customers').select('id, name, email, postpone_until, postpone_reason').order('name'),
         supabase.from('email_formulas').select('id, name').order('name'),
         supabase.from('email_templates').select('id, name').order('name'),
-        supabase.from('acumatica_customers').select('customer_id, customer_name, email_address').order('customer_name'),
       ]);
 
       if (assignmentsRes.error) throw assignmentsRes.error;
       if (formulasRes.error) throw formulasRes.error;
       if (templatesRes.error) throw templatesRes.error;
 
+      // Fetch ALL acumatica customers (paginated to handle >1000 rows)
+      let allAcuCustomers: { customer_id: string; customer_name: string; email_address: string | null }[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from('acumatica_customers')
+          .select('customer_id, customer_name, email_address')
+          .order('customer_name')
+          .range(from, from + pageSize - 1);
+        if (error) {
+          console.error('Error fetching acumatica customers:', error);
+          break;
+        }
+        if (!data || data.length === 0) break;
+        allAcuCustomers = allAcuCustomers.concat(data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+
       // Build customer list from ALL acumatica customers as primary source
       const emailCustomerMap = new Map((customersRes.data || []).map(c => [c.name.toLowerCase(), c]));
-      const allCustomers: Customer[] = (acuCustomersRes.data || [])
+      const allCustomers: Customer[] = allAcuCustomers
         .filter(ac => ac.customer_name)
         .map(ac => {
           const existing = emailCustomerMap.get(ac.customer_name.toLowerCase());
@@ -173,10 +192,19 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
           };
         });
 
+      // Deduplicate by customer name (keep first occurrence which has email from customers table if matched)
+      const seenNames = new Set<string>();
+      const dedupedCustomers = allCustomers.filter(c => {
+        const key = c.name.toLowerCase();
+        if (seenNames.has(key)) return false;
+        seenNames.add(key);
+        return true;
+      });
+
       // Include any email-only customers not in acumatica
-      const acuNames = new Set((acuCustomersRes.data || []).map(ac => ac.customer_name?.toLowerCase()));
+      const acuNames = new Set(allAcuCustomers.map(ac => ac.customer_name?.toLowerCase()));
       const emailOnlyCustomers = (customersRes.data || []).filter(c => !acuNames.has(c.name.toLowerCase()));
-      const mergedCustomers = [...allCustomers, ...emailOnlyCustomers].sort((a, b) => a.name.localeCompare(b.name));
+      const mergedCustomers = [...dedupedCustomers, ...emailOnlyCustomers].sort((a, b) => a.name.localeCompare(b.name));
 
       const assignmentsWithDetails = (assignmentsRes.data || []).map((assignment) => {
         const customer = (customersRes.data || []).find(c => c.id === assignment.customer_id)
