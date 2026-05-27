@@ -159,7 +159,7 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
       if (templatesRes.error) throw templatesRes.error;
 
       // Fetch all customers via RPC (handles org filtering reliably)
-      const { data: acuData, error: acuError } = await supabase.rpc('get_customer_picker_list');
+      const { data: acuData, error: acuError } = await supabase.rpc('get_customer_picker_list').limit(10000);
       if (acuError) console.error('Error fetching customers:', acuError);
       const allAcuCustomers = acuData || [];
 
