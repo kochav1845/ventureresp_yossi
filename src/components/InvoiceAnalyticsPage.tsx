@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, X, ExternalLink, Check, Save, Settings, Ban, UserMinus } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, X, ExternalLink, Check, Save, Settings, Ban, UserMinus, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { usePageCache } from '../contexts/PageCacheContext';
@@ -96,12 +96,14 @@ export default function InvoiceAnalyticsPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => c?.sortDirection ?? 'desc');
   const [selectedDate, setSelectedDate] = useState<Date | null>(() => c?.selectedDate ? new Date(c.selectedDate) : null);
 
-  const [filterStatus, setFilterStatus] = useState(() => c?.filterStatus ?? 'all');
-  const [filterType, setFilterType] = useState(() => c?.filterType ?? 'all');
+  const [filterStatus, setFilterStatus] = useState<string[]>(() => c?.filterStatus ?? []);
+  const [filterType, setFilterType] = useState<string[]>(() => c?.filterType ?? []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const [tempFilterStatus, setTempFilterStatus] = useState(() => c?.filterStatus ?? 'all');
-  const [tempFilterType, setTempFilterType] = useState(() => c?.filterType ?? 'all');
+  const [tempFilterStatus, setTempFilterStatus] = useState<string[]>(() => c?.filterStatus ?? []);
+  const [tempFilterType, setTempFilterType] = useState<string[]>(() => c?.filterType ?? []);
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [tempDateFrom, setTempDateFrom] = useState(() => c?.dateFrom ?? '');
   const [tempDateTo, setTempDateTo] = useState(() => c?.dateTo ?? '');
   const [dateFrom, setDateFrom] = useState(() => c?.dateFrom ?? '');
@@ -125,7 +127,7 @@ export default function InvoiceAnalyticsPage() {
   const [showDefaultFilterMenu, setShowDefaultFilterMenu] = useState(false);
   const [savingDefaults, setSavingDefaults] = useState(false);
 
-  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || selectedCustomers.length > 0 || excludedCustomers.length > 0;
+  const hasActiveFilters = filterStatus.length > 0 || filterType.length > 0 || selectedCustomers.length > 0 || excludedCustomers.length > 0;
 
   const monthName = `${MONTH_NAMES[selectedMonth.getMonth()]} ${selectedMonth.getFullYear()}`;
 
@@ -224,7 +226,6 @@ export default function InvoiceAnalyticsPage() {
     setTempSelectedCustomers(prev =>
       prev.includes(customerId) ? prev.filter(c => c !== customerId) : [...prev, customerId]
     );
-    setCustomerSearchTerm('');
   }, []);
 
   const filteredExcludeOptions = useMemo(() => {
@@ -259,8 +260,14 @@ export default function InvoiceAnalyticsPage() {
       setHasDefaultFilters(true);
       if (!c) {
         const f = data.filters as any;
-        if (f.filterStatus) { setFilterStatus(f.filterStatus); setTempFilterStatus(f.filterStatus); }
-        if (f.filterType) { setFilterType(f.filterType); setTempFilterType(f.filterType); }
+        if (f.filterStatus) {
+          const statusVal = Array.isArray(f.filterStatus) ? f.filterStatus : (f.filterStatus === 'all' ? [] : [f.filterStatus]);
+          setFilterStatus(statusVal); setTempFilterStatus(statusVal);
+        }
+        if (f.filterType) {
+          const typeVal = Array.isArray(f.filterType) ? f.filterType : (f.filterType === 'all' ? [] : [f.filterType]);
+          setFilterType(typeVal); setTempFilterType(typeVal);
+        }
         if (f.dateFrom) { setDateFrom(f.dateFrom); setTempDateFrom(f.dateFrom); }
         if (f.dateTo) { setDateTo(f.dateTo); setTempDateTo(f.dateTo); }
         if (f.selectedCustomers?.length) { setSelectedCustomers(f.selectedCustomers); setTempSelectedCustomers(f.selectedCustomers); }
@@ -305,14 +312,16 @@ export default function InvoiceAnalyticsPage() {
       .maybeSingle();
     if (data) {
       const f = data.filters as any;
-      setTempFilterStatus(f.filterStatus || 'all');
-      setTempFilterType(f.filterType || 'all');
+      const statusVal = Array.isArray(f.filterStatus) ? f.filterStatus : (f.filterStatus && f.filterStatus !== 'all' ? [f.filterStatus] : []);
+      const typeVal = Array.isArray(f.filterType) ? f.filterType : (f.filterType && f.filterType !== 'all' ? [f.filterType] : []);
+      setTempFilterStatus(statusVal);
+      setTempFilterType(typeVal);
       setTempDateFrom(f.dateFrom || '');
       setTempDateTo(f.dateTo || '');
       setTempSelectedCustomers(f.selectedCustomers || []);
       setTempExcludedCustomers(data.excluded_customers || []);
-      setFilterStatus(f.filterStatus || 'all');
-      setFilterType(f.filterType || 'all');
+      setFilterStatus(statusVal);
+      setFilterType(typeVal);
       setDateFrom(f.dateFrom || '');
       setDateTo(f.dateTo || '');
       setSelectedCustomers(f.selectedCustomers || []);
@@ -501,11 +510,11 @@ export default function InvoiceAnalyticsPage() {
           .order('reference_number', { ascending: false })
           .range(offset, offset + batchSize - 1);
 
-        if (filterStatus !== 'all') {
-          query = query.eq('status', filterStatus);
+        if (filterStatus.length > 0) {
+          query = query.in('status', filterStatus);
         }
-        if (filterType !== 'all') {
-          query = query.eq('type', filterType);
+        if (filterType.length > 0) {
+          query = query.in('type', filterType);
         }
         if (selectedCustomers.length > 0) {
           query = query.in('customer', selectedCustomers);
@@ -632,8 +641,8 @@ export default function InvoiceAnalyticsPage() {
         const { data: filteredData, error: filteredError } = await supabase.rpc('get_filtered_invoice_aggregates', {
           p_period_type: 'monthly',
           p_year: year,
-          p_status: filterStatus !== 'all' ? filterStatus : null,
-          p_type: filterType !== 'all' ? filterType : null,
+          p_status: filterStatus.length === 1 ? filterStatus[0] : null,
+          p_type: filterType.length === 1 ? filterType[0] : null,
           p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : [],
           p_excluded_customers: excludedCustomers.length > 0 ? excludedCustomers : []
         });
@@ -732,8 +741,8 @@ export default function InvoiceAnalyticsPage() {
         const { data: filteredData, error: filteredError } = await supabase.rpc('get_filtered_invoice_aggregates', {
           p_period_type: 'yearly',
           p_year: null,
-          p_status: filterStatus !== 'all' ? filterStatus : null,
-          p_type: filterType !== 'all' ? filterType : null,
+          p_status: filterStatus.length === 1 ? filterStatus[0] : null,
+          p_type: filterType.length === 1 ? filterType[0] : null,
           p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : [],
           p_excluded_customers: excludedCustomers.length > 0 ? excludedCustomers : []
         });
@@ -832,11 +841,13 @@ export default function InvoiceAnalyticsPage() {
       );
     }
 
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(i => i.status === filterStatus);
+    if (filterStatus.length > 0) {
+      const statusSet = new Set(filterStatus);
+      filtered = filtered.filter(i => statusSet.has(i.status));
     }
-    if (filterType !== 'all') {
-      filtered = filtered.filter(i => i.type === filterType);
+    if (filterType.length > 0) {
+      const typeSet = new Set(filterType);
+      filtered = filtered.filter(i => typeSet.has(i.type));
     }
     if (selectedCustomers.length > 0) {
       const customerSet = new Set(selectedCustomers);
@@ -887,16 +898,16 @@ export default function InvoiceAnalyticsPage() {
   };
 
   const clearFilters = () => {
-    setTempFilterStatus('all');
-    setTempFilterType('all');
+    setTempFilterStatus([]);
+    setTempFilterType([]);
     setTempDateFrom('');
     setTempDateTo('');
     setTempSelectedCustomers([]);
     setTempExcludedCustomers([]);
     setCustomerSearchTerm('');
     setExcludeSearchTerm('');
-    setFilterStatus('all');
-    setFilterType('all');
+    setFilterStatus([]);
+    setFilterType([]);
     setDateFrom('');
     setDateTo('');
     setSelectedCustomers([]);
@@ -1140,30 +1151,68 @@ export default function InvoiceAnalyticsPage() {
                     Filter Options
                   </h3>
 
-                  <div>
+                  <div className="relative">
                     <label className="block text-xs font-medium text-gray-500 mb-2">Status</label>
-                    <select
-                      value={tempFilterStatus}
-                      onChange={(e) => setTempFilterStatus(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    <button
+                      onClick={() => { setStatusDropdownOpen(!statusDropdownOpen); setTypeDropdownOpen(false); }}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-left flex items-center justify-between"
                     >
-                      {uniqueStatuses.map(s => (
-                        <option key={s} value={s}>{s === 'all' ? 'All Statuses' : s}</option>
-                      ))}
-                    </select>
+                      <span className="truncate">
+                        {tempFilterStatus.length === 0 ? 'All Statuses' : tempFilterStatus.length === 1 ? tempFilterStatus[0] : `${tempFilterStatus.length} selected`}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${statusDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {statusDropdownOpen && (
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {uniqueStatuses.filter(s => s !== 'all').map(s => {
+                          const isSelected = tempFilterStatus.includes(s);
+                          return (
+                            <button
+                              key={s}
+                              onClick={() => setTempFilterStatus(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${isSelected ? 'bg-blue-50' : ''}`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                {isSelected && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <span className={isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}>{s}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
-                  <div>
+                  <div className="relative">
                     <label className="block text-xs font-medium text-gray-500 mb-2">Type</label>
-                    <select
-                      value={tempFilterType}
-                      onChange={(e) => setTempFilterType(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    <button
+                      onClick={() => { setTypeDropdownOpen(!typeDropdownOpen); setStatusDropdownOpen(false); }}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-left flex items-center justify-between"
                     >
-                      {uniqueTypes.map(t => (
-                        <option key={t} value={t}>{t === 'all' ? 'All Types' : t}</option>
-                      ))}
-                    </select>
+                      <span className="truncate">
+                        {tempFilterType.length === 0 ? 'All Types' : tempFilterType.length === 1 ? tempFilterType[0] : `${tempFilterType.length} selected`}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${typeDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {typeDropdownOpen && (
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {uniqueTypes.filter(t => t !== 'all').map(t => {
+                          const isSelected = tempFilterType.includes(t);
+                          return (
+                            <button
+                              key={t}
+                              onClick={() => setTempFilterType(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${isSelected ? 'bg-blue-50' : ''}`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                {isSelected && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <span className={isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}>{t}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Customer Filter */}
@@ -1227,15 +1276,26 @@ export default function InvoiceAnalyticsPage() {
                             return (
                               <div
                                 key={cust.id}
-                                className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm border-b border-gray-100 last:border-b-0 ${isSelected ? 'bg-blue-50' : isExcluded ? 'bg-red-50' : 'hover:bg-gray-50'}`}
+                                className={`w-full flex items-center border-b border-gray-100 last:border-b-0 ${isSelected ? 'bg-blue-50' : isExcluded ? 'bg-red-50' : 'hover:bg-gray-50'}`}
                               >
                                 <button
-                                  onClick={() => toggleTempCustomer(cust.id)}
-                                  className="flex items-center gap-2 min-w-0 flex-1"
+                                  onClick={() => {
+                                    setTempSelectedCustomers(prev => prev.includes(cust.id) ? prev.filter(c => c !== cust.id) : [...prev, cust.id]);
+                                  }}
+                                  className="flex-shrink-0 p-2 pl-3"
+                                  title="Toggle selection (multi-select)"
                                 >
-                                  <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                  <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300 hover:border-blue-400'}`}>
                                     {isSelected && <Check className="w-3 h-3 text-white" />}
                                   </div>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setTempSelectedCustomers([cust.id]);
+                                    setCustomerSearchTerm('');
+                                  }}
+                                  className="flex-1 flex items-center gap-2 px-2 py-2 text-left text-sm hover:bg-gray-100/50 transition-colors min-w-0"
+                                >
                                   <div className="min-w-0 flex-1">
                                     <span className={`block truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}`}>
                                       {cust.name}
@@ -1247,7 +1307,7 @@ export default function InvoiceAnalyticsPage() {
                                 </button>
                                 <button
                                   onClick={() => addExcludedCustomer(cust.id)}
-                                  className="flex-shrink-0 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                  className="flex-shrink-0 p-1 mr-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                                   title="Exclude this customer"
                                 >
                                   <Ban className="w-3.5 h-3.5" />

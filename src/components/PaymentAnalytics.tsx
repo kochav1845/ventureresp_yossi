@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, Menu, X, ExternalLink, ArrowDown, EyeOff, Check, Ban, Save } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, Menu, X, ExternalLink, ArrowDown, EyeOff, Check, Ban, Save, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { batchedInQuery } from '../lib/batchedQuery';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
@@ -106,9 +106,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [refreshingAnalytics, setRefreshingAnalytics] = useState(false);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(() => c?.lastRefreshTime ? new Date(c.lastRefreshTime) : null);
 
-  const [filterStatus, setFilterStatus] = useState<string>(() => c?.filterStatus ?? 'all');
-  const [filterType, setFilterType] = useState<string>(() => c?.filterType ?? 'all');
-  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>(() => c?.filterPaymentMethod ?? 'all');
+  const [filterStatus, setFilterStatus] = useState<string[]>(() => c?.filterStatus ?? []);
+  const [filterType, setFilterType] = useState<string[]>(() => c?.filterType ?? []);
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string[]>(() => c?.filterPaymentMethod ?? []);
   const [filterInvoicePeriod, setFilterInvoicePeriod] = useState<string>(() => c?.filterInvoicePeriod ?? 'all');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(() => c?.selectedDate ? new Date(c.selectedDate) : null);
@@ -116,10 +116,13 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   // Temporary filter states (not yet applied)
   const [tempDateFrom, setTempDateFrom] = useState(() => c?.dateFrom ?? '');
   const [tempDateTo, setTempDateTo] = useState(() => c?.dateTo ?? '');
-  const [tempFilterStatus, setTempFilterStatus] = useState<string>(() => c?.filterStatus ?? 'all');
-  const [tempFilterType, setTempFilterType] = useState<string>(() => c?.filterType ?? 'all');
-  const [tempFilterPaymentMethod, setTempFilterPaymentMethod] = useState<string>(() => c?.filterPaymentMethod ?? 'all');
+  const [tempFilterStatus, setTempFilterStatus] = useState<string[]>(() => c?.filterStatus ?? []);
+  const [tempFilterType, setTempFilterType] = useState<string[]>(() => c?.filterType ?? []);
+  const [tempFilterPaymentMethod, setTempFilterPaymentMethod] = useState<string[]>(() => c?.filterPaymentMethod ?? []);
   const [tempFilterInvoicePeriod, setTempFilterInvoicePeriod] = useState<string>(() => c?.filterInvoicePeriod ?? 'all');
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
+  const [methodDropdownOpen, setMethodDropdownOpen] = useState(false);
 
   // Applied filter states (triggers data reload)
   const [dateFrom, setDateFrom] = useState(() => c?.dateFrom ?? '');
@@ -200,7 +203,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [hasDefaultFilters, setHasDefaultFilters] = useState(false);
   const [savingDefaults, setSavingDefaults] = useState(false);
 
-  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterPaymentMethod !== 'all' || filterInvoicePeriod !== 'all' || selectedCustomers.length > 0 || sidebarExcludedCustomers.length > 0;
+  const hasActiveFilters = filterStatus.length > 0 || filterType.length > 0 || filterPaymentMethod.length > 0 || filterInvoicePeriod !== 'all' || selectedCustomers.length > 0 || sidebarExcludedCustomers.length > 0;
 
   // Payment applications cache
   const [paymentApplicationsCache, setPaymentApplicationsCache] = useState<Map<string, InvoiceApplication[]>>(new Map());
@@ -793,9 +796,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         const { data: filteredData, error: filteredError } = await supabase.rpc('get_filtered_payment_aggregates', {
           p_period_type: 'monthly',
           p_year: year,
-          p_status: filterStatus !== 'all' ? filterStatus : null,
-          p_type: filterType !== 'all' ? filterType : null,
-          p_payment_method: filterPaymentMethod !== 'all' ? filterPaymentMethod : null,
+          p_status: filterStatus.length === 1 ? filterStatus[0] : null,
+          p_type: filterType.length === 1 ? filterType[0] : null,
+          p_payment_method: filterPaymentMethod.length === 1 ? filterPaymentMethod[0] : null,
           p_has_applications: filterInvoicePeriod !== 'all' ? filterInvoicePeriod : null,
           p_excluded_customers: uniqueExcluded,
           p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : []
@@ -1030,9 +1033,9 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         const { data: filteredData, error: filteredError } = await supabase.rpc('get_filtered_payment_aggregates', {
           p_period_type: 'yearly',
           p_year: null,
-          p_status: filterStatus !== 'all' ? filterStatus : null,
-          p_type: filterType !== 'all' ? filterType : null,
-          p_payment_method: filterPaymentMethod !== 'all' ? filterPaymentMethod : null,
+          p_status: filterStatus.length === 1 ? filterStatus[0] : null,
+          p_type: filterType.length === 1 ? filterType[0] : null,
+          p_payment_method: filterPaymentMethod.length === 1 ? filterPaymentMethod[0] : null,
           p_has_applications: filterInvoicePeriod !== 'all' ? filterInvoicePeriod : null,
           p_excluded_customers: uniqueExcluded,
           p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : []
@@ -1212,7 +1215,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           .rpc('get_payments_with_applications', {
             p_start_date: startStr,
             p_end_date: endStr,
-            p_type: filterType !== 'all' ? filterType : null,
+            p_type: filterType.length === 1 ? filterType[0] : null,
             p_exclude_credit_memos: true
           })
           .range(offset, offset + batchSize - 1);
@@ -1346,16 +1349,19 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       );
     }
 
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(p => p.status === filterStatus);
+    if (filterStatus.length > 0) {
+      const statusSet = new Set(filterStatus);
+      filtered = filtered.filter(p => statusSet.has(p.status));
     }
 
-    if (filterType !== 'all') {
-      filtered = filtered.filter(p => p.type === filterType);
+    if (filterType.length > 0) {
+      const typeSet = new Set(filterType);
+      filtered = filtered.filter(p => typeSet.has(p.type));
     }
 
-    if (filterPaymentMethod !== 'all') {
-      filtered = filtered.filter(p => p.payment_method === filterPaymentMethod);
+    if (filterPaymentMethod.length > 0) {
+      const methodSet = new Set(filterPaymentMethod);
+      filtered = filtered.filter(p => methodSet.has(p.payment_method));
     }
 
     if (selectedCustomers.length > 0) {
@@ -1659,7 +1665,6 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     setTempSelectedCustomers(prev =>
       prev.includes(customerId) ? prev.filter(c => c !== customerId) : [...prev, customerId]
     );
-    setCustomerFilterSearch('');
   }, []);
 
   const applyFilters = () => {
@@ -1674,18 +1679,18 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   };
 
   const clearFilters = () => {
-    setTempFilterStatus('all');
-    setTempFilterType('all');
-    setTempFilterPaymentMethod('all');
+    setTempFilterStatus([]);
+    setTempFilterType([]);
+    setTempFilterPaymentMethod([]);
     setTempFilterInvoicePeriod('all');
     setTempSelectedCustomers([]);
     setTempDateFrom('');
     setTempDateTo('');
     setCustomerFilterSearch('');
 
-    setFilterStatus('all');
-    setFilterType('all');
-    setFilterPaymentMethod('all');
+    setFilterStatus([]);
+    setFilterType([]);
+    setFilterPaymentMethod([]);
     setFilterInvoicePeriod('all');
     setSelectedCustomers([]);
     setSearchTerm('');
@@ -1744,17 +1749,20 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       .maybeSingle();
     if (data) {
       const f = data.filters as any;
-      setTempFilterStatus(f.filterStatus || 'all');
-      setTempFilterType(f.filterType || 'all');
-      setTempFilterPaymentMethod(f.filterPaymentMethod || 'all');
+      const statusVal = Array.isArray(f.filterStatus) ? f.filterStatus : (f.filterStatus && f.filterStatus !== 'all' ? [f.filterStatus] : []);
+      const typeVal = Array.isArray(f.filterType) ? f.filterType : (f.filterType && f.filterType !== 'all' ? [f.filterType] : []);
+      const methodVal = Array.isArray(f.filterPaymentMethod) ? f.filterPaymentMethod : (f.filterPaymentMethod && f.filterPaymentMethod !== 'all' ? [f.filterPaymentMethod] : []);
+      setTempFilterStatus(statusVal);
+      setTempFilterType(typeVal);
+      setTempFilterPaymentMethod(methodVal);
       setTempFilterInvoicePeriod(f.filterInvoicePeriod || 'all');
       setTempDateFrom(f.dateFrom || '');
       setTempDateTo(f.dateTo || '');
       setTempSelectedCustomers(f.selectedCustomers || []);
       setTempSidebarExcludedCustomers(data.excluded_customers || []);
-      setFilterStatus(f.filterStatus || 'all');
-      setFilterType(f.filterType || 'all');
-      setFilterPaymentMethod(f.filterPaymentMethod || 'all');
+      setFilterStatus(statusVal);
+      setFilterType(typeVal);
+      setFilterPaymentMethod(methodVal);
       setFilterInvoicePeriod(f.filterInvoicePeriod || 'all');
       setDateFrom(f.dateFrom || '');
       setDateTo(f.dateTo || '');
@@ -3067,51 +3075,102 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                   </h3>
 
                   {/* Status Filter */}
-                  <div>
+                  <div className="relative">
                     <label className="block text-xs font-medium text-gray-500 mb-2">Status</label>
-                    <select
-                      value={tempFilterStatus}
-                      onChange={(e) => setTempFilterStatus(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    <button
+                      onClick={() => { setStatusDropdownOpen(!statusDropdownOpen); setTypeDropdownOpen(false); setMethodDropdownOpen(false); }}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-left flex items-center justify-between"
                     >
-                      {uniqueStatuses.map(status => (
-                        <option key={status} value={status}>
-                          {status === 'all' ? 'All Statuses' : status}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="truncate">
+                        {tempFilterStatus.length === 0 ? 'All Statuses' : tempFilterStatus.length === 1 ? tempFilterStatus[0] : `${tempFilterStatus.length} selected`}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${statusDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {statusDropdownOpen && (
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {uniqueStatuses.filter(s => s !== 'all').map(s => {
+                          const isSelected = tempFilterStatus.includes(s);
+                          return (
+                            <button
+                              key={s}
+                              onClick={() => setTempFilterStatus(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${isSelected ? 'bg-blue-50' : ''}`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                {isSelected && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <span className={isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}>{s}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Type Filter */}
-                  <div>
+                  <div className="relative">
                     <label className="block text-xs font-medium text-gray-500 mb-2">Type</label>
-                    <select
-                      value={tempFilterType}
-                      onChange={(e) => setTempFilterType(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    <button
+                      onClick={() => { setTypeDropdownOpen(!typeDropdownOpen); setStatusDropdownOpen(false); setMethodDropdownOpen(false); }}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-left flex items-center justify-between"
                     >
-                      {uniqueTypes.map(type => (
-                        <option key={type} value={type}>
-                          {type === 'all' ? 'All Types' : type}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="truncate">
+                        {tempFilterType.length === 0 ? 'All Types' : tempFilterType.length === 1 ? tempFilterType[0] : `${tempFilterType.length} selected`}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${typeDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {typeDropdownOpen && (
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {uniqueTypes.filter(t => t !== 'all').map(t => {
+                          const isSelected = tempFilterType.includes(t);
+                          return (
+                            <button
+                              key={t}
+                              onClick={() => setTempFilterType(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${isSelected ? 'bg-blue-50' : ''}`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                {isSelected && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <span className={isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}>{t}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Payment Method Filter */}
-                  <div>
+                  <div className="relative">
                     <label className="block text-xs font-medium text-gray-500 mb-2">Payment Method</label>
-                    <select
-                      value={tempFilterPaymentMethod}
-                      onChange={(e) => setTempFilterPaymentMethod(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    <button
+                      onClick={() => { setMethodDropdownOpen(!methodDropdownOpen); setStatusDropdownOpen(false); setTypeDropdownOpen(false); }}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-left flex items-center justify-between"
                     >
-                      {uniquePaymentMethods.map(method => (
-                        <option key={method} value={method}>
-                          {method === 'all' ? 'All Methods' : method}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="truncate">
+                        {tempFilterPaymentMethod.length === 0 ? 'All Methods' : tempFilterPaymentMethod.length === 1 ? tempFilterPaymentMethod[0] : `${tempFilterPaymentMethod.length} selected`}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${methodDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {methodDropdownOpen && (
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {uniquePaymentMethods.filter(m => m !== 'all').map(m => {
+                          const isSelected = tempFilterPaymentMethod.includes(m);
+                          return (
+                            <button
+                              key={m}
+                              onClick={() => setTempFilterPaymentMethod(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m])}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${isSelected ? 'bg-blue-50' : ''}`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                {isSelected && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <span className={isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}>{m}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Invoice Period Filter */}
@@ -3191,12 +3250,23 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                                 className={`flex items-center border-b border-gray-100 last:border-b-0 ${isSelected ? 'bg-blue-50' : ''}`}
                               >
                                 <button
-                                  onClick={() => toggleTempCustomer(cust.id)}
-                                  className="flex-1 flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 transition-colors"
+                                  onClick={() => {
+                                    setTempSelectedCustomers(prev => prev.includes(cust.id) ? prev.filter(c => c !== cust.id) : [...prev, cust.id]);
+                                  }}
+                                  className="flex-shrink-0 p-2 pl-3"
+                                  title="Toggle selection (multi-select)"
                                 >
-                                  <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                  <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300 hover:border-blue-400'}`}>
                                     {isSelected && <Check className="w-3 h-3 text-white" />}
                                   </div>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setTempSelectedCustomers([cust.id]);
+                                    setCustomerFilterSearch('');
+                                  }}
+                                  className="flex-1 flex items-center gap-2 px-2 py-2 text-left text-sm hover:bg-gray-100/50 transition-colors min-w-0"
+                                >
                                   <div className="min-w-0 flex-1">
                                     <span className={`block truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'}`}>
                                       {cust.name}
@@ -3208,7 +3278,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                                 </button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); addSidebarExcludedCustomer(cust.id); }}
-                                  className="px-2 py-1 mr-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                  className="flex-shrink-0 px-2 py-1 mr-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                                   title="Exclude this customer"
                                 >
                                   <Ban className="w-3.5 h-3.5" />
