@@ -85,6 +85,7 @@ import EmailSettings from './components/EmailSettings';
 import TicketDetailPage from './components/TicketDetailPage';
 import CustomerStatements from './components/CustomerStatements';
 import ApiKeyManagement from './components/ApiKeyManagement';
+import CronJobsMonitor from './components/CronJobsMonitor';
 import InvoiceAnalyticsPage from './components/InvoiceAnalyticsPage';
 import LandingPage from './components/LandingPage';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
@@ -220,6 +221,7 @@ function OrgAppContent() {
         <Route path="last-15-days-payments" element={<Last15DaysPaymentFetch />} />
         <Route path="email-settings" element={<EmailSettings />} />
         <Route path="api-keys" element={<ApiKeyManagement />} />
+        <Route path="cron-jobs" element={<CronJobsMonitor />} />
       </Route>
 
       <Route path="*" element={<Navigate to={defaultRoute} replace />} />

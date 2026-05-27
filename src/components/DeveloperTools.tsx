@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor, XCircle, Clock, Key } from 'lucide-react';
+import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor, XCircle, Clock, Key, Webhook, Sliders, Timer } from 'lucide-react';
 
 interface Tool {
   id: string;
@@ -8,7 +8,7 @@ interface Tool {
   description: string;
   icon: any;
   path: string;
-  category: 'payment' | 'invoice' | 'sync' | 'system' | 'api';
+  category: 'payment' | 'invoice' | 'sync' | 'system' | 'api' | 'infrastructure';
 }
 
 export function DeveloperTools() {
@@ -271,13 +271,54 @@ export function DeveloperTools() {
       path: '/api-keys',
       category: 'api'
     },
+    {
+      id: 'webhooks',
+      name: 'Webhooks',
+      description: 'Configure and manage webhook endpoints for external integrations',
+      icon: Webhook,
+      path: '/webhooks',
+      category: 'infrastructure'
+    },
+    {
+      id: 'sync-status',
+      name: 'Sync Status',
+      description: 'Monitor synchronization status and last sync times for all entities',
+      icon: RefreshCw,
+      path: '/sync-status',
+      category: 'infrastructure'
+    },
+    {
+      id: 'sync-config',
+      name: 'Sync Configuration',
+      description: 'Configure sync intervals, credentials, and entity sync settings',
+      icon: Sliders,
+      path: '/sync-config',
+      category: 'infrastructure'
+    },
+    {
+      id: 'sync-health',
+      name: 'Sync Health',
+      description: 'Dashboard showing sync health metrics and error rates',
+      icon: HeartPulse,
+      path: '/sync-health',
+      category: 'infrastructure'
+    },
+    {
+      id: 'cron-jobs',
+      name: 'Cron Jobs Monitor',
+      description: 'View all scheduled cron jobs, their purpose, and complete run history with logs',
+      icon: Timer,
+      path: '/cron-jobs',
+      category: 'infrastructure'
+    },
   ];
 
   const categories: Record<string, string> = {
+    infrastructure: 'Infrastructure & Monitoring',
     api: 'API & Integrations',
+    sync: 'Sync Tools',
     payment: 'Payment Tools',
     invoice: 'Invoice Tools',
-    sync: 'Sync Tools',
     system: 'System Tools'
   };
 
