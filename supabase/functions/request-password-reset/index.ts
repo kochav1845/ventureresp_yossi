@@ -84,7 +84,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Create reset URL with token
-    const resetUrl = `https://ventureresp.app/reset-password?resetlink=${token}`;
+    const resetUrl = `https://stardevar.com/reset-password?resetlink=${token}`;
 
     // Send email with reset link
     const emailSubject = 'Reset Your Password';

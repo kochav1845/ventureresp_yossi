@@ -326,7 +326,7 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .maybeSingle();
 
-    const fromEmail = emailSettings?.noreply_from_email || 'noreply@ventureresp.app';
+    const fromEmail = emailSettings?.noreply_from_email || 'noreply@stardevar.com';
     const fromName = emailSettings?.noreply_from_name || 'Venture Respiratory System';
 
     const hasErrors = errors.length > 0;

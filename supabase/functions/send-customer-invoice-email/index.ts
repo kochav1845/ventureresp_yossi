@@ -172,7 +172,7 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .maybeSingle();
 
-    let arFromEmail = emailSettings?.ar_from_email || 'ar@ventureresp.app';
+    let arFromEmail = emailSettings?.ar_from_email || 'ar@stardevar.com';
     let arFromName = emailSettings?.ar_from_name || 'Venture Respiratory - Accounts Receivable';
     let replyToEmail = emailSettings?.reply_to_email || arFromEmail;
     let replyToName = emailSettings?.reply_to_name || arFromName;

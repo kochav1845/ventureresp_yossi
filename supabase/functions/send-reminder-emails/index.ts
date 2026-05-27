@@ -98,7 +98,7 @@ Deno.serve(async (req: Request) => {
       const ticketNumber = (reminder as any).collection_tickets?.ticket_number;
       const ticketId = reminder.ticket_id;
 
-      const appDomain = 'https://ventureresp.app';
+      const appDomain = 'https://stardevar.com';
       const reminderUrl = `${appDomain}/reminders?id=${reminder.id}`;
       const invoiceUrl = invoiceRef ? `${appDomain}/customers?invoice=${invoiceRef}` : null;
       const ticketUrl = ticketId ? `${appDomain}/ticketing?ticket=${ticketId}` : null;

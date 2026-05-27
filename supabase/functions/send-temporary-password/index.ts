@@ -48,10 +48,10 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .maybeSingle();
 
-    let noreplyFromEmail = emailSettings?.noreply_from_email || 'noreply@ventureresp.app';
+    let noreplyFromEmail = emailSettings?.noreply_from_email || 'noreply@stardevar.com';
     let noreplyFromName = emailSettings?.noreply_from_name || 'Venture Respiratory Admin';
     const companyName = emailSettings?.company_name || 'Venture Respiratory';
-    const domain = emailSettings?.domain || 'ventureresp.app';
+    const domain = emailSettings?.domain || 'stardevar.com';
 
     const deptKey = department || 'noreply';
     const { data: deptSender } = await supabase

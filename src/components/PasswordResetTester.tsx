@@ -113,7 +113,7 @@ export default function PasswordResetTester() {
               <li>Enter an email address and click "Send Reset Email"</li>
               <li>A secure token is generated and stored in the database</li>
               <li>An email is sent via SendGrid with a reset link containing the token</li>
-              <li>The link format: https://ventureresp.app/reset-password?resetlink=TOKEN</li>
+              <li>The link format: https://stardevar.com/reset-password?resetlink=TOKEN</li>
               <li>The token expires after 1 hour or when used</li>
             </ul>
           </div>
