@@ -54,6 +54,7 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
   const [ticketContext, setTicketContext] = useState<{ ticketId: string; ticketNumber: string } | null>(null);
 
   const [showManageCustomers, setShowManageCustomers] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState('');
 
   const [formData, setFormData] = useState({
     customer_id: '',
@@ -146,29 +147,47 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
   const loadData = async () => {
     setLoading(true);
     try {
-      const [assignmentsRes, customersRes, formulasRes, templatesRes] = await Promise.all([
+      const [assignmentsRes, customersRes, formulasRes, templatesRes, acuCustomersRes] = await Promise.all([
         supabase.from('customer_assignments').select('*').order('created_at', { ascending: false }),
         supabase.from('customers').select('id, name, email, postpone_until, postpone_reason').order('name'),
         supabase.from('email_formulas').select('id, name').order('name'),
         supabase.from('email_templates').select('id, name').order('name'),
+        supabase.from('acumatica_customers').select('customer_id, customer_name, email_address').order('customer_name'),
       ]);
 
       if (assignmentsRes.error) throw assignmentsRes.error;
-      if (customersRes.error) throw customersRes.error;
       if (formulasRes.error) throw formulasRes.error;
       if (templatesRes.error) throw templatesRes.error;
 
-      const assignmentsWithDetails = await Promise.all(
-        (assignmentsRes.data || []).map(async (assignment) => {
-          const customer = customersRes.data?.find(c => c.id === assignment.customer_id);
-          const formula = formulasRes.data?.find(f => f.id === assignment.formula_id);
-          const template = templatesRes.data?.find(t => t.id === assignment.template_id);
-          return { ...assignment, customer, formula, template };
-        })
-      );
+      // Build customer list from ALL acumatica customers as primary source
+      const emailCustomerMap = new Map((customersRes.data || []).map(c => [c.name.toLowerCase(), c]));
+      const allCustomers: Customer[] = (acuCustomersRes.data || [])
+        .filter(ac => ac.customer_name)
+        .map(ac => {
+          const existing = emailCustomerMap.get(ac.customer_name.toLowerCase());
+          if (existing) return existing;
+          return {
+            id: `acu_${ac.customer_id}`,
+            name: ac.customer_name,
+            email: ac.email_address || '',
+          };
+        });
+
+      // Include any email-only customers not in acumatica
+      const acuNames = new Set((acuCustomersRes.data || []).map(ac => ac.customer_name?.toLowerCase()));
+      const emailOnlyCustomers = (customersRes.data || []).filter(c => !acuNames.has(c.name.toLowerCase()));
+      const mergedCustomers = [...allCustomers, ...emailOnlyCustomers].sort((a, b) => a.name.localeCompare(b.name));
+
+      const assignmentsWithDetails = (assignmentsRes.data || []).map((assignment) => {
+        const customer = (customersRes.data || []).find(c => c.id === assignment.customer_id)
+          || mergedCustomers.find(c => c.id === assignment.customer_id);
+        const formula = formulasRes.data?.find(f => f.id === assignment.formula_id);
+        const template = templatesRes.data?.find(t => t.id === assignment.template_id);
+        return { ...assignment, customer, formula, template };
+      });
 
       setAssignments(assignmentsWithDetails);
-      setCustomers(customersRes.data || []);
+      setCustomers(mergedCustomers);
       setFormulas(formulasRes.data || []);
       setTemplates(templatesRes.data || []);
     } catch (error) {
@@ -276,8 +295,39 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
     }
 
     try {
+      let resolvedCustomerId = formData.customer_id;
+
+      // If selecting an acumatica customer not yet in the email system, auto-create it
+      if (resolvedCustomerId.startsWith('acu_')) {
+        const selectedCustomer = customers.find(c => c.id === resolvedCustomerId);
+        if (selectedCustomer) {
+          const email = selectedCustomer.email || `${selectedCustomer.name.toLowerCase().replace(/[^a-z0-9]/g, '.')}@pending.com`;
+          const { data: newCust, error: insertErr } = await supabase
+            .from('customers')
+            .insert({ name: selectedCustomer.name, email })
+            .select()
+            .maybeSingle();
+
+          if (insertErr) {
+            const { data: existing } = await supabase
+              .from('customers')
+              .select('id')
+              .ilike('name', selectedCustomer.name)
+              .maybeSingle();
+            if (existing) {
+              resolvedCustomerId = existing.id;
+            } else {
+              alert('Error creating customer: ' + insertErr.message);
+              return;
+            }
+          } else if (newCust) {
+            resolvedCustomerId = newCust.id;
+          }
+        }
+      }
+
       const assignmentData: any = {
-        customer_id: formData.customer_id,
+        customer_id: resolvedCustomerId,
         formula_id: formData.formula_id,
         template_id: formData.template_id,
         start_day_of_month: 1,
@@ -372,19 +422,33 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
                     Manage Customers
                   </button>
                 </div>
+                <input
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  placeholder="Type to search customers..."
+                  className="w-full px-4 py-2 mb-2 bg-slate-700 border border-slate-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
                 <select
                   value={formData.customer_id}
                   onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
                   className="w-full px-4 py-3 bg-slate-700 border border-slate-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  size={6}
                   disabled={customers.length === 0}
                 >
                   <option value="">Select a customer</option>
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name} ({customer.email})
-                    </option>
-                  ))}
+                  {customers
+                    .filter(c => !customerSearch || c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.email?.toLowerCase().includes(customerSearch.toLowerCase()))
+                    .slice(0, 100)
+                    .map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.name}{customer.email ? ` (${customer.email})` : ''}
+                      </option>
+                    ))}
                 </select>
+                {customerSearch && customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase())).length > 100 && (
+                  <p className="text-xs text-slate-400 mt-1">Showing first 100 results. Refine your search.</p>
+                )}
               </div>
 
               <div>
