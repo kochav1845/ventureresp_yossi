@@ -362,156 +362,182 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-5xl mx-auto">
-          {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500 border-t-transparent"></div>
-            </div>
-          ) : filteredReminders.length === 0 ? (
-            <div className="bg-gray-50 rounded-xl border border-gray-200 p-16 text-center">
+      {/* Content - Full Width Table */}
+      <div className="flex-1 overflow-auto" data-tour="reminder-list">
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500 border-t-transparent"></div>
+          </div>
+        ) : filteredReminders.length === 0 ? (
+          <div className="flex items-center justify-center flex-1 py-16">
+            <div className="text-center">
               <Calendar className="w-14 h-14 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500 text-lg font-medium">No reminders found</p>
               <p className="text-sm text-gray-400 mt-1">
                 {filter === 'all' ? 'Create your first reminder to get started' : 'No reminders match this filter'}
               </p>
             </div>
-          ) : (
-            <div className="space-y-3" data-tour="reminder-list">
-              {filteredReminders.map((reminder) => (
-                <div
-                  key={reminder.id}
-                  className={`bg-white rounded-xl border p-5 transition-all shadow-sm hover:shadow-md ${
-                    reminder.completed_at
-                      ? 'border-gray-200 opacity-70'
-                      : isOverdue(reminder.reminder_date)
-                      ? 'border-red-200 bg-red-50/30'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className={`p-2.5 rounded-lg border ${getPriorityColor(reminder.priority)}`}>
-                      {getReminderIcon(reminder.reminder_type)}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-4 mb-2">
-                        <div className="flex-1">
-                          <h3 className={`text-base font-semibold ${reminder.completed_at ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
-                            {reminder.title}
-                          </h3>
-                          {(reminder.invoice_reference || reminder.ticket_number || reminder.customer_name) && (
-                            <div className="flex items-center gap-2 text-gray-500 text-sm mt-1 flex-wrap">
-                              {reminder.ticket_number && (
-                                <>
-                                  <button
-                                    onClick={() => navigate(`/ticket/${reminder.ticket_id}`)}
-                                    className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
-                                  >
-                                    <Ticket className="w-3 h-3" />
-                                    Ticket #{reminder.ticket_number}
-                                  </button>
-                                  {reminder.invoice_reference && <span className="text-gray-300">|</span>}
-                                </>
-                              )}
-                              {reminder.invoice_reference && (
-                                <>
-                                  <button
-                                    onClick={() => navigate(`/customers?invoice=${reminder.invoice_reference}`)}
-                                    className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
-                                  >
-                                    <FileText className="w-3 h-3" />
-                                    {reminder.invoice_reference}
-                                  </button>
-                                  {reminder.customer_name && <span className="text-gray-300">|</span>}
-                                </>
-                              )}
-                              {reminder.customer_name && <span className="text-gray-600">{reminder.customer_name}</span>}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {reminder.send_email_notification && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-blue-700 text-xs font-medium">
-                              <Mail className="w-3 h-3" />
-                              {reminder.email_sent ? 'Sent' : 'Pending'}
-                            </div>
-                          )}
-                          <span className={`px-2 py-1 rounded text-xs font-semibold border ${getPriorityColor(reminder.priority)}`}>
-                            {reminder.priority.toUpperCase()}
-                          </span>
-                        </div>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+              <tr>
+                <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-10">Type</th>
+                <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Title</th>
+                <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Customer</th>
+                <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Reference</th>
+                <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Priority</th>
+                <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+                <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Notes</th>
+                <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filteredReminders.map((reminder) => {
+                const overdue = isOverdue(reminder.reminder_date) && !reminder.completed_at;
+                return (
+                  <tr
+                    key={reminder.id}
+                    className={`transition-colors ${
+                      reminder.completed_at
+                        ? 'bg-gray-50/50 opacity-70'
+                        : overdue
+                        ? 'bg-red-50/40 hover:bg-red-50'
+                        : 'hover:bg-blue-50/30'
+                    }`}
+                  >
+                    <td className="py-2.5 px-4">
+                      <div className={`p-1.5 rounded border inline-flex ${getPriorityColor(reminder.priority)}`}>
+                        {getReminderIcon(reminder.reminder_type)}
                       </div>
-
-                      <div className="flex items-center gap-4 text-sm text-gray-500 mb-3">
-                        <div className="flex items-center gap-1.5">
-                          <Clock className="w-4 h-4 text-gray-400" />
-                          <span className={isOverdue(reminder.reminder_date) && !reminder.completed_at ? 'text-red-600 font-medium' : ''}>
-                            {formatDateUtil(reminder.reminder_date)}
-                          </span>
-                        </div>
-                        {isOverdue(reminder.reminder_date) && !reminder.completed_at && (
-                          <span className="flex items-center gap-1 text-red-600 font-medium">
-                            <AlertCircle className="w-4 h-4" />
-                            Overdue
-                          </span>
-                        )}
-                        {reminder.completed_at && (
-                          <span className="flex items-center gap-1 text-emerald-600">
-                            <CheckCircle className="w-4 h-4" />
-                            Completed {new Date(reminder.completed_at).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-
-                      {reminder.notes && (
-                        <p className="text-gray-600 text-sm bg-gray-50 rounded-lg p-3 mb-3 border border-gray-100">
-                          {reminder.notes}
-                        </p>
-                      )}
-
+                    </td>
+                    <td className="py-2.5 px-4">
+                      <span className={`font-medium ${reminder.completed_at ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                        {reminder.title}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-4 text-gray-600">
+                      {reminder.customer_name || <span className="text-gray-300">--</span>}
+                    </td>
+                    <td className="py-2.5 px-4">
                       <div className="flex items-center gap-2">
+                        {reminder.ticket_number && (
+                          <button
+                            onClick={() => navigate(`/ticket/${reminder.ticket_id}`)}
+                            className="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium"
+                          >
+                            #{reminder.ticket_number}
+                          </button>
+                        )}
+                        {reminder.invoice_reference && (
+                          <button
+                            onClick={() => navigate(`/customers?invoice=${reminder.invoice_reference}`)}
+                            className="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium"
+                          >
+                            {reminder.invoice_reference}
+                          </button>
+                        )}
+                        {!reminder.ticket_number && !reminder.invoice_reference && (
+                          <span className="text-gray-300">--</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-4">
+                      <span className={`text-xs font-medium ${overdue ? 'text-red-600' : 'text-gray-700'}`}>
+                        {formatDateUtil(reminder.reminder_date)}
+                      </span>
+                      {overdue && (
+                        <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">
+                          OVERDUE
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-4 text-center">
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold border ${getPriorityColor(reminder.priority)}`}>
+                        {reminder.priority.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-4 text-center">
+                      {reminder.send_email_notification ? (
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                          reminder.email_sent
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            : 'bg-blue-50 border-blue-200 text-blue-700'
+                        }`}>
+                          <Mail className="w-3 h-3" />
+                          {reminder.email_sent ? 'Sent' : 'Pending'}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">--</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-4 text-center">
+                      {reminder.completed_at ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                          <CheckCircle className="w-3 h-3" />
+                          Done
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                          <Clock className="w-3 h-3" />
+                          Open
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-4 text-center">
+                      {reminder.notes ? (
+                        <span className="text-gray-500 text-xs max-w-[120px] truncate inline-block" title={reminder.notes}>
+                          {reminder.notes.length > 30 ? reminder.notes.slice(0, 30) + '...' : reminder.notes}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">--</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-4">
+                      <div className="flex items-center justify-center gap-1">
                         {!reminder.completed_at ? (
                           <>
                             <button
                               onClick={() => handleCompleteReminder(reminder.id)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors"
+                              className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-colors border border-emerald-200"
+                              title="Mark Complete"
                             >
                               <CheckCircle className="w-3.5 h-3.5" />
-                              Complete
                             </button>
                             <button
                               onClick={() => { setEditingReminder(reminder); setShowCreateModal(true); }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                              className="p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-lg transition-colors border border-gray-200"
+                              title="Edit"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
-                              Edit
                             </button>
                           </>
                         ) : (
                           <button
                             onClick={() => handleUncompleteReminder(reminder.id)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                            className="p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-lg transition-colors border border-gray-200"
+                            title="Reopen"
                           >
-                            Reopen
+                            <AlertCircle className="w-3.5 h-3.5" />
                           </button>
                         )}
                         <button
                           onClick={() => handleDeleteReminder(reminder.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-medium transition-colors border border-red-200"
+                          className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors border border-red-200"
+                          title="Delete"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                          Delete
                         </button>
                       </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {showCreateModal && (
