@@ -147,6 +147,8 @@ export default function Customers({ onBack }: CustomersProps) {
   const [excludeCreditMemos, setExcludeCreditMemos] = useState(() => cl?.excludeCreditMemos ?? false);
   const [customersWithOpenTickets, setCustomersWithOpenTickets] = useState<Set<string>>(new Set());
   const [cachedStatsLoaded, setCachedStatsLoaded] = useState(() => cl?.cachedStatsLoaded ?? false);
+  const [editingRedThreshold, setEditingRedThreshold] = useState<string | null>(null);
+  const [redThresholdInput, setRedThresholdInput] = useState('');
   const [cachedStatsTime, setCachedStatsTime] = useState<string | null>(() => cl?.cachedStatsTime ?? null);
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [activeQuickFilter, setActiveQuickFilter] = useState<number | null>(null);
@@ -516,6 +518,28 @@ export default function Customers({ onBack }: CustomersProps) {
       console.error('Error updating response status:', error);
     } finally {
       setUpdating(null);
+    }
+  };
+
+  const handleSaveRedThreshold = async (customerId: string, customerDbId: string) => {
+    const days = parseInt(redThresholdInput, 10);
+    if (isNaN(days) || days < 1) {
+      setEditingRedThreshold(null);
+      return;
+    }
+    setUpdating(customerId);
+    try {
+      const { error } = await supabase
+        .from('acumatica_customers')
+        .update({ days_from_invoice_threshold: days })
+        .eq('customer_id', customerDbId);
+      if (error) throw error;
+      setAllCustomers(allCustomers.map(c => c.id === customerId ? { ...c, red_threshold_days: days } : c));
+    } catch (error) {
+      console.error('Error updating red threshold:', error);
+    } finally {
+      setUpdating(null);
+      setEditingRedThreshold(null);
     }
   };
 
@@ -1049,6 +1073,7 @@ export default function Customers({ onBack }: CustomersProps) {
                       <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('avg_days_to_collect')}>
                         <div className="flex items-center justify-end gap-1.5">Avg Collect {getSortIcon('avg_days_to_collect')}</div>
                       </th>
+                      <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Days from invoice date to turn red">Days to Red</th>
                       <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Active</th>
                       <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Resp.</th>
                       <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Exclude from Payment Analytics">
@@ -1119,6 +1144,33 @@ export default function Customers({ onBack }: CustomersProps) {
                           </td>
                           <td className="py-2.5 px-4 text-right text-sm text-gray-600 tabular-nums">
                             {customer.avg_days_to_collect != null ? `${customer.avg_days_to_collect}d` : '--'}
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <div className="flex justify-center">
+                              {editingRedThreshold === customer.id ? (
+                                <input
+                                  type="number"
+                                  min="1"
+                                  className="w-14 px-1.5 py-0.5 text-xs text-center border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                  value={redThresholdInput}
+                                  onChange={(e) => setRedThresholdInput(e.target.value)}
+                                  onBlur={() => handleSaveRedThreshold(customer.id, customer.customer_id || customer.id)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveRedThreshold(customer.id, customer.customer_id || customer.id);
+                                    if (e.key === 'Escape') setEditingRedThreshold(null);
+                                  }}
+                                  autoFocus
+                                />
+                              ) : (
+                                <button
+                                  onClick={() => { setEditingRedThreshold(customer.id); setRedThresholdInput(String(customer.red_threshold_days || 30)); }}
+                                  className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-red-50 hover:text-red-700 rounded transition-colors border border-transparent hover:border-red-200"
+                                  title="Click to edit days from invoice date to turn red"
+                                >
+                                  {customer.red_threshold_days || 30}d
+                                </button>
+                              )}
+                            </div>
                           </td>
                           <td className="py-2.5 px-4">
                             <div className="flex justify-center">
