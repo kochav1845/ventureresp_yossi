@@ -28,6 +28,11 @@ export function useCustomerStatements() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [minBalance, setMinBalance] = useState(0);
+  const [minInvoices, setMinInvoices] = useState(0);
+  const [maxInvoices, setMaxInvoices] = useState(0);
+  const [showCreditMemos, setShowCreditMemos] = useState(false);
+  const [minOverdue, setMinOverdue] = useState(0);
+  const [maxOverdue, setMaxOverdue] = useState(0);
   const [sortField, setSortField] = useState<SortField>('balance');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -216,6 +221,12 @@ export function useCustomerStatements() {
       );
     }
 
+    if (minInvoices > 0) list = list.filter(c => c.open_invoice_count >= minInvoices);
+    if (maxInvoices > 0) list = list.filter(c => c.open_invoice_count <= maxInvoices);
+    if (showCreditMemos) list = list.filter(c => c.credit_memo_balance !== 0);
+    if (minOverdue > 0) list = list.filter(c => c.max_days_overdue >= minOverdue);
+    if (maxOverdue > 0) list = list.filter(c => c.max_days_overdue <= maxOverdue);
+
     list.sort((a, b) => {
       let cmp = 0;
       if (sortField === 'name') cmp = a.customer_name.localeCompare(b.customer_name);
@@ -265,6 +276,16 @@ export function useCustomerStatements() {
     setSearch,
     minBalance,
     setMinBalance,
+    minInvoices,
+    setMinInvoices,
+    maxInvoices,
+    setMaxInvoices,
+    showCreditMemos,
+    setShowCreditMemos,
+    minOverdue,
+    setMinOverdue,
+    maxOverdue,
+    setMaxOverdue,
     sortField,
     setSortField,
     sortOrder,

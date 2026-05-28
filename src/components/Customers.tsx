@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import CustomerDetailView from './CustomerDetailView';
-import { ArrowLeft, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket, ChevronDown, Zap } from 'lucide-react';
+import { ArrowLeft, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket } from 'lucide-react';
 import { usePageCache } from '../contexts/PageCacheContext';
 import CustomerFiles from './CustomerFiles';
 import * as XLSX from 'xlsx';
@@ -786,475 +786,427 @@ export default function Customers({ onBack }: CustomersProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
-      <div className="max-w-[95%] mx-auto p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <button onClick={handleBack} className="p-2.5 hover:bg-white/80 rounded-xl transition-all duration-200 border border-transparent hover:border-gray-200 hover:shadow-sm">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Customers</h1>
-              <p className="text-sm text-gray-500 mt-0.5">
-                {grandTotalCustomers > 0 ? `${grandTotalCustomers.toLocaleString()} customers` : 'Loading...'}
-                {cachedStatsTime && !hasActiveFilters && (
-                  <span className="ml-2 text-gray-400">
-                    Updated {new Date(cachedStatsTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={exportToExcel} disabled={loading || filteredCustomers.length === 0}
-              data-tour="customer-export"
-              className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 border border-gray-200 rounded-xl transition-all duration-200 text-sm font-medium shadow-sm hover:shadow">
-              <Download size={16} /> Export
-            </button>
-            <button onClick={() => loadCustomersBatched()} disabled={loading}
-              className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl transition-all duration-200 text-sm font-medium shadow-sm hover:shadow">
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            </button>
-          </div>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" data-tour="customer-stats">
-          <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Customers</span>
-              <div className="p-1.5 bg-blue-50 rounded-lg"><Users className="w-3.5 h-3.5 text-blue-600" /></div>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">{stats.total_customers.toLocaleString()}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{stats.active_customers.toLocaleString()} active</p>
-          </div>
-          <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">With Debt</span>
-              <div className="p-1.5 bg-orange-50 rounded-lg"><FileText className="w-3.5 h-3.5 text-orange-600" /></div>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">{stats.customers_with_debt.toLocaleString()}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{stats.total_open_invoices.toLocaleString()} invoices</p>
-          </div>
-          <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Owed</span>
-              <div className="p-1.5 bg-emerald-50 rounded-lg"><DollarSign className="w-3.5 h-3.5 text-emerald-600" /></div>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">
-              ${stats.total_balance >= 1000000
-                ? `${(stats.total_balance / 1000000).toFixed(2)}M`
-                : stats.total_balance.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">{stats.customers_with_debt.toLocaleString()} customers</p>
-          </div>
-          <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Avg Balance</span>
-              <div className="p-1.5 bg-cyan-50 rounded-lg"><TrendingUp className="w-3.5 h-3.5 text-cyan-600" /></div>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">
-              ${stats.avg_balance.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">per debtor</p>
-          </div>
-        </div>
-
-        {/* Search + Filters Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
-          {/* Search Bar */}
-          <div className="p-4" data-tour="customer-search">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  placeholder="Search by name, email, or customer ID..."
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all duration-200 text-sm"
-                />
-              </div>
-              <button onClick={handleSearch} disabled={loading}
-                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:bg-gray-300 text-white rounded-xl transition-all duration-200 text-sm font-medium shadow-sm">
-                Search
-              </button>
-              {(isSearching || searchQuery) && (
-                <button onClick={() => { setSearchQuery(''); setIsSearching(false); setCurrentPage(0); }}
-                  className="px-3.5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl transition-all duration-200 text-sm">
-                  Clear
-                </button>
-              )}
-            </div>
-
-            {/* Quick Filters */}
-            <div className="flex items-center gap-2 mt-3 flex-wrap" data-tour="customer-quick-filters">
-              <Zap size={14} className="text-amber-500" />
-              {QUICK_FILTERS.map((qf, idx) => (
-                <button key={idx} onClick={() => applyQuickFilter(idx)}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200 border ${
-                    activeQuickFilter === idx
-                      ? 'bg-slate-800 text-white border-slate-800 shadow-sm'
-                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
-                  }`}>
-                  {qf.label} <span className={activeQuickFilter === idx ? 'text-gray-300' : 'text-gray-400'}>{qf.desc}</span>
-                </button>
-              ))}
-
-              <div className="flex-1" />
-
-              {/* Credit memo toggle */}
-              <label data-tour="customer-exclude-cm" className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                <input type="checkbox" checked={excludeCreditMemos} onChange={(e) => setExcludeCreditMemos(e.target.checked)}
-                  className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
-                Excl. Credit Memos
-              </label>
-            </div>
-          </div>
-
-          {/* Advanced Filters Toggle */}
-          <button onClick={() => setShowFilters(!showFilters)}
-            className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50/80 border-t border-gray-100 hover:bg-gray-100/80 transition-all duration-200">
-            <div className="flex items-center gap-2">
-              <Filter size={14} className="text-gray-400" />
-              <span className="text-xs font-medium text-gray-500">Advanced Filters</span>
-              {activeFilterCount > 0 && (
-                <span className="inline-flex items-center justify-center w-5 h-5 bg-blue-600 text-white text-[10px] font-bold rounded-full">
-                  {activeFilterCount}
-                </span>
-              )}
-            </div>
-            <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${showFilters ? 'rotate-180' : ''}`} />
+    <div className="flex flex-col h-screen bg-white">
+      {/* Compact Header */}
+      <div className="flex-shrink-0 border-b border-gray-200 px-5 py-3 bg-white flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={handleBack} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Customers</h1>
+            <p className="text-xs text-gray-500">
+              {grandTotalCustomers > 0 ? `${grandTotalCustomers.toLocaleString()} total` : 'Loading...'}
+              {hasActiveFilters && ` | ${filteredCustomers.length.toLocaleString()} filtered`}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={exportToExcel} disabled={loading || filteredCustomers.length === 0}
+            data-tour="customer-export"
+            className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700 border border-gray-200 rounded-lg text-xs font-medium shadow-sm">
+            <Download size={14} /> Export
+          </button>
+          <button onClick={() => loadCustomersBatched()} disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-lg text-xs font-medium shadow-sm">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
+      </div>
 
-          {/* Advanced Filters Panel */}
-          {showFilters && (
-            <div className="px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/50" data-tour="customer-filters">
-              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-2">Customer Filters</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Customer Balance</label>
-                  <input type="number" value={filters.minBalance || ''} onChange={(e) => setFilters({ ...filters, minBalance: Number(e.target.value) || 0 })}
-                    placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Customer Balance</label>
-                  <input type="number" value={filters.maxBalance === Infinity ? '' : filters.maxBalance} onChange={(e) => setFilters({ ...filters, maxBalance: e.target.value ? Number(e.target.value) : Infinity })}
-                    placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Invoice Count</label>
-                  <input type="number" value={filters.minInvoiceCount || ''} onChange={(e) => setFilters({ ...filters, minInvoiceCount: Number(e.target.value) || 0 })}
-                    placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Invoice Count</label>
-                  <input type="number" value={filters.maxInvoiceCount === Infinity ? '' : filters.maxInvoiceCount} onChange={(e) => setFilters({ ...filters, maxInvoiceCount: e.target.value ? Number(e.target.value) : Infinity })}
-                    placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
-                </div>
+      {/* Main Content: Sidebar + Table */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Sidebar - Sticky Filters */}
+        <div className="w-[280px] flex-shrink-0 border-r border-gray-200 bg-white flex flex-col h-full overflow-y-auto">
+          {/* Filter Header */}
+          <div className="sticky top-0 z-10 p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-blue-600" />
+                Filters
+              </h3>
+              {activeFilterCount > 0 && (
+                <button onClick={resetFilters} className="text-xs flex items-center gap-1 text-red-600 hover:text-red-800 font-medium">
+                  <X className="w-3 h-3" /> Clear ({activeFilterCount})
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Search */}
+          <div className="p-4 border-b border-gray-100" data-tour="customer-search">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Search</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                placeholder="Name, ID, email..."
+                className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              {searchQuery && (
+                <button onClick={() => { setSearchQuery(''); setIsSearching(false); setCurrentPage(0); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Customer Balance */}
+          <div className="p-4 border-b border-gray-100">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Customer Balance</label>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="number" value={filters.minBalance || ''} onChange={(e) => setFilters({ ...filters, minBalance: Number(e.target.value) || 0 })}
+                placeholder="Min" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input type="number" value={filters.maxBalance === Infinity ? '' : filters.maxBalance} onChange={(e) => setFilters({ ...filters, maxBalance: e.target.value ? Number(e.target.value) : Infinity })}
+                placeholder="Max" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+          </div>
+
+          {/* Open Invoice Count */}
+          <div className="p-4 border-b border-gray-100">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Open Invoice Count</label>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="number" value={filters.minInvoiceCount || ''} onChange={(e) => setFilters({ ...filters, minInvoiceCount: Number(e.target.value) || 0 })}
+                placeholder="Min" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input type="number" value={filters.maxInvoiceCount === Infinity ? '' : filters.maxInvoiceCount} onChange={(e) => setFilters({ ...filters, maxInvoiceCount: e.target.value ? Number(e.target.value) : Infinity })}
+                placeholder="Max" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+          </div>
+
+          {/* Invoice Amount */}
+          <div className="p-4 border-b border-gray-100">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Invoice Amount</label>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="number" value={filters.minInvoiceAmount || ''} onChange={(e) => setFilters({ ...filters, minInvoiceAmount: Number(e.target.value) || 0 })}
+                placeholder="Min" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input type="number" value={filters.maxInvoiceAmount === Infinity ? '' : filters.maxInvoiceAmount} onChange={(e) => setFilters({ ...filters, maxInvoiceAmount: e.target.value ? Number(e.target.value) : Infinity })}
+                placeholder="Max" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+          </div>
+
+          {/* Days Overdue */}
+          <div className="p-4 border-b border-gray-100">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Days Overdue</label>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="number" value={filters.minDaysOverdue || ''} onChange={(e) => setFilters({ ...filters, minDaysOverdue: Number(e.target.value) || 0 })}
+                placeholder="Min" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input type="number" value={filters.maxDaysOverdue === Infinity ? '' : filters.maxDaysOverdue} onChange={(e) => setFilters({ ...filters, maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
+                placeholder="Max" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+          </div>
+
+          {/* Invoice Date Range */}
+          <div className="p-4 border-b border-gray-100">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Invoice Date Range</label>
+            <div className="space-y-2">
+              <input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+          </div>
+
+          {/* Credit Memo Toggle */}
+          <div className="p-4 border-b border-gray-100" data-tour="customer-exclude-cm">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={excludeCreditMemos} onChange={(e) => setExcludeCreditMemos(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Exclude Credit Memos</span>
+            </label>
+          </div>
+
+          {/* Sort */}
+          <div className="p-4 border-b border-gray-100" data-tour="customer-sort">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Sort By</label>
+            <select value={filters.sortBy} onChange={(e) => setFilters({ ...filters, sortBy: e.target.value as any })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 mb-2">
+              <option value="balance">Balance</option>
+              <option value="invoice_count">Invoice Count</option>
+              <option value="max_days_overdue">Days Overdue</option>
+              <option value="avg_days_to_collect">Avg Days to Collect</option>
+              <option value="name">Customer Name</option>
+              <option value="created_at">Date Added</option>
+            </select>
+            <button onClick={() => setFilters({ ...filters, sortOrder: filters.sortOrder === 'asc' ? 'desc' : 'asc' })}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+              <ArrowUpDown className="w-3.5 h-3.5" />
+              {filters.sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+            </button>
+          </div>
+
+          {/* Summary at Bottom */}
+          <div className="mt-auto p-4 bg-gray-50 border-t border-gray-200 space-y-3" data-tour="customer-stats">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Summary</h4>
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <Users className="w-3.5 h-3.5 text-blue-500" />
+                  Customers
+                </span>
+                <span className="text-sm font-bold text-gray-900">{stats.total_customers.toLocaleString()}</span>
               </div>
-              <p className="text-[10px] font-bold text-teal-600 uppercase tracking-widest mb-2">Invoice Filters</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Invoice Amount</label>
-                  <input type="number" value={filters.minInvoiceAmount || ''} onChange={(e) => setFilters({ ...filters, minInvoiceAmount: Number(e.target.value) || 0 })}
-                    placeholder="0" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Invoice Amount</label>
-                  <input type="number" value={filters.maxInvoiceAmount === Infinity ? '' : filters.maxInvoiceAmount} onChange={(e) => setFilters({ ...filters, maxInvoiceAmount: e.target.value ? Number(e.target.value) : Infinity })}
-                    placeholder="Any" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Days Overdue</label>
-                  <input type="number" value={filters.minDaysOverdue || ''} onChange={(e) => setFilters({ ...filters, minDaysOverdue: Number(e.target.value) || 0 })}
-                    placeholder="0" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Days Overdue</label>
-                  <input type="number" value={filters.maxDaysOverdue === Infinity ? '' : filters.maxDaysOverdue} onChange={(e) => setFilters({ ...filters, maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
-                    placeholder="Any" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Invoice Date From</label>
-                  <input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-                    className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Invoice Date To</label>
-                  <input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-                    className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Sort By</label>
-                  <select value={filters.sortBy} onChange={(e) => setFilters({ ...filters, sortBy: e.target.value as any })}
-                    data-tour="customer-sort"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
-                    <option value="balance">Balance</option>
-                    <option value="invoice_count">Invoice Count</option>
-                    <option value="max_days_overdue">Days Overdue</option>
-                    <option value="avg_days_to_collect">Avg Days to Collect</option>
-                    <option value="name">Customer Name</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Order</label>
-                  <select value={filters.sortOrder} onChange={(e) => setFilters({ ...filters, sortOrder: e.target.value as 'asc' | 'desc' })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
-                    <option value="desc">Highest First</option>
-                    <option value="asc">Lowest First</option>
-                  </select>
-                </div>
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <DollarSign className="w-3.5 h-3.5 text-red-500" />
+                  Total Balance
+                </span>
+                <span className="text-sm font-bold text-red-600">
+                  ${stats.total_balance >= 1000000
+                    ? `${(stats.total_balance / 1000000).toFixed(2)}M`
+                    : stats.total_balance.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                </span>
               </div>
-              <div className="mt-3 flex items-center justify-between">
-                <button onClick={resetFilters}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all duration-200">
-                  <X size={12} /> Reset All
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <FileText className="w-3.5 h-3.5 text-emerald-500" />
+                  Open Invoices
+                </span>
+                <span className="text-sm font-bold text-gray-900">{stats.total_open_invoices.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <TrendingUp className="w-3.5 h-3.5 text-cyan-500" />
+                  Avg Balance
+                </span>
+                <span className="text-sm font-bold text-gray-900">
+                  ${stats.avg_balance.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <Clock className="w-3.5 h-3.5 text-amber-500" />
+                  With Overdue
+                </span>
+                <span className="text-sm font-bold text-amber-600">{stats.customers_with_overdue.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Content - Table */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {loading ? (
+            <div className="flex items-center justify-center flex-1">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600 mx-auto mb-4"></div>
+                <p className="text-sm text-gray-500">Loading customers...</p>
+              </div>
+            </div>
+          ) : filteredCustomers.length === 0 ? (
+            <div className="flex items-center justify-center flex-1">
+              <div className="text-center">
+                <Users className="text-gray-300 mx-auto mb-4" size={48} />
+                <p className="text-gray-500 mb-4">No customers found</p>
+                {activeFilterCount > 0 && (
+                  <button onClick={resetFilters}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-medium">
+                    Reset Filters
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Pagination */}
+              <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50/50">
+                <button onClick={goToPreviousPage} disabled={currentPage === 0}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 text-gray-600 border border-gray-200 rounded-lg text-xs">
+                  <ChevronLeft size={14} /> Prev
                 </button>
                 <span className="text-xs text-gray-500">
-                  Showing <span className="font-semibold text-gray-800">{filteredCustomers.length.toLocaleString()}</span> of {grandTotalCustomers.toLocaleString()}
+                  <span className="font-medium text-gray-700">{Math.min(currentPage * PAGE_SIZE + 1, totalCount)}-{Math.min((currentPage + 1) * PAGE_SIZE, totalCount)}</span> of {totalCount.toLocaleString()}
+                  {loadingMore && <RefreshCw size={12} className="animate-spin inline ml-1 text-blue-600" />}
                 </span>
+                <button onClick={goToNextPage} disabled={(currentPage + 1) * PAGE_SIZE >= totalCount}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 text-gray-600 border border-gray-200 rounded-lg text-xs">
+                  Next <ChevronRight size={14} />
+                </button>
               </div>
-            </div>
+
+              {/* Scrollable Table */}
+              <div className="flex-1 overflow-auto" data-tour="customer-list" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+                    <tr>
+                      <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('name')}>
+                        <div className="flex items-center gap-1.5">Customer {getSortIcon('name')}</div>
+                      </th>
+                      <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('email')}>
+                        <div className="flex items-center gap-1.5">Email {getSortIcon('email')}</div>
+                      </th>
+                      <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('invoice_count')}>
+                        <div className="flex items-center justify-end gap-1.5">Invoices {getSortIcon('invoice_count')}</div>
+                      </th>
+                      <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('balance')}>
+                        <div className="flex items-center justify-end gap-1.5">Balance {getSortIcon('balance')}</div>
+                      </th>
+                      <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('max_days_overdue')}>
+                        <div className="flex items-center justify-end gap-1.5">Overdue {getSortIcon('max_days_overdue')}</div>
+                      </th>
+                      <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('avg_days_to_collect')}>
+                        <div className="flex items-center justify-end gap-1.5">Avg Collect {getSortIcon('avg_days_to_collect')}</div>
+                      </th>
+                      <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Active</th>
+                      <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Resp.</th>
+                      <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Exclude from Payment Analytics">
+                        <div className="flex items-center justify-center gap-1"><EyeOff size={12} /><span>Pay</span></div>
+                      </th>
+                      <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Exclude from Customer Analytics">
+                        <div className="flex items-center justify-center gap-1"><EyeOff size={12} /><span>Cust</span></div>
+                      </th>
+                      <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {customers.map((customer) => {
+                      const exceedsRedThreshold = (customer.max_days_overdue || 0) >= (customer.red_threshold_days || 30);
+                      return (
+                        <tr key={customer.id} data-tour="customer-row" className={`transition-colors duration-150 ${exceedsRedThreshold ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-blue-50/40'}`}>
+                          <td className="py-2.5 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm text-gray-900 font-semibold cursor-pointer hover:text-blue-600 transition-colors"
+                                    onClick={() => {
+                                      const cid = customer.customer_id || customer.id;
+                                      if (cid) navigate(buildCustomerUrl(cid));
+                                    }}>{customer.name}</span>
+                                  {customersWithOpenTickets.has(customer.id) && (
+                                    <button onClick={() => navigate(`/collection-ticketing?customerId=${customer.id}`)}
+                                      className="flex items-center gap-0.5 px-1.5 py-0.5 bg-red-100 border border-red-200 hover:bg-red-200 rounded text-[10px] text-red-700 transition-colors">
+                                      <Ticket size={10} /> Ticket
+                                    </button>
+                                  )}
+                                  {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
+                                    <button onClick={() => handleUnpostpone(customer.id)} disabled={updating === customer.id}
+                                      className="flex items-center gap-0.5 px-1.5 py-0.5 bg-yellow-100 border border-yellow-200 hover:bg-yellow-200 rounded text-[10px] text-yellow-700 transition-colors">
+                                      <PauseCircle size={10} /> {new Date(customer.postpone_until).toLocaleDateString()}
+                                    </button>
+                                  )}
+                                </div>
+                                <span className="text-[11px] text-gray-400">{customer.customer_id || customer.id}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-4 text-sm text-gray-600 truncate max-w-[200px]">{customer.email}</td>
+                          <td className="py-2.5 px-4 text-right text-sm text-gray-800 font-medium tabular-nums">
+                            {hasInvoiceLevelFilters ? (
+                              <span title={`${customer.filtered_invoice_count || 0} of ${customer.invoice_count || 0} invoices match filters`}>
+                                <span className="text-teal-700">{customer.filtered_invoice_count || 0}</span>
+                                <span className="text-gray-400 text-xs">/{customer.invoice_count || 0}</span>
+                              </span>
+                            ) : (customer.invoice_count || 0)}
+                          </td>
+                          <td className="py-2.5 px-4 text-right text-sm text-gray-900 font-bold tabular-nums">
+                            {hasInvoiceLevelFilters ? (
+                              <span title={`$${(customer.filtered_gross_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} of $${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} matches filters`}>
+                                <span className="text-teal-700">${(customer.filtered_gross_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <span className="text-gray-400 text-xs ml-1">of ${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </span>
+                            ) : (
+                              <>${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-4 text-right">
+                            <span className={`text-sm font-semibold tabular-nums ${
+                              (customer.max_days_overdue || 0) > 90 ? 'text-red-600' :
+                              (customer.max_days_overdue || 0) > 60 ? 'text-orange-500' :
+                              (customer.max_days_overdue || 0) > 30 ? 'text-amber-500' : 'text-gray-500'
+                            }`}>{customer.max_days_overdue || 0}</span>
+                          </td>
+                          <td className="py-2.5 px-4 text-right text-sm text-gray-600 tabular-nums">
+                            {customer.avg_days_to_collect != null ? `${customer.avg_days_to_collect}d` : '--'}
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <div className="flex justify-center">
+                              <button onClick={() => handleToggleActive(customer.id, customer.is_active)} disabled={updating === customer.id}
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${customer.is_active ? 'bg-emerald-500' : 'bg-gray-300'} ${updating === customer.id ? 'opacity-50' : ''}`}>
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm`}
+                                  style={{ transform: `translateX(${customer.is_active ? '18px' : '2px'})` }} />
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <div className="flex justify-center">
+                              <button onClick={() => handleToggleResponded(customer.id, customer.responded_this_month)} disabled={updating === customer.id}
+                                className={`p-0.5 rounded transition-colors ${updating === customer.id ? 'opacity-50' : 'hover:bg-gray-100'}`}>
+                                {customer.responded_this_month ? <CheckSquare className="text-emerald-600" size={18} /> : <Square className="text-gray-400" size={18} />}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <div className="flex justify-center">
+                              <button onClick={() => togglePaymentAnalyticsExclusion(customer.customer_id || customer.id, customer.exclude_from_payment_analytics || false)}
+                                disabled={updating === customer.customer_id || updating === customer.id}
+                                className="p-0.5 rounded transition-colors hover:bg-gray-100"
+                                title={customer.exclude_from_payment_analytics ? "Excluded" : "Included"}>
+                                {customer.exclude_from_payment_analytics ? <EyeOff className="text-red-500" size={16} /> : <Eye className="text-emerald-500" size={16} />}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <div className="flex justify-center">
+                              <button onClick={() => toggleCustomerAnalyticsExclusion(customer.customer_id || customer.id, customer.exclude_from_customer_analytics || false)}
+                                disabled={updating === customer.customer_id || updating === customer.id}
+                                className="p-0.5 rounded transition-colors hover:bg-gray-100"
+                                title={customer.exclude_from_customer_analytics ? "Excluded" : "Included"}>
+                                {customer.exclude_from_customer_analytics ? <EyeOff className="text-red-500" size={16} /> : <Eye className="text-emerald-500" size={16} />}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <div className="flex justify-center gap-1">
+                              {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
+                                <button onClick={() => handleUnpostpone(customer.id)} disabled={updating === customer.id}
+                                  className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors" title="Remove Postponement">
+                                  <Play size={14} />
+                                </button>
+                              )}
+                              <button onClick={() => { setViewingSchedule({ id: customer.id, name: customer.name }); loadScheduledEmails(customer.id); }}
+                                className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="View Schedule">
+                                <Clock size={14} />
+                              </button>
+                              <button onClick={() => setViewingFiles({ id: customer.id, name: customer.name })}
+                                className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="View Files">
+                                <FileText size={14} />
+                              </button>
+                              <button onClick={() => handleEdit(customer)}
+                                className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="Edit">
+                                <Edit2 size={14} />
+                              </button>
+                              <button onClick={() => handleDelete(customer.id)}
+                                className="p-1.5 bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 rounded-lg transition-colors" title="Delete">
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Bottom */}
+              <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 border-t border-gray-100 bg-gray-50/50">
+                <button onClick={goToPreviousPage} disabled={currentPage === 0}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 text-gray-600 border border-gray-200 rounded-lg text-xs">
+                  <ChevronLeft size={14} /> Prev
+                </button>
+                <span className="text-xs text-gray-500">
+                  Page {currentPage + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
+                </span>
+                <button onClick={goToNextPage} disabled={(currentPage + 1) * PAGE_SIZE >= totalCount}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 text-gray-600 border border-gray-200 rounded-lg text-xs">
+                  Next <ChevronRight size={14} />
+                </button>
+              </div>
+            </>
           )}
         </div>
-
-        {/* Active Filter Banner */}
-        {hasActiveFilters && (
-          <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl">
-            <Filter size={14} className="text-blue-600" />
-            <span className="text-xs font-medium text-blue-700">
-              Filters active -- showing {filteredCustomers.length.toLocaleString()} of {grandTotalCustomers.toLocaleString()} customers
-            </span>
-            <button onClick={resetFilters} className="ml-auto text-xs text-blue-600 hover:text-blue-800 font-medium">Clear all</button>
-          </div>
-        )}
-
-        {/* Customers Table */}
-        {loading ? (
-          <div className="bg-white rounded-xl shadow-sm p-16 text-center border border-gray-100">
-            <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600 mx-auto mb-4"></div>
-            <p className="text-sm text-gray-500">Loading customers...</p>
-          </div>
-        ) : filteredCustomers.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm p-16 text-center border border-gray-100">
-            <Users className="text-gray-300 mx-auto mb-4" size={48} />
-            <p className="text-gray-500 mb-4">No customers found</p>
-            {activeFilterCount > 0 && (
-              <button onClick={resetFilters}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors text-sm font-medium">
-                Reset Filters
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-tour="customer-list">
-            {/* Pagination Top */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-              <button onClick={goToPreviousPage} disabled={currentPage === 0 || loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed text-gray-600 border border-gray-200 rounded-lg transition-all text-sm">
-                <ChevronLeft size={16} /> Prev
-              </button>
-              <span className="text-xs text-gray-500 flex items-center gap-2">
-                <span className="font-medium text-gray-700">
-                  {Math.min(currentPage * PAGE_SIZE + 1, totalCount)}-{Math.min((currentPage + 1) * PAGE_SIZE, totalCount)}
-                </span>
-                of {totalCount.toLocaleString()}
-                {loadingMore && (
-                  <span className="inline-flex items-center gap-1 text-blue-600">
-                    <RefreshCw size={12} className="animate-spin" /> loading more...
-                  </span>
-                )}
-              </span>
-              <button onClick={goToNextPage} disabled={(currentPage + 1) * PAGE_SIZE >= totalCount || loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed text-gray-600 border border-gray-200 rounded-lg transition-all text-sm">
-                Next <ChevronRight size={16} />
-              </button>
-            </div>
-
-            {/* Table */}
-            <div className="max-h-[calc(100vh-420px)] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-                  <tr>
-                    <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('name')}>
-                      <div className="flex items-center gap-1.5">Customer {getSortIcon('name')}</div>
-                    </th>
-                    <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('email')}>
-                      <div className="flex items-center gap-1.5">Email {getSortIcon('email')}</div>
-                    </th>
-                    <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('invoice_count')}>
-                      <div className="flex items-center justify-end gap-1.5">Invoices {getSortIcon('invoice_count')}</div>
-                    </th>
-                    <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('balance')}>
-                      <div className="flex items-center justify-end gap-1.5">Balance {getSortIcon('balance')}</div>
-                    </th>
-                    <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('max_days_overdue')}>
-                      <div className="flex items-center justify-end gap-1.5">Overdue {getSortIcon('max_days_overdue')}</div>
-                    </th>
-                    <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('avg_days_to_collect')}>
-                      <div className="flex items-center justify-end gap-1.5">Avg Collect {getSortIcon('avg_days_to_collect')}</div>
-                    </th>
-                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Active</th>
-                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Resp.</th>
-                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Exclude from Payment Analytics">
-                      <div className="flex items-center justify-center gap-1"><EyeOff size={12} /><span>Pay</span></div>
-                    </th>
-                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Exclude from Customer Analytics">
-                      <div className="flex items-center justify-center gap-1"><EyeOff size={12} /><span>Cust</span></div>
-                    </th>
-                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {customers.map((customer) => {
-                    const exceedsRedThreshold = (customer.max_days_overdue || 0) >= (customer.red_threshold_days || 30);
-                    return (
-                      <tr key={customer.id} data-tour="customer-row" className={`transition-colors duration-150 ${exceedsRedThreshold ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-blue-50/40'}`}>
-                        <td className="py-2.5 px-4">
-                          <div className="flex items-center gap-2.5">
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-sm text-gray-900 font-semibold cursor-pointer hover:text-blue-600 transition-colors"
-                                  onClick={() => {
-                                    const cid = customer.customer_id || customer.id;
-                                    if (cid) navigate(buildCustomerUrl(cid));
-                                  }}>{customer.name}</span>
-                                {customersWithOpenTickets.has(customer.id) && (
-                                  <button onClick={() => navigate(`/collection-ticketing?customerId=${customer.id}`)}
-                                    className="flex items-center gap-0.5 px-1.5 py-0.5 bg-red-100 border border-red-200 hover:bg-red-200 rounded text-[10px] text-red-700 transition-colors">
-                                    <Ticket size={10} /> Ticket
-                                  </button>
-                                )}
-                                {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
-                                  <button onClick={() => handleUnpostpone(customer.id)} disabled={updating === customer.id}
-                                    className="flex items-center gap-0.5 px-1.5 py-0.5 bg-yellow-100 border border-yellow-200 hover:bg-yellow-200 rounded text-[10px] text-yellow-700 transition-colors">
-                                    <PauseCircle size={10} /> {new Date(customer.postpone_until).toLocaleDateString()}
-                                  </button>
-                                )}
-                              </div>
-                              <span className="text-[11px] text-gray-400">{customer.customer_id || customer.id}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-4 text-sm text-gray-600 truncate max-w-[200px]">{customer.email}</td>
-                        <td className="py-2.5 px-4 text-right text-sm text-gray-800 font-medium tabular-nums">
-                          {hasInvoiceLevelFilters ? (
-                            <span title={`${customer.filtered_invoice_count || 0} of ${customer.invoice_count || 0} invoices match filters`}>
-                              <span className="text-teal-700">{customer.filtered_invoice_count || 0}</span>
-                              <span className="text-gray-400 text-xs">/{customer.invoice_count || 0}</span>
-                            </span>
-                          ) : (customer.invoice_count || 0)}
-                        </td>
-                        <td className="py-2.5 px-4 text-right text-sm text-gray-900 font-bold tabular-nums">
-                          {hasInvoiceLevelFilters ? (
-                            <span title={`$${(customer.filtered_gross_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} of $${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} matches filters`}>
-                              <span className="text-teal-700">${(customer.filtered_gross_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              <span className="text-gray-400 text-xs ml-1">of ${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            </span>
-                          ) : (
-                            <>${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-4 text-right">
-                          <span className={`text-sm font-semibold tabular-nums ${
-                            (customer.max_days_overdue || 0) > 90 ? 'text-red-600' :
-                            (customer.max_days_overdue || 0) > 60 ? 'text-orange-500' :
-                            (customer.max_days_overdue || 0) > 30 ? 'text-amber-500' : 'text-gray-500'
-                          }`}>{customer.max_days_overdue || 0}</span>
-                        </td>
-                        <td className="py-2.5 px-4 text-right text-sm text-gray-600 tabular-nums">
-                          {customer.avg_days_to_collect != null ? `${customer.avg_days_to_collect}d` : '--'}
-                        </td>
-                        <td className="py-2.5 px-4">
-                          <div className="flex justify-center">
-                            <button onClick={() => handleToggleActive(customer.id, customer.is_active)} disabled={updating === customer.id}
-                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${customer.is_active ? 'bg-emerald-500' : 'bg-gray-300'} ${updating === customer.id ? 'opacity-50' : ''}`}>
-                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm ${customer.is_active ? 'translate-x-4.5' : 'translate-x-0.5'}`}
-                                style={{ transform: `translateX(${customer.is_active ? '18px' : '2px'})` }} />
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-4">
-                          <div className="flex justify-center">
-                            <button onClick={() => handleToggleResponded(customer.id, customer.responded_this_month)} disabled={updating === customer.id}
-                              className={`p-0.5 rounded transition-colors ${updating === customer.id ? 'opacity-50' : 'hover:bg-gray-100'}`}>
-                              {customer.responded_this_month ? <CheckSquare className="text-emerald-600" size={18} /> : <Square className="text-gray-400" size={18} />}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-4">
-                          <div className="flex justify-center">
-                            <button onClick={() => togglePaymentAnalyticsExclusion(customer.customer_id || customer.id, customer.exclude_from_payment_analytics || false)}
-                              disabled={updating === customer.customer_id || updating === customer.id}
-                              className="p-0.5 rounded transition-colors hover:bg-gray-100"
-                              title={customer.exclude_from_payment_analytics ? "Excluded -- click to include" : "Included -- click to exclude"}>
-                              {customer.exclude_from_payment_analytics ? <EyeOff className="text-red-500" size={16} /> : <Eye className="text-emerald-500" size={16} />}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-4">
-                          <div className="flex justify-center">
-                            <button onClick={() => toggleCustomerAnalyticsExclusion(customer.customer_id || customer.id, customer.exclude_from_customer_analytics || false)}
-                              disabled={updating === customer.customer_id || updating === customer.id}
-                              className="p-0.5 rounded transition-colors hover:bg-gray-100"
-                              title={customer.exclude_from_customer_analytics ? "Excluded -- click to include" : "Included -- click to exclude"}>
-                              {customer.exclude_from_customer_analytics ? <EyeOff className="text-red-500" size={16} /> : <Eye className="text-emerald-500" size={16} />}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-4">
-                          <div className="flex justify-center gap-1">
-                            {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
-                              <button onClick={() => handleUnpostpone(customer.id)} disabled={updating === customer.id}
-                                className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors" title="Remove Postponement">
-                                <Play size={14} />
-                              </button>
-                            )}
-                            <button onClick={() => { setViewingSchedule({ id: customer.id, name: customer.name }); loadScheduledEmails(customer.id); }}
-                              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="View Schedule">
-                              <Clock size={14} />
-                            </button>
-                            <button onClick={() => setViewingFiles({ id: customer.id, name: customer.name })}
-                              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="View Files">
-                              <FileText size={14} />
-                            </button>
-                            <button onClick={() => handleEdit(customer)}
-                              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="Edit">
-                              <Edit2 size={14} />
-                            </button>
-                            <button onClick={() => handleDelete(customer.id)}
-                              className="p-1.5 bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 rounded-lg transition-colors" title="Delete">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Bottom */}
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
-              <button onClick={goToPreviousPage} disabled={currentPage === 0 || loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed text-gray-600 border border-gray-200 rounded-lg transition-all text-sm">
-                <ChevronLeft size={16} /> Prev
-              </button>
-              <span className="text-xs text-gray-500">
-                Page {currentPage + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
-                {loadingMore && <span className="text-blue-600 ml-1"><RefreshCw size={12} className="animate-spin inline" /></span>}
-              </span>
-              <button onClick={goToNextPage} disabled={(currentPage + 1) * PAGE_SIZE >= totalCount || loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed text-gray-600 border border-gray-200 rounded-lg transition-all text-sm">
-                Next <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
