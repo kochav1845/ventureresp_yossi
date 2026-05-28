@@ -26,7 +26,7 @@ import TicketBatchActionToolbar from './MyAssignments/TicketBatchActionToolbar';
 import BatchNoteModal from './MyAssignments/BatchNoteModal';
 import PromiseDateModal from './MyAssignments/PromiseDateModal';
 import { sortTicketsByPriority } from './MyAssignments/utils';
-import TicketSearchFilter, { TicketFilters, filterTickets } from './TicketSearchFilter';
+import TicketFilterSidebar, { TicketAdvancedFilters, emptyFilters } from './MyAssignments/TicketFilterSidebar';
 import CollectorCalendar from './MyAssignments/CollectorCalendar';
 import { format } from 'date-fns';
 import { isDatePast, formatDate as formatDateUtil } from '../lib/dateUtils';
@@ -153,30 +153,172 @@ export default function UnifiedTicketingSystem({
   } | null>(null);
 
   // Filters
-  const [filters, setFilters] = useState<TicketFilters>({
-    searchTerm: '',
-    status: '',
-    priority: '',
-    ticketType: '',
-    dateFrom: '',
-    dateTo: '',
-    assignedTo: '',
-    brokenPromise: false
-  });
+  const [advancedFilters, setAdvancedFilters] = useState<TicketAdvancedFilters>(emptyFilters);
+  const [showFilterSidebar, setShowFilterSidebar] = useState(true);
 
   // Separate closed tickets from active tickets
   const activeTickets = tickets.filter(t => t.ticket_status !== 'closed');
   const closedTickets = tickets.filter(t => t.ticket_status === 'closed');
 
-  // Apply filters
-  const filteredTickets = filterTickets(activeTickets, filters);
-  const filteredClosedTickets = filterTickets(closedTickets, filters);
-  const filteredIndividualAssignments = filterTickets(individualAssignments, filters);
+  // Apply basic + advanced filters
+  const applyAdvancedFilters = (ticketList: TicketGroup[]): TicketGroup[] => {
+    return ticketList.filter(ticket => {
+      const f = advancedFilters;
 
-  // Filter overdue tickets (only from active tickets)
-  const overdueTickets = activeTickets.filter(ticket =>
-    ticket.ticket_due_date && isDatePast(ticket.ticket_due_date.split('T')[0])
+      // Search term
+      if (f.searchTerm) {
+        const q = f.searchTerm.toLowerCase();
+        const matches = [
+          ticket.ticket_number?.toLowerCase().includes(q),
+          ticket.customer_id?.toLowerCase().includes(q),
+          ticket.customer_name?.toLowerCase().includes(q),
+          ticket.assigned_collector_name?.toLowerCase().includes(q),
+          ticket.last_note?.note_text?.toLowerCase().includes(q),
+          ticket.last_memo?.memo_text?.toLowerCase().includes(q),
+          ticket.invoices?.some(inv => inv.invoice_reference_number?.toLowerCase().includes(q)),
+        ].some(Boolean);
+        if (!matches) return false;
+      }
+
+      // Status
+      if (f.status && ticket.ticket_status !== f.status) return false;
+
+      // Priority
+      if (f.priority && ticket.ticket_priority !== f.priority) return false;
+
+      // Ticket type
+      if (f.ticketType && ticket.ticket_type !== f.ticketType) return false;
+
+      // Assigned to
+      if (f.assignedTo && ticket.assigned_collector_id !== f.assignedTo) return false;
+
+      // Broken promise
+      if (f.brokenPromise) {
+        const now = new Date(); now.setHours(0, 0, 0, 0);
+        const ticketPromiseBroken = ticket.ticket_status === 'promised' && ticket.promise_date && new Date(ticket.promise_date) < now;
+        const hasInvBroken = ticket.invoices?.some(inv => inv.promise_date && new Date(inv.promise_date) < now);
+        if (!ticketPromiseBroken && !hasInvBroken) return false;
+      }
+
+      // Created date range
+      if (f.dateFrom && ticket.ticket_created_at) {
+        if (new Date(ticket.ticket_created_at) < new Date(f.dateFrom)) return false;
+      }
+      if (f.dateTo && ticket.ticket_created_at) {
+        const to = new Date(f.dateTo); to.setHours(23, 59, 59, 999);
+        if (new Date(ticket.ticket_created_at) > to) return false;
+      }
+
+      // Due date range
+      if (f.dueDateFrom && ticket.ticket_due_date) {
+        if (new Date(ticket.ticket_due_date) < new Date(f.dueDateFrom)) return false;
+      } else if (f.dueDateFrom && !ticket.ticket_due_date) return false;
+      if (f.dueDateTo && ticket.ticket_due_date) {
+        const to = new Date(f.dueDateTo); to.setHours(23, 59, 59, 999);
+        if (new Date(ticket.ticket_due_date) > to) return false;
+      }
+
+      // Promise date range
+      if (f.promiseDateFrom && ticket.promise_date) {
+        if (new Date(ticket.promise_date) < new Date(f.promiseDateFrom)) return false;
+      } else if (f.promiseDateFrom && !ticket.promise_date) return false;
+      if (f.promiseDateTo && ticket.promise_date) {
+        const to = new Date(f.promiseDateTo); to.setHours(23, 59, 59, 999);
+        if (new Date(ticket.promise_date) > to) return false;
+      }
+
+      // Total ticket balance
+      const totalBalance = ticket.invoices.reduce((sum, inv) => sum + (inv.balance || 0), 0);
+      if (f.minTotalBalance && totalBalance < parseFloat(f.minTotalBalance)) return false;
+      if (f.maxTotalBalance && totalBalance > parseFloat(f.maxTotalBalance)) return false;
+
+      // Single invoice amount check
+      if (f.minSingleInvoice) {
+        const threshold = parseFloat(f.minSingleInvoice);
+        if (!ticket.invoices.some(inv => (inv.balance || 0) >= threshold)) return false;
+      }
+      if (f.maxSingleInvoice) {
+        const threshold = parseFloat(f.maxSingleInvoice);
+        if (!ticket.invoices.some(inv => (inv.balance || 0) <= threshold)) return false;
+      }
+
+      // Invoice count
+      const invoiceCount = ticket.invoices.length;
+      if (f.minInvoiceCount && invoiceCount < parseInt(f.minInvoiceCount)) return false;
+      if (f.maxInvoiceCount && invoiceCount > parseInt(f.maxInvoiceCount)) return false;
+
+      // Days open (from ticket creation)
+      if (f.minDaysOpen || f.maxDaysOpen) {
+        const createdAt = ticket.ticket_created_at ? new Date(ticket.ticket_created_at) : null;
+        if (createdAt) {
+          const daysOpen = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+          if (f.minDaysOpen && daysOpen < parseInt(f.minDaysOpen)) return false;
+          if (f.maxDaysOpen && daysOpen > parseInt(f.maxDaysOpen)) return false;
+        }
+      }
+
+      // Customer open balance
+      if (f.minCustomerBalance || f.maxCustomerBalance) {
+        const custBal = ticket.customer_balance || totalBalance;
+        if (f.minCustomerBalance && custBal < parseFloat(f.minCustomerBalance)) return false;
+        if (f.maxCustomerBalance && custBal > parseFloat(f.maxCustomerBalance)) return false;
+      }
+
+      // Days overdue (oldest invoice)
+      if (f.minDaysOverdue || f.maxDaysOverdue) {
+        const today = new Date();
+        let maxOverdue = 0;
+        for (const inv of ticket.invoices) {
+          if (inv.due_date) {
+            const due = new Date(inv.due_date);
+            const overdue = Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
+            if (overdue > maxOverdue) maxOverdue = overdue;
+          }
+        }
+        if (f.minDaysOverdue && maxOverdue < parseInt(f.minDaysOverdue)) return false;
+        if (f.maxDaysOverdue && maxOverdue > parseInt(f.maxDaysOverdue)) return false;
+      }
+
+      // Has notes / memos
+      if (f.hasNotes === 'yes' && (!ticket.note_count || ticket.note_count === 0)) return false;
+      if (f.hasNotes === 'no' && ticket.note_count && ticket.note_count > 0) return false;
+      if (f.hasMemos === 'yes' && (!ticket.memo_count || ticket.memo_count === 0)) return false;
+      if (f.hasMemos === 'no' && ticket.memo_count && ticket.memo_count > 0) return false;
+
+      return true;
+    });
+  };
+
+  const filteredTickets = applyAdvancedFilters(activeTickets);
+  const filteredClosedTickets = applyAdvancedFilters(closedTickets);
+
+  // Filter individual assignments using the search term from advanced filters
+  const filteredIndividualAssignments = individualAssignments.filter(inv => {
+    if (!advancedFilters.searchTerm) return true;
+    const q = advancedFilters.searchTerm.toLowerCase();
+    return (
+      inv.invoice_reference_number?.toLowerCase().includes(q) ||
+      inv.customer_name?.toLowerCase().includes(q) ||
+      inv.customer?.toLowerCase().includes(q)
+    );
+  });
+
+  // Filter overdue tickets (only from active filtered tickets)
+  const overdueTickets = applyAdvancedFilters(
+    activeTickets.filter(ticket =>
+      ticket.ticket_due_date && isDatePast(ticket.ticket_due_date.split('T')[0])
+    )
   );
+
+  // Compute total balance for display
+  const displayedTicketsBalance = useMemo(() => {
+    const displayTickets = showOnlyAssigned
+      ? filteredTickets
+      : activeTab === 'overdue' ? overdueTickets
+      : activeTab === 'closed' ? filteredClosedTickets
+      : filteredTickets;
+    return displayTickets.reduce((sum, t) => sum + t.invoices.reduce((s, inv) => s + (inv.balance || 0), 0), 0);
+  }, [filteredTickets, filteredClosedTickets, overdueTickets, activeTab, showOnlyAssigned]);
 
   const initialLoadDone = useRef(false);
   useEffect(() => {
@@ -1307,90 +1449,116 @@ export default function UnifiedTicketingSystem({
 
   const selectedCustomerData = customers.find(c => c.customer_id === selectedCustomer);
 
+  const showSidebar = showFilterSidebar && activeTab !== 'create';
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Top header bar */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             {onBack && (
               <button
                 onClick={onBack}
-                className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <ArrowLeft className="w-5 h-5" />
                 Back
               </button>
             )}
-            <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
           </div>
-        </div>
-
-        {showCalendar && <CollectorCalendar />}
-
-        <div className="bg-white rounded-lg shadow-sm mb-6">
           {!showOnlyAssigned && (
-            <div className="border-b border-gray-200">
-              <div className="flex gap-1 p-1" data-tour="ticket-tabs">
-                <button
-                  onClick={() => { setActiveTab('create'); setSelectedTickets(new Set()); }}
-                  data-tour="ticket-create"
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                    activeTab === 'create'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  <Plus className="w-5 h-5" />
-                  Create Ticket
-                </button>
-                <button
-                  onClick={() => { setActiveTab('tickets'); setSelectedTickets(new Set()); }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                    activeTab === 'tickets'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  <TicketIcon className="w-5 h-5" />
-                  Tickets ({filteredTickets.length})
-                </button>
-                <button
-                  onClick={() => { setActiveTab('individual'); setSelectedTickets(new Set()); }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                    activeTab === 'individual'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  <FileText className="w-5 h-5" />
-                  Individual Invoices ({filteredIndividualAssignments.length})
-                </button>
-                <button
-                  onClick={() => { setActiveTab('overdue'); setSelectedTickets(new Set()); }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                    activeTab === 'overdue'
-                      ? 'bg-red-600 text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  <AlertTriangle className="w-5 h-5" />
-                  Overdue Tickets ({overdueTickets.length})
-                </button>
-                <button
-                  onClick={() => { setActiveTab('closed'); setSelectedTickets(new Set()); }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                    activeTab === 'closed'
-                      ? 'bg-gray-700 text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  <Archive className="w-5 h-5" />
-                  Closed ({closedTickets.length})
-                </button>
-              </div>
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1" data-tour="ticket-tabs">
+              <button
+                onClick={() => { setActiveTab('create'); setSelectedTickets(new Set()); }}
+                data-tour="ticket-create"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'create'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-white hover:shadow-sm'
+                }`}
+              >
+                <Plus className="w-4 h-4" />
+                Create
+              </button>
+              <button
+                onClick={() => { setActiveTab('tickets'); setSelectedTickets(new Set()); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'tickets'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-white hover:shadow-sm'
+                }`}
+              >
+                <TicketIcon className="w-4 h-4" />
+                Tickets ({filteredTickets.length})
+              </button>
+              <button
+                onClick={() => { setActiveTab('individual'); setSelectedTickets(new Set()); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'individual'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-white hover:shadow-sm'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                Invoices ({filteredIndividualAssignments.length})
+              </button>
+              <button
+                onClick={() => { setActiveTab('overdue'); setSelectedTickets(new Set()); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'overdue'
+                    ? 'bg-red-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-white hover:shadow-sm'
+                }`}
+              >
+                <AlertTriangle className="w-4 h-4" />
+                Overdue ({overdueTickets.length})
+              </button>
+              <button
+                onClick={() => { setActiveTab('closed'); setSelectedTickets(new Set()); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'closed'
+                    ? 'bg-gray-700 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-white hover:shadow-sm'
+                }`}
+              >
+                <Archive className="w-4 h-4" />
+                Closed ({closedTickets.length})
+              </button>
             </div>
           )}
+        </div>
+      </div>
 
+      {showCalendar && (
+        <div className="px-6 pt-4 flex-shrink-0">
+          <CollectorCalendar />
+        </div>
+      )}
+
+      {/* Main content area - sidebar + ticket list */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Sidebar - Filter Panel */}
+        {showSidebar && (
+          <div className="w-[300px] flex-shrink-0 border-r border-gray-200 overflow-y-auto bg-white">
+            <TicketFilterSidebar
+              filters={advancedFilters}
+              onFiltersChange={setAdvancedFilters}
+              showAssignedToFilter={!showOnlyAssigned}
+              ticketCount={
+                activeTab === 'overdue' ? overdueTickets.length
+                : activeTab === 'closed' ? filteredClosedTickets.length
+                : activeTab === 'individual' ? filteredIndividualAssignments.length
+                : filteredTickets.length
+              }
+              totalBalance={displayedTicketsBalance}
+            />
+          </div>
+        )}
+
+        {/* Right Content Area */}
+        <div className="flex-1 overflow-y-auto p-6">
           {activeTab === 'create' && !showOnlyAssigned && (
             <div className="p-6">
               <h2 className="text-xl font-semibold mb-6">Create New Collection Ticket</h2>
@@ -1630,15 +1798,9 @@ export default function UnifiedTicketingSystem({
           )}
 
           {(showOnlyAssigned || activeTab === 'tickets' || activeTab === 'overdue' || activeTab === 'closed') && (
-            <div className="p-6" data-tour="ticket-search">
-              <TicketSearchFilter
-                filters={filters}
-                onFiltersChange={setFilters}
-                showAssignedToFilter={!showOnlyAssigned}
-              />
-
+            <div data-tour="ticket-search">
               {selectedInvoices.size > 0 && (
-                <div className="mt-6">
+                <div className="mb-4">
                   <BatchActionToolbar
                     selectedCount={selectedInvoices.size}
                     totalCount={totalInvoiceCount}
@@ -1653,7 +1815,7 @@ export default function UnifiedTicketingSystem({
                 </div>
               )}
 
-              <div className="mt-6 space-y-6" data-tour="ticket-list">
+              <div className="space-y-4" data-tour="ticket-list">
                 {(() => {
                   const displayTickets = showOnlyAssigned
                     ? filteredTickets
@@ -1668,12 +1830,12 @@ export default function UnifiedTicketingSystem({
                     : activeTab === 'closed'
                       ? closedTickets.length === 0
                         ? 'No closed tickets'
-                        : 'No closed tickets match your search'
+                        : 'No closed tickets match your filters'
                       : tickets.length === 0
                         ? showOnlyAssigned
                           ? 'No tickets assigned to you'
                           : 'No tickets found'
-                        : 'No tickets match your search';
+                        : 'No tickets match your filters';
 
                   return loading ? (
                     <div className="text-center py-12">
@@ -1732,14 +1894,8 @@ export default function UnifiedTicketingSystem({
           )}
 
           {activeTab === 'individual' && (
-            <div className="p-6">
-              <TicketSearchFilter
-                filters={filters}
-                onFiltersChange={setFilters}
-                showAssignedToFilter={!showOnlyAssigned}
-              />
-
-              <div className="mt-6">
+            <div>
+              <div className="mb-4">
                 <BatchActionToolbar
                   selectedCount={selectedInvoices.size}
                   totalCount={totalInvoiceCount}
@@ -1753,7 +1909,7 @@ export default function UnifiedTicketingSystem({
                 />
               </div>
 
-              <div className="mt-6 space-y-4">
+              <div className="space-y-4">
                 {filteredIndividualAssignments.length === 0 ? (
                   <div className="text-center py-12">
                     <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -1762,7 +1918,7 @@ export default function UnifiedTicketingSystem({
                         ? showOnlyAssigned
                           ? 'No individual invoices assigned to you'
                           : 'No individual invoices found'
-                        : 'No invoices match your search'
+                        : 'No invoices match your filters'
                       }
                     </p>
                   </div>
