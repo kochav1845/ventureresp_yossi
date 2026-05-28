@@ -35,7 +35,8 @@ export default function TicketBatchActionToolbar({
 
   if (selectedCount === 0) {
     return (
-      <div className="mb-4 flex items-center gap-3" data-tour="ticket-batch-actions">
+      <div className="mb-4 flex items-center gap-3 flex-wrap" data-tour="ticket-batch-actions">
+        <span className="text-sm text-gray-500">{selectedCount} invoice(s) selected</span>
         <button
           onClick={onToggleSelectAll}
           className="px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -47,37 +48,37 @@ export default function TicketBatchActionToolbar({
   }
 
   return (
-    <div className="mb-4 bg-blue-50 border-2 border-blue-300 rounded-lg p-4 sticky top-0 z-10" data-tour="ticket-batch-actions">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-4">
-          <span className="font-semibold text-blue-900">
+    <div className="mb-4 bg-blue-50 border-2 border-blue-300 rounded-lg p-3 sticky top-0 z-10" data-tour="ticket-batch-actions">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="font-semibold text-blue-900 text-sm whitespace-nowrap">
             {selectedCount} ticket{selectedCount !== 1 ? 's' : ''} selected
           </span>
           <button
             onClick={onToggleSelectAll}
-            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
           >
             {selectedCount === totalCount ? 'Deselect All' : 'Select All'}
           </button>
           <button
             onClick={onClearSelection}
-            className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+            className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 whitespace-nowrap"
           >
             <X className="w-3.5 h-3.5" />
             Clear
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div className="relative">
             <button
               onClick={() => { setShowStatusMenu(!showStatusMenu); setShowPriorityMenu(false); }}
               disabled={processing}
-              className="px-4 py-2 bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 font-medium flex items-center gap-2 disabled:opacity-50 text-sm"
+              className="px-3 py-1.5 bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 font-medium flex items-center gap-1.5 disabled:opacity-50 text-sm whitespace-nowrap"
             >
-              <Edit3 className="w-4 h-4" />
+              <Edit3 className="w-3.5 h-3.5" />
               Change Status
-              <ChevronDown className="w-3.5 h-3.5" />
+              <ChevronDown className="w-3 h-3" />
             </button>
 
             {showStatusMenu && (
@@ -108,11 +109,11 @@ export default function TicketBatchActionToolbar({
             <button
               onClick={() => { setShowPriorityMenu(!showPriorityMenu); setShowStatusMenu(false); }}
               disabled={processing}
-              className="px-4 py-2 bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 font-medium flex items-center gap-2 disabled:opacity-50 text-sm"
+              className="px-3 py-1.5 bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 font-medium flex items-center gap-1.5 disabled:opacity-50 text-sm whitespace-nowrap"
             >
-              <AlertTriangle className="w-4 h-4" />
+              <AlertTriangle className="w-3.5 h-3.5" />
               Change Priority
-              <ChevronDown className="w-3.5 h-3.5" />
+              <ChevronDown className="w-3 h-3" />
             </button>
 
             {showPriorityMenu && (
@@ -138,7 +139,7 @@ export default function TicketBatchActionToolbar({
       </div>
 
       {processing && (
-        <div className="mt-3 flex items-center gap-2 text-sm text-blue-700">
+        <div className="mt-2 flex items-center gap-2 text-sm text-blue-700">
           <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
           Updating tickets...
         </div>

@@ -1637,19 +1637,21 @@ export default function UnifiedTicketingSystem({
                 showAssignedToFilter={!showOnlyAssigned}
               />
 
-              <div className="mt-6">
-                <BatchActionToolbar
-                  selectedCount={selectedInvoices.size}
-                  totalCount={totalInvoiceCount}
-                  showBatchColorMenu={showBatchColorMenu}
-                  colorOptions={colorOptions}
-                  processingBatch={processingBatch}
-                  onToggleSelectAll={toggleSelectAll}
-                  onToggleBatchColorMenu={() => setShowBatchColorMenu(!showBatchColorMenu)}
-                  onBatchColorChange={handleBatchColorChange}
-                  onBatchAddNote={() => setShowBatchNoteModal(true)}
-                />
-              </div>
+              {selectedInvoices.size > 0 && (
+                <div className="mt-6">
+                  <BatchActionToolbar
+                    selectedCount={selectedInvoices.size}
+                    totalCount={totalInvoiceCount}
+                    showBatchColorMenu={showBatchColorMenu}
+                    colorOptions={colorOptions}
+                    processingBatch={processingBatch}
+                    onToggleSelectAll={toggleSelectAll}
+                    onToggleBatchColorMenu={() => setShowBatchColorMenu(!showBatchColorMenu)}
+                    onBatchColorChange={handleBatchColorChange}
+                    onBatchAddNote={() => setShowBatchNoteModal(true)}
+                  />
+                </div>
+              )}
 
               <div className="mt-6 space-y-6" data-tour="ticket-list">
                 {(() => {
