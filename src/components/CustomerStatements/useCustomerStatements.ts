@@ -31,12 +31,12 @@ export function useCustomerStatements() {
   const [sortField, setSortField] = useState<SortField>('balance');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showTestCustomers, setShowTestCustomers] = useState(false);
   const [invoiceCache, setInvoiceCache] = useState<Record<string, StatementInvoice[]>>({});
   const [loadingInvoices, setLoadingInvoices] = useState<string | null>(null);
   const abortRef = useRef(0);
 
-  const loadData = useCallback(async (testMode: boolean) => {
+  const loadData = useCallback(async () => {
+    const testMode = false;
     const loadId = ++abortRef.current;
     setLoading(true);
     setLoadingMore(false);
@@ -200,9 +200,9 @@ export function useCustomerStatements() {
   }, []);
 
   useEffect(() => {
-    loadData(showTestCustomers);
+    loadData();
     loadTemplates();
-  }, [loadData, loadTemplates, showTestCustomers]);
+  }, [loadData, loadTemplates]);
 
   const filtered = (() => {
     let list = customers.filter(c => c.total_balance >= minBalance);
@@ -248,14 +248,6 @@ export function useCustomerStatements() {
     }
   };
 
-  const handleToggleTestCustomers = (value: boolean) => {
-    abortRef.current++;
-    setSelectedIds(new Set());
-    setSearch('');
-    setInvoiceCache({});
-    setShowTestCustomers(value);
-  };
-
   return {
     customers: filtered,
     loading,
@@ -279,8 +271,6 @@ export function useCustomerStatements() {
     setSortOrder,
     expandedId,
     toggleExpand,
-    showTestCustomers,
-    toggleTestCustomers: handleToggleTestCustomers,
     ensureInvoicesLoaded,
   };
 }
