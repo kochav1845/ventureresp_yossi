@@ -824,432 +824,379 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-8">
-      <button
-        onClick={handleBack}
-        className="mb-6 flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-      >
-        <ArrowLeft className="w-5 h-5 mr-2" />
-        Back to Customers
-      </button>
-
-      <div className="bg-white rounded-lg shadow-md p-8 mb-6" data-tour="detail-header">
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">{customer.customer_name}</h1>
-            <p className="text-gray-600">Customer ID: {customer.customer_id}</p>
-            <p className="text-gray-600">Class: {customer.customer_class || 'N/A'}</p>
-          </div>
-          <div className="flex flex-col gap-2 text-right">
-            <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(customer.customer_status)}`}>
-              {customer.customer_status || 'Unknown'}
-            </span>
-            <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-              customer.customer_type === 'test' ? 'bg-purple-100 text-purple-800' :
-              customer.customer_type === 'internal' ? 'bg-gray-100 text-gray-800' :
-              'bg-blue-100 text-blue-800'
-            }`}>
-              {customer.customer_type || 'live'}
-            </span>
-            <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-              customer.contact_status === 'touched' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
-            }`}>
-              {customer.contact_status === 'touched' ? '✓ Contacted' : 'Not Contacted'}
-            </span>
-          </div>
-        </div>
-
-
-        {/* Additional Customer Info */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
-          <div>
-            <p className="text-xs text-gray-500 font-medium">Last Contact Date</p>
-            <p className="text-sm text-gray-900 font-medium">
-              {customer.last_contact_date ? formatDateUtil(customer.last_contact_date) : 'Never'}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 font-medium">Last Order Date</p>
-            <p className="text-sm text-gray-900 font-medium">
-              {customer.last_order_date ? formatDateUtil(customer.last_order_date) : 'N/A'}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 font-medium">Auto-Red Threshold</p>
-            <p className="text-sm text-gray-900 font-medium">
-              {(customer as any).days_from_invoice_threshold || 30} days from invoice
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 font-medium">Customer Notes</p>
-            <p className="text-sm text-gray-900 font-medium">
-              {customerNotes.length} note{customerNotes.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end mb-3">
-          <label className="inline-flex items-center gap-2 cursor-pointer px-3 py-1.5 bg-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
-            <input
-              type="checkbox"
-              checked={excludeCreditMemos}
-              onChange={(e) => setExcludeCreditMemos(e.target.checked)}
-              className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-            />
-            <span className="text-sm font-medium text-gray-700">Exclude Credit Memos</span>
-          </label>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-          <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <DollarSign className="w-8 h-8 text-red-600" />
-            </div>
-            <p className="text-sm text-red-600 font-medium mb-1">Current Balance Owed</p>
-            <p className="text-2xl font-bold text-red-900">{formatCurrency(currentBalance)}</p>
-            <div className="mt-2 space-y-1">
-              <div className="flex justify-between text-xs">
-                <span className="text-red-700 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                  Open ({customer?.open_invoice_count || 0})
-                </span>
-                <span className="font-medium text-red-800">
-                  {formatCurrency((customer?.gross_balance || 0) - (customer?.balanced_invoice_balance || 0))}
-                </span>
-              </div>
-              {(customer?.balanced_invoice_count || 0) > 0 && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-amber-700 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                    Balanced ({customer.balanced_invoice_count})
-                  </span>
-                  <span className="font-medium text-amber-800">
-                    {formatCurrency(customer.balanced_invoice_balance || 0)}
-                  </span>
-                </div>
-              )}
-              {!excludeCreditMemos && (customer?.credit_memo_balance || 0) > 0 && (
-                <div className="flex justify-between text-xs border-t border-red-200 pt-1">
-                  <span className="text-red-600">Credit Memos applied</span>
-                  <span className="font-medium text-red-600">-{formatCurrency(customer.credit_memo_balance || 0)}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <TrendingUp className="w-8 h-8 text-green-600" />
-            </div>
-            <p className="text-sm text-green-600 font-medium mb-1">Total Paid (Lifetime)</p>
-            <p className="text-2xl font-bold text-green-900">{formatCurrency(totalPaid)}</p>
-            <p className="text-xs text-green-700 mt-1">{paymentCount} payment{paymentCount !== 1 ? 's' : ''}</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <FileText className="w-8 h-8 text-blue-600" />
-            </div>
-            <p className="text-sm text-blue-600 font-medium mb-1">Total Invoiced</p>
-            <p className="text-2xl font-bold text-blue-900">{formatCurrency(totalInvoiced)}</p>
-            <p className="text-xs text-blue-700 mt-1">{invoiceCounts.total} total invoice{invoiceCounts.total !== 1 ? 's' : ''}</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <Calendar className="w-8 h-8 text-yellow-600" />
-            </div>
-            <p className="text-sm text-yellow-600 font-medium mb-1">Oldest Open Invoice</p>
-            {oldestOpenInvoice ? (
-              <>
-                <p className="text-sm font-bold text-yellow-900">{formatDateUtil(oldestOpenInvoice.date)}</p>
-                <p className="text-xs text-yellow-700 mt-1">Ref: {oldestOpenInvoice.reference_number}</p>
-                <p className="text-xs text-yellow-700">{formatCurrency(oldestOpenInvoice.balance)}</p>
-              </>
-            ) : (
-              <p className="text-sm text-yellow-900">No open invoices</p>
-            )}
-          </div>
-
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <Clock className="w-8 h-8 text-purple-600" />
-            </div>
-            <p className="text-sm text-purple-600 font-medium mb-1">Avg Days to Collect</p>
-            {avgDaysToCollect !== null ? (
-              <>
-                <p className="text-2xl font-bold text-purple-900">{avgDaysToCollect} days</p>
-                <p className="text-xs text-purple-700 mt-1">From invoice to payment</p>
-              </>
-            ) : (
-              <p className="text-sm text-purple-900">No payment history</p>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6 pt-6 border-t">
-          <div>
-            <p className="text-sm text-gray-500">Email</p>
-            <p className="font-medium text-gray-900">{customer.email_address || 'N/A'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Location</p>
-            <p className="font-medium text-gray-900">{customer.city || 'N/A'}, {customer.country || 'N/A'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Payment Terms</p>
-            <p className="font-medium text-gray-900">{customer.terms || 'N/A'}</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Top Navigation Bar */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-20">
+        <div className="max-w-[1600px] mx-auto px-6 py-3 flex items-center justify-between">
+          <button
+            onClick={handleBack}
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Customers
+          </button>
+          <div className="flex items-center gap-3">
+            <label className="inline-flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
+              <input
+                type="checkbox"
+                checked={excludeCreditMemos}
+                onChange={(e) => setExcludeCreditMemos(e.target.checked)}
+                className="w-3.5 h-3.5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-xs font-medium text-gray-600">Exclude Credit Memos</span>
+            </label>
           </div>
         </div>
       </div>
 
-      {/* Collection Tickets Section */}
-      {loadingTickets ? (
-        <div className="bg-white rounded-lg shadow-md p-8 mb-6">
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="ml-3 text-gray-600">Loading tickets...</p>
+      <div className="max-w-[1600px] mx-auto px-6 py-6 space-y-6">
+        {/* Customer Header Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-tour="detail-header">
+          <div className="p-6 pb-0">
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 mb-1">
+                  <h1 className="text-2xl font-bold text-gray-900 truncate">{customer.customer_name}</h1>
+                  <span className={`shrink-0 px-2.5 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(customer.customer_status)}`}>
+                    {customer.customer_status || 'Unknown'}
+                  </span>
+                  {customer.contact_status === 'touched' ? (
+                    <span className="shrink-0 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
+                      Contacted
+                    </span>
+                  ) : (
+                    <span className="shrink-0 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200">
+                      Not Contacted
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-500">
+                  ID: {customer.customer_id}
+                  {customer.customer_class && <span className="ml-3">Class: {customer.customer_class}</span>}
+                  {customer.terms && <span className="ml-3">Terms: {customer.terms}</span>}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Contact Info Bar */}
+          <div className="px-6 py-3 mt-4 bg-gray-50 border-t border-gray-100 flex flex-wrap items-center gap-6 text-sm">
+            {customer.email_address && (
+              <a href={`mailto:${customer.email_address}`} className="flex items-center gap-1.5 text-gray-700 hover:text-blue-600 transition-colors">
+                <Send className="w-3.5 h-3.5" />
+                <span>{customer.email_address}</span>
+              </a>
+            )}
+            {customer.phone1 && (
+              <span className="flex items-center gap-1.5 text-gray-700">
+                <span className="text-gray-400">|</span>
+                {customer.phone1}
+              </span>
+            )}
+            {(customer.city || customer.state) && (
+              <span className="flex items-center gap-1.5 text-gray-700">
+                <span className="text-gray-400">|</span>
+                {[customer.city, customer.state].filter(Boolean).join(', ')}
+              </span>
+            )}
+            {customer.last_contact_date && (
+              <span className="flex items-center gap-1.5 text-gray-500 ml-auto text-xs">
+                <Clock className="w-3 h-3" />
+                Last contact: {formatDateUtil(customer.last_contact_date)}
+              </span>
+            )}
           </div>
         </div>
-      ) : tickets.length > 0 && (
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center">
-              <Ticket className="w-6 h-6 text-blue-600 mr-2" />
-              <h2 className="text-2xl font-bold text-gray-900">Collection Tickets</h2>
-              {tickets.filter(t => t.status !== 'closed').length > 0 && (
-                <span className="ml-3 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-                  {tickets.filter(t => t.status !== 'closed').length} open
-                </span>
+
+        {/* Financial Summary Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
+                <DollarSign className="w-4 h-4 text-red-600" />
+              </div>
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Balance Due</span>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(currentBalance)}</p>
+            <div className="mt-2 space-y-1">
+              <div className="flex justify-between text-xs text-gray-600">
+                <span>Open ({customer?.open_invoice_count || 0})</span>
+                <span className="font-medium">{formatCurrency((customer?.gross_balance || 0) - (customer?.balanced_invoice_balance || 0))}</span>
+              </div>
+              {(customer?.balanced_invoice_count || 0) > 0 && (
+                <div className="flex justify-between text-xs text-gray-600">
+                  <span>Balanced ({customer.balanced_invoice_count})</span>
+                  <span className="font-medium">{formatCurrency(customer.balanced_invoice_balance || 0)}</span>
+                </div>
               )}
-              {tickets.filter(t => t.status === 'closed').length > 0 && (
-                <span className="ml-2 px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm font-medium">
-                  {tickets.filter(t => t.status === 'closed').length} closed
-                </span>
+              {!excludeCreditMemos && (customer?.credit_memo_balance || 0) > 0 && (
+                <div className="flex justify-between text-xs text-green-700 border-t border-gray-100 pt-1 mt-1">
+                  <span>Credit Memos</span>
+                  <span className="font-medium">-{formatCurrency(customer.credit_memo_balance || 0)}</span>
+                </div>
               )}
             </div>
           </div>
 
-          {tickets.filter(t => t.status !== 'closed').length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
+                <TrendingUp className="w-4 h-4 text-green-600" />
+              </div>
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Paid</span>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalPaid)}</p>
+            <p className="text-xs text-gray-500 mt-1">{paymentCount} payment{paymentCount !== 1 ? 's' : ''} lifetime</p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                <FileText className="w-4 h-4 text-blue-600" />
+              </div>
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Invoiced</span>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalInvoiced)}</p>
+            <p className="text-xs text-gray-500 mt-1">{invoiceCounts.total} total invoice{invoiceCounts.total !== 1 ? 's' : ''}</p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+                <Calendar className="w-4 h-4 text-amber-600" />
+              </div>
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Oldest Open</span>
+            </div>
+            {oldestOpenInvoice ? (
+              <>
+                <p className="text-lg font-bold text-gray-900">{formatDateUtil(oldestOpenInvoice.date)}</p>
+                <p className="text-xs text-gray-500 mt-1">{oldestOpenInvoice.reference_number} - {formatCurrency(oldestOpenInvoice.balance)}</p>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500 mt-1">All paid up</p>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
+                <Clock className="w-4 h-4 text-teal-600" />
+              </div>
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Avg Collection</span>
+            </div>
+            {avgDaysToCollect !== null ? (
+              <>
+                <p className="text-2xl font-bold text-gray-900">{avgDaysToCollect}<span className="text-sm font-normal text-gray-500 ml-1">days</span></p>
+                <p className="text-xs text-gray-500 mt-1">Invoice to payment</p>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500 mt-1">No history</p>
+            )}
+          </div>
+        </div>
+
+        {/* Color Status Quick Filters */}
+        {(invoiceColorCounts.red > 0 || invoiceColorCounts.yellow > 0 || invoiceColorCounts.green > 0) && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-500 mr-1">Status:</span>
+            {invoiceColorCounts.red > 0 && (
+              <button
+                onClick={() => handleColorClick('red')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  advancedFilters.colorStatus === 'red' ? 'bg-red-600 text-white shadow-sm' : 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-current opacity-70"></span>
+                Red ({invoiceColorCounts.red})
+              </button>
+            )}
+            {invoiceColorCounts.yellow > 0 && (
+              <button
+                onClick={() => handleColorClick('yellow')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  advancedFilters.colorStatus === 'yellow' ? 'bg-amber-500 text-white shadow-sm' : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-current opacity-70"></span>
+                Yellow ({invoiceColorCounts.yellow})
+              </button>
+            )}
+            {invoiceColorCounts.green > 0 && (
+              <button
+                onClick={() => handleColorClick('green')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  advancedFilters.colorStatus === 'green' ? 'bg-green-600 text-white shadow-sm' : 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-current opacity-70"></span>
+                Green ({invoiceColorCounts.green})
+              </button>
+            )}
+            {advancedFilters.colorStatus && (
+              <button
+                onClick={clearColorFilter}
+                className="text-xs text-gray-500 hover:text-gray-700 ml-1 underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Collection Tickets - Compact inline section */}
+        {!loadingTickets && tickets.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Ticket className="w-5 h-5 text-blue-600" />
+                <h2 className="text-base font-semibold text-gray-900">Collection Tickets</h2>
+                {tickets.filter(t => t.status !== 'closed').length > 0 && (
+                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold border border-blue-200">
+                    {tickets.filter(t => t.status !== 'closed').length} active
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="divide-y divide-gray-50">
               {tickets.filter(t => t.status !== 'closed').map((ticket) => (
                 <div
                   key={ticket.id}
                   onClick={() => handleTicketClick(ticket.id)}
-                  className="border border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-blue-400 transition-all cursor-pointer bg-gradient-to-br from-white to-gray-50"
+                  className="px-6 py-3 flex items-center gap-4 hover:bg-gray-50 cursor-pointer transition-colors group"
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center">
-                      <Ticket className="w-5 h-5 text-blue-600 mr-2" />
-                      <span className="font-bold text-gray-900">{ticket.ticket_number}</span>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-gray-400" />
-                  </div>
-
-                  <div className="space-y-2 mb-3">
-                    <div className="flex items-center justify-between">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        ticket.status === 'open' ? 'bg-blue-100 text-blue-800' :
-                        ticket.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
-                        ticket.status === 'resolved' ? 'bg-green-100 text-green-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {ticket.status.replace('_', ' ')}
-                      </span>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        ticket.priority === 'urgent' ? 'bg-red-100 text-red-800' :
-                        ticket.priority === 'high' ? 'bg-orange-100 text-orange-800' :
-                        ticket.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {ticket.priority}
-                      </span>
-                    </div>
-
-                    {ticket.assigned_collector_id && (
-                      <div className="flex items-center text-sm text-gray-600 bg-gray-50 rounded px-2 py-1">
-                        <User className="w-4 h-4 mr-1 text-blue-600" />
-                        <span className="font-medium">{ticket.collector_name || ticket.collector_email}</span>
-                      </div>
-                    )}
-
-                    {!ticket.assigned_collector_id && (
-                      <div className="flex items-center text-sm text-gray-400 bg-gray-50 rounded px-2 py-1">
-                        <User className="w-4 h-4 mr-1" />
-                        <span className="italic">Unassigned</span>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <div className="flex items-center">
-                        <FileText className="w-3 h-3 mr-1" />
-                        <span>{ticket.invoice_count} invoice{ticket.invoice_count !== 1 ? 's' : ''}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <Clock className="w-3 h-3 mr-1" />
-                        <span>{formatDateUtil(ticket.created_at)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {ticket.notes && (
-                    <div className="pt-2 border-t border-gray-200">
-                      <p className="text-xs text-gray-600 line-clamp-2">{ticket.notes}</p>
-                    </div>
+                  <span className="text-sm font-semibold text-gray-900 w-28 shrink-0">{ticket.ticket_number}</span>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium shrink-0 ${
+                    ticket.status === 'open' ? 'bg-blue-50 text-blue-700' :
+                    ticket.status === 'promised' ? 'bg-amber-50 text-amber-700' :
+                    ticket.status === 'pending' ? 'bg-gray-100 text-gray-700' :
+                    'bg-green-50 text-green-700'
+                  }`}>
+                    {ticket.status}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium shrink-0 ${
+                    ticket.priority === 'urgent' ? 'bg-red-50 text-red-700' :
+                    ticket.priority === 'high' ? 'bg-orange-50 text-orange-700' :
+                    'bg-gray-50 text-gray-600'
+                  }`}>
+                    {ticket.priority}
+                  </span>
+                  <span className="text-xs text-gray-500 shrink-0">
+                    {ticket.invoice_count} inv.
+                  </span>
+                  {ticket.assigned_collector_id && (
+                    <span className="text-xs text-gray-600 truncate">
+                      <User className="w-3 h-3 inline mr-1" />
+                      {ticket.collector_name || 'Assigned'}
+                    </span>
                   )}
+                  <span className="text-xs text-gray-400 ml-auto shrink-0">{formatDateUtil(ticket.created_at)}</span>
+                  <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-600 transition-colors shrink-0" />
                 </div>
               ))}
-            </div>
-          )}
-
-          {tickets.filter(t => t.status === 'closed').length > 0 && (
-            <div className={tickets.filter(t => t.status !== 'closed').length > 0 ? 'mt-6 pt-4 border-t border-gray-200' : ''}>
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Closed Tickets</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {tickets.filter(t => t.status === 'closed').map((ticket) => (
-                  <div
-                    key={ticket.id}
-                    onClick={() => handleTicketClick(ticket.id, true)}
-                    className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50 opacity-70 cursor-pointer hover:opacity-100 transition-opacity"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center">
-                        <Ticket className="w-5 h-5 text-gray-400 mr-2" />
-                        <span className="font-bold text-gray-500">{ticket.ticket_number}</span>
-                      </div>
-                      <span className="px-2 py-0.5 bg-gray-200 text-gray-600 rounded text-xs font-medium">Closed</span>
+              {tickets.filter(t => t.status === 'closed').length > 0 && (
+                <details className="group">
+                  <summary className="px-6 py-2 text-xs font-medium text-gray-400 uppercase tracking-wide cursor-pointer hover:text-gray-600 list-none flex items-center gap-1">
+                    <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                    {tickets.filter(t => t.status === 'closed').length} closed ticket{tickets.filter(t => t.status === 'closed').length !== 1 ? 's' : ''}
+                  </summary>
+                  {tickets.filter(t => t.status === 'closed').map((ticket) => (
+                    <div
+                      key={ticket.id}
+                      onClick={() => handleTicketClick(ticket.id, true)}
+                      className="px-6 py-2.5 flex items-center gap-4 hover:bg-gray-50 cursor-pointer transition-colors opacity-60 hover:opacity-100"
+                    >
+                      <span className="text-sm font-medium text-gray-500 w-28 shrink-0">{ticket.ticket_number}</span>
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">closed</span>
+                      <span className="text-xs text-gray-400 shrink-0">{ticket.invoice_count} inv.</span>
+                      <span className="text-xs text-gray-400 ml-auto">{formatDateUtil(ticket.created_at)}</span>
                     </div>
-
-                    <div className="space-y-2">
-                      {ticket.assigned_collector_id && (
-                        <div className="flex items-center text-sm text-gray-500 bg-gray-100 rounded px-2 py-1">
-                          <User className="w-4 h-4 mr-1" />
-                          <span>{ticket.collector_name || ticket.collector_email}</span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between text-xs text-gray-400">
-                        <div className="flex items-center">
-                          <FileText className="w-3 h-3 mr-1" />
-                          <span>{ticket.invoice_count} invoice{ticket.invoice_count !== 1 ? 's' : ''}</span>
-                        </div>
-                        <div className="flex items-center">
-                          <Clock className="w-3 h-3 mr-1" />
-                          <span>{formatDateUtil(ticket.created_at)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </details>
+              )}
             </div>
-          )}
-        </div>
-      )}
-
-      {/* Customer Timeline Chart */}
-      {loadingChart ? (
-        <div className="bg-white rounded-lg shadow-md p-8">
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="ml-3 text-gray-600">Loading timeline chart...</p>
           </div>
-        </div>
-      ) : (
+        )}
+
+        {/* Timeline Chart */}
         <CustomerTimelineChart
           customerId={customerId}
           customerName={customer.customer_name}
         />
-      )}
 
-      <div className="bg-white rounded-lg shadow-md mt-6">
-        <div className="border-b border-gray-200" data-tour="detail-tabs">
-          <nav className="flex">
-            <button
-              onClick={() => {
-                setActiveTab('open-invoices');
-                if (advancedFilters.colorStatus || advancedFilters.invoiceStatus) {
-                  setAdvancedFilters(prev => ({ ...prev, colorStatus: '', invoiceStatus: '' }));
-                }
-              }}
-              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'open-invoices'
-                  ? 'border-red-600 text-red-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center">
-                <FileText className="w-4 h-4 mr-2" />
-                Open ({displayedInvoices.length} / {invoiceCounts.open})
-              </div>
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('balanced-invoices');
-                if (advancedFilters.invoiceStatus) {
-                  setAdvancedFilters(prev => ({ ...prev, invoiceStatus: '' }));
-                }
-              }}
-              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'balanced-invoices'
-                  ? 'border-amber-600 text-amber-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center">
-                <PauseCircle className="w-4 h-4 mr-2" />
-                Balanced / Draft ({invoiceCounts.balanced})
-              </div>
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('paid-invoices');
-                if (advancedFilters.invoiceStatus) {
-                  setAdvancedFilters(prev => ({ ...prev, invoiceStatus: '' }));
-                }
-              }}
-              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'paid-invoices'
-                  ? 'border-green-600 text-green-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center">
-                <TrendingDown className="w-4 h-4 mr-2" />
-                Paid Invoices ({displayedInvoices.length} / {invoiceCounts.paid})
-              </div>
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('payments');
-                loadPaymentsData();
-              }}
-              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'payments'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center">
-                <CreditCard className="w-4 h-4 mr-2" />
-                Payment History ({paymentCount})
-              </div>
-            </button>
-            <button
-              onClick={() => setActiveTab('email-tracking')}
-              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'email-tracking'
-                  ? 'border-teal-600 text-teal-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center">
-                <Calendar className="w-4 h-4 mr-2" />
+        {/* Tabs Section */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="border-b border-gray-200" data-tour="detail-tabs">
+            <nav className="flex overflow-x-auto">
+              <button
+                onClick={() => {
+                  setActiveTab('open-invoices');
+                  if (advancedFilters.colorStatus || advancedFilters.invoiceStatus) {
+                    setAdvancedFilters(prev => ({ ...prev, colorStatus: '', invoiceStatus: '' }));
+                  }
+                }}
+                className={`px-5 py-3.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === 'open-invoices'
+                    ? 'border-red-500 text-red-600 bg-red-50/50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Open ({invoiceCounts.open})
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('balanced-invoices');
+                  if (advancedFilters.invoiceStatus) {
+                    setAdvancedFilters(prev => ({ ...prev, invoiceStatus: '' }));
+                  }
+                }}
+                className={`px-5 py-3.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === 'balanced-invoices'
+                    ? 'border-amber-500 text-amber-600 bg-amber-50/50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Balanced ({invoiceCounts.balanced})
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('paid-invoices');
+                  if (advancedFilters.invoiceStatus) {
+                    setAdvancedFilters(prev => ({ ...prev, invoiceStatus: '' }));
+                  }
+                }}
+                className={`px-5 py-3.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === 'paid-invoices'
+                    ? 'border-green-500 text-green-600 bg-green-50/50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Paid ({invoiceCounts.paid})
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('payments');
+                  loadPaymentsData();
+                }}
+                className={`px-5 py-3.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === 'payments'
+                    ? 'border-blue-500 text-blue-600 bg-blue-50/50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Payments ({paymentCount})
+              </button>
+              <button
+                onClick={() => setActiveTab('email-tracking')}
+                className={`px-5 py-3.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === 'email-tracking'
+                    ? 'border-teal-500 text-teal-600 bg-teal-50/50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
                 Email Tracking
-              </div>
-            </button>
-          </nav>
-        </div>
+              </button>
+            </nav>
+          </div>
 
         <div className="p-6" data-tour="detail-filters">
           <InvoiceFilterPanel
@@ -1785,104 +1732,86 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         </div>
       </div>
 
-      {/* Customer Notes & Memos Section - Always Visible */}
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="flex items-center mb-4">
-          <MessageSquare className="w-6 h-6 text-purple-600 mr-2" />
-          <h2 className="text-2xl font-bold text-gray-900">Customer Notes & Memos</h2>
-          <span className="ml-3 px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
-            {customerNotes.length} note{customerNotes.length !== 1 ? 's' : ''}
-          </span>
-        </div>
+        {/* Customer Notes Section */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <MessageSquare className="w-5 h-5 text-gray-600" />
+              <h2 className="text-base font-semibold text-gray-900">Notes</h2>
+              <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
+                {customerNotes.length}
+              </span>
+            </div>
+          </div>
 
-        <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-lg" data-tour="detail-notes">
-          <h3 className="text-lg font-semibold text-purple-900 mb-2">Add New Note</h3>
-          <p className="text-sm text-purple-700 mb-4">
-            Record internal information about this customer - outreach attempts, payment discussions, promises to pay, and more.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div className="md:col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Note Type</label>
+          <div className="p-6" data-tour="detail-notes">
+            <div className="flex gap-4 mb-6">
               <select
                 value={noteType}
                 onChange={(e) => setNoteType(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-40 shrink-0 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="general">General Note</option>
-                <option value="outreach">Outreach Attempt</option>
+                <option value="general">General</option>
+                <option value="outreach">Outreach</option>
                 <option value="payment_discussion">Payment Discussion</option>
                 <option value="promise_to_pay">Promise to Pay</option>
                 <option value="dispute">Dispute</option>
                 <option value="other">Other</option>
               </select>
+              <div className="flex-1 flex gap-2">
+                <input
+                  type="text"
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && newNote.trim()) handleSaveNote(); }}
+                  placeholder="Add a note about this customer..."
+                  className="flex-1 px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <button
+                  onClick={handleSaveNote}
+                  disabled={!newNote.trim() || savingNote}
+                  className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                >
+                  {savingNote ? 'Saving...' : 'Add'}
+                </button>
+              </div>
             </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
-              <textarea
-                value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                placeholder="Type your note here..."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-            </div>
-          </div>
-
-          <button
-            onClick={handleSaveNote}
-            disabled={!newNote.trim() || savingNote}
-            className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            <Send className="w-4 h-4 mr-2" />
-            {savingNote ? 'Saving Note...' : 'Save Note'}
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          <h4 className="text-lg font-semibold text-gray-900 border-b pb-2">Note History</h4>
-
-          {customerNotes.length === 0 ? (
-            <div className="text-center py-8">
-              <MessageSquare className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500 font-medium">No notes yet</p>
-              <p className="text-sm text-gray-400 mt-2">Add your first note above to start tracking customer interactions</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {customerNotes.map((note) => (
-                <div key={note.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center space-x-2 flex-wrap">
-                      <User className="w-4 h-4 text-gray-600" />
-                      <span className="text-sm font-medium text-gray-900">
-                        {note.created_by_user_name || note.created_by_user_email}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        note.note_type === 'outreach' ? 'bg-blue-100 text-blue-800' :
-                        note.note_type === 'payment_discussion' ? 'bg-green-100 text-green-800' :
-                        note.note_type === 'promise_to_pay' ? 'bg-yellow-100 text-yellow-800' :
-                        note.note_type === 'dispute' ? 'bg-red-100 text-red-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        <Tag className="w-3 h-3 inline mr-1" />
-                        {note.note_type.replace(/_/g, ' ')}
-                      </span>
+            {customerNotes.length === 0 ? (
+              <p className="text-center text-sm text-gray-400 py-6">No notes yet</p>
+            ) : (
+              <div className="space-y-3">
+                {customerNotes.map((note) => (
+                  <div key={note.id} className="flex gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+                    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0 mt-0.5">
+                      <User className="w-4 h-4 text-gray-500" />
                     </div>
-                    <div className="flex items-center text-xs text-gray-500">
-                      <Clock className="w-3 h-3 mr-1" />
-                      {formatDateUtil(note.created_at)}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-sm font-medium text-gray-900">
+                          {note.created_by_user_name || note.created_by_user_email}
+                        </span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          note.note_type === 'outreach' ? 'bg-blue-50 text-blue-700' :
+                          note.note_type === 'payment_discussion' ? 'bg-green-50 text-green-700' :
+                          note.note_type === 'promise_to_pay' ? 'bg-amber-50 text-amber-700' :
+                          note.note_type === 'dispute' ? 'bg-red-50 text-red-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {note.note_type.replace(/_/g, ' ')}
+                        </span>
+                        <span className="text-xs text-gray-400 ml-auto">{formatDateUtil(note.created_at)}</span>
+                      </div>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{note.note_text}</p>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{note.note_text}</p>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
+      </div>
     </div>
   );
 }
