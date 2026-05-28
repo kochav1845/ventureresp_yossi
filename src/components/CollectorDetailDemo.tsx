@@ -67,6 +67,7 @@ function generateCustomerBreakdown(collector: DemoCollector) {
     invoices: Math.round(collector.invoices_collected / collector.top_customers.length * (1.2 - i * 0.08)),
     avg_days: Math.round(collector.avg_days_to_collect + (i - 2) * 3),
     outstanding: Math.round(Math.random() * 50000 + 10000),
+    days_to_red: [30, 45, 60, 30, 45][i] || 30,
   }));
 }
 
@@ -288,6 +289,7 @@ export default function CollectorDetailDemo({ collector, onBack }: Props) {
                     <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase">Collected</th>
                     <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase">Invoices</th>
                     <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase">Avg Days</th>
+                    <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase">Days to Red</th>
                     <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase">Outstanding</th>
                   </tr>
                 </thead>
@@ -300,6 +302,15 @@ export default function CollectorDetailDemo({ collector, onBack }: Props) {
                       <td className="py-2.5 px-4 text-right tabular-nums">
                         <span className={cust.avg_days <= 25 ? 'text-emerald-600' : cust.avg_days <= 35 ? 'text-amber-600' : 'text-red-600'}>
                           {cust.avg_days}d
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-4 text-right tabular-nums">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${
+                          cust.days_to_red <= 30 ? 'bg-red-50 text-red-700 border-red-200' :
+                          cust.days_to_red <= 45 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                          'bg-gray-50 text-gray-700 border-gray-200'
+                        }`}>
+                          {cust.days_to_red}d
                         </span>
                       </td>
                       <td className="py-2.5 px-4 text-right text-red-600 font-medium tabular-nums">${(cust.outstanding / 1000).toFixed(1)}k</td>
