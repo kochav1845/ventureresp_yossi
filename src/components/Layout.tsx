@@ -204,7 +204,7 @@ export default function Layout() {
   ] : [];
 
   const adminDashboardItems = !settingsLocked ? [
-    { id: 'collector-monitoring', name: 'Collector Dashboard', icon: Activity },
+    { id: 'collector-dashboard', name: 'Collector Dashboard', icon: Activity },
     { id: 'collector-control-panel', name: 'Collector Control Panel', icon: Sliders },
     { id: 'customer-analytics', name: 'Customer Analytics', icon: Users },
     { id: 'revenue-analytics', name: 'Revenue Analytics', icon: TrendingUp },

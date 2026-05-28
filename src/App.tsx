@@ -49,6 +49,7 @@ import InvoiceDateComparison from './components/InvoiceDateComparison';
 import CollectionTicketing from './components/CollectionTicketing';
 import MyAssignments from './components/MyAssignments';
 import CollectorHub from './components/CollectorHub';
+import CollectorDashboardDemo from './components/CollectorDashboardDemo';
 import RevenueAnalytics from './components/RevenueAnalytics';
 import CustomerAnalyticsPage from './components/CustomerAnalyticsPage';
 import UserActivityAnalytics from './components/UserActivityAnalytics';
@@ -191,6 +192,7 @@ function OrgAppContent() {
         <Route path="ticket/:ticketId" element={<TicketDetailPage />} />
         <Route path="my-assignments" element={<MyAssignments />} />
         <Route path="collector-performance" element={<CollectorHub />} />
+        <Route path="collector-dashboard" element={<CollectorDashboardDemo />} />
         <Route path="revenue-analytics" element={<RevenueAnalytics />} />
         <Route path="customer-analytics" element={<CustomerAnalyticsPage />} />
         <Route path="user-activity" element={<UserActivityAnalytics />} />
