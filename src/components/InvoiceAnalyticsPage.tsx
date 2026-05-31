@@ -1122,7 +1122,7 @@ export default function InvoiceAnalyticsPage() {
 
       <div className="flex">
         {/* Sidebar */}
-        <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-gray-50 border-r border-gray-200 transition-all duration-300 overflow-hidden flex-shrink-0`} data-tour="invoice-sidebar">
+        <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-gray-50 border-r border-gray-200 transition-all duration-300 overflow-hidden flex-shrink-0 sticky top-0 self-start h-screen overflow-y-auto`} data-tour="invoice-sidebar">
           <div className="p-4">
             <button
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
