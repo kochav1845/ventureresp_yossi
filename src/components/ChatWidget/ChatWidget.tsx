@@ -123,7 +123,7 @@ function formatMessage(content: string): string {
   return content
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n/g, '<br/>')
-    .replace(/\$([0-9,]+\.?\d*)/g, '<span class="font-semibold text-emerald-400">$$1</span>');
+    .replace(/\$([0-9,]+\.?\d*)/g, '<span class="font-semibold text-emerald-400">$$$1</span>');
 }
 
 export default function ChatWidget() {
