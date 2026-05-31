@@ -14,6 +14,7 @@ import {
   Minimize2,
   FileSpreadsheet,
   FileText,
+  ArrowUp,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -68,7 +69,6 @@ function downloadExcel(report: ReportData) {
     const wsData = [report.columns, ...report.rows];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-    // Auto-size columns
     const colWidths = report.columns.map((col, i) => {
       const maxLen = Math.max(
         col.length,
@@ -123,7 +123,7 @@ function formatMessage(content: string): string {
   return content
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n/g, '<br/>')
-    .replace(/\$([0-9,]+\.?\d*)/g, '<span class="font-semibold text-emerald-400">$$$1</span>');
+    .replace(/\$([0-9,]+\.?\d*)/g, '<span class="font-semibold text-emerald-600">$$$1</span>');
 }
 
 export default function ChatWidget() {
@@ -320,7 +320,7 @@ export default function ChatWidget() {
           setIsOpen(true);
           setPulseAnimation(false);
         }}
-        className={`fixed bottom-6 right-6 z-50 w-14 h-14 bg-gradient-to-br from-gray-900 to-gray-700 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-all duration-300 group ${
+        className={`fixed bottom-6 right-6 z-50 w-14 h-14 bg-gradient-to-br from-gray-800 to-gray-900 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-all duration-300 group ${
           pulseAnimation ? 'animate-bounce' : ''
         }`}
         title="AI Assistant"
@@ -336,12 +336,12 @@ export default function ChatWidget() {
       <div className="fixed bottom-6 right-6 z-50">
         <button
           onClick={() => setIsMinimized(false)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-full shadow-2xl hover:bg-gray-800 transition-all"
+          className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-800 rounded-full shadow-xl border border-gray-200 hover:shadow-2xl transition-all"
         >
-          <Sparkles size={16} className="text-emerald-400" />
+          <Sparkles size={16} className="text-gray-600" />
           <span className="text-sm font-medium">AI Assistant</span>
           {messages.length > 0 && (
-            <span className="bg-emerald-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+            <span className="bg-gray-800 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
               {messages.filter(m => m.role === 'assistant' && !m.isLoading).length}
             </span>
           )}
@@ -351,87 +351,72 @@ export default function ChatWidget() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-[420px] h-[640px] flex flex-col bg-gray-950 rounded-2xl shadow-2xl border border-gray-800 overflow-hidden animate-in">
+    <div className="fixed bottom-6 right-6 z-50 w-[400px] h-[620px] flex flex-col bg-[#f7f7f5] rounded-3xl shadow-2xl border border-gray-200/80 overflow-hidden animate-in">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-gray-900 to-gray-800 border-b border-gray-800">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="w-9 h-9 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
-              <Sparkles size={18} className="text-white" />
-            </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-gray-900" />
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200/60">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center">
+            <Sparkles size={14} className="text-white" />
           </div>
-          <div>
-            <h3 className="text-white font-semibold text-sm">AI Assistant</h3>
-            <p className="text-gray-400 text-xs">Ask anything about your data</p>
-          </div>
+          <span className="text-sm font-semibold text-gray-800">AI Assistant</span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <button
             onClick={() => setVoiceEnabled(!voiceEnabled)}
-            className={`p-1.5 rounded-lg transition-colors ${
+            className={`p-2 rounded-full transition-colors ${
               voiceEnabled
-                ? 'bg-emerald-500/20 text-emerald-400'
-                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+                ? 'bg-emerald-100 text-emerald-600'
+                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-200/60'
             }`}
-            title={voiceEnabled ? 'Disable voice responses' : 'Enable voice responses'}
+            title={voiceEnabled ? 'Disable voice' : 'Enable voice'}
           >
-            {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            {voiceEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
           </button>
           <button
             onClick={clearChat}
-            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+            className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
             title="Clear chat"
           >
-            <RotateCcw size={16} />
+            <RotateCcw size={15} />
           </button>
           <button
             onClick={() => setIsMinimized(true)}
-            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+            className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
             title="Minimize"
           >
-            <Minimize2 size={16} />
+            <Minimize2 size={15} />
           </button>
           <button
             onClick={() => {
               setIsOpen(false);
               stopSpeaking();
             }}
-            className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-gray-800 transition-colors"
+            className="p-2 rounded-full text-gray-400 hover:text-red-500 hover:bg-gray-200/60 transition-colors"
             title="Close"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 scrollbar-thin">
+      {/* Messages area */}
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         {messages.length === 0 && showSuggestions && (
-          <div className="space-y-4">
-            <div className="text-center pt-4 pb-2">
-              <div className="w-14 h-14 bg-gradient-to-br from-emerald-500/20 to-teal-600/20 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-emerald-500/20">
-                <Sparkles size={24} className="text-emerald-400" />
-              </div>
-              <h4 className="text-white font-semibold mb-1">How can I help you?</h4>
-              <p className="text-gray-500 text-xs leading-relaxed max-w-xs mx-auto">
-                Ask about customers, invoices, payments, aging reports, collector performance, or create tickets.
-              </p>
+          <div className="flex flex-col h-full justify-between">
+            <div className="flex-1 flex items-center justify-center">
+              <h2 className="text-2xl font-semibold text-gray-800 text-center px-4">
+                What can I help with?
+              </h2>
             </div>
 
-            <div className="space-y-2">
-              {SUGGESTED_QUESTIONS.map((sq, idx) => (
+            <div className="flex flex-wrap gap-2 justify-center pb-2">
+              {SUGGESTED_QUESTIONS.slice(0, 4).map((sq, idx) => (
                 <button
                   key={idx}
                   onClick={() => sendMessage(sq.question)}
-                  className="w-full text-left px-3.5 py-2.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 hover:border-gray-700 rounded-xl transition-all group"
+                  className="px-4 py-2.5 bg-white border border-gray-200 rounded-2xl text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
                 >
-                  <div>
-                    <p className="text-white text-sm font-medium group-hover:text-emerald-400 transition-colors">
-                      {sq.label}
-                    </p>
-                    <p className="text-gray-500 text-xs mt-0.5 line-clamp-1">{sq.question}</p>
-                  </div>
+                  {sq.label}
                 </button>
               ))}
             </div>
@@ -446,14 +431,17 @@ export default function ChatWidget() {
             <div
               className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                 msg.role === 'user'
-                  ? 'bg-emerald-600 text-white rounded-br-md'
-                  : 'bg-gray-900 text-gray-200 border border-gray-800 rounded-bl-md'
+                  ? 'bg-gray-800 text-white'
+                  : 'bg-white text-gray-800 border border-gray-200 shadow-sm'
               }`}
             >
               {msg.isLoading ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 size={14} className="animate-spin text-emerald-400" />
-                  <span className="text-gray-400 text-xs">Analyzing data...</span>
+                <div className="flex items-center gap-2.5">
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                  </div>
                 </div>
               ) : (
                 <>
@@ -462,21 +450,21 @@ export default function ChatWidget() {
                     dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}
                   />
                   {msg.report && (
-                    <div className="mt-3 pt-3 border-t border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-2">
-                        Report ready: {msg.report.row_count} records
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <p className="text-xs text-gray-500 mb-2">
+                        Report: {msg.report.row_count} records
                       </p>
                       <div className="flex gap-2">
                         <button
                           onClick={() => downloadExcel(msg.report!)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs font-medium transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-emerald-700 text-xs font-medium transition-colors"
                         >
                           <FileSpreadsheet size={13} />
                           Excel
                         </button>
                         <button
                           onClick={() => downloadPDF(msg.report!)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 rounded-lg text-blue-400 text-xs font-medium transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl text-blue-700 text-xs font-medium transition-colors"
                         >
                           <FileText size={13} />
                           PDF
@@ -494,14 +482,14 @@ export default function ChatWidget() {
           <div className="flex justify-center">
             <button
               onClick={stopSpeaking}
-              className="flex items-center gap-2 px-3 py-1.5 bg-gray-900 border border-gray-700 rounded-full text-xs text-gray-400 hover:text-white transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
             >
-              <div className="flex items-center gap-1">
-                <span className="w-1 h-3 bg-emerald-400 rounded-full animate-pulse" />
-                <span className="w-1 h-4 bg-emerald-400 rounded-full animate-pulse [animation-delay:150ms]" />
-                <span className="w-1 h-2 bg-emerald-400 rounded-full animate-pulse [animation-delay:300ms]" />
+              <div className="flex items-center gap-0.5">
+                <span className="w-1 h-3 bg-gray-500 rounded-full animate-pulse" />
+                <span className="w-1 h-4 bg-gray-500 rounded-full animate-pulse [animation-delay:150ms]" />
+                <span className="w-1 h-2 bg-gray-500 rounded-full animate-pulse [animation-delay:300ms]" />
               </div>
-              Speaking... Click to stop
+              Speaking... tap to stop
             </button>
           </div>
         )}
@@ -513,51 +501,55 @@ export default function ChatWidget() {
       {messages.length > 3 && (
         <button
           onClick={scrollToBottom}
-          className="absolute bottom-[72px] left-1/2 -translate-x-1/2 p-1.5 bg-gray-800 border border-gray-700 rounded-full text-gray-400 hover:text-white shadow-lg transition-colors"
+          className="absolute bottom-[120px] left-1/2 -translate-x-1/2 p-1.5 bg-white border border-gray-200 rounded-full text-gray-500 hover:text-gray-700 shadow-md transition-colors"
         >
           <ChevronDown size={14} />
         </button>
       )}
 
-      {/* Input */}
-      <div className="px-4 py-3 border-t border-gray-800 bg-gray-900/50">
-        <div className="flex items-end gap-2">
-          <div className="flex-1 relative">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={isListening ? 'Listening...' : 'Ask a question...'}
-              className="w-full bg-gray-800 text-white text-sm rounded-xl px-4 py-2.5 pr-10 resize-none border border-gray-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 outline-none placeholder-gray-500 max-h-24"
-              rows={1}
-              disabled={isLoading}
-            />
+      {/* Input area */}
+      <div className="px-4 pb-3 pt-2">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask anything"
+            className="w-full text-sm text-gray-800 px-4 pt-3 pb-1 resize-none outline-none placeholder-gray-400 max-h-24 bg-transparent"
+            rows={1}
+            disabled={isLoading}
+          />
+          <div className="flex items-center justify-between px-3 pb-2.5">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={isListening ? stopListening : startListening}
+                className={`p-2 rounded-full transition-colors ${
+                  isListening
+                    ? 'text-red-500 bg-red-50 animate-pulse'
+                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                }`}
+                title={isListening ? 'Stop listening' : 'Voice input'}
+              >
+                {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+              </button>
+            </div>
             <button
-              onClick={isListening ? stopListening : startListening}
-              className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg transition-colors ${
-                isListening
-                  ? 'text-red-400 bg-red-500/10 animate-pulse'
-                  : 'text-gray-500 hover:text-gray-300'
-              }`}
-              title={isListening ? 'Stop listening' : 'Voice input'}
+              onClick={() => sendMessage(input)}
+              disabled={!input.trim() || isLoading}
+              className="w-8 h-8 bg-gray-800 hover:bg-gray-700 text-white rounded-full transition-all disabled:opacity-20 disabled:cursor-not-allowed flex items-center justify-center flex-shrink-0"
             >
-              {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+              {isLoading ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <ArrowUp size={15} strokeWidth={2.5} />
+              )}
             </button>
           </div>
-
-          <button
-            onClick={() => sendMessage(input)}
-            disabled={!input.trim() || isLoading}
-            className="p-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
-          >
-            {isLoading ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              <Send size={18} />
-            )}
-          </button>
         </div>
+        <p className="text-[11px] text-gray-400 text-center mt-2">
+          AI can make mistakes. Please double-check responses.
+        </p>
       </div>
     </div>
   );
