@@ -169,6 +169,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [showTimeline, setShowTimeline] = useState(false);
 
   const restoredFromCache = useRef(!!cd);
+  const mountTime = useRef(Date.now());
 
   const stateRef = useRef<Record<string, any>>({});
   useEffect(() => {
@@ -184,7 +185,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   }, []);
 
   useEffect(() => {
-    if (restoredFromCache.current) {
+    if (restoredFromCache.current && Date.now() - mountTime.current < 500) {
       return;
     }
     loadCustomerBasicInfo();
@@ -194,7 +195,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   }, [customerId]);
 
   useEffect(() => {
-    if (restoredFromCache.current) return;
+    if (restoredFromCache.current && Date.now() - mountTime.current < 500) return;
     loadCustomerBasicInfo();
   }, [excludeCreditMemos]);
 
@@ -217,10 +218,11 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   }, [page]);
 
   useEffect(() => {
-    if (restoredFromCache.current) {
+    if (restoredFromCache.current && Date.now() - mountTime.current < 500) {
       restoredFromCache.current = false;
       return;
     }
+    restoredFromCache.current = false;
     setPage(0);
     setDisplayedInvoices([]);
     setHasMore(true);

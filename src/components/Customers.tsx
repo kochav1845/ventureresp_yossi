@@ -198,6 +198,7 @@ export default function Customers({ onBack }: CustomersProps) {
 
   const fetchKeyRef = useRef(cl ? `${cl.excludeCreditMemos ?? false}` : '');
   const restoredFromCache = useRef(!!cl);
+  const mountTime = useRef(Date.now());
 
   const stateRef = useRef<Record<string, any>>({});
   useEffect(() => {
@@ -215,10 +216,11 @@ export default function Customers({ onBack }: CustomersProps) {
   useEffect(() => {
     const key = `${excludeCreditMemos}`;
     if (fetchKeyRef.current === key) {
-      if (restoredFromCache.current) {
-        restoredFromCache.current = false;
+      if (restoredFromCache.current && Date.now() - mountTime.current < 500) {
         loadCustomersWithOpenTickets();
+        return;
       }
+      restoredFromCache.current = false;
       return;
     }
     fetchKeyRef.current = key;

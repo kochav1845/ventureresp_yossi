@@ -340,6 +340,7 @@ export default function InvoiceAnalyticsPage() {
 
   // Load data based on view
   const restoredFromCache = useRef(!!c);
+  const mountTime = useRef(Date.now());
 
   // Keep a ref with latest state for the unmount save
   const stateRef = useRef<Record<string, any>>({});
@@ -385,10 +386,10 @@ export default function InvoiceAnalyticsPage() {
   }, []);
 
   useEffect(() => {
-    if (restoredFromCache.current) {
-      restoredFromCache.current = false;
+    if (restoredFromCache.current && Date.now() - mountTime.current < 500) {
       return;
     }
+    restoredFromCache.current = false;
     if (calendarView === 'monthly') {
       setYearlyAggregates([]);
       setInvoices([]);

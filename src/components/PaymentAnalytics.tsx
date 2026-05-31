@@ -354,6 +354,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   };
 
   const restoredFromCache = useRef(!!c);
+  const mountTime = useRef(Date.now());
 
   const stateRef = useRef<Record<string, any>>({});
   useEffect(() => {
@@ -415,10 +416,10 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
   // Load data based on view type
   useEffect(() => {
-    if (restoredFromCache.current) {
-      restoredFromCache.current = false;
+    if (restoredFromCache.current && Date.now() - mountTime.current < 500) {
       return;
     }
+    restoredFromCache.current = false;
     const loadViewData = async () => {
       if (calendarView === 'monthly') {
         setYearlyAggregates([]);
