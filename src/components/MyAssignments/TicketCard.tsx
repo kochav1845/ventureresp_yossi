@@ -110,16 +110,6 @@ export default function TicketCard({
   const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
   const [invoiceSortField, setInvoiceSortField] = useState<InvoiceSortField | null>(null);
   const [invoiceSortDir, setInvoiceSortDir] = useState<SortDirection>('asc');
-  const [emailScheduleCount, setEmailScheduleCount] = useState(0);
-  const [showEmailSchedule, setShowEmailSchedule] = useState(false);
-  const [emailSchedules, setEmailSchedules] = useState<Array<{
-    id: string;
-    is_active: boolean;
-    formula_name: string | null;
-    template_name: string | null;
-    custom_schedule: any;
-    custom_subject: string | null;
-  }>>([]);
   const statusDropdownRef = useRef<HTMLDivElement>(null);
   const priorityDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -135,39 +125,6 @@ export default function TicketCard({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  useEffect(() => {
-    checkEmailSchedules();
-  }, [ticket.ticket_id]);
-
-  const checkEmailSchedules = async () => {
-    const { data, error } = await supabase
-      .from('customer_assignments')
-      .select('id, is_active, formula_id, template_id, custom_schedule, custom_subject')
-      .eq('source_ticket_id', ticket.ticket_id);
-
-    if (!error && data && data.length > 0) {
-      setEmailScheduleCount(data.length);
-      // Enrich with formula/template names
-      const enriched = await Promise.all(data.map(async (a) => {
-        let formula_name: string | null = null;
-        let template_name: string | null = null;
-        if (a.formula_id) {
-          const { data: f } = await supabase.from('email_formulas').select('name').eq('id', a.formula_id).maybeSingle();
-          formula_name = f?.name || null;
-        }
-        if (a.template_id) {
-          const { data: t } = await supabase.from('email_templates').select('name').eq('id', a.template_id).maybeSingle();
-          template_name = t?.name || null;
-        }
-        return { id: a.id, is_active: a.is_active, formula_name, template_name, custom_schedule: a.custom_schedule, custom_subject: a.custom_subject };
-      }));
-      setEmailSchedules(enriched);
-    } else {
-      setEmailScheduleCount(0);
-      setEmailSchedules([]);
-    }
-  };
 
   const handleInvoiceSort = (field: InvoiceSortField) => {
     if (invoiceSortField === field) {
@@ -644,52 +601,8 @@ export default function TicketCard({
               <Mail className="w-3 h-3" />
               Emails
             </button>
-            {emailScheduleCount > 0 && (
-              <button
-                onClick={() => setShowEmailSchedule(!showEmailSchedule)}
-                className="px-2 py-1 bg-green-600 text-white rounded text-[11px] hover:bg-green-700 transition-colors flex items-center gap-1"
-                title={`${emailScheduleCount} email schedule(s) active - click to view`}
-              >
-                <Calendar className="w-3 h-3" />
-                {emailScheduleCount}
-              </button>
-            )}
           </div>
         </div>
-
-        {showEmailSchedule && emailSchedules.length > 0 && (
-          <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-3">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs font-bold text-green-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5" />
-                Email Schedules ({emailSchedules.length})
-              </h4>
-              <button
-                onClick={() => setShowEmailSchedule(false)}
-                className="text-green-600 hover:text-green-800"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div className="space-y-1.5">
-              {emailSchedules.map((sched) => (
-                <div key={sched.id} className="flex items-center gap-2 text-xs bg-white rounded px-2.5 py-1.5 border border-green-100">
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sched.is_active ? 'bg-green-500' : 'bg-gray-400'}`} />
-                  <span className="text-gray-700 font-medium">
-                    {sched.formula_name || 'Manual Schedule'}
-                  </span>
-                  <span className="text-gray-400">|</span>
-                  <span className="text-gray-600">
-                    {sched.template_name || sched.custom_subject || 'Custom content'}
-                  </span>
-                  {!sched.is_active && (
-                    <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded font-medium">Paused</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {(ticket.customer_balance !== undefined || ticket.open_invoice_count !== undefined || ticket.oldest_invoice_date || ticket.last_payment_date) && (
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] py-1.5 px-2 bg-gray-50 rounded border border-gray-100">

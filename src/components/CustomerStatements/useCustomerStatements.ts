@@ -28,20 +28,15 @@ export function useCustomerStatements() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [minBalance, setMinBalance] = useState(0);
-  const [minInvoices, setMinInvoices] = useState(0);
-  const [maxInvoices, setMaxInvoices] = useState(0);
-  const [showCreditMemos, setShowCreditMemos] = useState(false);
-  const [minOverdue, setMinOverdue] = useState(0);
-  const [maxOverdue, setMaxOverdue] = useState(0);
   const [sortField, setSortField] = useState<SortField>('balance');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showTestCustomers, setShowTestCustomers] = useState(false);
   const [invoiceCache, setInvoiceCache] = useState<Record<string, StatementInvoice[]>>({});
   const [loadingInvoices, setLoadingInvoices] = useState<string | null>(null);
   const abortRef = useRef(0);
 
-  const loadData = useCallback(async () => {
-    const testMode = false;
+  const loadData = useCallback(async (testMode: boolean) => {
     const loadId = ++abortRef.current;
     setLoading(true);
     setLoadingMore(false);
@@ -205,9 +200,9 @@ export function useCustomerStatements() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    loadData(showTestCustomers);
     loadTemplates();
-  }, [loadData, loadTemplates]);
+  }, [loadData, loadTemplates, showTestCustomers]);
 
   const filtered = (() => {
     let list = customers.filter(c => c.total_balance >= minBalance);
@@ -220,12 +215,6 @@ export function useCustomerStatements() {
         c.email.toLowerCase().includes(s)
       );
     }
-
-    if (minInvoices > 0) list = list.filter(c => c.open_invoice_count >= minInvoices);
-    if (maxInvoices > 0) list = list.filter(c => c.open_invoice_count <= maxInvoices);
-    if (showCreditMemos) list = list.filter(c => c.credit_memo_balance !== 0);
-    if (minOverdue > 0) list = list.filter(c => c.max_days_overdue >= minOverdue);
-    if (maxOverdue > 0) list = list.filter(c => c.max_days_overdue <= maxOverdue);
 
     list.sort((a, b) => {
       let cmp = 0;
@@ -259,6 +248,14 @@ export function useCustomerStatements() {
     }
   };
 
+  const handleToggleTestCustomers = (value: boolean) => {
+    abortRef.current++;
+    setSelectedIds(new Set());
+    setSearch('');
+    setInvoiceCache({});
+    setShowTestCustomers(value);
+  };
+
   return {
     customers: filtered,
     loading,
@@ -276,22 +273,14 @@ export function useCustomerStatements() {
     setSearch,
     minBalance,
     setMinBalance,
-    minInvoices,
-    setMinInvoices,
-    maxInvoices,
-    setMaxInvoices,
-    showCreditMemos,
-    setShowCreditMemos,
-    minOverdue,
-    setMinOverdue,
-    maxOverdue,
-    setMaxOverdue,
     sortField,
     setSortField,
     sortOrder,
     setSortOrder,
     expandedId,
     toggleExpand,
+    showTestCustomers,
+    toggleTestCustomers: handleToggleTestCustomers,
     ensureInvoicesLoaded,
   };
 }

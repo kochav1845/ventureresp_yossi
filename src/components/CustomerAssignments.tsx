@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Plus, Edit2, Trash2, Link as LinkIcon, RefreshCw, Calendar, Mail, User, Clock, PauseCircle, Users, Ticket, Type, CalendarDays, X } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Link as LinkIcon, RefreshCw, Calendar, Mail, User, Clock, PauseCircle, Users, Ticket } from 'lucide-react';
 import ManageCustomersModal from './ManageCustomersModal';
 
 type Customer = {
@@ -15,30 +15,22 @@ type Customer = {
 type EmailFormula = {
   id: string;
   name: string;
-  schedule?: Array<{ day: number; times: string[] }>;
 };
 
 type EmailTemplate = {
   id: string;
   name: string;
-  subject?: string;
-  body?: string;
 };
 
 type Assignment = {
   id: string;
   customer_id: string;
-  formula_id: string | null;
-  template_id: string | null;
-  custom_schedule: Array<{ day: number; times: string[] }> | null;
-  custom_subject: string | null;
-  custom_body: string | null;
+  formula_id: string;
+  template_id: string;
   start_day_of_month: number;
   timezone: string;
   is_active: boolean;
   created_at: string;
-  source_ticket_id?: string | null;
-  source_ticket_number?: string | null;
   customer?: Customer;
   formula?: EmailFormula;
   template?: EmailTemplate;
@@ -68,14 +60,7 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
     customer_id: '',
     formula_id: '',
     template_id: '',
-    useManualSchedule: false,
-    manualSchedule: [] as Array<{ day: number; times: string[] }>,
-    useManualTemplate: false,
-    customSubject: '',
-    customBody: '',
   });
-  const [newScheduleDay, setNewScheduleDay] = useState(1);
-  const [newScheduleTime, setNewScheduleTime] = useState('09:00');
 
   const autoOpenHandled = useRef(false);
 
@@ -221,11 +206,8 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
       customer_id: '',
       formula_id: '',
       template_id: '',
-      useManualSchedule: false,
-      manualSchedule: [],
-      useManualTemplate: false,
-      customSubject: '',
-      customBody: '',
+      start_day_of_month: 1,
+      timezone: 'America/New_York',
     });
     setShowForm(true);
   };
@@ -234,13 +216,8 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
     setEditingAssignment(assignment);
     setFormData({
       customer_id: assignment.customer_id,
-      formula_id: assignment.formula_id || '',
-      template_id: assignment.template_id || '',
-      useManualSchedule: !!assignment.custom_schedule,
-      manualSchedule: assignment.custom_schedule || [],
-      useManualTemplate: !!(assignment.custom_subject || assignment.custom_body),
-      customSubject: assignment.custom_subject || '',
-      customBody: assignment.custom_body || '',
+      formula_id: assignment.formula_id,
+      template_id: assignment.template_id,
     });
     setShowForm(true);
   };
@@ -302,42 +279,6 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
     }
   };
 
-  const handleAddScheduleDay = () => {
-    const exists = formData.manualSchedule.find(s => s.day === newScheduleDay);
-    if (exists) {
-      if (!exists.times.includes(newScheduleTime)) {
-        setFormData({
-          ...formData,
-          manualSchedule: formData.manualSchedule.map(s =>
-            s.day === newScheduleDay ? { ...s, times: [...s.times, newScheduleTime].sort() } : s
-          ),
-        });
-      }
-    } else {
-      setFormData({
-        ...formData,
-        manualSchedule: [...formData.manualSchedule, { day: newScheduleDay, times: [newScheduleTime] }]
-          .sort((a, b) => a.day - b.day),
-      });
-    }
-  };
-
-  const handleRemoveScheduleEntry = (day: number, time?: string) => {
-    if (time) {
-      setFormData({
-        ...formData,
-        manualSchedule: formData.manualSchedule
-          .map(s => s.day === day ? { ...s, times: s.times.filter(t => t !== time) } : s)
-          .filter(s => s.times.length > 0),
-      });
-    } else {
-      setFormData({
-        ...formData,
-        manualSchedule: formData.manualSchedule.filter(s => s.day !== day),
-      });
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -346,29 +287,20 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
       return;
     }
 
-    if (!formData.useManualSchedule && !formData.formula_id) {
-      alert('Please select a formula or create a manual schedule');
+    if (!formData.formula_id) {
+      alert('Please select a formula');
       return;
     }
 
-    if (formData.useManualSchedule && formData.manualSchedule.length === 0) {
-      alert('Please add at least one schedule entry');
-      return;
-    }
-
-    if (!formData.useManualTemplate && !formData.template_id) {
-      alert('Please select a template or write custom content');
-      return;
-    }
-
-    if (formData.useManualTemplate && !formData.customSubject) {
-      alert('Please enter a subject line');
+    if (!formData.template_id) {
+      alert('Please select a template');
       return;
     }
 
     try {
       let resolvedCustomerId = formData.customer_id;
 
+      // If selecting an acumatica customer not yet in the email system, auto-create it
       if (resolvedCustomerId.startsWith('acu_')) {
         const selectedCustomer = customers.find(c => c.id === resolvedCustomerId);
         if (selectedCustomer) {
@@ -399,11 +331,8 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
 
       const assignmentData: any = {
         customer_id: resolvedCustomerId,
-        formula_id: formData.useManualSchedule ? null : formData.formula_id,
-        template_id: formData.useManualTemplate ? null : formData.template_id,
-        custom_schedule: formData.useManualSchedule ? formData.manualSchedule : null,
-        custom_subject: formData.useManualTemplate ? formData.customSubject : null,
-        custom_body: formData.useManualTemplate ? formData.customBody : null,
+        formula_id: formData.formula_id,
+        template_id: formData.template_id,
         start_day_of_month: 1,
         timezone: 'America/New_York',
       };
@@ -436,8 +365,6 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
     }
   };
 
-  const selectedCustomerForDisplay = customers.find(c => c.id === formData.customer_id);
-
   if (showForm) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
@@ -449,7 +376,7 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
 
         <div className="max-w-4xl mx-auto">
           <button
-            onClick={() => { setShowForm(false); setTicketContext(null); }}
+            onClick={() => setShowForm(false)}
             className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors"
           >
             <ArrowLeft size={20} />
@@ -458,7 +385,7 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
 
           <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl shadow-2xl border border-slate-700 p-8">
             <h2 className="text-2xl font-bold text-white mb-6">
-              {editingAssignment ? 'Edit Assignment' : 'Create Email Schedule'}
+              {editingAssignment ? 'Edit Assignment' : 'Create New Assignment'}
             </h2>
 
             {ticketContext && !editingAssignment && (
@@ -469,270 +396,113 @@ export default function CustomerAssignments({ onBack }: CustomerAssignmentsProps
                     Creating email schedule from Ticket #{ticketContext.ticketNumber}
                   </p>
                   <p className="text-blue-400/70 text-xs mt-0.5">
-                    Choose a formula or set a manual schedule, then pick a template or write custom email content.
+                    Select a formula and template below. The customer will receive automated emails on the schedule defined by the formula.
                   </p>
                 </div>
               </div>
             )}
 
+            {customers.length === 0 || formulas.length === 0 || templates.length === 0 ? (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 mb-6">
+                <p className="text-yellow-300 text-sm">
+                  You need to create at least one customer, one formula, and one template before creating an assignment.
+                </p>
+              </div>
+            ) : null}
+
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Customer Section - auto-selected when from ticket */}
-              {ticketContext && formData.customer_id && selectedCustomerForDisplay ? (
-                <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-                  <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Customer</label>
-                  <div className="flex items-center gap-3">
-                    <User className="w-5 h-5 text-blue-400" />
-                    <div>
-                      <p className="text-white font-semibold">{selectedCustomerForDisplay.name}</p>
-                      {selectedCustomerForDisplay.email && (
-                        <p className="text-slate-400 text-sm">{selectedCustomerForDisplay.email}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-slate-300">
-                      Customer *
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowManageCustomers(true)}
-                      className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                    >
-                      <Users size={14} />
-                      Manage Customers
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    value={customerSearch}
-                    onChange={(e) => setCustomerSearch(e.target.value)}
-                    placeholder="Type to search customers..."
-                    className="w-full px-4 py-2 mb-2 bg-slate-700 border border-slate-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                  />
-                  <select
-                    value={formData.customer_id}
-                    onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-700 border border-slate-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    size={6}
-                    disabled={customers.length === 0}
-                  >
-                    <option value="">Select a customer</option>
-                    {customers
-                      .filter(c => !customerSearch || c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.email?.toLowerCase().includes(customerSearch.toLowerCase()))
-                      .slice(0, 100)
-                      .map((customer) => (
-                        <option key={customer.id} value={customer.id}>
-                          {customer.name}{customer.email ? ` (${customer.email})` : ''}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Schedule Section - Formula OR Manual */}
-              <div className="border border-slate-600 rounded-xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                    <CalendarDays size={16} className="text-blue-400" />
-                    Email Schedule *
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-slate-300">
+                    Customer *
                   </label>
-                  <div className="flex bg-slate-700 rounded-lg p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, useManualSchedule: false })}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                        !formData.useManualSchedule ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Use Formula
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, useManualSchedule: true })}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                        formData.useManualSchedule ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Manual Schedule
-                    </button>
-                  </div>
-                </div>
-
-                {!formData.useManualSchedule ? (
-                  <select
-                    value={formData.formula_id}
-                    onChange={(e) => setFormData({ ...formData, formula_id: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-700 border border-slate-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={formulas.length === 0}
+                  <button
+                    type="button"
+                    onClick={() => setShowManageCustomers(true)}
+                    className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
                   >
-                    <option value="">Select a formula</option>
-                    {formulas.map((formula) => (
-                      <option key={formula.id} value={formula.id}>
-                        {formula.name}
+                    <Users size={14} />
+                    Manage Customers
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  placeholder="Type to search customers..."
+                  className="w-full px-4 py-2 mb-2 bg-slate-700 border border-slate-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+                <select
+                  value={formData.customer_id}
+                  onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  size={6}
+                  disabled={customers.length === 0}
+                >
+                  <option value="">Select a customer</option>
+                  {customers
+                    .filter(c => !customerSearch || c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.email?.toLowerCase().includes(customerSearch.toLowerCase()))
+                    .slice(0, 100)
+                    .map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.name}{customer.email ? ` (${customer.email})` : ''}
                       </option>
                     ))}
-                  </select>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex items-end gap-2">
-                      <div className="flex-1">
-                        <label className="block text-xs text-slate-400 mb-1">Day of Month</label>
-                        <select
-                          value={newScheduleDay}
-                          onChange={(e) => setNewScheduleDay(parseInt(e.target.value))}
-                          className="w-full px-3 py-2 bg-slate-700 border border-slate-600 text-white rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                        >
-                          {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
-                            <option key={d} value={d}>{d}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex-1">
-                        <label className="block text-xs text-slate-400 mb-1">Time</label>
-                        <input
-                          type="time"
-                          value={newScheduleTime}
-                          onChange={(e) => setNewScheduleTime(e.target.value)}
-                          className="w-full px-3 py-2 bg-slate-700 border border-slate-600 text-white rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleAddScheduleDay}
-                        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-                      >
-                        <Plus size={16} />
-                      </button>
-                    </div>
-
-                    {formData.manualSchedule.length > 0 && (
-                      <div className="bg-slate-900/50 rounded-lg p-3 space-y-2 max-h-40 overflow-y-auto">
-                        {formData.manualSchedule.map((entry) => (
-                          <div key={entry.day} className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="text-slate-300 text-sm font-medium">Day {entry.day}:</span>
-                              <div className="flex gap-1 flex-wrap">
-                                {entry.times.map((time) => (
-                                  <span
-                                    key={time}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded text-xs border border-blue-500/30"
-                                  >
-                                    {time}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveScheduleEntry(entry.day, time)}
-                                      className="text-blue-400 hover:text-red-400"
-                                    >
-                                      <X size={10} />
-                                    </button>
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveScheduleEntry(entry.day)}
-                              className="text-slate-500 hover:text-red-400 transition-colors"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {formData.manualSchedule.length === 0 && (
-                      <p className="text-xs text-slate-500 italic">Add schedule entries above (e.g., Day 1 at 09:00, Day 15 at 14:00)</p>
-                    )}
-                  </div>
+                </select>
+                {customerSearch && customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase())).length > 100 && (
+                  <p className="text-xs text-slate-400 mt-1">Showing first 100 results. Refine your search.</p>
                 )}
               </div>
 
-              {/* Template Section - Template OR Manual Content */}
-              <div className="border border-slate-600 rounded-xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                    <Type size={16} className="text-blue-400" />
-                    Email Content *
-                  </label>
-                  <div className="flex bg-slate-700 rounded-lg p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, useManualTemplate: false })}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                        !formData.useManualTemplate ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Use Template
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, useManualTemplate: true })}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                        formData.useManualTemplate ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Write Custom
-                    </button>
-                  </div>
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Email Formula *
+                </label>
+                <select
+                  value={formData.formula_id}
+                  onChange={(e) => setFormData({ ...formData, formula_id: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={formulas.length === 0}
+                >
+                  <option value="">Select a formula</option>
+                  {formulas.map((formula) => (
+                    <option key={formula.id} value={formula.id}>
+                      {formula.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                {!formData.useManualTemplate ? (
-                  <select
-                    value={formData.template_id}
-                    onChange={(e) => setFormData({ ...formData, template_id: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-700 border border-slate-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={templates.length === 0}
-                  >
-                    <option value="">Select a template</option>
-                    {templates.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">Subject *</label>
-                      <input
-                        type="text"
-                        value={formData.customSubject}
-                        onChange={(e) => setFormData({ ...formData, customSubject: e.target.value })}
-                        placeholder="e.g., Payment Reminder - {customer_name}"
-                        className="w-full px-4 py-2 bg-slate-700 border border-slate-600 text-white rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">Body</label>
-                      <textarea
-                        value={formData.customBody}
-                        onChange={(e) => setFormData({ ...formData, customBody: e.target.value })}
-                        placeholder="Write your email body here. You can use variables like {customer_name}, {balance}, {invoice_table}, {month}..."
-                        rows={6}
-                        className="w-full px-4 py-2 bg-slate-700 border border-slate-600 text-white rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                      />
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      Variables: {'{customer_name}'}, {'{balance}'}, {'{invoice_table}'}, {'{month}'}, {'{year}'}
-                    </p>
-                  </div>
-                )}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Email Template *
+                </label>
+                <select
+                  value={formData.template_id}
+                  onChange={(e) => setFormData({ ...formData, template_id: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={templates.length === 0}
+                >
+                  <option value="">Select a template</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="flex gap-4">
                 <button
                   type="submit"
                   className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                  disabled={customers.length === 0 || formulas.length === 0 || templates.length === 0}
                 >
-                  {editingAssignment ? 'Update Assignment' : 'Create Email Schedule'}
+                  {editingAssignment ? 'Update Assignment' : 'Create Assignment'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowForm(false); setTicketContext(null); }}
+                  onClick={() => setShowForm(false)}
                   className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
                 >
                   Cancel
