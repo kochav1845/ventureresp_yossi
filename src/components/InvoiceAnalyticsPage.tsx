@@ -42,6 +42,16 @@ const formatDateString = (dateString: string): string => {
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
 
+const formatCurrencyCompact = (amount: number) => {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 100_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
+  if (abs >= 10_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${abs.toFixed(0)}`;
+};
+
 const formatCurrencyFull = (amount: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
@@ -1663,14 +1673,11 @@ export default function InvoiceAnalyticsPage() {
                         <div className="text-xs font-semibold text-gray-700 mb-1">{date.getDate()}</div>
                         {dayInvoices.length > 0 && isCurrentMonth && (
                           <div className="space-y-0.5">
-                            <div className="text-xs text-blue-600 font-bold">{formatCurrency(netTotal)}</div>
-                            {cmTotal > 0 && (
-                              <div className="text-xs text-red-500 font-medium">CM: -{formatCurrency(cmTotal)}</div>
-                            )}
+                            <div className="text-xs text-blue-600 font-bold">{formatCurrencyCompact(netTotal)}</div>
                             {netOpenBal > 0 && (
-                              <div className="text-xs text-amber-600 font-medium">{formatCurrency(netOpenBal)} open ({dayInvoices.filter(i => (i.status === 'Open' || i.status === 'Balanced') && i.type !== 'Credit Memo').length})</div>
+                              <div className="text-xs text-amber-600 font-medium">{formatCurrencyCompact(netOpenBal)} open</div>
                             )}
-                            <div className="text-xs text-gray-500">{nonCMs.length} inv{cms.length > 0 ? `, ${cms.length} CM` : ''}</div>
+                            <div className="text-xs text-gray-500 hidden lg:block">{nonCMs.length} inv{cms.length > 0 ? `, ${cms.length} CM` : ''}</div>
                           </div>
                         )}
                       </button>
@@ -1700,22 +1707,26 @@ export default function InvoiceAnalyticsPage() {
                       <div className="text-base font-bold text-gray-700 mb-3">{monthData.name}</div>
                       {(monthData.count > 0 || monthData.creditMemoCount > 0) ? (
                         <div className="space-y-1">
-                          <div className="text-xl font-bold text-blue-600">{formatCurrency(monthData.total - 2 * monthData.creditMemoAmount)}</div>
+                          <div className="text-xl font-bold text-blue-600">
+                            <span className="hidden lg:inline">{formatCurrency(monthData.total - 2 * monthData.creditMemoAmount)}</span>
+                            <span className="lg:hidden">{formatCurrencyCompact(monthData.total - 2 * monthData.creditMemoAmount)}</span>
+                          </div>
                           {monthData.creditMemoAmount > 0 && (
-                            <div className="text-xs font-medium text-red-500">CM: -{formatCurrency(monthData.creditMemoAmount)} ({monthData.creditMemoCount})</div>
+                            <div className="text-xs font-medium text-red-500 hidden xl:block">CM: -{formatCurrencyCompact(monthData.creditMemoAmount)} ({monthData.creditMemoCount})</div>
                           )}
                           {monthData.openInvoiceBalance > 0 && (
                             <div className="mt-1.5 pt-1.5 border-t border-gray-200">
                               <div className="text-sm font-bold text-amber-600">
-                                {formatCurrency(monthData.openInvoiceBalance - monthData.openCmBalance)} net open
+                                <span className="hidden lg:inline">{formatCurrency(monthData.openInvoiceBalance - monthData.openCmBalance)} open</span>
+                                <span className="lg:hidden">{formatCurrencyCompact(monthData.openInvoiceBalance - monthData.openCmBalance)} open</span>
                               </div>
-                              <div className="text-xs text-blue-600">Inv + DM: {formatCurrency(monthData.openInvoiceBalance)} ({monthData.openInvoiceCount})</div>
+                              <div className="text-xs text-blue-600 hidden xl:block">Inv + DM: {formatCurrencyCompact(monthData.openInvoiceBalance)} ({monthData.openInvoiceCount})</div>
                               {monthData.openCmBalance > 0 && (
-                                <div className="text-xs text-red-500">CM: -{formatCurrency(monthData.openCmBalance)} ({monthData.openCmCount})</div>
+                                <div className="text-xs text-red-500 hidden xl:block">CM: -{formatCurrencyCompact(monthData.openCmBalance)} ({monthData.openCmCount})</div>
                               )}
                             </div>
                           )}
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-gray-500 hidden lg:block">
                             {monthData.count.toLocaleString()} invoice{monthData.count !== 1 ? 's' : ''}
                             {monthData.customers > 0 && ` | ${monthData.customers} customers`}
                           </div>
@@ -1746,22 +1757,26 @@ export default function InvoiceAnalyticsPage() {
                       <div className="text-3xl font-bold text-gray-700 mb-4">{yearData.year}</div>
                       {(yearData.count > 0 || yearData.creditMemoCount > 0) ? (
                         <div className="space-y-2">
-                          <div className="text-3xl font-bold text-blue-600">{formatCurrency(yearData.total - 2 * yearData.creditMemoAmount)}</div>
+                          <div className="text-3xl font-bold text-blue-600">
+                            <span className="hidden md:inline">{formatCurrency(yearData.total - 2 * yearData.creditMemoAmount)}</span>
+                            <span className="md:hidden">{formatCurrencyCompact(yearData.total - 2 * yearData.creditMemoAmount)}</span>
+                          </div>
                           {yearData.creditMemoAmount > 0 && (
-                            <div className="text-sm font-medium text-red-500">CM: -{formatCurrency(yearData.creditMemoAmount)} ({yearData.creditMemoCount})</div>
+                            <div className="text-sm font-medium text-red-500 hidden lg:block">CM: -{formatCurrencyCompact(yearData.creditMemoAmount)} ({yearData.creditMemoCount})</div>
                           )}
                           {yearData.openInvoiceBalance > 0 && (
                             <div className="mt-1 pt-2 border-t border-gray-200">
                               <div className="text-lg font-bold text-amber-600">
-                                {formatCurrency(yearData.openInvoiceBalance - yearData.openCmBalance)} net open
+                                <span className="hidden md:inline">{formatCurrency(yearData.openInvoiceBalance - yearData.openCmBalance)} open</span>
+                                <span className="md:hidden">{formatCurrencyCompact(yearData.openInvoiceBalance - yearData.openCmBalance)} open</span>
                               </div>
-                              <div className="text-sm text-blue-600">Inv + DM: {formatCurrency(yearData.openInvoiceBalance)} ({yearData.openInvoiceCount})</div>
+                              <div className="text-sm text-blue-600 hidden lg:block">Inv + DM: {formatCurrencyCompact(yearData.openInvoiceBalance)} ({yearData.openInvoiceCount})</div>
                               {yearData.openCmBalance > 0 && (
-                                <div className="text-sm text-red-500">CM: -{formatCurrency(yearData.openCmBalance)} ({yearData.openCmCount})</div>
+                                <div className="text-sm text-red-500 hidden lg:block">CM: -{formatCurrencyCompact(yearData.openCmBalance)} ({yearData.openCmCount})</div>
                               )}
                             </div>
                           )}
-                          <div className="text-sm text-gray-500">
+                          <div className="text-sm text-gray-500 hidden md:block">
                             {yearData.count.toLocaleString()} invoice{yearData.count !== 1 ? 's' : ''}
                           </div>
                         </div>
