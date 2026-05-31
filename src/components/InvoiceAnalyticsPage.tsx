@@ -501,10 +501,9 @@ export default function InvoiceAnalyticsPage() {
       let offset = 0;
       let hasMore = true;
       let accumulated: InvoiceRow[] = [];
-      let isFirstBatch = true;
 
       while (hasMore) {
-        setLoadingBatchInfo(isFirstBatch ? 'Loading invoices...' : `Loading invoices... (${accumulated.length} loaded)`);
+        setLoadingBatchInfo(accumulated.length === 0 ? 'Loading invoices...' : `Loading invoices... (${accumulated.length} loaded)`);
 
         let query = supabase
           .from('acumatica_invoices')
@@ -552,23 +551,18 @@ export default function InvoiceAnalyticsPage() {
           }));
 
           accumulated = [...accumulated, ...rows];
-          setInvoices(accumulated);
-
-          if (isFirstBatch) {
-            setLoading(false);
-            isFirstBatch = false;
-          }
 
           offset += batchSize;
           hasMore = batch.length === batchSize;
+          if (hasMore) {
+            setLoadingBatchInfo(`Loading invoices... (${accumulated.length} loaded)`);
+          }
         } else {
           hasMore = false;
         }
       }
 
-      if (isFirstBatch) {
-        setInvoices([]);
-      }
+      setInvoices(accumulated);
     } catch (error) {
       console.error('Error loading daily invoice data:', error);
     } finally {
