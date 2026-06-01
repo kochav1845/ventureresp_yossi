@@ -14,7 +14,11 @@ import {
   Plus,
   Clock,
   AlertCircle,
-  Mail
+  Mail,
+  FileText,
+  Users,
+  TrendingUp,
+  BarChart3
 } from 'lucide-react';
 import {
   startOfMonth,
@@ -393,6 +397,11 @@ export default function CollectorCalendar() {
           />
         )}
       </div>
+
+      {/* Date Analytics Panel */}
+      {selectedDate && view !== 'yearly' && (
+        <DateAnalyticsPanel date={selectedDate} />
+      )}
 
       {loading && (
         <div className="absolute inset-0 bg-white/50 flex items-center justify-center">
@@ -892,6 +901,202 @@ function DayDetailPanel({
           No events scheduled for this day
         </div>
       )}
+    </div>
+  );
+}
+
+interface DateAnalytics {
+  netInvoiced: number;
+  creditMemoTotal: number;
+  netOpenBalance: number;
+  openInvoiceDmBalance: number;
+  openInvoiceDmCount: number;
+  openCmBalance: number;
+  openCmCount: number;
+  totalInvoices: number;
+  creditMemoCount: number;
+  uniqueCustomers: number;
+}
+
+function DateAnalyticsPanel({ date }: { date: Date }) {
+  const [analytics, setAnalytics] = useState<DateAnalytics | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadAnalytics();
+  }, [date]);
+
+  const loadAnalytics = async () => {
+    setLoading(true);
+    try {
+      const dateStr = format(date, 'yyyy-MM-dd');
+
+      // Try cached analytics first
+      const { data: cached } = await supabase
+        .from('cached_invoice_analytics')
+        .select('*')
+        .eq('period_type', 'daily')
+        .eq('date', dateStr)
+        .maybeSingle();
+
+      if (cached) {
+        const invoiceOnlyAmount = parseFloat(cached.invoice_only_amount || '0');
+        const debitMemoAmount = parseFloat(cached.debit_memo_amount || '0');
+        const creditMemoAmount = parseFloat(cached.credit_memo_amount || '0');
+        const netInvoiced = invoiceOnlyAmount + debitMemoAmount - creditMemoAmount;
+        const openInvBal = parseFloat(cached.open_invoice_balance || '0');
+        const openDmBal = parseFloat(cached.open_dm_balance || '0');
+        const openCmBal = parseFloat(cached.open_cm_balance || '0');
+
+        setAnalytics({
+          netInvoiced,
+          creditMemoTotal: creditMemoAmount,
+          netOpenBalance: openInvBal + openDmBal - openCmBal,
+          openInvoiceDmBalance: openInvBal + openDmBal,
+          openInvoiceDmCount: (cached.open_invoice_count || 0) + (cached.open_dm_count || 0),
+          openCmBalance: openCmBal,
+          openCmCount: cached.open_cm_count || 0,
+          totalInvoices: cached.invoice_count || 0,
+          creditMemoCount: cached.credit_memo_count || 0,
+          uniqueCustomers: cached.unique_customer_count || 0,
+        });
+      } else {
+        // Compute from invoices table directly
+        const { data: invoices } = await supabase
+          .from('acumatica_invoices')
+          .select('type, status, amount, balance, customer_name')
+          .eq('invoice_date', dateStr)
+          .neq('status', 'On Hold');
+
+        if (invoices && invoices.length > 0) {
+          const invAndDm = invoices.filter(i => i.type === 'Invoice' || i.type === 'Debit Memo');
+          const cms = invoices.filter(i => i.type === 'Credit Memo');
+          const invTotal = invAndDm.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+          const cmTotal = cms.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+          const openInvDm = invAndDm.filter(i => i.status === 'Open' || i.status === 'Balanced');
+          const openInvDmBal = openInvDm.reduce((s, i) => s + (parseFloat(i.balance) || 0), 0);
+          const openCms = cms.filter(i => i.status === 'Open' || i.status === 'Balanced');
+          const openCmBal = openCms.reduce((s, i) => s + (parseFloat(i.balance) || 0), 0);
+          const customers = new Set(invoices.map(i => i.customer_name).filter(Boolean));
+
+          setAnalytics({
+            netInvoiced: invTotal - cmTotal,
+            creditMemoTotal: cmTotal,
+            netOpenBalance: openInvDmBal - openCmBal,
+            openInvoiceDmBalance: openInvDmBal,
+            openInvoiceDmCount: openInvDm.length,
+            openCmBalance: openCmBal,
+            openCmCount: openCms.length,
+            totalInvoices: invoices.length,
+            creditMemoCount: cms.length,
+            uniqueCustomers: customers.size,
+          });
+        } else {
+          setAnalytics(null);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading date analytics:', err);
+      setAnalytics(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatCurrency = (val: number) => {
+    const abs = Math.abs(val);
+    if (abs >= 1_000_000) return `$${(val / 1_000_000).toFixed(1)}M`;
+    if (abs >= 1_000) return `$${(val / 1_000).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+    return `$${val.toFixed(0)}`;
+  };
+
+  const formatFull = (val: number) =>
+    '$' + val.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+  if (loading) {
+    return (
+      <div className="border-t border-gray-200 px-6 py-4">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-600" />
+          Loading analytics for {format(date, 'MMM d, yyyy')}...
+        </div>
+      </div>
+    );
+  }
+
+  if (!analytics) {
+    return (
+      <div className="border-t border-gray-200 px-6 py-4">
+        <div className="flex items-center gap-2 text-xs text-gray-400">
+          <BarChart3 className="w-3.5 h-3.5" />
+          No invoice data for {format(date, 'MMM d, yyyy')}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-gray-200 bg-gradient-to-r from-slate-50 to-gray-50 px-6 py-4">
+      <div className="flex items-center gap-2 mb-3">
+        <BarChart3 className="w-4 h-4 text-blue-600" />
+        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+          Invoice Analytics - {format(date, 'MMM d, yyyy')}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Net Invoiced */}
+        <div className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
+          <div className="flex items-center gap-1.5 mb-1">
+            <TrendingUp className="w-3.5 h-3.5 text-blue-600" />
+            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Net Invoiced</span>
+          </div>
+          <div className="text-lg font-bold text-gray-900">{formatFull(analytics.netInvoiced)}</div>
+          {analytics.creditMemoTotal > 0 && (
+            <div className="text-[10px] text-red-600 mt-0.5">
+              CM: -{formatCurrency(analytics.creditMemoTotal)}
+            </div>
+          )}
+        </div>
+
+        {/* Net Open Balance */}
+        <div className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
+          <div className="flex items-center gap-1.5 mb-1">
+            <DollarSign className="w-3.5 h-3.5 text-amber-600" />
+            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Net Open Balance</span>
+          </div>
+          <div className="text-lg font-bold text-gray-900">{formatFull(analytics.netOpenBalance)}</div>
+          <div className="text-[10px] text-gray-500 mt-0.5 space-y-0.5">
+            <div>Open Invoices + DM: {formatCurrency(analytics.openInvoiceDmBalance)} ({analytics.openInvoiceDmCount})</div>
+            {analytics.openCmCount > 0 && (
+              <div className="text-red-600">Open CM: -{formatCurrency(analytics.openCmBalance)} ({analytics.openCmCount})</div>
+            )}
+          </div>
+        </div>
+
+        {/* Total Invoices */}
+        <div className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
+          <div className="flex items-center gap-1.5 mb-1">
+            <FileText className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Total Invoices</span>
+          </div>
+          <div className="text-lg font-bold text-gray-900">{analytics.totalInvoices.toLocaleString()}</div>
+          {analytics.creditMemoCount > 0 && (
+            <div className="text-[10px] text-gray-500 mt-0.5">
+              {analytics.creditMemoCount} Credit Memo{analytics.creditMemoCount !== 1 ? 's' : ''}
+            </div>
+          )}
+        </div>
+
+        {/* Unique Customers */}
+        <div className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Users className="w-3.5 h-3.5 text-teal-600" />
+            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Unique Customers</span>
+          </div>
+          <div className="text-lg font-bold text-gray-900">{analytics.uniqueCustomers.toLocaleString()}</div>
+        </div>
+      </div>
     </div>
   );
 }
