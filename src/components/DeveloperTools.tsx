@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor, XCircle, Clock, Key, Webhook, Sliders, Timer } from 'lucide-react';
+import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor, XCircle, Clock, Key, Webhook, Sliders, Timer, BarChart3 } from 'lucide-react';
 
 interface Tool {
   id: string;
@@ -8,13 +8,29 @@ interface Tool {
   description: string;
   icon: any;
   path: string;
-  category: 'payment' | 'invoice' | 'sync' | 'system' | 'api' | 'infrastructure';
+  category: 'payment' | 'invoice' | 'sync' | 'system' | 'api' | 'infrastructure' | 'breakdown';
 }
 
 export function DeveloperTools() {
   const navigate = useNavigate();
 
   const tools: Tool[] = [
+    {
+      id: 'payment-breakdown',
+      name: 'Payment Breakdown',
+      description: 'Monthly payment comparison with Acumatica sync checks and daily drill-down',
+      icon: CreditCard,
+      path: '/payment-breakdown',
+      category: 'breakdown'
+    },
+    {
+      id: 'invoice-breakdown',
+      name: 'Invoice Breakdown',
+      description: 'Monthly invoice comparison with Acumatica sync checks and daily drill-down',
+      icon: BarChart3,
+      path: '/invoice-breakdown',
+      category: 'breakdown'
+    },
     {
       id: 'backfill-doc-dates',
       name: 'Backfill Payment Doc Dates',
@@ -314,6 +330,7 @@ export function DeveloperTools() {
   ];
 
   const categories: Record<string, string> = {
+    breakdown: 'Data Breakdown & Reconciliation',
     infrastructure: 'Infrastructure & Monitoring',
     api: 'API & Integrations',
     sync: 'Sync Tools',

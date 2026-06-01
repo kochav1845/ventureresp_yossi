@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Users, Activity, FileText, DollarSign, UserCheck, BarChart3, Mail, RefreshCw, Ticket, Settings, Palette, Clock, CreditCard, ChevronDown, BookOpen } from 'lucide-react';
+import { ArrowLeft, Users, Activity, FileText, DollarSign, UserCheck, BarChart3, Mail, RefreshCw, Ticket, Settings, Palette, Clock, ChevronDown, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import PaymentAnalytics from './PaymentAnalytics';
@@ -17,8 +17,6 @@ import AutoTicketRules from './AutoTicketRules';
 import AdminCreateUser from './AdminCreateUser';
 import EmailSettings from './EmailSettings';
 import SystemDocumentation from './SystemDocumentation';
-import PaymentBreakdown from './PaymentBreakdown';
-import InvoiceBreakdown from './InvoiceBreakdown';
 
 type AdminView =
   | 'payment-analytics'
@@ -36,9 +34,7 @@ type AdminView =
   | 'auto-ticket-rules'
   | 'create-user'
   | 'email-settings'
-  | 'system-documentation'
-  | 'payment-breakdown'
-  | 'invoice-breakdown';
+  | 'system-documentation';
 
 type AdminDashboardContainerProps = {
   onBack?: () => void;
@@ -72,8 +68,6 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
         { id: 'invoice-analytics', label: 'Invoice Analytics', icon: <FileText size={18} /> },
         { id: 'customer-analytics', label: 'Customer Analytics', icon: <Users size={18} /> },
         { id: 'payment-analytics', label: 'Payment Analytics', icon: <DollarSign size={18} /> },
-        { id: 'payment-breakdown', label: 'Payment Breakdown', icon: <CreditCard size={18} /> },
-        { id: 'invoice-breakdown', label: 'Invoice Breakdown', icon: <FileText size={18} /> },
       ],
     },
   ];
@@ -106,10 +100,6 @@ export default function AdminDashboardContainer({ onBack, initialView = 'payment
         return <div className="p-8"><MyAssignments onBack={() => setCurrentView('my-assignments')} /></div>;
       case 'payment-analytics':
         return <PaymentAnalytics onBack={() => setCurrentView('payment-analytics')} />;
-      case 'payment-breakdown':
-        return <PaymentBreakdown />;
-      case 'invoice-breakdown':
-        return <InvoiceBreakdown />;
       case 'user-approval':
         return <UserApprovalPanel onBack={() => setCurrentView('user-approval')} />;
       case 'collector-monitoring':
