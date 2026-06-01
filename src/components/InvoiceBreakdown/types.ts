@@ -40,6 +40,12 @@ export interface InvoiceMonthSummary {
   invoice_closed_amount: number;
   invoice_balanced_count: number;
   invoice_balanced_amount: number;
+  invoice_canceled_count: number;
+  invoice_canceled_amount: number;
+  invoice_voided_count: number;
+  invoice_voided_amount: number;
+  invoice_credit_hold_count: number;
+  invoice_credit_hold_amount: number;
   credit_memo_count: number;
   credit_memo_amount: number;
   credit_memo_balance: number;
@@ -50,6 +56,10 @@ export interface InvoiceMonthSummary {
   credit_memo_closed_amount: number;
   credit_memo_balanced_count: number;
   credit_memo_balanced_amount: number;
+  credit_memo_canceled_count: number;
+  credit_memo_canceled_amount: number;
+  credit_memo_voided_count: number;
+  credit_memo_voided_amount: number;
   debit_memo_count: number;
   debit_memo_amount: number;
   debit_memo_balance: number;
@@ -58,6 +68,12 @@ export interface InvoiceMonthSummary {
   debit_memo_open_amount: number;
   debit_memo_closed_count: number;
   debit_memo_closed_amount: number;
+  debit_memo_balanced_count: number;
+  debit_memo_balanced_amount: number;
+  debit_memo_canceled_count: number;
+  debit_memo_canceled_amount: number;
+  debit_memo_voided_count: number;
+  debit_memo_voided_amount: number;
   credit_wo_count: number;
   credit_wo_amount: number;
   credit_wo_balance: number;

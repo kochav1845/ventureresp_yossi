@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { InvoiceMonthSummary, ComparisonState, FetchState, VerificationState, INVOICE_STATUS_CONFIG, formatCurrency, formatNumber } from './types';
+import { InvoiceMonthSummary, ComparisonState, FetchState, VerificationState, INVOICE_TYPE_CONFIG, INVOICE_STATUS_CONFIG, formatCurrency, formatNumber } from './types';
 import InvoiceSyncCheckCell from './InvoiceSyncCheckCell';
 
 interface InvoiceMonthTableProps {
@@ -19,8 +19,70 @@ interface InvoiceMonthTableProps {
   onDeleteAllExtra?: (monthKey: string, invoices: { reference_number: string; type: string }[]) => Promise<void>;
 }
 
-type SortField = 'month' | 'total' | 'open' | 'closed' | 'balanced' | 'canceled' | 'voided' | 'credit_hold' | 'on_hold';
+type SortField = 'month' | 'total' | 'invoices' | 'credit_memo' | 'debit_memo' | 'credit_wo' | 'overdue_charge';
 type SortDir = 'asc' | 'desc';
+
+interface TypeStatusBreakdown {
+  total_count: number;
+  total_amount: number;
+  total_balance: number;
+  statuses: { status: string; count: number; amount: number }[];
+}
+
+function getTypeBreakdown(m: InvoiceMonthSummary, type: string, showBalance: boolean): TypeStatusBreakdown {
+  switch (type) {
+    case 'Invoice': return {
+      total_count: m.invoice_count,
+      total_amount: showBalance ? m.invoice_balance : m.invoice_amount,
+      total_balance: m.invoice_balance,
+      statuses: [
+        { status: 'Open', count: m.invoice_open_count || 0, amount: showBalance ? 0 : (m.invoice_open_amount || 0) },
+        { status: 'Closed', count: m.invoice_closed_count || 0, amount: showBalance ? 0 : (m.invoice_closed_amount || 0) },
+        { status: 'Balanced', count: m.invoice_balanced_count || 0, amount: showBalance ? 0 : (m.invoice_balanced_amount || 0) },
+        { status: 'Canceled', count: m.invoice_canceled_count || 0, amount: showBalance ? 0 : (m.invoice_canceled_amount || 0) },
+        { status: 'Voided', count: m.invoice_voided_count || 0, amount: showBalance ? 0 : (m.invoice_voided_amount || 0) },
+        { status: 'Credit Hold', count: m.invoice_credit_hold_count || 0, amount: showBalance ? 0 : (m.invoice_credit_hold_amount || 0) },
+      ].filter(s => s.count > 0),
+    };
+    case 'Credit Memo': return {
+      total_count: m.credit_memo_count,
+      total_amount: showBalance ? m.credit_memo_balance : m.credit_memo_amount,
+      total_balance: m.credit_memo_balance,
+      statuses: [
+        { status: 'Open', count: m.credit_memo_open_count || 0, amount: showBalance ? 0 : (m.credit_memo_open_amount || 0) },
+        { status: 'Closed', count: m.credit_memo_closed_count || 0, amount: showBalance ? 0 : (m.credit_memo_closed_amount || 0) },
+        { status: 'Balanced', count: m.credit_memo_balanced_count || 0, amount: showBalance ? 0 : (m.credit_memo_balanced_amount || 0) },
+        { status: 'Canceled', count: m.credit_memo_canceled_count || 0, amount: showBalance ? 0 : (m.credit_memo_canceled_amount || 0) },
+        { status: 'Voided', count: m.credit_memo_voided_count || 0, amount: showBalance ? 0 : (m.credit_memo_voided_amount || 0) },
+      ].filter(s => s.count > 0),
+    };
+    case 'Debit Memo': return {
+      total_count: m.debit_memo_count,
+      total_amount: showBalance ? m.debit_memo_balance : m.debit_memo_amount,
+      total_balance: m.debit_memo_balance,
+      statuses: [
+        { status: 'Open', count: m.debit_memo_open_count || 0, amount: showBalance ? 0 : (m.debit_memo_open_amount || 0) },
+        { status: 'Closed', count: m.debit_memo_closed_count || 0, amount: showBalance ? 0 : (m.debit_memo_closed_amount || 0) },
+        { status: 'Balanced', count: m.debit_memo_balanced_count || 0, amount: showBalance ? 0 : (m.debit_memo_balanced_amount || 0) },
+        { status: 'Canceled', count: m.debit_memo_canceled_count || 0, amount: showBalance ? 0 : (m.debit_memo_canceled_amount || 0) },
+        { status: 'Voided', count: m.debit_memo_voided_count || 0, amount: showBalance ? 0 : (m.debit_memo_voided_amount || 0) },
+      ].filter(s => s.count > 0),
+    };
+    case 'Credit WO': return {
+      total_count: m.credit_wo_count,
+      total_amount: showBalance ? m.credit_wo_balance : m.credit_wo_amount,
+      total_balance: m.credit_wo_balance,
+      statuses: [],
+    };
+    case 'Overdue Charge': return {
+      total_count: m.overdue_charge_count,
+      total_amount: showBalance ? m.overdue_charge_balance : m.overdue_charge_amount,
+      total_balance: m.overdue_charge_balance,
+      statuses: [],
+    };
+    default: return { total_count: 0, total_amount: 0, total_balance: 0, statuses: [] };
+  }
+}
 
 export default function InvoiceMonthTable({
   months, onMonthClick, selectedMonth, showBalance,
@@ -42,26 +104,11 @@ export default function InvoiceMonthTable({
   const getVal = (m: InvoiceMonthSummary, field: SortField): number => {
     switch (field) {
       case 'total': return showBalance ? m.total_balance : m.total_amount;
-      case 'open': return showBalance ? m.open_balance : m.open_amount;
-      case 'closed': return showBalance ? m.closed_balance : m.closed_amount;
-      case 'balanced': return showBalance ? m.balanced_balance : m.balanced_amount;
-      case 'canceled': return showBalance ? m.canceled_balance : m.canceled_amount;
-      case 'voided': return showBalance ? m.voided_balance : m.voided_amount;
-      case 'credit_hold': return showBalance ? m.credit_hold_balance : m.credit_hold_amount;
-      case 'on_hold': return showBalance ? m.on_hold_balance : m.on_hold_amount;
-      default: return 0;
-    }
-  };
-
-  const getCount = (m: InvoiceMonthSummary, field: SortField): number => {
-    switch (field) {
-      case 'open': return m.open_count;
-      case 'closed': return m.closed_count;
-      case 'balanced': return m.balanced_count;
-      case 'canceled': return m.canceled_count;
-      case 'voided': return m.voided_count;
-      case 'credit_hold': return m.credit_hold_count;
-      case 'on_hold': return m.on_hold_count;
+      case 'invoices': return showBalance ? m.invoice_balance : m.invoice_amount;
+      case 'credit_memo': return showBalance ? m.credit_memo_balance : m.credit_memo_amount;
+      case 'debit_memo': return showBalance ? m.debit_memo_balance : m.debit_memo_amount;
+      case 'credit_wo': return showBalance ? m.credit_wo_balance : m.credit_wo_amount;
+      case 'overdue_charge': return showBalance ? m.overdue_charge_balance : m.overdue_charge_amount;
       default: return 0;
     }
   };
@@ -80,16 +127,6 @@ export default function InvoiceMonthTable({
     return <span className="flex items-center gap-0.5 text-red-600 text-xs font-medium"><TrendingDown size={12} />{pct.toFixed(0)}%</span>;
   };
 
-  const statusColumns: { field: SortField; status: string }[] = [
-    { field: 'open', status: 'Open' },
-    { field: 'closed', status: 'Closed' },
-    { field: 'balanced', status: 'Balanced' },
-    { field: 'canceled', status: 'Canceled' },
-    { field: 'voided', status: 'Voided' },
-    { field: 'credit_hold', status: 'Credit Hold' },
-    { field: 'on_hold', status: 'On Hold' },
-  ];
-
   const SortHeader = ({ field, children, className = '' }: { field: SortField; children: React.ReactNode; className?: string }) => (
     <th
       onClick={() => handleSort(field)}
@@ -104,6 +141,14 @@ export default function InvoiceMonthTable({
     </th>
   );
 
+  const typeColumns: { field: SortField; type: string }[] = [
+    { field: 'invoices', type: 'Invoice' },
+    { field: 'credit_memo', type: 'Credit Memo' },
+    { field: 'debit_memo', type: 'Debit Memo' },
+    { field: 'credit_wo', type: 'Credit WO' },
+    { field: 'overdue_charge', type: 'Overdue Charge' },
+  ];
+
   return (
     <div className="overflow-x-auto table-scroll-container max-h-[calc(100vh-300px)]">
       <table className="w-full">
@@ -111,11 +156,11 @@ export default function InvoiceMonthTable({
           <tr className="bg-gray-50 border-b border-gray-200">
             <SortHeader field="month" className="text-left text-gray-600 sticky left-0 bg-gray-50 z-10">Month</SortHeader>
             <SortHeader field="total" className="text-right text-gray-600">Total</SortHeader>
-            {statusColumns.map(col => {
-              const config = INVOICE_STATUS_CONFIG[col.status];
+            {typeColumns.map(col => {
+              const config = INVOICE_TYPE_CONFIG[col.type];
               return (
                 <SortHeader key={col.field} field={col.field} className="text-right">
-                  <span style={{ color: config?.color }}>{config?.label || col.status}</span>
+                  <span style={{ color: config?.color }}>{config?.label || col.type}</span>
                 </SortHeader>
               );
             })}
@@ -150,19 +195,33 @@ export default function InvoiceMonthTable({
                   <div className="text-xs text-gray-500">{formatNumber(month.total_invoices)} docs</div>
                   <div className="mt-0.5">{getTrend(totalVal, prevTotalVal)}</div>
                 </td>
-                {statusColumns.map(col => {
-                  const count = getCount(month, col.field);
-                  const amount = getVal(month, col.field);
-                  const prevAmount = prevMonth ? getVal(prevMonth, col.field) : undefined;
-                  const config = INVOICE_STATUS_CONFIG[col.status];
+                {typeColumns.map(col => {
+                  const breakdown = getTypeBreakdown(month, col.type, showBalance);
+                  const prevBreakdown = prevMonth ? getTypeBreakdown(prevMonth, col.type, showBalance) : null;
+                  const config = INVOICE_TYPE_CONFIG[col.type];
                   return (
-                    <td key={col.field} className="px-3 py-3.5 text-right">
-                      {count > 0 ? (
-                        <>
-                          <div className="font-medium" style={{ color: config?.color }}>{formatCurrency(amount)}</div>
-                          <div className="text-xs text-gray-500">{formatNumber(count)} docs</div>
-                          <div className="mt-0.5">{getTrend(amount, prevAmount)}</div>
-                        </>
+                    <td key={col.field} className="px-3 py-3.5 text-right align-top">
+                      {breakdown.total_count > 0 ? (
+                        <div>
+                          <div className="font-medium" style={{ color: config?.color }}>
+                            {formatCurrency(breakdown.total_amount)}
+                          </div>
+                          <div className="text-xs text-gray-500">{formatNumber(breakdown.total_count)} docs</div>
+                          <div className="mt-0.5">{getTrend(breakdown.total_amount, prevBreakdown?.total_amount)}</div>
+                          {breakdown.statuses.length > 0 && (
+                            <div className="mt-1.5 pt-1.5 border-t border-gray-100 space-y-0.5 text-left">
+                              {breakdown.statuses.map(s => {
+                                const sCfg = INVOICE_STATUS_CONFIG[s.status];
+                                return (
+                                  <div key={s.status} className="flex items-center justify-between gap-2 text-[10px]">
+                                    <span className="font-medium" style={{ color: sCfg?.color }}>{s.status}</span>
+                                    <span className="text-gray-600 tabular-nums">{formatNumber(s.count)}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-gray-300">--</span>
                       )}
