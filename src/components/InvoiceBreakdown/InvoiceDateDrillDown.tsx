@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Calendar } from 'lucide-react';
-import { InvoiceDaySummary, ComparisonState, FetchState, VerificationState, INVOICE_TYPE_CONFIG, formatCurrency, formatNumber } from './types';
+import { InvoiceDaySummary, ComparisonState, FetchState, VerificationState, INVOICE_TYPE_CONFIG, INVOICE_STATUS_CONFIG, formatCurrency, formatNumber } from './types';
 import InvoiceSyncCheckCell from './InvoiceSyncCheckCell';
 
 interface InvoiceDateDrillDownProps {
@@ -289,14 +289,27 @@ function TypeCell({ types, typeKey, showBalance }: { types: InvoiceDaySummary['t
   const data = types[typeKey];
   const config = INVOICE_TYPE_CONFIG[typeKey];
   return (
-    <td className="px-3 py-3 text-right">
+    <td className="px-3 py-3 text-right align-top">
       {data ? (
-        <>
+        <div>
           <div className="font-medium" style={{ color: config?.color }}>
             {formatCurrency(showBalance ? data.balance : data.amount)}
           </div>
           <div className="text-xs text-gray-500">{formatNumber(data.count)} docs</div>
-        </>
+          {Object.keys(data.statuses).length > 0 && (
+            <div className="mt-1.5 pt-1.5 border-t border-gray-100 space-y-0.5 text-left">
+              {Object.entries(data.statuses).map(([status, sData]) => {
+                const sCfg = INVOICE_STATUS_CONFIG[status];
+                return (
+                  <div key={status} className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="font-medium" style={{ color: sCfg?.color }}>{status}</span>
+                    <span className="text-gray-600 tabular-nums">{formatNumber(sData.count)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       ) : (
         <span className="text-gray-300">--</span>
       )}
