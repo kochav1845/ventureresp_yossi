@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Image, File, ArrowUp, ArrowDown, Mail } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Image, File, ArrowUp, ArrowDown, Mail, Send } from 'lucide-react';
 import { formatDistanceToNow, format as dateFnsFormat } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance, sortInvoices } from './utils';
@@ -11,6 +11,7 @@ import { formatDate, isDatePast } from '../../lib/dateUtils';
 import TicketPromiseDateModal from './TicketPromiseDateModal';
 import TicketHistory from './TicketHistory';
 import ColorStatusPicker from './ColorStatusPicker';
+import TicketEmailComposer from './TicketEmailComposer';
 import { isPromiseBroken } from './utils';
 
 interface ColorStatusOption {
@@ -110,6 +111,7 @@ export default function TicketCard({
   const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
   const [invoiceSortField, setInvoiceSortField] = useState<InvoiceSortField | null>(null);
   const [invoiceSortDir, setInvoiceSortDir] = useState<SortDirection>('asc');
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
   const statusDropdownRef = useRef<HTMLDivElement>(null);
   const priorityDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -584,6 +586,14 @@ export default function TicketCard({
             >
               <Bell className="w-3 h-3" />
               Remind
+            </button>
+            <button
+              onClick={() => setShowEmailComposer(true)}
+              className="px-2 py-1 bg-teal-600 text-white rounded text-[11px] hover:bg-teal-700 transition-colors flex items-center gap-1"
+              title="Send email to customer"
+            >
+              <Send className="w-3 h-3" />
+              Send Email
             </button>
             <button
               onClick={() => {
@@ -1076,6 +1086,11 @@ export default function TicketCard({
         )}
       </div>
     </div>
+    <TicketEmailComposer
+      isOpen={showEmailComposer}
+      ticket={ticket}
+      onClose={() => setShowEmailComposer(false)}
+    />
     </>
   );
 }
