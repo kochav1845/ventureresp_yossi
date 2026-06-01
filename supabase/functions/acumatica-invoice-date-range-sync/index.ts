@@ -71,7 +71,7 @@ function extractInvoiceRow(invoice: any): any {
   };
 }
 
-async function processSync(supabase: any, jobId: string, startDate: string, endDate: string) {
+async function processSync(supabase: any, jobId: string, startDate: string, endDate: string, forceUpdate = false) {
   try {
     await supabase
       .from('async_sync_jobs')
@@ -298,7 +298,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
       console.log(`[invoice-sync] Fixed ${orphansFixed} orphaned invoices`);
     }
 
-    if (missingInvoices.length === 0) {
+    if (missingInvoices.length === 0 && !forceUpdate) {
       await supabase
         .from('async_sync_jobs')
         .update({
@@ -312,13 +312,15 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
       return;
     }
 
-    await updateProgress(supabase, jobId, { created: 0, updated: 0, total: missingInvoices.length, errors: [] });
+    // In forceUpdate mode, re-fetch ALL invoices to correct status/balance mismatches
+    const invoicesToFetch = forceUpdate ? acumaticaInvoices : missingInvoices;
+    await updateProgress(supabase, jobId, { created: 0, updated: 0, total: invoicesToFetch.length, errors: [] });
 
     // Step 4: Fetch full details for missing invoices
     let created = 0;
     let updated = 0;
     const errors: string[] = [];
-    const missingSet = new Set(missingInvoices.map((inv: any) => {
+    const missingSet = new Set(invoicesToFetch.map((inv: any) => {
       const refNbr = padRefNbr(inv.ReferenceNbr?.value || '');
       const type = inv.Type?.value || '';
       return `${type}:${refNbr}`;
@@ -332,8 +334,8 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
     let workingSelect = fullSelect;
 
     // Probe with a single invoice to find working combination
-    const probeRef = missingInvoices[0].ReferenceNbr?.value;
-    const probeType = missingInvoices[0].Type?.value;
+    const probeRef = invoicesToFetch[0].ReferenceNbr?.value;
+    const probeType = invoicesToFetch[0].Type?.value;
     if (probeRef && probeType) {
       const probeFilter = `ReferenceNbr eq '${probeRef}' and Type eq '${probeType}'`;
       const combos = [
@@ -379,8 +381,8 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
 
     const USE_DATE_RANGE_THRESHOLD = 100;
 
-    if (missingInvoices.length > USE_DATE_RANGE_THRESHOLD) {
-      console.log(`[invoice-sync] ${missingInvoices.length} missing invoices, using paginated date range fetch`);
+    if (invoicesToFetch.length > USE_DATE_RANGE_THRESHOLD) {
+      console.log(`[invoice-sync] ${invoicesToFetch.length} invoices to fetch, using paginated date range fetch`);
       const PAGE_SIZE_API = 100;
       let skip = 0;
       let hasMore = true;
@@ -407,7 +409,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
           try {
             const row = extractInvoiceRow(invoice);
             if (!row) continue;
-            if (!missingSet.has(`${row.type}:${row.reference_number}`)) continue;
+            if (!forceUpdate && !missingSet.has(`${row.type}:${row.reference_number}`)) continue;
 
             const { error } = await supabase
               .from('acumatica_invoices')
@@ -429,7 +431,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
         await updateProgress(supabase, jobId, {
           created,
           updated,
-          total: missingInvoices.length,
+          total: invoicesToFetch.length,
           processed: created + updated + errors.length,
           errors: errors.slice(0, 10),
         });
@@ -443,8 +445,8 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
     } else {
       const BATCH_SIZE = 10;
 
-      for (let batchStart = 0; batchStart < missingInvoices.length; batchStart += BATCH_SIZE) {
-        const batch = missingInvoices.slice(batchStart, batchStart + BATCH_SIZE);
+      for (let batchStart = 0; batchStart < invoicesToFetch.length; batchStart += BATCH_SIZE) {
+        const batch = invoicesToFetch.slice(batchStart, batchStart + BATCH_SIZE);
 
         const refFilters = batch.map((inv: any) => {
           const refNbr = inv.ReferenceNbr?.value;
@@ -496,7 +498,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
         await updateProgress(supabase, jobId, {
           created,
           updated,
-          total: missingInvoices.length,
+          total: invoicesToFetch.length,
           processed: created + updated + errors.length,
           errors: errors.slice(0, 10),
         });
@@ -511,11 +513,12 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
         progress: {
           created,
           updated,
-          total: missingInvoices.length,
-          skipped: acumaticaInvoices.length - missingInvoices.length,
+          total: invoicesToFetch.length,
+          skipped: acumaticaInvoices.length - invoicesToFetch.length,
           errors: errors.slice(0, 10),
           apiVersion: workingApiPath,
           selectFields: workingSelect || '(all)',
+          forceUpdate,
         },
       })
       .eq('id', jobId);
@@ -526,7 +529,7 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
       console.warn('[invoice-sync] Matview refresh failed:', refreshErr.message);
     }
 
-    console.log(`[invoice-sync] Completed: ${created} created, ${updated} updated, ${errors.length} errors (skipped ${acumaticaInvoices.length - missingInvoices.length} existing)`);
+    console.log(`[invoice-sync] Completed: ${created} created, ${updated} updated, ${errors.length} errors (skipped ${acumaticaInvoices.length - invoicesToFetch.length} existing, forceUpdate=${forceUpdate})`);
   } catch (error: any) {
     console.error(`[invoice-sync] Job ${jobId} failed:`, error.message);
     await supabase
@@ -569,7 +572,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { startDate, endDate } = body;
+    const { startDate, endDate, forceUpdate } = body;
 
     if (!startDate || !endDate) {
       return new Response(
@@ -597,7 +600,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    EdgeRuntime.waitUntil(processSync(supabase, job.id, startDate, endDate));
+    EdgeRuntime.waitUntil(processSync(supabase, job.id, startDate, endDate, !!forceUpdate));
 
     return new Response(
       JSON.stringify({ success: true, async: true, jobId: job.id }),
