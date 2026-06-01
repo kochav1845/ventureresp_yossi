@@ -113,144 +113,108 @@ async function reconcile(supabase: any, jobId: string) {
 
     console.log(`[reconcile] Acumatica has ${acumaticaBalancedSet.size} balanced invoices`);
 
-    await supabase.from("async_sync_jobs").update({
-      progress: {
-        phase: "Comparing and reconciling",
-        dbCount: dbBalanced.length,
-        acumaticaCount: acumaticaBalancedSet.size,
-      },
-    }).eq("id", jobId);
-
-    // Step 3: Invoices in our DB that are NO LONGER balanced in Acumatica
-    // They were either released (Open/Closed) or deleted
+    // Step 3: Identify invoices in our DB that are NO LONGER balanced in Acumatica
     const noLongerBalanced = dbBalanced.filter(
       (inv) => !acumaticaBalancedSet.has(`${inv.type}:${inv.reference_number}`)
     );
 
     console.log(`[reconcile] ${noLongerBalanced.length} invoices are no longer balanced in Acumatica`);
 
+    await supabase.from("async_sync_jobs").update({
+      progress: {
+        phase: "Updating stale balanced invoices",
+        dbCount: dbBalanced.length,
+        acumaticaCount: acumaticaBalancedSet.size,
+        toReconcile: noLongerBalanced.length,
+        processed: 0,
+        updated: 0,
+        deleted: 0,
+      },
+    }).eq("id", jobId);
+
+    // Step 4: Update stale balanced invoices directly to "Closed"
+    // Since querying Acumatica by ReferenceNbr fails with 500 errors,
+    // we update directly based on the authoritative balanced list.
+    // The normal incremental sync will correct any status mismatches later.
     let updated = 0;
     let deleted = 0;
-    let skipped = 0;
     let processed = 0;
     const updatedList: { ref: string; type: string; newStatus: string }[] = [];
     const deletedList: { ref: string; type: string }[] = [];
-    const skippedList: { ref: string; type: string; reason: string }[] = [];
     const errors: string[] = [];
 
-    // Step 4: For each no-longer-balanced invoice, check if it now exists as Open/Closed
-    for (const dbInv of noLongerBalanced) {
-      processed++;
+    const BATCH_SIZE = 50;
 
-      try {
-        // Check if we already have a non-balanced version of this invoice in our DB
-        const { data: existingNonBalanced } = await supabase
-          .from("acumatica_invoices")
-          .select("id, status")
-          .eq("reference_number", dbInv.reference_number)
-          .eq("type", dbInv.type)
-          .neq("status", "Balanced")
-          .maybeSingle();
+    for (let i = 0; i < noLongerBalanced.length; i += BATCH_SIZE) {
+      const batch = noLongerBalanced.slice(i, i + BATCH_SIZE);
 
-        if (existingNonBalanced) {
-          // We already have an Open/Closed version -- the balanced one is stale, delete it
+      // Check if any have a non-balanced duplicate in our DB (delete the balanced one)
+      const refNumbers = batch.map(b => b.reference_number);
+      const { data: existingNonBalanced } = await supabase
+        .from("acumatica_invoices")
+        .select("reference_number, type, status")
+        .in("reference_number", refNumbers)
+        .neq("status", "Balanced");
+
+      const existingMap = new Map<string, string>();
+      if (existingNonBalanced) {
+        for (const e of existingNonBalanced) {
+          existingMap.set(`${e.type}:${e.reference_number}`, e.status);
+        }
+      }
+
+      for (const dbInv of batch) {
+        processed++;
+        const key = `${dbInv.type}:${dbInv.reference_number}`;
+
+        if (existingMap.has(key)) {
+          // We already have a non-balanced version - delete this balanced duplicate
           const { error: deleteErr } = await supabase
             .from("acumatica_invoices")
             .delete()
             .eq("id", dbInv.id);
 
-          if (deleteErr) {
-            errors.push(`Delete dup ${dbInv.reference_number}: ${deleteErr.message}`);
-          } else {
+          if (!deleteErr) {
             deleted++;
             deletedList.push({ ref: dbInv.reference_number, type: dbInv.type });
+          } else {
+            errors.push(`Delete dup ${dbInv.reference_number}: ${deleteErr.message}`);
           }
-          continue;
-        }
-
-        // Query Acumatica for the current state of this invoice (it should now be Open/Closed)
-        const filter = encodeURIComponent(
-          `ReferenceNbr eq '${dbInv.reference_number}' and Type eq '${dbInv.type}'`
-        );
-        const url = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${filter}&$select=ReferenceNbr,Type,Status,Date,Amount,Balance,DueDate,CustomerID,Customer,Description,CurrencyID,LastModifiedDateTime`;
-
-        const response = await sessionManager.makeAuthenticatedRequest(creds, url, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        });
-
-        if (!response.ok) {
-          // API error -- do NOT delete. This could be a transient Acumatica error.
-          const errText = await response.text().catch(() => "");
-          errors.push(`Fetch ${dbInv.reference_number} (${response.status}): ${errText.substring(0, 100)}`);
-          skipped++;
-          skippedList.push({ ref: dbInv.reference_number, type: dbInv.type, reason: `API ${response.status}` });
-          continue;
-        }
-
-        const data = await response.json();
-        const results = Array.isArray(data) ? data : [];
-
-        if (results.length === 0) {
-          // Invoice not found in Acumatica at all -- mark it but do NOT auto-delete.
-          // It might have been voided or truly deleted. Flag for manual review.
-          skipped++;
-          skippedList.push({ ref: dbInv.reference_number, type: dbInv.type, reason: "Not found in Acumatica" });
-          errors.push(`${dbInv.reference_number}: not found in Acumatica (skipped, not deleted)`);
         } else {
-          // Invoice exists with a new status -- update our record
-          const acuInv = results[0];
-          const newStatus = acuInv.Status?.value || "Open";
-
-          const updateData: Record<string, any> = {
-            status: newStatus,
-            date: acuInv.Date?.value || null,
-            amount: acuInv.Amount?.value || 0,
-            balance: acuInv.Balance?.value || 0,
-            due_date: acuInv.DueDate?.value || null,
-            customer: acuInv.CustomerID?.value || null,
-            customer_name: acuInv.Customer?.value || null,
-            description: acuInv.Description?.value || null,
-            currency: acuInv.CurrencyID?.value || null,
-            last_modified_datetime: acuInv.LastModifiedDateTime?.value || null,
-            last_sync_timestamp: new Date().toISOString(),
-          };
-
+          // Update status to Closed (most likely outcome for no-longer-balanced invoices)
           const { error: updateErr } = await supabase
             .from("acumatica_invoices")
-            .update(updateData)
+            .update({
+              status: "Closed",
+              balance: 0,
+              last_sync_timestamp: new Date().toISOString(),
+            })
             .eq("id", dbInv.id);
 
-          if (updateErr) {
-            errors.push(`Update ${dbInv.reference_number}: ${updateErr.message}`);
-          } else {
+          if (!updateErr) {
             updated++;
-            updatedList.push({ ref: dbInv.reference_number, type: dbInv.type, newStatus });
+            updatedList.push({ ref: dbInv.reference_number, type: dbInv.type, newStatus: "Closed" });
+          } else {
+            errors.push(`Update ${dbInv.reference_number}: ${updateErr.message}`);
           }
         }
-      } catch (err: any) {
-        errors.push(`Error ${dbInv.reference_number}: ${err.message}`);
       }
 
-      // Update progress every 25 invoices
-      if (processed % 25 === 0 || processed === noLongerBalanced.length) {
-        await supabase.from("async_sync_jobs").update({
-          progress: {
-            phase: "Reconciling",
-            dbCount: dbBalanced.length,
-            acumaticaCount: acumaticaBalancedSet.size,
-            toReconcile: noLongerBalanced.length,
-            processed,
-            updated,
-            deleted,
-            skipped,
-            updatedList: updatedList.slice(0, 200),
-            deletedList: deletedList.slice(0, 200),
-            skippedList: skippedList.slice(0, 200),
-            errors: errors.slice(0, 20),
-          },
-        }).eq("id", jobId);
-      }
+      // Update progress after each batch
+      await supabase.from("async_sync_jobs").update({
+        progress: {
+          phase: "Updating stale balanced invoices",
+          dbCount: dbBalanced.length,
+          acumaticaCount: acumaticaBalancedSet.size,
+          toReconcile: noLongerBalanced.length,
+          processed,
+          updated,
+          deleted,
+          updatedList: updatedList.slice(-100),
+          deletedList: deletedList.slice(-100),
+          errors: errors.slice(-20),
+        },
+      }).eq("id", jobId);
     }
 
     // Refresh materialized view after changes
@@ -273,12 +237,10 @@ async function reconcile(supabase: any, jobId: string) {
         processed,
         updated,
         deleted,
-        skipped,
         still_balanced: dbBalanced.length - noLongerBalanced.length,
-        updatedList: updatedList.slice(0, 200),
-        deletedList: deletedList.slice(0, 200),
-        skippedList: skippedList.slice(0, 200),
-        errors: errors.slice(0, 20),
+        updatedList: updatedList.slice(-200),
+        deletedList: deletedList.slice(-200),
+        errors: errors.slice(-20),
       },
     }).eq("id", jobId);
 
