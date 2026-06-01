@@ -208,13 +208,32 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
       })
     );
 
-    const { data: dbInvoicesInRange } = await supabase
-      .from('acumatica_invoices')
-      .select('reference_number, type')
-      .gte('date', startDate)
-      .lte('date', endDate);
+    // Fetch ALL DB invoices in range (paginate to overcome default 1000-row limit)
+    let dbInvoicesInRange: { reference_number: string; type: string }[] = [];
+    const PAGE_LIMIT = 1000;
+    let rangeOffset = 0;
+    let hasMoreRange = true;
 
-    const orphanedInvoices = (dbInvoicesInRange || []).filter(
+    while (hasMoreRange) {
+      const { data: page } = await supabase
+        .from('acumatica_invoices')
+        .select('reference_number, type')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .range(rangeOffset, rangeOffset + PAGE_LIMIT - 1);
+
+      const pageResults = page || [];
+      dbInvoicesInRange = dbInvoicesInRange.concat(pageResults);
+      if (pageResults.length < PAGE_LIMIT) {
+        hasMoreRange = false;
+      } else {
+        rangeOffset += PAGE_LIMIT;
+      }
+    }
+
+    console.log(`[invoice-sync] DB has ${dbInvoicesInRange.length} invoices in range ${startDate} to ${endDate}`);
+
+    const orphanedInvoices = dbInvoicesInRange.filter(
       (inv) => !acumaticaRefSet.has(`${inv.type}:${inv.reference_number}`)
     );
 
