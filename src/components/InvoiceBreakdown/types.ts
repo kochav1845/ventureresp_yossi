@@ -148,6 +148,9 @@ export interface ComparisonResult {
   byType: Record<string, TypeCount>;
   trulyMissing: number;
   missingByType: Record<string, number>;
+  extrasInDb?: number;
+  dbTotalForRange?: number;
+  dbTotalByType?: Record<string, number>;
 }
 
 export interface ComparisonState {

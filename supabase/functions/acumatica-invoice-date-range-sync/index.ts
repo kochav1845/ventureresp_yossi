@@ -198,13 +198,94 @@ async function processSync(supabase: any, jobId: string, startDate: string, endD
       console.log(`[invoice-sync] Fixed ${staleDatesFixed} stale dates`);
     }
 
+    // Step 3b: Find orphaned invoices - in DB for this date range but NOT in Acumatica's response
+    // These are invoices whose dates were changed in Acumatica
+    const acumaticaRefSet = new Set(
+      acumaticaInvoices.map((inv: any) => {
+        const ref = padRefNbr(inv.ReferenceNbr?.value || '');
+        const type = inv.Type?.value || '';
+        return `${type}:${ref}`;
+      })
+    );
+
+    const { data: dbInvoicesInRange } = await supabase
+      .from('acumatica_invoices')
+      .select('reference_number, type')
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    const orphanedInvoices = (dbInvoicesInRange || []).filter(
+      (inv) => !acumaticaRefSet.has(`${inv.type}:${inv.reference_number}`)
+    );
+
+    console.log(`[invoice-sync] Found ${orphanedInvoices.length} orphaned invoices in DB for this date range`);
+
+    // Fix orphans by re-fetching from Acumatica to get correct date/status
+    let orphansFixed = 0;
+    if (orphanedInvoices.length > 0) {
+      const orphanSelect = 'ReferenceNbr,Type,Status,Date,DueDate,Amount,Balance,Description,CurrencyID,LastModifiedDateTime,CustomerID,Customer';
+      const ORPHAN_BATCH = 10;
+
+      for (let i = 0; i < orphanedInvoices.length; i += ORPHAN_BATCH) {
+        const batch = orphanedInvoices.slice(i, i + ORPHAN_BATCH);
+        const refFilters = batch.map((inv) =>
+          `(ReferenceNbr eq '${inv.reference_number}' and Type eq '${inv.type}')`
+        );
+        const batchFilter = refFilters.join(' or ');
+        const batchUrl = `${acumaticaUrl}/${API_V24}?$filter=${batchFilter}&$select=${orphanSelect}`;
+
+        try {
+          const batchResponse = await sessionManager.makeAuthenticatedRequest(creds, batchUrl, {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          });
+
+          if (batchResponse.ok) {
+            const batchData = await batchResponse.json();
+            const invoices = Array.isArray(batchData) ? batchData : [];
+
+            for (const invoice of invoices) {
+              const row = extractInvoiceRow(invoice);
+              if (!row) continue;
+
+              const { error } = await supabase
+                .from('acumatica_invoices')
+                .upsert(row, { onConflict: 'reference_number,type' });
+
+              if (!error) orphansFixed++;
+            }
+
+            // Invoices not returned by Acumatica at all may have been deleted
+            const returnedSet = new Set(
+              invoices.map((inv: any) => `${inv.Type?.value}:${padRefNbr(inv.ReferenceNbr?.value || '')}`)
+            );
+            for (const orphan of batch) {
+              if (!returnedSet.has(`${orphan.type}:${orphan.reference_number}`)) {
+                // Invoice doesn't exist in Acumatica anymore - mark as Canceled
+                await supabase
+                  .from('acumatica_invoices')
+                  .update({ status: 'Canceled' })
+                  .eq('reference_number', orphan.reference_number)
+                  .eq('type', orphan.type);
+                orphansFixed++;
+              }
+            }
+          }
+        } catch (e: any) {
+          console.warn(`[invoice-sync] Orphan batch failed: ${e.message}`);
+        }
+      }
+
+      console.log(`[invoice-sync] Fixed ${orphansFixed} orphaned invoices`);
+    }
+
     if (missingInvoices.length === 0) {
       await supabase
         .from('async_sync_jobs')
         .update({
           status: 'completed',
           completed_at: new Date().toISOString(),
-          progress: { created: 0, updated: 0, total: 0, skipped: acumaticaInvoices.length, staleDatesFixed, errors: [] },
+          progress: { created: 0, updated: 0, total: 0, skipped: acumaticaInvoices.length, staleDatesFixed, orphansFixed, errors: [] },
         })
         .eq('id', jobId);
 

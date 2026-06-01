@@ -168,11 +168,11 @@ export default function InvoiceSyncCheckCell({
   }
 
   if (comparison?.result) {
-    const { acumaticaCount, dbCount, difference, byType, trulyMissing } = comparison.result;
+    const { acumaticaCount, dbCount, difference, byType, trulyMissing, extrasInDb, dbTotalForRange } = comparison.result;
     const actualMissing = trulyMissing ?? difference;
-    const inSync = actualMissing === 0;
+    const inSync = actualMissing === 0 && (!extrasInDb || extrasInDb === 0);
     const missing = actualMissing > 0;
-    const hasExtra = false;
+    const hasExtra = (extrasInDb || 0) > 0;
     const verifyResult = verification?.result;
 
     const typeOrder = ['Invoice', 'Credit Memo', 'Debit Memo', 'Credit WO', 'Overdue Charge'];
@@ -205,6 +205,13 @@ export default function InvoiceSyncCheckCell({
               </div>
               <span className="text-xs font-semibold text-emerald-600">In Sync</span>
             </div>
+          ) : hasExtra && actualMissing === 0 ? (
+            <div className="flex items-center gap-1.5">
+              <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center">
+                <AlertTriangle size={12} className="text-amber-600" />
+              </div>
+              <span className="text-xs font-semibold text-amber-600">{extrasInDb} orphaned in DB</span>
+            </div>
           ) : missing ? (
             <div className="flex items-center gap-1.5">
               <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center">
@@ -223,6 +230,11 @@ export default function InvoiceSyncCheckCell({
 
           <div className="text-[10px] text-gray-400 leading-tight text-center">
             Acumatica: {acumaticaCount} | In DB: {dbCount}
+            {hasExtra && (
+              <span className="block text-amber-600 font-medium">
+                DB total for range: {dbTotalForRange} ({extrasInDb} orphaned)
+              </span>
+            )}
           </div>
 
           {typeEntries.length > 0 && (

@@ -76,6 +76,9 @@ export function useInvoiceComparison(onDataRefresh?: () => void) {
         byType,
         trulyMissing,
         missingByType,
+        extrasInDb: acumaticaData.extrasInDb || 0,
+        dbTotalForRange: acumaticaData.dbTotalForRange || 0,
+        dbTotalByType: acumaticaData.dbTotalByType || {},
       };
 
       setComparisons(prev => ({

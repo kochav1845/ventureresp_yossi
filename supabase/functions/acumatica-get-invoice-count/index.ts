@@ -114,7 +114,33 @@ Deno.serve(async (req: Request) => {
       missingByType[m.type] = (missingByType[m.type] || 0) + 1;
     }
 
-    console.log(`Invoice count: ${totalCount} from Acumatica, ${dbExistsCount} exist in DB, ${missingRefs.length} truly missing`);
+    // Also check for extras in DB that Acumatica doesn't report for this date range
+    let dbTotalForRange = 0;
+    const dbTotalByType: Record<string, number> = {};
+    if (dateFrom && dateTo) {
+      const startDate = dateFrom.split('T')[0];
+      const endDate = dateTo.split('T')[0];
+      const { count: rangeCount } = await supabase
+        .from('acumatica_invoices')
+        .select('*', { count: 'exact', head: true })
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+      dbTotalForRange = rangeCount || 0;
+
+      const { data: typeCounts } = await supabase
+        .rpc('execute_readonly_sql', { sql_query: `SELECT type, COUNT(*)::int as cnt FROM acumatica_invoices WHERE date >= '${startDate}' AND date <= '${endDate}' GROUP BY type` });
+
+      if (typeCounts) {
+        for (const row of typeCounts) {
+          dbTotalByType[row.type] = row.cnt;
+        }
+      }
+    }
+
+    const extrasInDb = dbTotalForRange - totalCount;
+
+    console.log(`Invoice count: ${totalCount} from Acumatica, ${dbExistsCount} exist in DB, ${missingRefs.length} truly missing, ${extrasInDb > 0 ? extrasInDb : 0} extras in DB`);
 
     return new Response(
       JSON.stringify({
@@ -123,6 +149,9 @@ Deno.serve(async (req: Request) => {
         byType,
         dbExistsCount,
         dbByType,
+        dbTotalForRange,
+        dbTotalByType,
+        extrasInDb: extrasInDb > 0 ? extrasInDb : 0,
         trulyMissing: missingRefs.length,
         missingByType,
         missingRefs: missingRefs.slice(0, 100),
