@@ -965,7 +965,7 @@ function DateAnalyticsPanel({ date }: { date: Date }) {
         const { data: invoices } = await supabase
           .from('acumatica_invoices')
           .select('type, status, amount, balance, customer_name')
-          .eq('invoice_date', dateStr)
+          .eq('date', dateStr)
           .neq('status', 'On Hold');
 
         if (invoices && invoices.length > 0) {
