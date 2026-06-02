@@ -430,9 +430,9 @@ export default function InvoiceAnalyticsPage() {
       const total = invoicesAndDms.reduce((sum, i) => sum + i.amount, 0);
       const cmTotal = cms.reduce((sum, i) => sum + i.amount, 0);
       const customers = new Set(allFilteredInvoices.map(i => i.customer).filter(Boolean));
-      const openInvAndDm = invoicesAndDms.filter(i => i.status === 'Open' || i.status === 'Balanced');
+      const openInvAndDm = invoicesAndDms.filter(i => i.status === 'Open' || i.status === 'Balanced' || i.status === 'Credit Hold');
       const openInvAndDmBal = openInvAndDm.reduce((s, i) => s + i.balance, 0);
-      const openCms = cms.filter(i => i.status === 'Open' || i.status === 'Balanced');
+      const openCms = cms.filter(i => i.status === 'Open' || i.status === 'Balanced' || i.status === 'Credit Hold');
       const openCmBal = openCms.reduce((s, i) => s + i.balance, 0);
       setMonthlyTotal(total);
       setMonthlyBalance(openInvAndDmBal - openCmBal);
