@@ -82,6 +82,7 @@ export default function InvoiceAnalyticsPage() {
 
   const [monthlyAggregates, setMonthlyAggregates] = useState<{ month: number; total: number; count: number; balance: number; openBalance: number; customers: number; creditMemoAmount: number; creditMemoCount: number; openInvoiceBalance: number; openInvoiceCount: number; balancedInvoiceBalance: number; balancedInvoiceCount: number; openCmBalance: number; openCmCount: number; openDmBalance: number; openDmCount: number }[]>(() => c?.monthlyAggregates ?? []);
   const [yearlyAggregates, setYearlyAggregates] = useState<{ year: number; total: number; count: number; balance: number; openBalance: number; customers: number; creditMemoAmount: number; creditMemoCount: number; openInvoiceBalance: number; openInvoiceCount: number; balancedInvoiceBalance: number; balancedInvoiceCount: number; openCmBalance: number; openCmCount: number; openDmBalance: number; openDmCount: number }[]>(() => c?.yearlyAggregates ?? []);
+  const [loadedYearInvoices, setLoadedYearInvoices] = useState<number | null>(() => c?.loadedYearInvoices ?? null);
 
   const [monthlyTotal, setMonthlyTotal] = useState(() => c?.monthlyTotal ?? 0);
   const [monthlyBalance, setMonthlyBalance] = useState(() => c?.monthlyBalance ?? 0);
@@ -407,14 +408,17 @@ export default function InvoiceAnalyticsPage() {
     if (calendarView === 'monthly') {
       setYearlyAggregates([]);
       setInvoices([]);
+      setLoadedYearInvoices(null);
       loadMonthlyAggregates(selectedYear);
     } else if (calendarView === 'yearly') {
       setMonthlyAggregates([]);
       setInvoices([]);
+      setLoadedYearInvoices(null);
       loadYearlyAggregates();
     } else {
       setMonthlyAggregates([]);
       setYearlyAggregates([]);
+      setLoadedYearInvoices(null);
       loadDailyData();
     }
   }, [calendarView, selectedYear, selectedMonth, dateFrom, dateTo, filterStatus, filterType, selectedCustomers, excludedCustomers]);
@@ -424,7 +428,7 @@ export default function InvoiceAnalyticsPage() {
   }, [invoices, searchTerm, sortField, sortDirection, filterStatus, filterType, selectedDate, selectedCustomers, excludedCustomers]);
 
   useEffect(() => {
-    if (calendarView === 'daily') {
+    if (calendarView === 'daily' || (calendarView === 'yearly' && loadedYearInvoices !== null)) {
       const invoicesAndDms = allFilteredInvoices.filter(i => i.type === 'Invoice' || i.type === 'Debit Memo');
       const cms = allFilteredInvoices.filter(i => i.type === 'Credit Memo');
       const total = invoicesAndDms.reduce((sum, i) => sum + i.amount, 0);
@@ -449,7 +453,7 @@ export default function InvoiceAnalyticsPage() {
       setMonthlyOpenDmBalance(0);
       setMonthlyOpenDmCount(0);
     }
-  }, [allFilteredInvoices, calendarView]);
+  }, [allFilteredInvoices, calendarView, loadedYearInvoices]);
 
   useEffect(() => {
     setTempFilterStatus(filterStatus);
@@ -575,6 +579,76 @@ export default function InvoiceAnalyticsPage() {
       setInvoices(accumulated);
     } catch (error) {
       console.error('Error loading daily invoice data:', error);
+    } finally {
+      setLoading(false);
+      setLoadingBatchInfo('');
+    }
+  };
+
+  const loadYearInvoices = async (year: number) => {
+    setLoading(true);
+    setLoadingBatchInfo('');
+    setInvoices([]);
+    try {
+      const startStr = `${year}-01-01`;
+      const endStr = `${year + 1}-01-01`;
+
+      const batchSize = 500;
+      let offset = 0;
+      let hasMore = true;
+      let accumulated: InvoiceRow[] = [];
+
+      while (hasMore) {
+        setLoadingBatchInfo(accumulated.length === 0 ? `Loading ${year} invoices...` : `Loading ${year} invoices... (${accumulated.length} loaded)`);
+
+        let query = supabase
+          .from('acumatica_invoices')
+          .select('id, reference_number, type, status, date, due_date, amount, balance, customer, customer_name, description, color_status')
+          .gte('date', startStr)
+          .lt('date', endStr)
+          .in('type', ['Invoice', 'Debit Memo', 'Credit Memo'])
+          .in('status', ['Balanced', 'Credit Hold', 'Open', 'Closed', 'Voided', 'Canceled'])
+          .order('date', { ascending: false })
+          .order('reference_number', { ascending: false })
+          .range(offset, offset + batchSize - 1);
+
+        if (filterStatus.length > 0) query = query.in('status', filterStatus);
+        if (filterType.length > 0) query = query.in('type', filterType);
+        if (selectedCustomers.length > 0) query = query.in('customer', selectedCustomers);
+        if (excludedCustomers.length > 0) {
+          for (const cust of excludedCustomers) query = query.neq('customer', cust);
+        }
+
+        const { data: batch, error } = await query;
+        if (error) throw error;
+
+        if (batch && batch.length > 0) {
+          const rows: InvoiceRow[] = batch.map((inv: any) => ({
+            id: inv.id,
+            reference_number: inv.reference_number || '',
+            type: inv.type || '',
+            status: inv.status || '',
+            date: inv.date || '',
+            due_date: inv.due_date || '',
+            amount: parseFloat(inv.amount) || 0,
+            balance: parseFloat(inv.balance) || 0,
+            customer: inv.customer || '',
+            customer_name: customerNameMap.get(inv.customer) || (inv.customer_name && inv.customer_name !== inv.customer ? inv.customer_name : '') || 'N/A',
+            description: inv.description || '',
+            color_status: inv.color_status || '',
+          }));
+          accumulated = [...accumulated, ...rows];
+          offset += batchSize;
+          hasMore = batch.length === batchSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      setInvoices(accumulated);
+      setLoadedYearInvoices(year);
+    } catch (error) {
+      console.error('Error loading year invoice data:', error);
     } finally {
       setLoading(false);
       setLoadingBatchInfo('');
@@ -1743,18 +1817,33 @@ export default function InvoiceAnalyticsPage() {
                 {getYearlyData().map((yearData) => {
                   const isCurrentYear = yearData.year === new Date().getFullYear();
                   return (
-                    <button
+                    <div
                       key={yearData.year}
                       onClick={() => {
                         setSelectedYear(yearData.year);
                         setCalendarView('monthly');
                       }}
                       className={`
-                        p-4 rounded-xl border-2 transition-all hover:shadow-xl cursor-pointer text-left
-                        ${isCurrentYear ? 'bg-blue-50 border-blue-400 ring-4 ring-blue-200' : 'bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-300'}
+                        p-4 rounded-xl border-2 transition-all hover:shadow-xl cursor-pointer text-left relative
+                        ${loadedYearInvoices === yearData.year ? 'ring-4 ring-emerald-300 border-emerald-400 bg-emerald-50' : isCurrentYear ? 'bg-blue-50 border-blue-400 ring-4 ring-blue-200' : 'bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-300'}
                       `}
                     >
-                      <div className="text-2xl font-bold text-gray-700 mb-2">{yearData.year}</div>
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="text-2xl font-bold text-gray-700">{yearData.year}</div>
+                        {(yearData.count > 0 || yearData.creditMemoCount > 0) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              loadYearInvoices(yearData.year);
+                            }}
+                            disabled={loading}
+                            title="Load invoices for this year"
+                            className="p-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                       {(yearData.count > 0 || yearData.creditMemoCount > 0) ? (
                         <div className="space-y-1.5">
                           <div className="text-xl font-bold text-blue-600 break-words">
@@ -1777,11 +1866,14 @@ export default function InvoiceAnalyticsPage() {
                           <div className="text-xs text-gray-500">
                             {yearData.count.toLocaleString()} invoice{yearData.count !== 1 ? 's' : ''}
                           </div>
+                          {loadedYearInvoices === yearData.year && (
+                            <div className="text-[11px] font-semibold text-emerald-700 mt-1">Invoices loaded below</div>
+                          )}
                         </div>
                       ) : (
                         <div className="text-sm text-gray-400">No invoices</div>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>

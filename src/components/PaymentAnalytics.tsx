@@ -87,6 +87,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const [loading, setLoading] = useState(() => !c);
   const [monthlyAggregates, setMonthlyAggregates] = useState<{month: number, total: number, count: number}[]>(() => c?.monthlyAggregates ?? []);
   const [yearlyAggregates, setYearlyAggregates] = useState<{year: number, total: number, count: number}[]>(() => c?.yearlyAggregates ?? []);
+  const [loadedYearPayments, setLoadedYearPayments] = useState<number | null>(() => c?.loadedYearPayments ?? null);
   const [searchTerm, setSearchTerm] = useState(() => c?.searchTerm ?? '');
   const [sortField, setSortField] = useState<SortField>(() => c?.sortField ?? 'date');
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => c?.sortDirection ?? 'desc');
@@ -424,14 +425,17 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       if (calendarView === 'monthly') {
         setYearlyAggregates([]);
         setPayments([]);
+        setLoadedYearPayments(null);
         await loadMonthlyAggregates(selectedYear);
       } else if (calendarView === 'yearly') {
         setMonthlyAggregates([]);
         setPayments([]);
+        setLoadedYearPayments(null);
         await loadYearlyAggregates();
       } else {
         setMonthlyAggregates([]);
         setYearlyAggregates([]);
+        setLoadedYearPayments(null);
         await loadMonthlyData();
       }
     };
@@ -496,14 +500,14 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   }, [analyticsData, appliedPaymentDateFrom, appliedPaymentDateTo, appliedMinAmount, appliedMaxAmount, appliedCustomerFilter, appliedSelectedCustomers, appliedTimingFilter, appliedCustomDaysMin, appliedCustomDaysMax, appliedShowOnlyOverdue, excludedCustomerIds, analyticsSortField, analyticsSortDirection]);
 
   useEffect(() => {
-    if (calendarView === 'daily') {
+    if (calendarView === 'daily' || (calendarView === 'yearly' && loadedYearPayments !== null)) {
       const total = allFilteredPayments.reduce((sum, p) => sum + p.payment_amount, 0);
       const uniqueCustomers = new Set(allFilteredPayments.map(p => p.customer_id).filter(Boolean));
       setMonthlyTotal(total);
       setMonthlyPaymentCount(allFilteredPayments.length);
       setMonthlyCustomerCount(uniqueCustomers.size);
     }
-  }, [allFilteredPayments, calendarView]);
+  }, [allFilteredPayments, calendarView, loadedYearPayments]);
 
   // Initialize temp filters with applied filter values on mount
   useEffect(() => {
@@ -1259,6 +1263,74 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
 
     } catch (error) {
       console.error('Error loading monthly data:', error);
+    } finally {
+      setLoading(false);
+      setLoadingBatchInfo('');
+    }
+  };
+
+  const loadYearPayments = async (year: number) => {
+    setLoading(true);
+    setLoadingBatchInfo('');
+    setPayments([]);
+    try {
+      const startStr = `${year}-01-01`;
+      const endStr = `${year + 1}-01-01`;
+
+      const batchSize = 1000;
+      let allPaymentsData: any[] = [];
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        setLoadingBatchInfo(`Loading ${year} payments... (${allPaymentsData.length} loaded)`);
+        const { data: batch, error: batchError } = await supabase
+          .rpc('get_payments_with_applications', {
+            p_start_date: startStr,
+            p_end_date: endStr,
+            p_type: filterType.length === 1 ? filterType[0] : null,
+            p_exclude_credit_memos: true
+          })
+          .range(offset, offset + batchSize - 1);
+
+        if (batchError) throw batchError;
+
+        if (batch && batch.length > 0) {
+          allPaymentsData = [...allPaymentsData, ...batch];
+          offset += batchSize;
+          hasMore = batch.length === batchSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      const paymentRows: PaymentRow[] = allPaymentsData.map((payment: any) => {
+        const apps = payment.invoice_applications || [];
+        const invoiceList = apps.length > 0
+          ? apps.map((app: any) => `${app.doc_type}: ${app.invoice_reference_number}`).join(', ')
+          : 'None';
+
+        return {
+          id: payment.id,
+          date: payment.doc_date || payment.application_date || '',
+          reference_number: payment.reference_number || '',
+          customer_id: payment.customer_id || '',
+          customer_name: payment.customer_name || 'N/A',
+          payment_method: payment.payment_method || '',
+          type: payment.type || 'Payment',
+          payment_amount: parseFloat(payment.payment_amount) || 0,
+          status: payment.status || '',
+          invoice_applications: invoiceList,
+          total_applied: parseFloat(payment.total_applied) || 0,
+          available_balance: parseFloat(payment.available_balance) || 0,
+          description: payment.description || ''
+        };
+      });
+
+      setPayments(paymentRows);
+      setLoadedYearPayments(year);
+    } catch (error) {
+      console.error('Error loading year payments:', error);
     } finally {
       setLoading(false);
       setLoadingBatchInfo('');
@@ -3659,19 +3731,34 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                 {getYearlyData().map((yearData) => {
                   const isCurrentYear = yearData.year === new Date().getFullYear();
                   return (
-                    <button
+                    <div
                       key={yearData.year}
                       onClick={() => {
                         setSelectedYear(yearData.year);
                         setCalendarView('monthly');
                       }}
                       className={`
-                        p-4 rounded-xl border-2 transition-all hover:shadow-xl cursor-pointer text-left
-                        ${isCurrentYear ? 'bg-blue-50 border-blue-400 ring-4 ring-blue-200' : 'bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-300'}
+                        p-4 rounded-xl border-2 transition-all hover:shadow-xl cursor-pointer text-left relative
+                        ${loadedYearPayments === yearData.year ? 'ring-4 ring-emerald-300 border-emerald-400 bg-emerald-50' : isCurrentYear ? 'bg-blue-50 border-blue-400 ring-4 ring-blue-200' : 'bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-300'}
                       `}
                     >
-                      <div className="text-2xl font-bold text-gray-700 mb-2">
-                        {yearData.year}
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="text-2xl font-bold text-gray-700">
+                          {yearData.year}
+                        </div>
+                        {yearData.count > 0 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              loadYearPayments(yearData.year);
+                            }}
+                            disabled={loading}
+                            title="Load payments for this year"
+                            className="p-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                       {yearData.count > 0 ? (
                         <div className="space-y-1.5">
@@ -3681,11 +3768,14 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                           <div className="text-xs text-gray-500">
                             {yearData.count} payment{yearData.count !== 1 ? 's' : ''}
                           </div>
+                          {loadedYearPayments === yearData.year && (
+                            <div className="text-[11px] font-semibold text-emerald-700 mt-1">Payments loaded below</div>
+                          )}
                         </div>
                       ) : (
                         <div className="text-sm text-gray-400">No payments</div>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
