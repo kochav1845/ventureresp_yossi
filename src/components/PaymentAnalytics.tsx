@@ -3655,7 +3655,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
               </div>
             ) : (
               /* Yearly View */
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 w-full">
                 {getYearlyData().map((yearData) => {
                   const isCurrentYear = yearData.year === new Date().getFullYear();
                   return (
@@ -3666,24 +3666,24 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                         setCalendarView('monthly');
                       }}
                       className={`
-                        p-8 rounded-xl border-2 transition-all hover:shadow-xl cursor-pointer
+                        p-4 rounded-xl border-2 transition-all hover:shadow-xl cursor-pointer text-left
                         ${isCurrentYear ? 'bg-blue-50 border-blue-400 ring-4 ring-blue-200' : 'bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-300'}
                       `}
                     >
-                      <div className="text-3xl font-bold text-gray-700 mb-4">
+                      <div className="text-2xl font-bold text-gray-700 mb-2">
                         {yearData.year}
                       </div>
                       {yearData.count > 0 ? (
-                        <div className="space-y-2">
-                          <div className="text-3xl font-bold text-green-600">
+                        <div className="space-y-1.5">
+                          <div className="text-xl font-bold text-green-600 break-words">
                             {formatCurrency(yearData.total)}
                           </div>
-                          <div className="text-sm text-gray-500">
+                          <div className="text-xs text-gray-500">
                             {yearData.count} payment{yearData.count !== 1 ? 's' : ''}
                           </div>
                         </div>
                       ) : (
-                        <div className="text-base text-gray-400">No payments</div>
+                        <div className="text-sm text-gray-400">No payments</div>
                       )}
                     </button>
                   );

@@ -1739,7 +1739,7 @@ export default function InvoiceAnalyticsPage() {
                 })}
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 w-full">
                 {getYearlyData().map((yearData) => {
                   const isCurrentYear = yearData.year === new Date().getFullYear();
                   return (
@@ -1750,38 +1750,36 @@ export default function InvoiceAnalyticsPage() {
                         setCalendarView('monthly');
                       }}
                       className={`
-                        p-8 rounded-xl border-2 transition-all hover:shadow-xl cursor-pointer text-left
+                        p-4 rounded-xl border-2 transition-all hover:shadow-xl cursor-pointer text-left
                         ${isCurrentYear ? 'bg-blue-50 border-blue-400 ring-4 ring-blue-200' : 'bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-300'}
                       `}
                     >
-                      <div className="text-3xl font-bold text-gray-700 mb-4">{yearData.year}</div>
+                      <div className="text-2xl font-bold text-gray-700 mb-2">{yearData.year}</div>
                       {(yearData.count > 0 || yearData.creditMemoCount > 0) ? (
-                        <div className="space-y-2">
-                          <div className="text-3xl font-bold text-blue-600">
-                            <span className="hidden md:inline">{formatCurrency(yearData.total - 2 * yearData.creditMemoAmount)}</span>
-                            <span className="md:hidden">{formatCurrencyCompact(yearData.total - 2 * yearData.creditMemoAmount)}</span>
+                        <div className="space-y-1.5">
+                          <div className="text-xl font-bold text-blue-600 break-words">
+                            {formatCurrencyCompact(yearData.total - 2 * yearData.creditMemoAmount)}
                           </div>
                           {yearData.creditMemoAmount > 0 && (
-                            <div className="text-sm font-medium text-red-500 hidden lg:block">CM: -{formatCurrencyCompact(yearData.creditMemoAmount)} ({yearData.creditMemoCount})</div>
+                            <div className="text-xs font-medium text-red-500">CM: -{formatCurrencyCompact(yearData.creditMemoAmount)} ({yearData.creditMemoCount})</div>
                           )}
                           {yearData.openInvoiceBalance > 0 && (
                             <div className="mt-1 pt-2 border-t border-gray-200">
-                              <div className="text-lg font-bold text-amber-600">
-                                <span className="hidden md:inline">{formatCurrency(yearData.openInvoiceBalance - yearData.openCmBalance)} open</span>
-                                <span className="md:hidden">{formatCurrencyCompact(yearData.openInvoiceBalance - yearData.openCmBalance)} open</span>
+                              <div className="text-base font-bold text-amber-600 break-words">
+                                {formatCurrencyCompact(yearData.openInvoiceBalance - yearData.openCmBalance)} open
                               </div>
-                              <div className="text-sm text-blue-600 hidden lg:block">Inv + DM: {formatCurrencyCompact(yearData.openInvoiceBalance)} ({yearData.openInvoiceCount})</div>
+                              <div className="text-xs text-blue-600">Inv+DM: {formatCurrencyCompact(yearData.openInvoiceBalance)} ({yearData.openInvoiceCount})</div>
                               {yearData.openCmBalance > 0 && (
-                                <div className="text-sm text-red-500 hidden lg:block">CM: -{formatCurrencyCompact(yearData.openCmBalance)} ({yearData.openCmCount})</div>
+                                <div className="text-xs text-red-500">CM: -{formatCurrencyCompact(yearData.openCmBalance)} ({yearData.openCmCount})</div>
                               )}
                             </div>
                           )}
-                          <div className="text-sm text-gray-500 hidden md:block">
+                          <div className="text-xs text-gray-500">
                             {yearData.count.toLocaleString()} invoice{yearData.count !== 1 ? 's' : ''}
                           </div>
                         </div>
                       ) : (
-                        <div className="text-base text-gray-400">No invoices</div>
+                        <div className="text-sm text-gray-400">No invoices</div>
                       )}
                     </button>
                   );
