@@ -509,6 +509,15 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     }
   }, [allFilteredPayments, calendarView, loadedYearPayments]);
 
+  useEffect(() => {
+    if (calendarView !== 'yearly') return;
+    if (loadedYearPayments !== null && loadedYearPayments !== -1) return;
+    const timer = setTimeout(() => {
+      searchPaymentsAcrossAllYears(searchTerm);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm, calendarView]);
+
   // Initialize temp filters with applied filter values on mount
   useEffect(() => {
     setTempFilterStatus(filterStatus);
@@ -1331,6 +1340,51 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       setLoadedYearPayments(year);
     } catch (error) {
       console.error('Error loading year payments:', error);
+    } finally {
+      setLoading(false);
+      setLoadingBatchInfo('');
+    }
+  };
+
+  const searchPaymentsAcrossAllYears = async (term: string) => {
+    if (!term.trim()) {
+      setPayments([]);
+      setLoadedYearPayments(null);
+      return;
+    }
+    setLoading(true);
+    setLoadingBatchInfo('Searching across all years...');
+    setPayments([]);
+    try {
+      const search = `%${term.trim()}%`;
+      const { data, error } = await supabase
+        .from('acumatica_payments')
+        .select('id, reference_number, customer_id, customer_name, payment_method, type, payment_amount, status, description, doc_date, application_date')
+        .or(`reference_number.ilike.${search},customer_name.ilike.${search},customer_id.ilike.${search},payment_method.ilike.${search},description.ilike.${search}`)
+        .order('doc_date', { ascending: false, nullsFirst: false })
+        .limit(2000);
+
+      if (error) throw error;
+
+      const paymentRows: PaymentRow[] = (data || []).map((payment: any) => ({
+        id: payment.id,
+        date: payment.doc_date || payment.application_date || '',
+        reference_number: payment.reference_number || '',
+        customer_id: payment.customer_id || '',
+        customer_name: payment.customer_name || 'N/A',
+        payment_method: payment.payment_method || '',
+        type: payment.type || 'Payment',
+        payment_amount: parseFloat(payment.payment_amount) || 0,
+        status: payment.status || '',
+        invoice_applications: 'None',
+        total_applied: 0,
+        available_balance: 0,
+        description: payment.description || ''
+      }));
+      setPayments(paymentRows);
+      setLoadedYearPayments(-1);
+    } catch (error) {
+      console.error('Error searching payments across all years:', error);
     } finally {
       setLoading(false);
       setLoadingBatchInfo('');

@@ -456,6 +456,15 @@ export default function InvoiceAnalyticsPage() {
   }, [allFilteredInvoices, calendarView, loadedYearInvoices]);
 
   useEffect(() => {
+    if (calendarView !== 'yearly') return;
+    if (loadedYearInvoices !== null && loadedYearInvoices !== -1) return;
+    const timer = setTimeout(() => {
+      searchAcrossAllYears(searchTerm);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm, calendarView]);
+
+  useEffect(() => {
     setTempFilterStatus(filterStatus);
     setTempFilterType(filterType);
     setTempDateFrom(dateFrom);
@@ -649,6 +658,60 @@ export default function InvoiceAnalyticsPage() {
       setLoadedYearInvoices(year);
     } catch (error) {
       console.error('Error loading year invoice data:', error);
+    } finally {
+      setLoading(false);
+      setLoadingBatchInfo('');
+    }
+  };
+
+  const searchAcrossAllYears = async (term: string) => {
+    if (!term.trim()) {
+      setInvoices([]);
+      setLoadedYearInvoices(null);
+      return;
+    }
+    setLoading(true);
+    setLoadingBatchInfo('Searching across all years...');
+    setInvoices([]);
+    try {
+      const search = `%${term.trim()}%`;
+      let query = supabase
+        .from('acumatica_invoices')
+        .select('id, reference_number, type, status, date, due_date, amount, balance, customer, customer_name, description, color_status')
+        .in('type', ['Invoice', 'Debit Memo', 'Credit Memo'])
+        .in('status', ['Balanced', 'Credit Hold', 'Open', 'Closed', 'Voided', 'Canceled'])
+        .or(`reference_number.ilike.${search},customer_name.ilike.${search},customer.ilike.${search},description.ilike.${search}`)
+        .order('date', { ascending: false })
+        .limit(2000);
+
+      if (filterStatus.length > 0) query = query.in('status', filterStatus);
+      if (filterType.length > 0) query = query.in('type', filterType);
+      if (selectedCustomers.length > 0) query = query.in('customer', selectedCustomers);
+      if (excludedCustomers.length > 0) {
+        for (const cust of excludedCustomers) query = query.neq('customer', cust);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const rows: InvoiceRow[] = (data || []).map((inv: any) => ({
+        id: inv.id,
+        reference_number: inv.reference_number || '',
+        type: inv.type || '',
+        status: inv.status || '',
+        date: inv.date || '',
+        due_date: inv.due_date || '',
+        amount: parseFloat(inv.amount) || 0,
+        balance: parseFloat(inv.balance) || 0,
+        customer: inv.customer || '',
+        customer_name: customerNameMap.get(inv.customer) || (inv.customer_name && inv.customer_name !== inv.customer ? inv.customer_name : '') || 'N/A',
+        description: inv.description || '',
+        color_status: inv.color_status || '',
+      }));
+      setInvoices(rows);
+      setLoadedYearInvoices(-1);
+    } catch (error) {
+      console.error('Error searching across all years:', error);
     } finally {
       setLoading(false);
       setLoadingBatchInfo('');
