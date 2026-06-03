@@ -214,7 +214,7 @@ Deno.serve(async (req: Request) => {
       // Full mode: All credit memos (open + closed) + open debit memos
       const { data: creditMemos, error: cmErr } = await supabase
         .from('acumatica_invoices')
-        .select('id, reference_number, type, status, balance, customer')
+        .select('id, reference_number, type, status, balance, amount, customer, acumatica_id')
         .eq('type', 'Credit Memo')
         .not('customer', 'is', null)
         .order('reference_number')
@@ -224,7 +224,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: debitMemos, error: dmErr } = await supabase
         .from('acumatica_invoices')
-        .select('id, reference_number, type, status, balance, customer')
+        .select('id, reference_number, type, status, balance, amount, customer, acumatica_id')
         .eq('type', 'Debit Memo')
         .in('status', ['Open', 'Credit Hold'])
         .not('customer', 'is', null)
@@ -235,7 +235,7 @@ Deno.serve(async (req: Request) => {
       // Also check a sample of open invoices (most recently synced first)
       const { data: openInvoices, error: invErr } = await supabase
         .from('acumatica_invoices')
-        .select('id, reference_number, type, status, balance, customer')
+        .select('id, reference_number, type, status, balance, amount, customer, acumatica_id')
         .eq('type', 'Invoice')
         .in('status', ['Open', 'Credit Hold'])
         .not('customer', 'is', null)
@@ -249,7 +249,7 @@ Deno.serve(async (req: Request) => {
       // Quick mode: Only open/credit hold credit memos and debit memos
       const { data: invoices, error: qErr } = await supabase
         .from('acumatica_invoices')
-        .select('id, reference_number, type, status, balance, customer')
+        .select('id, reference_number, type, status, balance, amount, customer, acumatica_id')
         .in('type', ['Credit Memo', 'Debit Memo'])
         .in('status', ['Open', 'Closed', 'Credit Hold'])
         .not('customer', 'is', null)
@@ -272,18 +272,21 @@ Deno.serve(async (req: Request) => {
       try {
         const acumaticaInvoices = await fetchInvoiceBatch(acumaticaUrl, cookies, refFilter);
 
+        // For each ref, pick the most recently CREATED invoice (handles 2020 vs 2025 collisions)
         const acumaticaMap = new Map<string, any>();
-        for (const inv of acumaticaInvoices) {
+        const sortedAc = [...acumaticaInvoices].sort((a, b) => {
+          const da = new Date(a.CreatedDateTime?.value || 0).getTime();
+          const db = new Date(b.CreatedDateTime?.value || 0).getTime();
+          return db - da;
+        });
+        for (const inv of sortedAc) {
           const refNbr = inv.ReferenceNbr?.value;
           const type = inv.Type?.value;
-          if (refNbr) {
-            // Key by ref+type to handle same ref number different doc types
-            acumaticaMap.set(`${refNbr}|${type}`, inv);
-            // Also store by ref only for fallback
-            if (!acumaticaMap.has(refNbr)) {
-              acumaticaMap.set(refNbr, inv);
-            }
-          }
+          if (!refNbr) continue;
+          const keyTyped = `${refNbr}|${type}`;
+          // Only set first (newest) — later older versions are skipped
+          if (!acumaticaMap.has(keyTyped)) acumaticaMap.set(keyTyped, inv);
+          if (!acumaticaMap.has(refNbr)) acumaticaMap.set(refNbr, inv);
         }
 
         for (const dbInv of batch) {
@@ -297,7 +300,10 @@ Deno.serve(async (req: Request) => {
 
           const acStatus = acInv.Status?.value;
           const acBalance = parseFloat(acInv.Balance?.value || '0');
+          const acAmount = parseFloat(acInv.Amount?.value || '0');
+          const acAcumaticaId = acInv.id;
           const dbBalance = parseFloat(dbInv.balance || '0');
+          const dbAmount = parseFloat(dbInv.amount || '0');
 
           let needsUpdate = false;
           const changes: any = {};
@@ -312,6 +318,19 @@ Deno.serve(async (req: Request) => {
             needsUpdate = true;
             changes.balance = acBalance;
             results.balanceMismatches++;
+          }
+
+          // Detect collisions: amount mismatch OR acumatica_id mismatch indicates
+          // we have stale data from a different (older) invoice with same ref number.
+          const amountMismatch = Math.abs(acAmount - dbAmount) > 0.01;
+          const idMismatch = !!acAcumaticaId && !!dbInv.acumatica_id && acAcumaticaId !== dbInv.acumatica_id;
+          if (amountMismatch || idMismatch) {
+            needsUpdate = true;
+            changes.amount = acAmount;
+            changes.acumatica_id = acAcumaticaId;
+            // Best-effort full overwrite of fields available in this batch payload
+            if (acInv.Customer?.value) changes.customer = acInv.Customer.value;
+            if (acInv.DocDate?.value) changes.date = (acInv.DocDate.value as string).split('T')[0];
           }
 
           if (needsUpdate) {
@@ -335,6 +354,9 @@ Deno.serve(async (req: Request) => {
                 new_status: changes.status || dbInv.status,
                 old_balance: dbBalance,
                 new_balance: changes.balance ?? dbBalance,
+                old_amount: dbAmount,
+                new_amount: changes.amount ?? dbAmount,
+                collision: amountMismatch || idMismatch,
               });
             }
           }

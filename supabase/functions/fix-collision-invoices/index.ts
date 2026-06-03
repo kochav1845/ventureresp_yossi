@@ -30,7 +30,7 @@ Deno.serve(async (req: Request) => {
     // Get the DB records for these reference numbers
     const { data: affected, error: affError } = await supabase
       .from('acumatica_invoices')
-      .select('id, reference_number, type, status, balance, date, customer, amount')
+      .select('id, reference_number, type, status, balance, date, customer, customer_name, amount, acumatica_id')
       .in('reference_number', referenceNumbers)
       .eq('type', 'Invoice');
 
@@ -74,7 +74,6 @@ Deno.serve(async (req: Request) => {
 
     for (const inv of affected) {
       try {
-        // Fetch this specific invoice from Acumatica
         const refNbr = inv.reference_number;
         const filter = `ReferenceNbr eq '${refNbr}'`;
         const url = `${acumaticaUrl}/entity/Default/23.200.001/Invoice?$filter=${filter}`;
@@ -89,72 +88,86 @@ Deno.serve(async (req: Request) => {
         }
 
         const invoices = await response.json();
+        const list = Array.isArray(invoices) ? invoices : [];
 
-        // Find the correct 2024+ invoice (not the old 2020 one)
-        const correctInvoice = (invoices || []).find((i: any) => {
-          const created = i.CreatedDateTime?.value;
-          if (!created) return false;
-          return new Date(created).getFullYear() >= 2024;
-        });
-
-        if (!correctInvoice) {
-          // All results are old invoices - the 2025 version might not exist in Acumatica
-          // Or it could be under a different endpoint. Check if any match our date.
-          const anyMatch = (invoices || []).find((i: any) => {
-            const d = (i.Date?.value || '').split('T')[0];
-            return d === inv.date;
-          });
-
-          if (anyMatch) {
-            // Found by date match
-            const newStatus = anyMatch.Status?.value;
-            const newBalance = anyMatch.Balance?.value;
-            if (newStatus !== inv.status || newBalance != inv.balance) {
-              await supabase
-                .from('acumatica_invoices')
-                .update({
-                  status: newStatus,
-                  balance: newBalance,
-                  amount: anyMatch.Amount?.value || inv.amount,
-                  last_modified_datetime: anyMatch.LastModifiedDateTime?.value,
-                  last_sync_timestamp: new Date().toISOString(),
-                  created_datetime: anyMatch.CreatedDateTime?.value,
-                  raw_data: anyMatch,
-                })
-                .eq('id', inv.id);
-              fixed++;
-              fixes.push({ ref: refNbr, oldStatus: 'Closed', newStatus, newBalance });
-            } else {
-              alreadyCorrect++;
-            }
-          } else {
-            notFound++;
-          }
+        if (list.length === 0) {
+          notFound++;
           continue;
         }
 
-        const newStatus = correctInvoice.Status?.value;
-        const newBalance = correctInvoice.Balance?.value;
+        // Pick the canonical "current" invoice for this reference number.
+        // Strategy: prefer the most recently created (highest CreatedDateTime).
+        // This reliably picks the 2025 invoice over a 2020 collision.
+        const sorted = [...list].sort((a, b) => {
+          const da = new Date(a.CreatedDateTime?.value || 0).getTime();
+          const db = new Date(b.CreatedDateTime?.value || 0).getTime();
+          return db - da;
+        });
+        const correctInvoice = sorted[0];
 
-        if (newStatus !== inv.status || newBalance != inv.balance) {
+        const newStatus = correctInvoice.Status?.value;
+        const newBalance = parseFloat(correctInvoice.Balance?.value ?? '0');
+        const newAmount = parseFloat(correctInvoice.Amount?.value ?? '0');
+        const newAcumaticaId = correctInvoice.id;
+        const newCustomer = correctInvoice.Customer?.value || correctInvoice.CustomerID?.value || inv.customer;
+        const newDate = (correctInvoice.Date?.value || '').split('T')[0] || inv.date;
+
+        const dbBalance = parseFloat(inv.balance ?? '0');
+        const dbAmount = parseFloat(inv.amount ?? '0');
+        const idMismatch = !!newAcumaticaId && newAcumaticaId !== inv.acumatica_id;
+        const statusMismatch = newStatus && newStatus !== inv.status;
+        const balanceMismatch = Math.abs(newBalance - dbBalance) > 0.01;
+        const amountMismatch = Math.abs(newAmount - dbAmount) > 0.01;
+        const customerMismatch = newCustomer && newCustomer !== inv.customer;
+        const dateMismatch = newDate && newDate !== inv.date;
+
+        const needsUpdate = idMismatch || statusMismatch || balanceMismatch || amountMismatch || customerMismatch || dateMismatch;
+
+        if (needsUpdate) {
           await supabase
             .from('acumatica_invoices')
             .update({
-              status: newStatus,
+              status: newStatus ?? inv.status,
               balance: newBalance,
-              amount: correctInvoice.Amount?.value,
-              customer: correctInvoice.Customer?.value || correctInvoice.CustomerID?.value || inv.customer,
-              customer_name: correctInvoice.CustomerName?.value || correctInvoice.Customer?.value || inv.customer,
-              date: (correctInvoice.Date?.value || '').split('T')[0] || inv.date,
+              amount: newAmount,
+              customer: newCustomer,
+              customer_name: correctInvoice.CustomerName?.value || newCustomer,
+              date: newDate,
               due_date: (correctInvoice.DueDate?.value || '').split('T')[0] || null,
+              post_period: correctInvoice.PostPeriod?.value || null,
+              description: correctInvoice.Description?.value || '',
+              tax_total: parseFloat(correctInvoice.TaxTotal?.value ?? '0'),
+              terms: correctInvoice.Terms?.value || null,
+              customer_order: correctInvoice.CustomerOrder?.value || null,
+              acumatica_id: newAcumaticaId,
               last_modified_datetime: correctInvoice.LastModifiedDateTime?.value,
-              last_sync_timestamp: new Date().toISOString(),
               created_datetime: correctInvoice.CreatedDateTime?.value,
+              last_sync_timestamp: new Date().toISOString(),
+              synced_at: new Date().toISOString(),
               raw_data: correctInvoice,
             })
             .eq('id', inv.id);
           fixed++;
-          fixes.push({ ref: refNbr, oldStatus: 'Closed', newStatus, newBalance });
+          fixes.push({
+            ref: refNbr,
+            collisionsFound: list.length,
+            oldStatus: inv.status,
+            newStatus,
+            oldAmount: dbAmount,
+            newAmount,
+            oldBalance: dbBalance,
+            newBalance,
+            oldAcumaticaId: inv.acumatica_id,
+            newAcumaticaId,
+            mismatchReasons: {
+              id: idMismatch,
+              status: statusMismatch,
+              balance: balanceMismatch,
+              amount: amountMismatch,
+              customer: customerMismatch,
+              date: dateMismatch,
+            },
+          });
         } else {
           alreadyCorrect++;
         }
