@@ -29,6 +29,7 @@ import SyncConfiguration from './components/SyncConfiguration';
 import InvoiceStatusAdminPanel from './components/InvoiceStatusAdminPanel';
 import AcumaticaFilesTest from './components/AcumaticaFilesTest';
 import RemindersPortal from './components/RemindersPortal';
+import ProposedReminderRulesSettings from './components/ProposedReminderRulesSettings';
 import AcumaticaCredentialTester from './components/AcumaticaCredentialTester';
 import BatchApplicationFetcher from './components/BatchApplicationFetcher';
 import BulkApplicationFetcher from './components/BulkApplicationFetcher';
@@ -170,6 +171,7 @@ function OrgAppContent() {
         <Route path="system-documentation" element={<SystemDocumentation />} />
         <Route path="acumatica-files-test" element={<AcumaticaFilesTest />} />
         <Route path="reminders" element={<RemindersPortal />} />
+        <Route path="proposed-reminder-rules" element={<ProposedReminderRulesSettings />} />
         <Route path="credential-tester" element={<AcumaticaCredentialTester />} />
         <Route path="batch-fetcher" element={<BatchApplicationFetcher />} />
         <Route path="bulk-fetcher" element={<BulkApplicationFetcher />} />

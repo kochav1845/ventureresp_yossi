@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Calendar, Clock, AlertCircle, CheckCircle, Edit2, Tras
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDate as formatDateUtil, formatDateTime as formatDateTimeUtil } from '../lib/dateUtils';
+import ProposedRemindersSection from './ProposedRemindersSection';
 
 interface Reminder {
   id: string;
@@ -402,12 +403,17 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
           </div>
-        ) : filteredReminders.length === 0 ? (
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-12 text-center">
-            <Calendar className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-            <p className="text-slate-400 text-lg">No reminders found</p>
-          </div>
         ) : (
+          <>
+            <div className="mb-6">
+              <ProposedRemindersSection onChange={loadReminders} />
+            </div>
+            {filteredReminders.length === 0 ? (
+              <div className="bg-slate-800 rounded-lg border border-slate-700 p-12 text-center">
+                <Calendar className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+                <p className="text-slate-400 text-lg">No reminders found</p>
+              </div>
+            ) : (
           <div className="space-y-3" data-tour="reminder-list">
             {filteredReminders.map((reminder) => (
               <div
@@ -543,6 +549,8 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
               </div>
             ))}
           </div>
+            )}
+          </>
         )}
       </div>
 

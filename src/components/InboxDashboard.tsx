@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import {
   ArrowLeft, Mail, RefreshCw, Inbox, Star, Archive, Trash2,
@@ -47,6 +47,7 @@ type InboxDashboardProps = {
 export default function InboxDashboard({ onBack }: InboxDashboardProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const handleBack = onBack || (() => navigate(-1));
   const [emails, setEmails] = useState<InboundEmail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +89,30 @@ export default function InboxDashboard({ onBack }: InboxDashboardProps) {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [openMenuId]);
+
+  useEffect(() => {
+    const state = location.state as { openEmailId?: string } | null;
+    const targetId = state?.openEmailId;
+    if (!targetId) return;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from('inbound_emails')
+        .select(`
+          *,
+          customers (id, name, email),
+          email_analysis (detected_intent, confidence_score, action_taken, reasoning),
+          customer_files (id, filename)
+        `)
+        .eq('id', targetId)
+        .maybeSingle();
+
+      if (!error && data) {
+        setSelectedEmail(data as any);
+      }
+      window.history.replaceState({}, document.title);
+    })();
+  }, [location.state]);
 
   const loadEmails = async (reset = false) => {
     setLoading(true);
