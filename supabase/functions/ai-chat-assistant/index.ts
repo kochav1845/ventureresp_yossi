@@ -677,7 +677,44 @@ async function executeTool(
         p_end_date: args.end_date,
       });
       if (error) return { error: error.message };
-      return { counts: data || [] };
+      return { counts: data || [], note: "These are ROW COUNTS, not dollar amounts." };
+    }
+
+    case "get_yearly_invoice_summary": {
+      let q = sb
+        .from("cached_invoice_analytics")
+        .select("year, total_amount, total_balance, total_open_balance, invoice_count, invoice_only_amount, invoice_only_count, credit_memo_amount, credit_memo_count, debit_memo_amount, debit_memo_count, open_invoice_balance, open_invoice_count, balanced_invoice_balance, balanced_invoice_count, open_cm_balance, open_cm_count, open_dm_balance, open_dm_count")
+        .eq("period_type", "yearly")
+        .order("year", { ascending: false });
+      if (args.year) q = q.eq("year", args.year);
+      const { data, error } = await q;
+      if (error) return { error: error.message };
+      const years = (data || []).map((r: any) => {
+        const invoiceOnlyAmount = parseFloat(r.invoice_only_amount) || 0;
+        const openBalance = parseFloat(r.open_invoice_balance) || 0;
+        const closedAmount = invoiceOnlyAmount - openBalance;
+        return {
+          year: r.year,
+          total_invoiced_amount: invoiceOnlyAmount,
+          total_invoice_count: parseInt(r.invoice_only_count) || 0,
+          closed_invoice_amount: closedAmount,
+          open_invoice_balance: openBalance,
+          open_invoice_count: parseInt(r.open_invoice_count) || 0,
+          balanced_invoice_amount: parseFloat(r.balanced_invoice_balance) || 0,
+          balanced_invoice_count: parseInt(r.balanced_invoice_count) || 0,
+          credit_memo_amount: parseFloat(r.credit_memo_amount) || 0,
+          credit_memo_count: parseInt(r.credit_memo_count) || 0,
+          debit_memo_amount: parseFloat(r.debit_memo_amount) || 0,
+          debit_memo_count: parseInt(r.debit_memo_count) || 0,
+          open_credit_memo_balance: parseFloat(r.open_cm_balance) || 0,
+          open_credit_memo_count: parseInt(r.open_cm_count) || 0,
+          open_debit_memo_balance: parseFloat(r.open_dm_balance) || 0,
+          open_debit_memo_count: parseInt(r.open_dm_count) || 0,
+          net_total_amount: parseFloat(r.total_amount) || 0,
+          net_open_balance: parseFloat(r.total_open_balance) || 0,
+        };
+      });
+      return { years, note: "All values are DOLLAR AMOUNTS unless suffixed with _count. closed_invoice_amount = total_invoiced_amount - open_invoice_balance." };
     }
 
     case "global_search": {
