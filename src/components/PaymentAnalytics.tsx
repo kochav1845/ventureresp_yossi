@@ -1567,6 +1567,16 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     }).format(amount);
   };
 
+  const formatCurrencyCompact = (amount: number) => {
+    const abs = Math.abs(amount);
+    const sign = amount < 0 ? '-' : '';
+    if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+    if (abs >= 100_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
+    if (abs >= 10_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+    if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+    return `${sign}$${abs.toFixed(0)}`;
+  };
+
   const getCalendarDays = () => {
     const year = selectedMonth.getFullYear();
     const month = selectedMonth.getMonth();
@@ -3817,10 +3827,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                       {yearData.count > 0 ? (
                         <div className="space-y-1.5">
                           <div className="text-xl font-bold text-green-600 break-words">
-                            {formatCurrency(yearData.total)}
+                            <span className="xl:hidden">{formatCurrencyCompact(yearData.total)}</span>
+                            <span className="hidden xl:inline">{formatCurrency(yearData.total)}</span>
                           </div>
                           <div className="text-xs text-gray-500">
-                            {yearData.count} payment{yearData.count !== 1 ? 's' : ''}
+                            {yearData.count.toLocaleString()} payment{yearData.count !== 1 ? 's' : ''}
                           </div>
                           {loadedYearPayments === yearData.year && (
                             <div className="text-[11px] font-semibold text-emerald-700 mt-1">Payments loaded below</div>

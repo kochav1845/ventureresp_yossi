@@ -1910,19 +1910,27 @@ export default function InvoiceAnalyticsPage() {
                       {(yearData.count > 0 || yearData.creditMemoCount > 0) ? (
                         <div className="space-y-1.5">
                           <div className="text-xl font-bold text-blue-600 break-words">
-                            {formatCurrencyCompact(yearData.total - 2 * yearData.creditMemoAmount)}
+                            <span className="xl:hidden">{formatCurrencyCompact(yearData.total - 2 * yearData.creditMemoAmount)}</span>
+                            <span className="hidden xl:inline">{formatCurrency(yearData.total - 2 * yearData.creditMemoAmount)}</span>
                           </div>
                           {yearData.creditMemoAmount > 0 && (
-                            <div className="text-xs font-medium text-red-500">CM: -{formatCurrencyCompact(yearData.creditMemoAmount)} ({yearData.creditMemoCount})</div>
+                            <div className="text-xs font-medium text-red-500">
+                              CM: -<span className="xl:hidden">{formatCurrencyCompact(yearData.creditMemoAmount)}</span><span className="hidden xl:inline">{formatCurrency(yearData.creditMemoAmount)}</span> ({yearData.creditMemoCount})
+                            </div>
                           )}
                           {yearData.openInvoiceBalance > 0 && (
                             <div className="mt-1 pt-2 border-t border-gray-200">
                               <div className="text-base font-bold text-amber-600 break-words">
-                                {formatCurrencyCompact(yearData.openInvoiceBalance - yearData.openCmBalance)} open
+                                <span className="xl:hidden">{formatCurrencyCompact(yearData.openInvoiceBalance - yearData.openCmBalance)}</span>
+                                <span className="hidden xl:inline">{formatCurrency(yearData.openInvoiceBalance - yearData.openCmBalance)}</span> open
                               </div>
-                              <div className="text-xs text-blue-600">Inv+DM: {formatCurrencyCompact(yearData.openInvoiceBalance)} ({yearData.openInvoiceCount})</div>
+                              <div className="text-xs text-blue-600">
+                                Inv+DM: <span className="xl:hidden">{formatCurrencyCompact(yearData.openInvoiceBalance)}</span><span className="hidden xl:inline">{formatCurrency(yearData.openInvoiceBalance)}</span> ({yearData.openInvoiceCount})
+                              </div>
                               {yearData.openCmBalance > 0 && (
-                                <div className="text-xs text-red-500">CM: -{formatCurrencyCompact(yearData.openCmBalance)} ({yearData.openCmCount})</div>
+                                <div className="text-xs text-red-500">
+                                  CM: -<span className="xl:hidden">{formatCurrencyCompact(yearData.openCmBalance)}</span><span className="hidden xl:inline">{formatCurrency(yearData.openCmBalance)}</span> ({yearData.openCmCount})
+                                </div>
                               )}
                             </div>
                           )}
