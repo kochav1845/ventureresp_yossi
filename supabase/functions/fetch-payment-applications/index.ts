@@ -344,18 +344,28 @@ Deno.serve(async (req: Request) => {
         }
 
         const originalRefNbr = refNbr;
+        let wasPadded = false;
         if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) {
           refNbr = refNbr.padStart(6, '0');
+          wasPadded = true;
           console.log(`[FETCH-APP] App ${index + 1}: Normalized invoice ref ${originalRefNbr} -> ${refNbr}`);
         }
 
         const docType = app.DisplayDocType?.value || app.DocType?.value || app.AdjustedDocType?.value || "Invoice";
 
+        const appCustomerId = app.Customer?.value || paymentData.customer_id;
+
         const { data: invoiceExists } = await supabase
           .from('acumatica_invoices')
-          .select('id, reference_number')
+          .select('id, reference_number, customer')
           .eq('reference_number', refNbr)
           .maybeSingle();
+
+        // Skip if reference was padded and invoice belongs to a different customer (reference number collision)
+        if (wasPadded && invoiceExists && invoiceExists.customer && appCustomerId && invoiceExists.customer !== appCustomerId) {
+          console.warn(`[FETCH-APP] Skipping collision: payment ${paymentRef} (customer ${appCustomerId}) -> invoice ${refNbr} (customer ${invoiceExists.customer})`);
+          continue;
+        }
 
         if (!invoiceExists && docType === 'Invoice') {
           console.warn(`[FETCH-APP] Invoice ${refNbr} not found in database! Attempting to fetch from Acumatica...`);
@@ -383,7 +393,7 @@ Deno.serve(async (req: Request) => {
           payment_reference_number: paymentRef,
           invoice_reference_number: refNbr,
           doc_type: docType,
-          customer_id: app.Customer?.value || paymentData.customer_id,
+          customer_id: appCustomerId,
           application_date: app.Date?.value || null,
           amount_paid: parseFloat(app.AmountPaid?.value || 0),
           balance: parseFloat(app.Balance?.value || 0),

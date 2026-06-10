@@ -461,16 +461,24 @@ Deno.serve(async (req: Request) => {
               }
 
               const originalInvoiceRef = invoiceRefNbr;
+              let wasPadded = false;
               if (/^[0-9]+$/.test(invoiceRefNbr) && invoiceRefNbr.length < 6) {
                 invoiceRefNbr = invoiceRefNbr.padStart(6, '0');
+                wasPadded = true;
                 console.log(`[PAYMENT-SYNC] Normalized invoice ref: ${originalInvoiceRef} -> ${invoiceRefNbr}`);
               }
 
               const { data: invoiceExists } = await supabase
                 .from('acumatica_invoices')
-                .select('id, reference_number')
+                .select('id, reference_number, customer')
                 .eq('reference_number', invoiceRefNbr)
                 .maybeSingle();
+
+              // Skip if reference was padded and invoice belongs to a different customer (reference number collision)
+              if (wasPadded && invoiceExists && invoiceExists.customer && paymentData.customer_id && invoiceExists.customer !== paymentData.customer_id) {
+                console.warn(`[PAYMENT-SYNC] Skipping collision: payment ${refNbr} (customer ${paymentData.customer_id}) -> invoice ${invoiceRefNbr} (customer ${invoiceExists.customer})`);
+                continue;
+              }
 
               if (!invoiceExists && docType === 'Invoice') {
                 console.warn(`[PAYMENT-SYNC] Invoice ${invoiceRefNbr} not found in database! Attempting to fetch from Acumatica...`);

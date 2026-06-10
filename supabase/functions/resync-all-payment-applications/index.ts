@@ -144,22 +144,39 @@ Deno.serve(async (req: Request) => {
             .delete()
             .eq('payment_id', payment.id);
 
-          const applicationRecords = applications.map((app: any) => {
+          const applicationRecords = [];
+          for (const app of applications) {
             let refNbr = app.ReferenceNbr?.value || app.AdjustedRefNbr?.value || app.DisplayRefNbr?.value;
+            let wasPadded = false;
             if (refNbr && /^[0-9]+$/.test(refNbr) && refNbr.length < 6) {
               refNbr = refNbr.padStart(6, '0');
+              wasPadded = true;
             }
 
             const docType = app.DocType?.value || app.AdjustedDocType?.value || app.DisplayDocType?.value || 'Unknown';
+            const appCustomerId = app.Customer?.value || payment.customer_id || '';
+
+            // Check for reference number collision only when padding occurred
+            if (wasPadded && refNbr && appCustomerId) {
+              const { data: inv } = await supabase
+                .from('acumatica_invoices')
+                .select('customer')
+                .eq('reference_number', refNbr)
+                .maybeSingle();
+              if (inv && inv.customer && inv.customer !== appCustomerId) {
+                console.warn(`[RESYNC] Skipping collision: payment ${payment.reference_number} (customer ${appCustomerId}) -> invoice ${refNbr} (customer ${inv.customer})`);
+                continue;
+              }
+            }
 
             if (docType === 'Invoice') invoiceCount++;
             else if (docType === 'Credit Memo' || docType === 'CreditMemo') creditMemoCount++;
             else otherCount++;
 
-            return {
+            applicationRecords.push({
               payment_id: payment.id,
               payment_reference_number: payment.reference_number,
-              customer_id: app.Customer?.value || payment.customer_id || '',
+              customer_id: appCustomerId,
               doc_type: docType,
               invoice_reference_number: refNbr || 'Unknown',
               application_period: app.ApplicationPeriod?.value || null,
@@ -173,8 +190,8 @@ Deno.serve(async (req: Request) => {
               application_date: app.ApplicationDate?.value || app.AdjgDocDate?.value || app.Date?.value || null,
               invoice_date: app.DocDate?.value || app.Date?.value || null,
               description: app.Description?.value || null
-            };
-          });
+            });
+          }
 
           const { error: insertError } = await supabase
             .from('payment_invoice_applications')
