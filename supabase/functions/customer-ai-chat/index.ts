@@ -286,7 +286,6 @@ async function executeTool(sb: any, name: string, args: any, customerId: string,
             (pia.application_date::date - i.date::date) AS days_to_pay
           FROM payment_invoice_applications pia
           JOIN acumatica_invoices i ON i.reference_number = pia.invoice_reference_number
-            AND i.customer = '${customerId}'
           WHERE pia.customer_id = '${customerId}'
             AND pia.doc_type = 'Invoice'
             AND pia.amount_paid > 0

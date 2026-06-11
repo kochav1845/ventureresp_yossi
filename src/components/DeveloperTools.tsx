@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor, XCircle, Clock, Key, Webhook, Sliders, Timer, BarChart3 } from 'lucide-react';
+import ChatWidget from './ChatWidget/ChatWidget';
 
 interface Tool {
   id: string;
@@ -403,6 +404,8 @@ export function DeveloperTools() {
           );
         })}
       </div>
+
+      <ChatWidget />
     </div>
   );
 }

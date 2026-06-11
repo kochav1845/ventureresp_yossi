@@ -45,7 +45,7 @@ import GlobalSearchBar from './GlobalSearch/GlobalSearchBar';
 import { supabase } from '../lib/supabase';
 import { useUserPermissions, LOCKABLE_COMPONENTS } from '../lib/permissions';
 import UserManagementSidebar from './UserManagementSidebar';
-import ChatWidget from './ChatWidget/ChatWidget';
+
 import TourLauncher from './GuidedTour/TourLauncher';
 
 export default function Layout() {
@@ -689,8 +689,6 @@ export default function Layout() {
       {showUserSidebar && (
         <UserManagementSidebar onClose={() => setShowUserSidebar(false)} isOpen={showUserSidebar}/>
       )}
-
-      <ChatWidget />
     </div>
   );
 }
