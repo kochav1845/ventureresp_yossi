@@ -9,6 +9,7 @@ import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl } from '../lib/acumatica
 import InvoiceFilterPanel from './InvoiceFilterPanel';
 import CustomerTimelineChart from './CustomerTimelineChart';
 import CustomerMonthlySheet from './CustomerMonthlySheet';
+import CustomerAIChat from './CustomerAIChat';
 
 interface CustomerDetailViewProps {
   customerId: string;
@@ -1497,6 +1498,13 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           </div>
         </div>
       </div>
+
+      {customer && (
+        <CustomerAIChat
+          customerId={customer.customer_id}
+          customerName={customer.customer_name}
+        />
+      )}
     </div>
   );
 }
