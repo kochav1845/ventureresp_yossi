@@ -72,10 +72,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const { data: { session }, error } = await withTimeout(
-          supabase.auth.getSession(),
-          10000,
-          'Session check timed out'
+        const { data: { session }, error } = await withRetry(
+          () => withTimeout(
+            supabase.auth.getSession(),
+            30000,
+            'Session check timed out'
+          ),
+          3,
+          2000
         );
 
         if (error) {
@@ -124,9 +128,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setLoading(false);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Auth initialization error:', err);
-        setLoading(false);
+        if (err?.message?.includes('timed out') || err?.message?.includes('fetch')) {
+          setLoading(false);
+        } else {
+          await supabase.auth.signOut();
+          setLoading(false);
+        }
       }
     };
 
@@ -167,11 +176,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               .select('*')
               .eq('id', userId)
               .maybeSingle(),
-            10000,
+            30000,
             'Profile load timed out'
           ),
         3,
-        1000
+        2000
       );
 
       if (error) throw error;
