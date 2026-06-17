@@ -99,6 +99,24 @@ export const withTimeout = async <T>(
   }
 };
 
+// Check if an error is retryable (transient network/database issues)
+export function isRetryableError(error: any): boolean {
+  if (!error) return false;
+  const code = error?.code || '';
+  const message = error?.message || '';
+  return (
+    code === 'PGRST002' ||
+    code === 'PGRST301' ||
+    code === 'PGRST000' ||
+    message.includes('fetch') ||
+    message.includes('timed out') ||
+    message.includes('timeout') ||
+    message.includes('network') ||
+    message.includes('schema cache') ||
+    message.includes('Could not query the database')
+  );
+}
+
 // Retry wrapper with exponential backoff
 export const withRetry = async <T>(
   fn: () => Promise<T>,
@@ -113,19 +131,10 @@ export const withRetry = async <T>(
     } catch (error: any) {
       lastError = error;
 
-      // Check if it's a network-related error
-      const isNetworkError =
-        error?.message?.includes('fetch') ||
-        error?.message?.includes('timeout') ||
-        error?.message?.includes('network') ||
-        error?.code === 'PGRST301';
-
-      // Don't retry if it's not a network error
-      if (!isNetworkError) {
+      if (!isRetryableError(error)) {
         throw error;
       }
 
-      // Don't wait after the last attempt
       if (attempt < maxRetries - 1) {
         const delay = baseDelay * Math.pow(2, attempt);
         console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms...`);
