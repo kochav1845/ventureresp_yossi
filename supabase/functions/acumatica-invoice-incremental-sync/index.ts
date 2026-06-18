@@ -197,8 +197,12 @@ Deno.serve(async (req: Request) => {
             continue;
           }
 
-          const originalRef = mappedInvoice.reference_number;
-          const wasPadded = /^[0-9]+$/.test(originalRef) && originalRef.length < 6;
+          const originalRef = mappedInvoice.reference_number.trim();
+          // Only process invoices with full 6-digit reference numbers
+          if (/^[0-9]+$/.test(originalRef) && originalRef.length < 6) {
+            console.log(`Skipping invoice with ${originalRef.length}-digit ref: ${originalRef}`);
+            continue;
+          }
           mappedInvoice.reference_number = originalRef.padStart(6, '0');
 
           const { data: existing } = await supabase
@@ -209,30 +213,6 @@ Deno.serve(async (req: Request) => {
             .maybeSingle();
 
           if (existing) {
-            // Guard against 5-digit/6-digit reference number collisions:
-            // Old invoices (pre-2022) with 5-digit refs get padded to 6 digits,
-            // colliding with newer invoices that natively have 6-digit refs.
-            // Check using both Date and CreatedDateTime fields.
-            const incomingDate = mappedInvoice.date || invoice.Date?.value;
-            const existingDate = existing.date;
-            if (wasPadded && incomingDate && existingDate) {
-              const incomingYear = new Date(incomingDate).getFullYear();
-              const existingYear = new Date(existingDate).getFullYear();
-              if (Math.abs(incomingYear - existingYear) >= 2) {
-                console.log(`Skipping padded ref collision: ${mappedInvoice.reference_number} incoming date ${incomingDate} vs existing ${existingDate}`);
-                continue;
-              }
-            }
-            const incomingCreated = invoice.CreatedDateTime?.value;
-            if (incomingCreated && existingDate) {
-              const incomingYear = new Date(incomingCreated).getFullYear();
-              const existingYear = new Date(existingDate).getFullYear();
-              if (incomingYear < 2022 && existingYear >= 2024) {
-                console.log(`Skipping collision: incoming invoice ${mappedInvoice.reference_number} created ${incomingCreated} would overwrite existing record dated ${existingDate}`);
-                continue;
-              }
-            }
-
             const oldStatus = existing.status;
             const { error } = await supabase
               .from('acumatica_invoices')

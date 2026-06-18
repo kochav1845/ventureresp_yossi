@@ -38,7 +38,16 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    referenceNbr = referenceNbr.padStart(6, '0');
+    // Only process invoices with full 6-digit reference numbers
+    const trimmedRef = referenceNbr.trim();
+    if (/^[0-9]+$/.test(trimmedRef) && trimmedRef.length < 6) {
+      console.log(`Skipping webhook for ${trimmedRef.length}-digit ref: ${trimmedRef}`);
+      return new Response(
+        JSON.stringify({ success: true, message: `Skipped ${trimmedRef.length}-digit reference number`, referenceNbr: trimmedRef }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    referenceNbr = trimmedRef.padStart(6, '0');
 
     console.log(`Processing invoice webhook for: ${invoiceType}/${referenceNbr}`);
 

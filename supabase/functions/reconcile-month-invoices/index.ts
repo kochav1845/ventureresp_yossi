@@ -9,10 +9,12 @@ const corsHeaders = {
 };
 
 function padRefNbr(refNbr: string): string {
-  if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) {
-    return refNbr.padStart(6, '0');
+  const trimmed = refNbr.trim();
+  // Skip invoices with less than 6-digit reference numbers (old pre-2022 data)
+  if (/^[0-9]+$/.test(trimmed) && trimmed.length < 6) {
+    return '';
   }
-  return refNbr;
+  return trimmed.padStart(6, '0');
 }
 
 async function processReconciliation(supabase: any, targetMonth: string, jobId: string) {

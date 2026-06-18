@@ -257,8 +257,13 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        const wasPadded = /^[0-9]+$/.test(refNbr) && refNbr.length < 6;
-        transformedInvoice.reference_number = refNbr.padStart(6, '0');
+        // Only process invoices with full 6-digit reference numbers
+        const trimmedRef = refNbr.trim();
+        if (/^[0-9]+$/.test(trimmedRef) && trimmedRef.length < 6) {
+          console.log(`Skipping invoice with ${trimmedRef.length}-digit ref: ${trimmedRef}`);
+          continue;
+        }
+        transformedInvoice.reference_number = trimmedRef.padStart(6, '0');
         const paddedRefNbr = transformedInvoice.reference_number;
 
         const invoiceType = transformedInvoice.type || 'Invoice';
@@ -268,16 +273,6 @@ Deno.serve(async (req: Request) => {
           .eq('reference_number', paddedRefNbr)
           .eq('type', invoiceType)
           .maybeSingle();
-
-        // Guard against 5-digit/6-digit ref collisions
-        if (existing && wasPadded && transformedInvoice.date && existing.date) {
-          const incomingYear = new Date(transformedInvoice.date).getFullYear();
-          const existingYear = new Date(existing.date).getFullYear();
-          if (Math.abs(incomingYear - existingYear) >= 2) {
-            console.log(`Skipping padded ref collision: ${paddedRefNbr} incoming ${transformedInvoice.date} vs existing ${existing.date}`);
-            continue;
-          }
-        }
 
         let success = false;
         let lastError = null;
