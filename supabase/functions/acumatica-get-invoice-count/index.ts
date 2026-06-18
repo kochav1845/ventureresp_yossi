@@ -74,13 +74,17 @@ Deno.serve(async (req: Request) => {
     const items = Array.isArray(data) ? data : [];
 
     const refs: { ref: string; type: string }[] = [];
+    let skipped5Digit = 0;
     for (const item of items) {
       const t = item.Type?.value || 'Unknown';
       const refNbr = (item.ReferenceNbr?.value || '').trim();
-      const paddedRef = refNbr.padStart(6, '0');
+      if (refNbr.length < 6) {
+        skipped5Digit++;
+        continue;
+      }
       byType[t] = (byType[t] || 0) + 1;
       totalCount++;
-      refs.push({ ref: paddedRef, type: t });
+      refs.push({ ref: refNbr, type: t });
     }
 
     // Check which refs actually exist in the DB (regardless of date)
@@ -115,6 +119,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Also check for extras in DB that Acumatica doesn't report for this date range
+    // Only count 6-digit refs (exclude padded 5-digit refs that start with '0')
     let dbTotalForRange = 0;
     const dbTotalByType: Record<string, number> = {};
     if (dateFrom && dateTo) {
@@ -124,12 +129,13 @@ Deno.serve(async (req: Request) => {
         .from('acumatica_invoices')
         .select('*', { count: 'exact', head: true })
         .gte('date', startDate)
-        .lte('date', endDate);
+        .lte('date', endDate)
+        .not('reference_number', 'like', '0%');
 
       dbTotalForRange = rangeCount || 0;
 
       const { data: typeCounts } = await supabase
-        .rpc('execute_readonly_sql', { sql_query: `SELECT type, COUNT(*)::int as cnt FROM acumatica_invoices WHERE date >= '${startDate}' AND date <= '${endDate}' GROUP BY type` });
+        .rpc('execute_readonly_sql', { sql_query: `SELECT type, COUNT(*)::int as cnt FROM acumatica_invoices WHERE date >= '${startDate}' AND date <= '${endDate}' AND reference_number NOT LIKE '0%' GROUP BY type` });
 
       if (typeCounts) {
         for (const row of typeCounts) {
@@ -140,7 +146,7 @@ Deno.serve(async (req: Request) => {
 
     const extrasInDb = dbTotalForRange - totalCount;
 
-    console.log(`Invoice count: ${totalCount} from Acumatica, ${dbExistsCount} exist in DB, ${missingRefs.length} truly missing, ${extrasInDb > 0 ? extrasInDb : 0} extras in DB`);
+    console.log(`Invoice count: ${totalCount} from Acumatica (skipped ${skipped5Digit} 5-digit refs), ${dbExistsCount} exist in DB, ${missingRefs.length} truly missing, ${extrasInDb > 0 ? extrasInDb : 0} extras in DB`);
 
     return new Response(
       JSON.stringify({
@@ -155,6 +161,7 @@ Deno.serve(async (req: Request) => {
         trulyMissing: missingRefs.length,
         missingByType,
         missingRefs: missingRefs.slice(0, 100),
+        skipped5Digit,
         filters: { dateFrom, dateTo }
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

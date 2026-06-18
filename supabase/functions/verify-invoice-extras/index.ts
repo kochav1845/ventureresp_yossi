@@ -71,15 +71,23 @@ Deno.serve(async (req: Request) => {
     const acumaticaData = await response.json();
     const acumaticaItems = Array.isArray(acumaticaData) ? acumaticaData : [];
 
+    // Only include 6-digit reference numbers from Acumatica
+    const acumatica6Digit = acumaticaItems.filter((item: any) => {
+      const ref = (item.ReferenceNbr?.value || '').trim();
+      return ref.length >= 6;
+    });
+
     const acumaticaSet = new Set(
-      acumaticaItems.map((item: any) => `${item.Type?.value || ""}:${item.ReferenceNbr?.value || ""}`)
+      acumatica6Digit.map((item: any) => `${item.Type?.value || ""}:${(item.ReferenceNbr?.value || "").trim()}`)
     );
 
+    // Only query DB invoices with 6-digit refs (exclude padded 5-digit ones starting with '0')
     const { data: dbInvoices, error: dbError } = await supabase
       .from("acumatica_invoices")
       .select("reference_number, type, customer, customer_name, amount, balance, status")
       .gte("date", startDate)
-      .lte("date", endDate);
+      .lte("date", endDate)
+      .not('reference_number', 'like', '0%');
 
     if (dbError) throw new Error(`DB query error: ${dbError.message}`);
 
@@ -108,7 +116,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: true,
-        acumaticaCount: acumaticaItems.length,
+        acumaticaCount: acumatica6Digit.length,
         dbCount: (dbInvoices || []).length,
         extraCount: extras.length,
         extras: extras.map((inv) => ({
