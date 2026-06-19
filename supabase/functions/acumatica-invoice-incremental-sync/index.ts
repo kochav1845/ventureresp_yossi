@@ -129,49 +129,58 @@ Deno.serve(async (req: Request) => {
     const cutoffTime = new Date(Date.now() - lookbackMinutes * 60 * 1000);
     const filterDate = cutoffTime.toISOString().split('.')[0];
 
-    const invoicesUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=LastModifiedDateTime gt datetimeoffset'${filterDate}'`;
-
+    const baseFilter = `LastModifiedDateTime gt datetimeoffset'${filterDate}'`;
     console.log(`Fetching invoices modified after ${filterDate} (last ${lookbackMinutes} minutes)`);
 
-    const invoicesResponse = await fetch(invoicesUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Cookie": sessionCookie,
-      },
-    });
+    // Paginate with $top/$skip so large lookback windows (e.g. multi-day catch-up)
+    // don't overrun a single un-paginated request. Mirrors the date-range sync.
+    const PAGE_SIZE = 100;
+    let invoices: any[] = [];
+    let skip = 0;
 
-    if (!invoicesResponse.ok) {
-      const errorText = await invoicesResponse.text();
-      throw new Error(`Failed to fetch invoices: ${invoicesResponse.status} ${invoicesResponse.statusText}. Details: ${errorText.substring(0, 500)}`);
-    }
+    while (true) {
+      const pageUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${baseFilter}&$top=${PAGE_SIZE}&$skip=${skip}`;
 
-    let invoicesData;
-    let invoices = [];
+      const pageResponse = await fetch(pageUrl, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Cookie": sessionCookie,
+        },
+      });
 
-    try {
-      // Get response as text first to debug
-      const responseText = await invoicesResponse.text();
-      console.log(`Response length: ${responseText.length} characters`);
+      if (!pageResponse.ok) {
+        const errorText = await pageResponse.text();
+        throw new Error(`Failed to fetch invoices (skip=${skip}): ${pageResponse.status} ${pageResponse.statusText}. Details: ${errorText.substring(0, 500)}`);
+      }
+
+      const responseText = await pageResponse.text();
 
       // Check if response looks like HTML error page
       if (responseText.trim().startsWith('<')) {
-        throw new Error(`Received HTML response instead of JSON. This usually indicates an Acumatica error or session timeout.`);
+        throw new Error(`Received HTML response instead of JSON at skip=${skip}. This usually indicates an Acumatica error or session timeout.`);
       }
 
-      // Try to parse JSON
-      invoicesData = JSON.parse(responseText);
-      invoices = Array.isArray(invoicesData) ? invoicesData : [];
-    } catch (parseError) {
-      console.error('JSON parse error:', parseError);
+      let page;
+      try {
+        page = JSON.parse(responseText);
+      } catch (parseError) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `Failed to parse invoice response at skip=${skip}: ${parseError.message}`,
+            details: 'The response from Acumatica may be incomplete.'
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
-      return new Response(
-        JSON.stringify({
-          error: `Failed to parse invoice response: ${parseError.message}`,
-          details: 'The response from Acumatica may be too large or incomplete. Try reducing the lookback time.'
-        }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      const batch = Array.isArray(page) ? page : [];
+      invoices = invoices.concat(batch);
+      console.log(`Fetched page skip=${skip}: ${batch.length} invoices (running total ${invoices.length})`);
+
+      if (batch.length < PAGE_SIZE) break;
+      skip += PAGE_SIZE;
     }
 
     // Session is automatically managed, no need to manually logout
