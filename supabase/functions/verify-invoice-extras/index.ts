@@ -81,13 +81,12 @@ Deno.serve(async (req: Request) => {
       acumatica6Digit.map((item: any) => `${item.Type?.value || ""}:${(item.ReferenceNbr?.value || "").trim()}`)
     );
 
-    // Only query DB invoices with 6-digit refs (exclude padded 5-digit ones starting with '0')
+    // Only query DB invoices for the date range
     const { data: dbInvoices, error: dbError } = await supabase
       .from("acumatica_invoices")
       .select("reference_number, type, customer, customer_name, amount, balance, status")
       .gte("date", startDate)
-      .lte("date", endDate)
-      .not('reference_number', 'like', '0%');
+      .lte("date", endDate);
 
     if (dbError) throw new Error(`DB query error: ${dbError.message}`);
 
