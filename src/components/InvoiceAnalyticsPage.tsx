@@ -741,8 +741,6 @@ export default function InvoiceAnalyticsPage() {
         const openInvCnt = parseInt(row[openInvCntKey]) || 0;
         const balInvBal = parseFloat(row[balInvBalKey]) || 0;
         const balInvCnt = parseInt(row[balInvCntKey]) || 0;
-        const openDmBal = parseFloat(row['open_dm_balance']) || 0;
-        const openDmCnt = parseInt(row['open_dm_count']) || 0;
         aggregates[m - 1] = {
           month: m - 1,
           total: amt,
@@ -752,8 +750,8 @@ export default function InvoiceAnalyticsPage() {
           customers: cust,
           creditMemoAmount: cmAmt,
           creditMemoCount: cmCnt,
-          openInvoiceBalance: openInvBal + balInvBal + openDmBal,
-          openInvoiceCount: openInvCnt + balInvCnt + openDmCnt,
+          openInvoiceBalance: openInvBal + balInvBal,
+          openInvoiceCount: openInvCnt + balInvCnt,
           balancedInvoiceBalance: 0,
           balancedInvoiceCount: 0,
           openCmBalance: parseFloat(row[openCmBalKey]) || 0,
@@ -855,8 +853,6 @@ export default function InvoiceAnalyticsPage() {
       const openInvCnt = parseInt(row[openInvCntKey]) || 0;
       const balInvBal = parseFloat(row[balInvBalKey]) || 0;
       const balInvCnt = parseInt(row[balInvCntKey]) || 0;
-      const openDmBal = parseFloat(row['open_dm_balance']) || 0;
-      const openDmCnt = parseInt(row['open_dm_count']) || 0;
       return {
         year: row[yearKey],
         total: parseFloat(row[amountKey]) || 0,
@@ -866,8 +862,8 @@ export default function InvoiceAnalyticsPage() {
         customers: parseInt(row[customerKey]) || 0,
         creditMemoAmount: parseFloat(row[cmAmountKey]) || 0,
         creditMemoCount: parseInt(row[cmCountKey]) || 0,
-        openInvoiceBalance: openInvBal + balInvBal + openDmBal,
-        openInvoiceCount: openInvCnt + balInvCnt + openDmCnt,
+        openInvoiceBalance: openInvBal + balInvBal,
+        openInvoiceCount: openInvCnt + balInvCnt,
         balancedInvoiceBalance: 0,
         balancedInvoiceCount: 0,
         openCmBalance: parseFloat(row[openCmBalKey]) || 0,
