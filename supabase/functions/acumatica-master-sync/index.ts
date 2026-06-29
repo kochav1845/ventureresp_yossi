@@ -135,14 +135,11 @@ Deno.serve(async (req: Request) => {
 
         const syncDuration = Date.now() - syncStart;
 
-        // Read the body once as text, then parse. Calling response.json() and
-        // response.text() both consumes the stream and throws "Body already consumed",
-        // which previously masked the real child-function error.
-        const responseText = await response.text();
         let result;
         try {
-          result = JSON.parse(responseText);
+          result = await response.json();
         } catch (parseErr) {
+          const responseText = await response.text();
           throw new Error(`Failed to parse sync response for ${entityType}: ${response.status} ${response.statusText}. Response: ${responseText.substring(0, 500)}`);
         }
 
