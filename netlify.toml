@@ -1,0 +1,20 @@
+# Netlify build & hosting config for this Vite + React SPA.
+# Without this, Netlify was serving the un-built repo (raw /src/main.tsx as
+# application/octet-stream), producing "Failed to load module script" + a blank page.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# SPA fallback: serve index.html for client-side routes (assets are served first,
+# so real files like /assets/*.js are unaffected). Mirrors public/_redirects.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Ensure JS modules are served with the correct MIME type.
+[[headers]]
+  for = "/assets/*.js"
+  [headers.values]
+    Content-Type = "text/javascript"
