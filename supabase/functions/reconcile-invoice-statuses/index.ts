@@ -147,7 +147,10 @@ Deno.serve(async (req: Request) => {
       { db: { schema: 'public' }, global: { headers: { 'x-statement-timeout': '120s' } } }
     );
 
-    const { batchSize = 20, mode = 'full' } = await req.json().catch(() => ({}));
+    // batchSize 50 = the Acumatica $top cap (line ~112); fewer, larger batches
+    // let the full open-invoice set reconcile within the 150s gateway limit
+    // instead of 504-ing partway through.
+    const { batchSize = 50, mode = 'full' } = await req.json().catch(() => ({}));
 
     console.log(`Starting invoice status reconciliation (mode: ${mode}, batchSize: ${batchSize})`);
 
@@ -232,17 +235,25 @@ Deno.serve(async (req: Request) => {
 
       if (dmErr) results.errors.push(`DM query error: ${dmErr.message}`);
 
-      // Also check a sample of open invoices (most recently synced first)
-      const { data: openInvoices, error: invErr } = await supabase
-        .from('acumatica_invoices')
-        .select('id, reference_number, type, status, balance, amount, customer, acumatica_id')
-        .eq('type', 'Invoice')
-        .in('status', ['Open', 'Credit Hold'])
-        .not('customer', 'is', null)
-        .order('synced_at', { ascending: true })
-        .limit(500);
-
-      if (invErr) results.errors.push(`Invoice query error: ${invErr.message}`);
+      // Check ALL open invoices (not a 500 sample) — paginate past PostgREST's
+      // ~1000-row cap so stale-open invoices in the tail can't be missed (that
+      // gap is exactly how refs like 096026/096359 stayed Open after a sync gap).
+      const openInvoices: any[] = [];
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data: page, error: invErr } = await supabase
+          .from('acumatica_invoices')
+          .select('id, reference_number, type, status, balance, amount, customer, acumatica_id')
+          .eq('type', 'Invoice')
+          .in('status', ['Open', 'Credit Hold'])
+          .not('customer', 'is', null)
+          .order('reference_number', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (invErr) { results.errors.push(`Invoice query error: ${invErr.message}`); break; }
+        if (!page || page.length === 0) break;
+        openInvoices.push(...page);
+        if (page.length < PAGE) break;
+      }
 
       dbInvoices = [...(creditMemos || []), ...(debitMemos || []), ...(openInvoices || [])];
     } else {

@@ -126,11 +126,38 @@ Deno.serve(async (req: Request) => {
     const sessionCookie = await sessionManager.getSession(credentials);
     console.log('Session obtained successfully');
 
-    const cutoffTime = new Date(Date.now() - lookbackMinutes * 60 * 1000);
+    // Base the cutoff on the LAST SUCCESSFUL SYNC (with an overlap margin) rather
+    // than only a fixed rolling window. If syncs fail for a stretch (e.g. gateway
+    // 504s), the next success then re-fetches everything modified during the
+    // outage — so a closure can never "age out" of a short window and stay Open
+    // forever. The configured lookback is the floor; a 90-day ceiling bounds the
+    // catch-up (pagination below handles large windows).
+    const SAFETY_MARGIN_MIN = 120;   // re-scan 2h before the checkpoint (overlap)
+    const MAX_LOOKBACK_MIN = 129600; // 90-day ceiling for a single catch-up
+    let effectiveLookbackMinutes = lookbackMinutes;
+    try {
+      const { data: statusRow } = await supabase
+        .from('sync_status')
+        .select('last_successful_sync')
+        .eq('entity_type', 'invoice')
+        .maybeSingle();
+      if (statusRow?.last_successful_sync) {
+        const minsSinceSuccess =
+          (Date.now() - new Date(statusRow.last_successful_sync).getTime()) / 60000;
+        effectiveLookbackMinutes = Math.min(
+          MAX_LOOKBACK_MIN,
+          Math.max(lookbackMinutes, Math.ceil(minsSinceSuccess) + SAFETY_MARGIN_MIN)
+        );
+      }
+    } catch (_e) {
+      // fall back to the configured lookback
+    }
+
+    const cutoffTime = new Date(Date.now() - effectiveLookbackMinutes * 60 * 1000);
     const filterDate = cutoffTime.toISOString().split('.')[0];
 
     const baseFilter = `LastModifiedDateTime gt datetimeoffset'${filterDate}'`;
-    console.log(`Fetching invoices modified after ${filterDate} (last ${lookbackMinutes} minutes)`);
+    console.log(`Fetching invoices modified after ${filterDate} (effective lookback ${effectiveLookbackMinutes} min; configured floor ${lookbackMinutes} min)`);
 
     // Paginate with $top/$skip so large lookback windows (e.g. multi-day catch-up)
     // don't overrun a single un-paginated request. Mirrors the date-range sync.
