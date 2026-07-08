@@ -47,6 +47,7 @@ import { useUserPermissions, LOCKABLE_COMPONENTS } from '../lib/permissions';
 import UserManagementSidebar from './UserManagementSidebar';
 
 import TourLauncher from './GuidedTour/TourLauncher';
+import ChatWidget from './ChatWidget/ChatWidget';
 
 export default function Layout() {
   const { profile, signOut, user, isImpersonating } = useAuth();
@@ -689,6 +690,9 @@ export default function Layout() {
       {showUserSidebar && (
         <UserManagementSidebar onClose={() => setShowUserSidebar(false)} isOpen={showUserSidebar}/>
       )}
+
+      {/* Global AI Assistant — floating bubble on every screen (admin only; has full read-only DB access) */}
+      {isAdmin && <ChatWidget />}
     </div>
   );
 }
