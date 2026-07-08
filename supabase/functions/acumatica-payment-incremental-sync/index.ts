@@ -176,27 +176,51 @@ Deno.serve(async (req: Request) => {
     const cutoffTime = new Date(Date.now() - lookbackMinutes * 60 * 1000);
     const filterDate = cutoffTime.toISOString().split('.')[0];
 
-    const paymentsUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$expand=files&$filter=LastModifiedDateTime gt datetimeoffset'${filterDate}'&$custom=Document.DocDate,Document.FinPeriodID`;
-
+    const baseFilter = `LastModifiedDateTime gt datetimeoffset'${filterDate}'`;
     console.log(`Fetching payments modified after ${filterDate} (last ${lookbackMinutes} minutes)`);
 
-    const paymentsResponse = await fetch(paymentsUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Cookie": sessionCookie,
-      },
-    });
+    // Paginate with $top/$skip so large lookback windows (e.g. multi-day catch-up)
+    // don't overrun a single un-paginated request.
+    const PAGE_SIZE = 100;
+    let payments: any[] = [];
+    let skip = 0;
 
-    if (!paymentsResponse.ok) {
-      const errorText = await paymentsResponse.text();
-      throw new Error(`Failed to fetch payments: ${paymentsResponse.status} ${paymentsResponse.statusText}. Details: ${errorText.substring(0, 500)}`);
+    while (true) {
+      const pageUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$expand=files&$filter=${baseFilter}&$custom=Document.DocDate,Document.FinPeriodID&$top=${PAGE_SIZE}&$skip=${skip}`;
+
+      const pageResponse = await fetch(pageUrl, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Cookie": sessionCookie,
+        },
+      });
+
+      if (!pageResponse.ok) {
+        const errorText = await pageResponse.text();
+        throw new Error(`Failed to fetch payments (skip=${skip}): ${pageResponse.status} ${pageResponse.statusText}. Details: ${errorText.substring(0, 500)}`);
+      }
+
+      const responseText = await pageResponse.text();
+      if (responseText.trim().startsWith('<')) {
+        throw new Error(`Received HTML response instead of JSON at skip=${skip}. This usually indicates an Acumatica error or session timeout.`);
+      }
+
+      let page;
+      try {
+        page = JSON.parse(responseText);
+      } catch (parseError) {
+        throw new Error(`Failed to parse payment response at skip=${skip}: ${parseError.message}`);
+      }
+
+      const batch = Array.isArray(page) ? page : [];
+      payments = payments.concat(batch);
+      console.log(`Fetched page skip=${skip}: ${batch.length} payments (running total ${payments.length})`);
+
+      if (batch.length < PAGE_SIZE) break;
+      skip += PAGE_SIZE;
     }
-
-    const paymentsData = await paymentsResponse.json();
-
-    const payments = Array.isArray(paymentsData) ? paymentsData : [];
 
     let created = 0;
     let updated = 0;
