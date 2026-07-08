@@ -6,6 +6,12 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  # Vite inlines VITE_* vars into the client bundle at build time. These are the
+  # public Supabase URL + anon key (safe in client code; protected by RLS), so tell
+  # Netlify's secret scanner not to fail the build when it sees them in the output.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY"
+
 # SPA fallback: serve index.html for client-side routes (assets are served first,
 # so real files like /assets/*.js are unaffected). Mirrors public/_redirects.
 [[redirects]]
