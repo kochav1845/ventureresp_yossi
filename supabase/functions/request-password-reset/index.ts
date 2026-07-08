@@ -31,24 +31,30 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Check if user exists in auth.users
-    const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-    
-    if (authError) {
-      console.error('Error checking user:', authError);
+    // Look the user up by email via user_profiles instead of auth.admin.listUsers().
+    // listUsers() was erroring in production (-> 500) and, by default, only returns
+    // the first 50 users, so users past that would silently never get a reset.
+    // A profiles read works reliably with the service role and covers all users.
+    const { data: profile, error: lookupError } = await supabase
+      .from('user_profiles')
+      .select('id, email')
+      .ilike('email', email)
+      .maybeSingle();
+
+    if (lookupError) {
+      console.error('Error checking user (user_profiles lookup):', lookupError);
+      // Security best practice: never reveal lookup problems (or existence) to the
+      // caller. Return the same generic success instead of a 500.
       return new Response(
-        JSON.stringify({ error: 'Failed to process request' }),
+        JSON.stringify({ success: true, message: 'If that email exists, a reset link has been sent' }),
         {
-          status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
     }
 
-    const userExists = authUsers.users.find(u => u.email === email);
-    
     // Always return success even if user doesn't exist (security best practice)
-    if (!userExists) {
+    if (!profile) {
       console.log(`Password reset requested for non-existent email: ${email}`);
       return new Response(
         JSON.stringify({ success: true, message: 'If that email exists, a reset link has been sent' }),
