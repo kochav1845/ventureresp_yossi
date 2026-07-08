@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useOrgNavigation } from '../hooks/useOrgNavigation';
+import { useScrollRestoration } from '../hooks/useScrollRestoration';
 import {
   LogOut,
   BarChart3,
@@ -53,6 +54,7 @@ export default function Layout() {
   const { profile, signOut, user, isImpersonating } = useAuth();
   const { navigate } = useOrgNavigation();
   const location = useLocation();
+  useScrollRestoration();
   const { isComponentLocked, isAdmin } = useUserPermissions();
   const isCollector = profile?.role === 'collector';
   const canBeAssignedAsCollector = profile?.can_be_assigned_as_collector || profile?.role === 'collector' || profile?.role === 'admin' || profile?.role === 'manager';
