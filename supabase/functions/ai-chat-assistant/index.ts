@@ -24,6 +24,22 @@ const tools = [
   {
     type: "function",
     function: {
+      name: "find_customer",
+      description:
+        "Resolve a customer by name using FUZZY matching. Returns the closest customers even when the name is misspelled, partial, or approximate (e.g. 'venderbuilyt' -> 'New Vanderbilt Rehab & Care Center'), ranked by similarity_score. ALWAYS use this to turn a customer name into a customer_id, and whenever another search finds no exact match — never tell the user a customer doesn't exist without trying find_customer first.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "The (possibly misspelled or partial) customer name or ID" },
+          limit: { type: "number", description: "Max matches (default 8)" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "get_top_customers_by_balance",
       description:
         "Get top customers ranked by outstanding balance. Uses server-side aggregation so it is always accurate.",
@@ -312,6 +328,23 @@ async function executeTool(
   args: Record<string, any>
 ): Promise<any> {
   switch (name) {
+    case "find_customer": {
+      const { data, error } = await sb.rpc("search_customers_fuzzy", {
+        p_query: args.query || "",
+        p_limit: Math.min(args.limit || 8, 25),
+      });
+      if (error) return { error: error.message };
+      return {
+        matches: (data || []).map((c: any) => ({
+          customer_id: c.customer_id,
+          customer_name: c.customer_name,
+          similarity_score: c.similarity_score,
+          customer_status: c.customer_status,
+        })),
+        count: (data || []).length,
+      };
+    }
+
     case "get_top_customers_by_balance": {
       const limit = Math.min(args.limit || 10, 50);
       const { data, error } = await sb.rpc("get_api_customer_balances", {
@@ -892,7 +925,8 @@ RULES:
 - For aging analysis use get_aging_report.
 - For monthly trends use get_monthly_summary.
 - For broad searches use global_search.
-- For deep customer analysis use get_customer_detail then get_customer_timeline.
+- To look up a customer by name, ALWAYS use find_customer first (fuzzy) to get the customer_id — it handles misspellings and partial names. Never tell the user a customer isn't found without trying find_customer; if there's no exact match, present the closest matches it returns and ask which they meant.
+- For deep customer analysis use find_customer to get the customer_id, then get_customer_detail, then get_customer_timeline.
 - For customer comparisons use get_customer_level_analytics.
 - For complex queries not covered by other tools, use run_sql_query.
 - When asked to export/download/generate a report, use generate_report.

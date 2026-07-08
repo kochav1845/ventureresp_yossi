@@ -15,7 +15,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { email } = await req.json();
+    const { email, resetBase } = await req.json();
 
     if (!email) {
       return new Response(
@@ -90,7 +90,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // Create reset URL with token
-    const resetUrl = `https://stardevar.com/reset-password?resetlink=${token}`;
+    // Build the reset link on the SAME site + org path the user is on. The client
+    // sends resetBase (e.g. https://stardevar.netlify.app/ventureresp/reset-password);
+    // fall back to the Netlify host if it's missing/invalid.
+    const base = (typeof resetBase === 'string' && /^https?:\/\//.test(resetBase))
+      ? resetBase.replace(/\?.*$/, '').replace(/\/+$/, '')
+      : 'https://stardevar.netlify.app/reset-password';
+    const resetUrl = `${base}?resetlink=${token}`;
 
     // Send email with reset link
     const emailSubject = 'Reset Your Password';

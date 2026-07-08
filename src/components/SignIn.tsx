@@ -134,13 +134,20 @@ export default function SignIn() {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+      // Build the reset link base on the same site + org path the user is on, so the
+      // emailed link returns them here (e.g. https://stardevar.netlify.app/ventureresp/reset-password)
+      // rather than a hardcoded domain.
+      const firstSeg = window.location.pathname.split('/').filter(Boolean)[0] || '';
+      const orgPrefix = firstSeg && firstSeg !== 'signin' && firstSeg !== 'reset-password' ? `/${firstSeg}` : '';
+      const resetBase = `${window.location.origin}${orgPrefix}/reset-password`;
+
       const response = await fetch(`${supabaseUrl}/functions/v1/request-password-reset`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${supabaseKey}`,
         },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, resetBase }),
       });
 
       const data = await response.json();
