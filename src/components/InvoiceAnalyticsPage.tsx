@@ -1153,25 +1153,17 @@ export default function InvoiceAnalyticsPage() {
   };
 
   const exportToExcel = () => {
+    // Flat, spreadsheet-friendly layout:
+    //  - Customer ID + Name repeat on EVERY invoice row (not just a header row)
+    //  - Each invoice's own Amount/Balance stay in their columns (summable on their own)
+    //  - The customer's grand total lives in SEPARATE columns, populated once per
+    //    customer (first row), blank otherwise -> selecting that column sums cleanly
     const rows: Record<string, any>[] = [];
     for (const group of customerGroups) {
-      rows.push({
-        Customer_ID: group.customerId,
-        Customer_Name: group.customerName,
-        Invoice_Number: '',
-        Type: '',
-        Status: '',
-        Date: '',
-        Due_Date: '',
-        Amount: group.totalAmount,
-        Balance: group.totalBalance,
-        Invoice_Count: group.invoices.length,
-        Description: '',
-      });
-      for (const inv of group.invoices) {
+      group.invoices.forEach((inv, i) => {
         rows.push({
-          Customer_ID: '',
-          Customer_Name: '',
+          Customer_ID: group.customerId,
+          Customer_Name: group.customerName,
           Invoice_Number: inv.reference_number,
           Type: inv.type,
           Status: inv.status,
@@ -1179,13 +1171,33 @@ export default function InvoiceAnalyticsPage() {
           Due_Date: formatDateString(inv.due_date),
           Amount: inv.amount,
           Balance: inv.balance,
-          Invoice_Count: '',
           Description: inv.description,
+          Customer_Total_Amount: i === 0 ? group.totalAmount : '',
+          Customer_Total_Balance: i === 0 ? group.totalBalance : '',
+          Customer_Invoice_Count: i === 0 ? group.invoices.length : '',
         });
-      }
+      });
     }
 
     const ws = XLSX.utils.json_to_sheet(rows);
+    // Column widths (chars): keep Customer_Name from stretching the sheet.
+    ws['!cols'] = [
+      { wch: 12 }, // Customer_ID
+      { wch: 26 }, // Customer_Name
+      { wch: 14 }, // Invoice_Number
+      { wch: 12 }, // Type
+      { wch: 10 }, // Status
+      { wch: 11 }, // Date
+      { wch: 11 }, // Due_Date
+      { wch: 13 }, // Amount
+      { wch: 13 }, // Balance
+      { wch: 32 }, // Description
+      { wch: 18 }, // Customer_Total_Amount
+      { wch: 18 }, // Customer_Total_Balance
+      { wch: 16 }, // Customer_Invoice_Count
+    ];
+    // Freeze the header row.
+    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Customer Invoices');
     XLSX.writeFile(wb, `invoice_analytics_${selectedMonth.getFullYear()}_${selectedMonth.getMonth() + 1}.xlsx`);
