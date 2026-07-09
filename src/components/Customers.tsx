@@ -145,7 +145,7 @@ export default function Customers({ onBack }: CustomersProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [showFilters, setShowFilters] = useState(() => cl?.showFilters ?? false);
   const [excludeCreditMemos, setExcludeCreditMemos] = useState(() => cl?.excludeCreditMemos ?? false);
-  const [customersWithOpenTickets, setCustomersWithOpenTickets] = useState<Set<string>>(new Set());
+  const [customersWithOpenTickets, setCustomersWithOpenTickets] = useState<Map<string, number>>(new Map());
   const [cachedStatsLoaded, setCachedStatsLoaded] = useState(() => cl?.cachedStatsLoaded ?? false);
   const [cachedStatsTime, setCachedStatsTime] = useState<string | null>(() => cl?.cachedStatsTime ?? null);
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
@@ -247,7 +247,9 @@ export default function Customers({ onBack }: CustomersProps) {
         .select('customer_id')
         .in('status', ['open', 'in_progress']);
       if (error) throw error;
-      setCustomersWithOpenTickets(new Set((data || []).map(t => t.customer_id)));
+      const counts = new Map<string, number>();
+      (data || []).forEach(t => counts.set(t.customer_id, (counts.get(t.customer_id) || 0) + 1));
+      setCustomersWithOpenTickets(counts);
     } catch (error) {
       console.error('Error loading customers with open tickets:', error);
     }
@@ -1122,19 +1124,37 @@ export default function Customers({ onBack }: CustomersProps) {
                       <tr key={customer.id} data-tour="customer-row" className={`transition-colors duration-150 ${exceedsRedThreshold ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-blue-50/40'}`}>
                         <td className="py-2.5 px-4">
                           <div className="flex items-center gap-2.5">
+                            <span
+                              title={`Color level -- ${customer.red_count || 0} red / ${customer.yellow_count || 0} yellow / ${customer.green_count || 0} green invoices`}
+                              className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                                (customer.red_count || 0) > 0 ? 'bg-red-500'
+                                : (customer.yellow_count || 0) > 0 ? 'bg-amber-400'
+                                : (customer.green_count || 0) > 0 ? 'bg-emerald-500'
+                                : 'bg-gray-300'
+                              }`}
+                            />
                             <div>
                               <div className="flex items-center gap-1.5">
                                 <span className="text-sm text-gray-900 font-semibold cursor-pointer hover:text-blue-600 transition-colors"
+                                  title="Open this customer in a new tab"
                                   onClick={() => {
                                     const cid = customer.customer_id || customer.id;
-                                    if (cid) navigate(buildCustomerUrl(cid));
+                                    if (cid) window.open(buildCustomerUrl(cid), '_blank', 'noopener,noreferrer');
                                   }}>{customer.name}</span>
-                                {customersWithOpenTickets.has(customer.id) && (
-                                  <button onClick={() => navigate(`/collection-ticketing?customerId=${customer.id}`)}
-                                    className="flex items-center gap-0.5 px-1.5 py-0.5 bg-red-100 border border-red-200 hover:bg-red-200 rounded text-[10px] text-red-700 transition-colors">
-                                    <Ticket size={10} /> Ticket
-                                  </button>
-                                )}
+                                {(() => {
+                                  const tc = customersWithOpenTickets.get(customer.id) || 0;
+                                  return (
+                                    <button onClick={() => navigate(`/collection-ticketing?customerId=${customer.id}`)}
+                                      title={tc > 0 ? `${tc} open ticket(s) -- click to view / add` : 'Add a ticket for this customer'}
+                                      className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] transition-colors border ${
+                                        tc > 0
+                                          ? 'bg-red-100 border-red-200 hover:bg-red-200 text-red-700'
+                                          : 'bg-gray-100 border-gray-200 hover:bg-gray-200 text-gray-600'
+                                      }`}>
+                                      <Ticket size={10} /> {tc > 0 ? `${tc} Ticket${tc > 1 ? 's' : ''}` : '+ Ticket'}
+                                    </button>
+                                  );
+                                })()}
                                 {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
                                   <button onClick={() => handleUnpostpone(customer.id)} disabled={updating === customer.id}
                                     className="flex items-center gap-0.5 px-1.5 py-0.5 bg-yellow-100 border border-yellow-200 hover:bg-yellow-200 rounded text-[10px] text-yellow-700 transition-colors">
