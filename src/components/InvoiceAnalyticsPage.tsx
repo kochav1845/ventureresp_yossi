@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, X, ExternalLink, Check, Save, Settings, Ban, UserMinus, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, TrendingUp, DollarSign, Users, FileText, RefreshCw, ArrowUpDown, Search, Download, Filter, X, ExternalLink, Check, Save, Settings, Ban, UserMinus, ChevronDown, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { usePageCache } from '../contexts/PageCacheContext';
@@ -140,6 +140,7 @@ export default function InvoiceAnalyticsPage() {
   const [showDefaultFilterMenu, setShowDefaultFilterMenu] = useState(false);
   const [savingDefaults, setSavingDefaults] = useState(false);
 
+  const [overdue90Only, setOverdue90Only] = useState<boolean>(() => c?.overdue90Only ?? false);
   const hasActiveFilters = filterStatus.length > 0 || filterType.length > 0 || selectedCustomers.length > 0 || excludedCustomers.length > 0;
 
   const monthName = `${MONTH_NAMES[selectedMonth.getMonth()]} ${selectedMonth.getFullYear()}`;
@@ -390,6 +391,7 @@ export default function InvoiceAnalyticsPage() {
       dateTo,
       selectedCustomers,
       excludedCustomers,
+      overdue90Only,
       selectedDate: selectedDate?.toISOString() ?? null,
       lastRefreshTime: lastRefreshTime?.toISOString() ?? null,
     };
@@ -425,7 +427,7 @@ export default function InvoiceAnalyticsPage() {
 
   useEffect(() => {
     filterAndSortInvoices();
-  }, [invoices, searchTerm, sortField, sortDirection, filterStatus, filterType, selectedDate, selectedCustomers, excludedCustomers]);
+  }, [invoices, searchTerm, sortField, sortDirection, filterStatus, filterType, selectedDate, selectedCustomers, excludedCustomers, overdue90Only]);
 
   useEffect(() => {
     if (calendarView === 'daily' || (calendarView === 'yearly' && loadedYearInvoices !== null)) {
@@ -1020,6 +1022,15 @@ export default function InvoiceAnalyticsPage() {
     if (excludedCustomers.length > 0) {
       const excludeSet = new Set(excludedCustomers);
       filtered = filtered.filter(i => !excludeSet.has(i.customer));
+    }
+
+    // Show only invoices 90+ days past their due date that still have an open
+    // balance -> the customer table then shows only customers with 90+ overdue debt.
+    if (overdue90Only) {
+      const cutoff = new Date();
+      cutoff.setHours(0, 0, 0, 0);
+      cutoff.setDate(cutoff.getDate() - 90);
+      filtered = filtered.filter(i => i.balance > 0 && i.due_date && new Date(i.due_date) < cutoff);
     }
 
     filtered.sort((a, b) => {
@@ -2035,6 +2046,19 @@ export default function InvoiceAnalyticsPage() {
                 data-tour="invoice-search"
               />
             </div>
+            <button
+              onClick={() => setOverdue90Only(v => !v)}
+              title="Show only customers with invoices 90+ days past their due date"
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border ${
+                overdue90Only
+                  ? 'bg-red-600 hover:bg-red-700 text-white border-red-600'
+                  : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
+              }`}
+            >
+              <Clock className="w-5 h-5" />
+              90+ Days Overdue
+              {overdue90Only && <Check className="w-4 h-4" />}
+            </button>
             <button
               onClick={exportToExcel}
               className="flex items-center gap-2 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all shadow-sm"
