@@ -1112,9 +1112,6 @@ export default function Customers({ onBack }: CustomersProps) {
                     <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Exclude from Payment Analytics">
                       <div className="flex items-center justify-center gap-1"><EyeOff size={12} /><span>Pay</span></div>
                     </th>
-                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Exclude from Customer Analytics">
-                      <div className="flex items-center justify-center gap-1"><EyeOff size={12} /><span>Cust</span></div>
-                    </th>
                     <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
@@ -1193,16 +1190,6 @@ export default function Customers({ onBack }: CustomersProps) {
                               className="p-0.5 rounded transition-colors hover:bg-gray-100"
                               title={customer.exclude_from_payment_analytics ? "Excluded -- click to include" : "Included -- click to exclude"}>
                               {customer.exclude_from_payment_analytics ? <EyeOff className="text-red-500" size={16} /> : <Eye className="text-emerald-500" size={16} />}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-4">
-                          <div className="flex justify-center">
-                            <button onClick={() => toggleCustomerAnalyticsExclusion(customer.customer_id || customer.id, customer.exclude_from_customer_analytics || false)}
-                              disabled={updating === customer.customer_id || updating === customer.id}
-                              className="p-0.5 rounded transition-colors hover:bg-gray-100"
-                              title={customer.exclude_from_customer_analytics ? "Excluded -- click to include" : "Included -- click to exclude"}>
-                              {customer.exclude_from_customer_analytics ? <EyeOff className="text-red-500" size={16} /> : <Eye className="text-emerald-500" size={16} />}
                             </button>
                           </div>
                         </td>
