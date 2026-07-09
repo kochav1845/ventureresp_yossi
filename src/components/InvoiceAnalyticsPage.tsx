@@ -141,7 +141,7 @@ export default function InvoiceAnalyticsPage() {
   const [savingDefaults, setSavingDefaults] = useState(false);
 
   const [openInvoicesOnly, setOpenInvoicesOnly] = useState<boolean>(() => c?.openInvoicesOnly ?? false);
-  const hasActiveFilters = filterStatus.length > 0 || filterType.length > 0 || selectedCustomers.length > 0 || excludedCustomers.length > 0;
+  const hasActiveFilters = filterStatus.length > 0 || filterType.length > 0 || selectedCustomers.length > 0 || excludedCustomers.length > 0 || !!dateFrom || !!dateTo;
 
   const monthName = `${MONTH_NAMES[selectedMonth.getMonth()]} ${selectedMonth.getFullYear()}`;
 
@@ -443,11 +443,13 @@ export default function InvoiceAnalyticsPage() {
         p_type: filterType.length === 1 ? filterType[0] : null,
         p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : [],
         p_excluded_customers: excludedCustomers.length > 0 ? excludedCustomers : [],
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null,
       });
       if (!cancelled && !error) setMonthlyCustomerCount(Number(data) || 0);
     })();
     return () => { cancelled = true; };
-  }, [calendarView, selectedYear, filterStatus, filterType, selectedCustomers, excludedCustomers]);
+  }, [calendarView, selectedYear, filterStatus, filterType, selectedCustomers, excludedCustomers, dateFrom, dateTo]);
 
   useEffect(() => {
     if (calendarView === 'daily' || (calendarView === 'yearly' && loadedYearInvoices !== null)) {
@@ -823,7 +825,9 @@ export default function InvoiceAnalyticsPage() {
           p_status: filterStatus.length === 1 ? filterStatus[0] : null,
           p_type: filterType.length === 1 ? filterType[0] : null,
           p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : [],
-          p_excluded_customers: excludedCustomers.length > 0 ? excludedCustomers : []
+          p_excluded_customers: excludedCustomers.length > 0 ? excludedCustomers : [],
+          p_date_from: dateFrom || null,
+          p_date_to: dateTo || null
         });
 
         if (filteredError) throw filteredError;
@@ -931,7 +935,9 @@ export default function InvoiceAnalyticsPage() {
           p_status: filterStatus.length === 1 ? filterStatus[0] : null,
           p_type: filterType.length === 1 ? filterType[0] : null,
           p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : [],
-          p_excluded_customers: excludedCustomers.length > 0 ? excludedCustomers : []
+          p_excluded_customers: excludedCustomers.length > 0 ? excludedCustomers : [],
+          p_date_from: dateFrom || null,
+          p_date_to: dateTo || null
         });
 
         if (filteredError) throw filteredError;
