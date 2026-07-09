@@ -140,7 +140,7 @@ export default function InvoiceAnalyticsPage() {
   const [showDefaultFilterMenu, setShowDefaultFilterMenu] = useState(false);
   const [savingDefaults, setSavingDefaults] = useState(false);
 
-  const [overdue90Only, setOverdue90Only] = useState<boolean>(() => c?.overdue90Only ?? false);
+  const [openInvoicesOnly, setOpenInvoicesOnly] = useState<boolean>(() => c?.openInvoicesOnly ?? false);
   const hasActiveFilters = filterStatus.length > 0 || filterType.length > 0 || selectedCustomers.length > 0 || excludedCustomers.length > 0;
 
   const monthName = `${MONTH_NAMES[selectedMonth.getMonth()]} ${selectedMonth.getFullYear()}`;
@@ -286,7 +286,7 @@ export default function InvoiceAnalyticsPage() {
       if (f.dateTo) { setDateTo(f.dateTo); setTempDateTo(f.dateTo); }
       if (f.selectedCustomers?.length) { setSelectedCustomers(f.selectedCustomers); setTempSelectedCustomers(f.selectedCustomers); }
       if (data.excluded_customers?.length) { setExcludedCustomers(data.excluded_customers); setTempExcludedCustomers(data.excluded_customers); }
-      if (typeof f.overdue90Only === 'boolean') { setOverdue90Only(f.overdue90Only); }
+      if (typeof f.openInvoicesOnly === 'boolean') { setOpenInvoicesOnly(f.openInvoicesOnly); }
       setDefaultFiltersActive(true);
     }
   }, [user]);
@@ -302,7 +302,7 @@ export default function InvoiceAnalyticsPage() {
       dateFrom: tempDateFrom,
       dateTo: tempDateTo,
       selectedCustomers: tempSelectedCustomers,
-      overdue90Only,
+      openInvoicesOnly,
     };
     await supabase.from('user_analytics_default_filters').upsert({
       user_id: user.id,
@@ -392,7 +392,7 @@ export default function InvoiceAnalyticsPage() {
       dateTo,
       selectedCustomers,
       excludedCustomers,
-      overdue90Only,
+      openInvoicesOnly,
       selectedDate: selectedDate?.toISOString() ?? null,
       lastRefreshTime: lastRefreshTime?.toISOString() ?? null,
     };
@@ -428,7 +428,26 @@ export default function InvoiceAnalyticsPage() {
 
   useEffect(() => {
     filterAndSortInvoices();
-  }, [invoices, searchTerm, sortField, sortDirection, filterStatus, filterType, selectedDate, selectedCustomers, excludedCustomers, overdue90Only]);
+  }, [invoices, searchTerm, sortField, sortDirection, filterStatus, filterType, selectedDate, selectedCustomers, excludedCustomers, openInvoicesOnly]);
+
+  // Unique customer count for monthly/yearly views = the true DISTINCT customer
+  // count for the scope, not the sum of each period's distinct count (which counts
+  // a customer once per period). Daily view computes it in-memory from invoices.
+  useEffect(() => {
+    if (calendarView === 'daily') return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.rpc('get_analytics_customer_count', {
+        p_year: calendarView === 'monthly' ? selectedYear : null,
+        p_status: filterStatus.length === 1 ? filterStatus[0] : null,
+        p_type: filterType.length === 1 ? filterType[0] : null,
+        p_included_customers: selectedCustomers.length > 0 ? selectedCustomers : [],
+        p_excluded_customers: excludedCustomers.length > 0 ? excludedCustomers : [],
+      });
+      if (!cancelled && !error) setMonthlyCustomerCount(Number(data) || 0);
+    })();
+    return () => { cancelled = true; };
+  }, [calendarView, selectedYear, filterStatus, filterType, selectedCustomers, excludedCustomers]);
 
   useEffect(() => {
     if (calendarView === 'daily' || (calendarView === 'yearly' && loadedYearInvoices !== null)) {
@@ -779,7 +798,8 @@ export default function InvoiceAnalyticsPage() {
     const totalOpenCmCnt = aggregates.reduce((s, a) => s + a.openCmCount, 0);
     setMonthlyBalance(totalOpenInv - totalOpenCm);
     setMonthlyInvoiceCount(totalCount - totalCMCount);
-    setMonthlyCustomerCount(totalCustomers);
+    // Unique customer count is set by a dedicated distinct-count effect (summing
+    // per-month counts would count a customer once per month).
     setMonthlyCreditMemoTotal(totalCMAmount);
     setMonthlyCreditMemoCount(totalCMCount);
     setMonthlyOpenInvBalance(totalOpenInv);
@@ -888,7 +908,7 @@ export default function InvoiceAnalyticsPage() {
     const totalOpenCm = aggregates.reduce((s, a) => s + a.openCmBalance, 0);
     const totalOpenCmCnt = aggregates.reduce((s, a) => s + a.openCmCount, 0);
     setMonthlyBalance(totalOpenInv - totalOpenCm);
-    setMonthlyCustomerCount(0);
+    // Unique customer count is set by a dedicated distinct-count effect.
     setMonthlyCreditMemoTotal(totalCM);
     setMonthlyCreditMemoCount(totalCMCnt);
     setMonthlyOpenInvBalance(totalOpenInv);
@@ -1025,18 +1045,11 @@ export default function InvoiceAnalyticsPage() {
       filtered = filtered.filter(i => !excludeSet.has(i.customer));
     }
 
-    // Include any customer who has at least one OPEN invoice 90+ days past its due
-    // date, and show ALL of that customer's open invoices.
-    if (overdue90Only) {
-      const cutoff = new Date();
-      cutoff.setHours(0, 0, 0, 0);
-      cutoff.setDate(cutoff.getDate() - 90);
-      const overdueCustomers = new Set(
-        filtered
-          .filter(i => i.balance > 0 && i.due_date && new Date(i.due_date) < cutoff)
-          .map(i => i.customer)
-      );
-      filtered = filtered.filter(i => overdueCustomers.has(i.customer) && i.balance > 0);
+    // Show only OPEN invoices (any age, regardless of due date): keep just the
+    // invoices with an outstanding balance, so the customer table lists only
+    // customers who have open invoices.
+    if (openInvoicesOnly) {
+      filtered = filtered.filter(i => i.balance > 0);
     }
 
     filtered.sort((a, b) => {
@@ -2053,17 +2066,17 @@ export default function InvoiceAnalyticsPage() {
               />
             </div>
             <button
-              onClick={() => setOverdue90Only(v => !v)}
-              title="Show customers who have any open invoice 90+ days over its due date (shows all their open invoices)"
+              onClick={() => setOpenInvoicesOnly(v => !v)}
+              title="Show only customers with open invoices (any outstanding balance, regardless of age)"
               className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border ${
-                overdue90Only
+                openInvoicesOnly
                   ? 'bg-red-600 hover:bg-red-700 text-white border-red-600'
                   : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
               }`}
             >
               <Clock className="w-5 h-5" />
-              90+ Days Over Due Date
-              {overdue90Only && <Check className="w-4 h-4" />}
+              Open Invoices Only
+              {openInvoicesOnly && <Check className="w-4 h-4" />}
             </button>
             <button
               onClick={exportToExcel}
