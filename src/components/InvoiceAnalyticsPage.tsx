@@ -272,22 +272,22 @@ export default function InvoiceAnalyticsPage() {
       .maybeSingle();
     if (data) {
       setHasDefaultFilters(true);
-      if (!c) {
-        const f = data.filters as any;
-        if (f.filterStatus) {
-          const statusVal = Array.isArray(f.filterStatus) ? f.filterStatus : (f.filterStatus === 'all' ? [] : [f.filterStatus]);
-          setFilterStatus(statusVal); setTempFilterStatus(statusVal);
-        }
-        if (f.filterType) {
-          const typeVal = Array.isArray(f.filterType) ? f.filterType : (f.filterType === 'all' ? [] : [f.filterType]);
-          setFilterType(typeVal); setTempFilterType(typeVal);
-        }
-        if (f.dateFrom) { setDateFrom(f.dateFrom); setTempDateFrom(f.dateFrom); }
-        if (f.dateTo) { setDateTo(f.dateTo); setTempDateTo(f.dateTo); }
-        if (f.selectedCustomers?.length) { setSelectedCustomers(f.selectedCustomers); setTempSelectedCustomers(f.selectedCustomers); }
-        if (data.excluded_customers?.length) { setExcludedCustomers(data.excluded_customers); setTempExcludedCustomers(data.excluded_customers); }
-        setDefaultFiltersActive(true);
+      // Apply the saved default filters right away when the page opens.
+      const f = data.filters as any;
+      if (f.filterStatus) {
+        const statusVal = Array.isArray(f.filterStatus) ? f.filterStatus : (f.filterStatus === 'all' ? [] : [f.filterStatus]);
+        setFilterStatus(statusVal); setTempFilterStatus(statusVal);
       }
+      if (f.filterType) {
+        const typeVal = Array.isArray(f.filterType) ? f.filterType : (f.filterType === 'all' ? [] : [f.filterType]);
+        setFilterType(typeVal); setTempFilterType(typeVal);
+      }
+      if (f.dateFrom) { setDateFrom(f.dateFrom); setTempDateFrom(f.dateFrom); }
+      if (f.dateTo) { setDateTo(f.dateTo); setTempDateTo(f.dateTo); }
+      if (f.selectedCustomers?.length) { setSelectedCustomers(f.selectedCustomers); setTempSelectedCustomers(f.selectedCustomers); }
+      if (data.excluded_customers?.length) { setExcludedCustomers(data.excluded_customers); setTempExcludedCustomers(data.excluded_customers); }
+      if (typeof f.overdue90Only === 'boolean') { setOverdue90Only(f.overdue90Only); }
+      setDefaultFiltersActive(true);
     }
   }, [user]);
 
@@ -302,6 +302,7 @@ export default function InvoiceAnalyticsPage() {
       dateFrom: tempDateFrom,
       dateTo: tempDateTo,
       selectedCustomers: tempSelectedCustomers,
+      overdue90Only,
     };
     await supabase.from('user_analytics_default_filters').upsert({
       user_id: user.id,
@@ -1024,13 +1025,18 @@ export default function InvoiceAnalyticsPage() {
       filtered = filtered.filter(i => !excludeSet.has(i.customer));
     }
 
-    // Show only invoices 90+ days past their due date that still have an open
-    // balance -> the customer table then shows only customers with 90+ overdue debt.
+    // Include any customer who has at least one OPEN invoice 90+ days past its due
+    // date, and show ALL of that customer's open invoices.
     if (overdue90Only) {
       const cutoff = new Date();
       cutoff.setHours(0, 0, 0, 0);
       cutoff.setDate(cutoff.getDate() - 90);
-      filtered = filtered.filter(i => i.balance > 0 && i.due_date && new Date(i.due_date) < cutoff);
+      const overdueCustomers = new Set(
+        filtered
+          .filter(i => i.balance > 0 && i.due_date && new Date(i.due_date) < cutoff)
+          .map(i => i.customer)
+      );
+      filtered = filtered.filter(i => overdueCustomers.has(i.customer) && i.balance > 0);
     }
 
     filtered.sort((a, b) => {
@@ -2048,7 +2054,7 @@ export default function InvoiceAnalyticsPage() {
             </div>
             <button
               onClick={() => setOverdue90Only(v => !v)}
-              title="Show only customers with invoices 90+ days past their due date"
+              title="Show customers who have any open invoice 90+ days over its due date (shows all their open invoices)"
               className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border ${
                 overdue90Only
                   ? 'bg-red-600 hover:bg-red-700 text-white border-red-600'
@@ -2056,7 +2062,7 @@ export default function InvoiceAnalyticsPage() {
               }`}
             >
               <Clock className="w-5 h-5" />
-              90+ Days Overdue
+              90+ Days Over Due Date
               {overdue90Only && <Check className="w-4 h-4" />}
             </button>
             <button
