@@ -285,13 +285,21 @@ export default function Customers({ onBack }: CustomersProps) {
     setLoadedCount(0);
     try {
       const balanceCol = excludeCreditMemos ? 'calculated_balance_excl_cm' : 'calculated_balance';
-      const { data, error } = await supabase
-        .from('cached_customer_balances')
-        .select('*')
-        .eq('is_test_customer', false)
-        .order(balanceCol, { ascending: false });
-      if (error) throw error;
-      const merged = (data || []).map(item => mapCustomerRow(item));
+      // Paginate past PostgREST's ~1000-row response cap so ALL customers load.
+      const PAGE = 1000;
+      let merged: Customer[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('cached_customer_balances')
+          .select('*')
+          .eq('is_test_customer', false)
+          .order(balanceCol, { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const batch = data || [];
+        merged = merged.concat(batch.map(item => mapCustomerRow(item)));
+        if (batch.length < PAGE) break;
+      }
       setLoadedCount(merged.length);
       setGrandTotalCustomers(merged.length);
       setAllCustomers(merged);
@@ -372,10 +380,18 @@ export default function Customers({ onBack }: CustomersProps) {
           p_test_customers: false
         };
 
-        const { data, error } = await supabase
-          .rpc('get_customers_with_balance', { ...rpcParams, p_limit: 5000, p_offset: 0 });
-        if (error) throw error;
-        const filtered = (data || []).map(item => mapCustomerRow(item));
+        // Paginate the RPC past PostgREST's ~1000-row response cap so search
+        // returns ALL matching customers, not just the first 1000.
+        const PAGE = 1000;
+        let filtered: Customer[] = [];
+        for (let offset = 0; ; offset += PAGE) {
+          const { data, error } = await supabase
+            .rpc('get_customers_with_balance', { ...rpcParams, p_limit: PAGE, p_offset: offset });
+          if (error) throw error;
+          const batch = data || [];
+          filtered = filtered.concat(batch.map(item => mapCustomerRow(item)));
+          if (batch.length < PAGE) break;
+        }
         setLoadedCount(filtered.length);
         setFilteredCustomers(filtered);
         setTotalCount(filtered.length);
@@ -906,13 +922,6 @@ export default function Customers({ onBack }: CustomersProps) {
               ))}
 
               <div className="flex-1" />
-
-              {/* Credit memo toggle */}
-              <label data-tour="customer-exclude-cm" className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                <input type="checkbox" checked={excludeCreditMemos} onChange={(e) => setExcludeCreditMemos(e.target.checked)}
-                  className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
-                Excl. Credit Memos
-              </label>
             </div>
           </div>
 
@@ -1099,7 +1108,6 @@ export default function Customers({ onBack }: CustomersProps) {
                     <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('avg_days_to_collect')}>
                       <div className="flex items-center justify-end gap-1.5">Avg Collect {getSortIcon('avg_days_to_collect')}</div>
                     </th>
-                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Active</th>
                     <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Resp.</th>
                     <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Exclude from Payment Analytics">
                       <div className="flex items-center justify-center gap-1"><EyeOff size={12} /><span>Pay</span></div>
@@ -1169,15 +1177,6 @@ export default function Customers({ onBack }: CustomersProps) {
                         </td>
                         <td className="py-2.5 px-4 text-right text-sm text-gray-600 tabular-nums">
                           {customer.avg_days_to_collect != null ? `${customer.avg_days_to_collect}d` : '--'}
-                        </td>
-                        <td className="py-2.5 px-4">
-                          <div className="flex justify-center">
-                            <button onClick={() => handleToggleActive(customer.id, customer.is_active)} disabled={updating === customer.id}
-                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${customer.is_active ? 'bg-emerald-500' : 'bg-gray-300'} ${updating === customer.id ? 'opacity-50' : ''}`}>
-                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm ${customer.is_active ? 'translate-x-4.5' : 'translate-x-0.5'}`}
-                                style={{ transform: `translateX(${customer.is_active ? '18px' : '2px'})` }} />
-                            </button>
-                          </div>
                         </td>
                         <td className="py-2.5 px-4">
                           <div className="flex justify-center">
