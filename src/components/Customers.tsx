@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import CustomerDetailView from './CustomerDetailView';
@@ -146,6 +146,9 @@ export default function Customers({ onBack }: CustomersProps) {
   const [showFilters, setShowFilters] = useState(() => cl?.showFilters ?? false);
   const [excludeCreditMemos, setExcludeCreditMemos] = useState(() => cl?.excludeCreditMemos ?? false);
   const [customersWithOpenTickets, setCustomersWithOpenTickets] = useState<Map<string, number>>(new Map());
+  const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
+  const [expandedInvoices, setExpandedInvoices] = useState<Map<string, any[]>>(new Map());
+  const [loadingExpanded, setLoadingExpanded] = useState<string | null>(null);
   const [cachedStatsLoaded, setCachedStatsLoaded] = useState(() => cl?.cachedStatsLoaded ?? false);
   const [cachedStatsTime, setCachedStatsTime] = useState<string | null>(() => cl?.cachedStatsTime ?? null);
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
@@ -239,6 +242,30 @@ export default function Customers({ onBack }: CustomersProps) {
 
     return () => { ticketSubscription.unsubscribe(); };
   }, [excludeCreditMemos]);
+
+  const toggleExpandCustomer = async (customer: Customer) => {
+    const cid = customer.customer_id || customer.id;
+    if (expandedCustomerId === cid) { setExpandedCustomerId(null); return; }
+    setExpandedCustomerId(cid);
+    if (!expandedInvoices.has(cid)) {
+      setLoadingExpanded(cid);
+      try {
+        const { data, error } = await supabase
+          .from('acumatica_invoices')
+          .select('reference_number, type, status, date, due_date, amount, balance, color_status')
+          .eq('customer', cid)
+          .order('date', { ascending: false })
+          .limit(1000);
+        if (error) throw error;
+        setExpandedInvoices(prev => new Map(prev).set(cid, data || []));
+      } catch (e) {
+        console.error('Error loading customer invoices:', e);
+        setExpandedInvoices(prev => new Map(prev).set(cid, []));
+      } finally {
+        setLoadingExpanded(null);
+      }
+    }
+  };
 
   const loadCustomersWithOpenTickets = async () => {
     try {
@@ -1120,10 +1147,17 @@ export default function Customers({ onBack }: CustomersProps) {
                 <tbody className="divide-y divide-gray-100">
                   {customers.map((customer) => {
                     const exceedsRedThreshold = (customer.max_days_overdue || 0) >= (customer.red_threshold_days || 30);
+                    const cidKey = customer.customer_id || customer.id;
+                    const isExpanded = expandedCustomerId === cidKey;
                     return (
-                      <tr key={customer.id} data-tour="customer-row" className={`transition-colors duration-150 ${exceedsRedThreshold ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-blue-50/40'}`}>
+                      <Fragment key={customer.id}>
+                      <tr data-tour="customer-row" className={`transition-colors duration-150 ${exceedsRedThreshold ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-blue-50/40'}`}>
                         <td className="py-2.5 px-4">
                           <div className="flex items-center gap-2.5">
+                            <button onClick={() => toggleExpandCustomer(customer)} title="Show this customer's invoices"
+                              className="text-gray-400 hover:text-blue-600 transition-colors flex-shrink-0">
+                              <ChevronRight size={16} className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                            </button>
                             <span
                               title={`Color level -- ${customer.red_count || 0} red / ${customer.yellow_count || 0} yellow / ${customer.green_count || 0} green invoices`}
                               className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
@@ -1240,6 +1274,50 @@ export default function Customers({ onBack }: CustomersProps) {
                           </div>
                         </td>
                       </tr>
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={9} className="bg-gray-50 px-6 py-3 border-b border-gray-200">
+                            {loadingExpanded === cidKey ? (
+                              <div className="text-sm text-gray-500 py-2">Loading invoices...</div>
+                            ) : (expandedInvoices.get(cidKey)?.length ? (
+                              <div className="overflow-x-auto">
+                                <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  {expandedInvoices.get(cidKey)!.length} invoice(s)
+                                </div>
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="text-gray-500 text-left">
+                                      <th className="py-1 px-2">Invoice #</th>
+                                      <th className="py-1 px-2">Type</th>
+                                      <th className="py-1 px-2">Status</th>
+                                      <th className="py-1 px-2">Date</th>
+                                      <th className="py-1 px-2">Due</th>
+                                      <th className="py-1 px-2 text-right">Amount</th>
+                                      <th className="py-1 px-2 text-right">Balance</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {expandedInvoices.get(cidKey)!.map((inv: any, idx: number) => (
+                                      <tr key={`${inv.reference_number}-${inv.type}-${idx}`} className="border-t border-gray-100">
+                                        <td className="py-1 px-2 font-medium text-gray-800">{inv.reference_number}</td>
+                                        <td className="py-1 px-2 text-gray-600">{inv.type}</td>
+                                        <td className="py-1 px-2 text-gray-600">{inv.status}</td>
+                                        <td className="py-1 px-2 text-gray-600">{inv.date ? String(inv.date).split('T')[0] : ''}</td>
+                                        <td className="py-1 px-2 text-gray-600">{inv.due_date ? String(inv.due_date).split('T')[0] : ''}</td>
+                                        <td className="py-1 px-2 text-right tabular-nums">${(inv.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                        <td className="py-1 px-2 text-right tabular-nums font-semibold">${(inv.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <div className="text-sm text-gray-500 py-2">No invoices found for this customer.</div>
+                            ))}
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
