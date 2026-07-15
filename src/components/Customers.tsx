@@ -468,7 +468,10 @@ export default function Customers({ onBack }: CustomersProps) {
     if (filters.maxDaysOverdue !== Infinity) params.set('daysMax', String(Math.round(filters.maxDaysOverdue)));
     if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
     if (filters.dateTo) params.set('dateTo', filters.dateTo);
-    return `/customers?${params.toString()}`;
+    // Include the org slug so the new tab stays in the current organization
+    // (window.open bypasses the org-prefixing navigate wrapper).
+    const prefix = orgSlug ? `/${orgSlug}` : '';
+    return `${prefix}/customers?${params.toString()}`;
   };
 
   const handleSearch = () => {
