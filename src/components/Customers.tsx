@@ -53,6 +53,10 @@ type FilterConfig = {
   maxInvoiceAmount: number;
   minDaysOverdue: number;
   maxDaysOverdue: number;
+  // Whether "days overdue" counts from the invoice's due date (true days past
+  // due) or from the invoice date (legacy). Drives the Overdue column, sorting
+  // and the min/max filter together so they always agree.
+  overdueBasis: 'due_date' | 'invoice_date';
   dateFrom: string;
   dateTo: string;
   logicOperator: 'AND' | 'OR';
@@ -72,6 +76,7 @@ const DEFAULT_FILTERS: FilterConfig = {
   maxInvoiceAmount: Infinity,
   minDaysOverdue: 0,
   maxDaysOverdue: Infinity,
+  overdueBasis: 'due_date',
   dateFrom: '',
   dateTo: '',
   logicOperator: 'AND',
@@ -166,7 +171,14 @@ export default function Customers({ onBack }: CustomersProps) {
     customers_with_overdue: 0
   });
 
-  const [filters, setFilters] = useState<FilterConfig>(() => cl?.filters ?? { ...DEFAULT_FILTERS });
+  const [filters, setFilters] = useState<FilterConfig>(() => ({
+    ...DEFAULT_FILTERS,
+    ...(cl?.filters ?? {}),
+    // The invoice-date pickers were removed from the panel, so never restore a
+    // stale range that would filter invisibly.
+    dateFrom: '',
+    dateTo: '',
+  }));
   const hasInvoiceLevelFilters = filters.minInvoiceAmount > 0 || filters.maxInvoiceAmount !== Infinity ||
     filters.minDaysOverdue > 0 || filters.maxDaysOverdue !== Infinity ||
     !!filters.dateFrom || !!filters.dateTo;
@@ -199,7 +211,7 @@ export default function Customers({ onBack }: CustomersProps) {
     }
   };
 
-  const fetchKeyRef = useRef(cl ? `${cl.excludeCreditMemos ?? false}` : '');
+  const fetchKeyRef = useRef(cl ? `${cl.excludeCreditMemos ?? false}|${cl.filters?.overdueBasis ?? DEFAULT_FILTERS.overdueBasis}` : '');
   const restoredFromCache = useRef(!!cl);
   const mountTime = useRef(Date.now());
 
@@ -217,7 +229,9 @@ export default function Customers({ onBack }: CustomersProps) {
   }, []);
 
   useEffect(() => {
-    const key = `${excludeCreditMemos}`;
+    // overdueBasis is part of the key: the cached rows are mapped to a single
+    // basis at load time, so flipping the toggle has to re-map them.
+    const key = `${excludeCreditMemos}|${filters.overdueBasis}`;
     if (fetchKeyRef.current === key) {
       if (restoredFromCache.current && Date.now() - mountTime.current < 500) {
         loadCustomersWithOpenTickets();
@@ -241,7 +255,7 @@ export default function Customers({ onBack }: CustomersProps) {
       .subscribe();
 
     return () => { ticketSubscription.unsubscribe(); };
-  }, [excludeCreditMemos]);
+  }, [excludeCreditMemos, filters.overdueBasis]);
 
   const toggleExpandCustomer = async (customer: Customer) => {
     const cid = customer.customer_id || customer.id;
@@ -299,7 +313,12 @@ export default function Customers({ onBack }: CustomersProps) {
     filtered_net_balance: item.filtered_net_balance ?? (excludeCreditMemos ? (item.calculated_balance_excl_cm || item.gross_balance || 0) : (item.calculated_balance || 0)),
     invoice_count: item.open_invoice_count || 0,
     filtered_invoice_count: item.filtered_invoice_count ?? item.open_invoice_count ?? 0,
-    max_days_overdue: item.max_days_overdue || 0,
+    // Cached rows carry both bases (max_days_overdue = from invoice date,
+    // max_days_overdue_due = from due date); the RPC already returns the value
+    // for the requested basis in max_days_overdue.
+    max_days_overdue: (filters.overdueBasis === 'due_date' && item.max_days_overdue_due != null)
+      ? (item.max_days_overdue_due || 0)
+      : (item.max_days_overdue || 0),
     red_threshold_days: item.red_threshold_days || 30,
     red_count: item.red_count || 0,
     yellow_count: item.yellow_count || 0,
@@ -406,7 +425,8 @@ export default function Customers({ onBack }: CustomersProps) {
           p_calculate_avg_days: false,
           p_min_days_overdue: filters.minDaysOverdue > 0 ? filters.minDaysOverdue : null,
           p_max_days_overdue: filters.maxDaysOverdue !== Infinity ? Math.round(filters.maxDaysOverdue) : null,
-          p_test_customers: false
+          p_test_customers: false,
+          p_overdue_basis: filters.overdueBasis
         };
 
         // Paginate the RPC past PostgREST's ~1000-row response cap so search
@@ -1020,15 +1040,27 @@ export default function Customers({ onBack }: CustomersProps) {
                   <input type="number" value={filters.maxDaysOverdue === Infinity ? '' : filters.maxDaysOverdue} onChange={(e) => setFilters({ ...filters, maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
                     placeholder="Any" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
                 </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Invoice Date From</label>
-                  <input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-                    className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Invoice Date To</label>
-                  <input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-                    className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
+                <div className="col-span-2">
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Overdue Counted From</label>
+                  <div className="flex rounded-lg border border-teal-200 overflow-hidden bg-white">
+                    {([
+                      { v: 'due_date' as const, label: 'Due Date' },
+                      { v: 'invoice_date' as const, label: 'Invoice Date' },
+                    ]).map((opt) => (
+                      <button key={opt.v} type="button"
+                        onClick={() => setFilters({ ...filters, overdueBasis: opt.v })}
+                        title={opt.v === 'due_date'
+                          ? 'Days past the invoice due date (true days overdue)'
+                          : 'Days since the invoice date'}
+                        className={`flex-1 px-3 py-2 text-sm transition-colors ${
+                          filters.overdueBasis === opt.v
+                            ? 'bg-teal-600 text-white font-semibold'
+                            : 'bg-white text-gray-600 hover:bg-teal-50'
+                        }`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Sort By</label>
