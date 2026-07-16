@@ -206,7 +206,7 @@ const tools = [
     type: "function",
     function: {
       name: "create_ticket",
-      description: "Create a new collection ticket for a customer.",
+      description: "Create a new collection ticket for a customer. The ticket number (TKT######) is assigned automatically. Use find_customer first to resolve the customer_id.",
       parameters: {
         type: "object",
         properties: {
@@ -214,8 +214,59 @@ const tools = [
           priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
           notes: { type: "string" },
           ticket_type: { type: "string" },
+          due_date: { type: "string", description: "YYYY-MM-DD" },
+          assigned_collector_id: { type: "string", description: "user_profiles.id of the collector" },
         },
         required: ["customer_id", "notes"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_ticket_detail",
+      description: "Everything about one ticket: its fields plus notes, activity log and status history. Use to discuss/summarise a specific ticket (e.g. 'what's happening with TKT000035?').",
+      parameters: {
+        type: "object",
+        properties: {
+          ticket_number: { type: "string", description: "e.g. TKT000035" },
+          ticket_id: { type: "string", description: "uuid, if the number is unknown" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_ticket_note",
+      description: "Add a note/comment to an existing ticket (e.g. logging a call or a promise to pay).",
+      parameters: {
+        type: "object",
+        properties: {
+          ticket_number: { type: "string" },
+          note_text: { type: "string" },
+        },
+        required: ["ticket_number", "note_text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_ticket",
+      description: "Update a ticket: change status (e.g. close it), priority, type, due date, notes, or reassign it to a collector.",
+      parameters: {
+        type: "object",
+        properties: {
+          ticket_number: { type: "string" },
+          status: { type: "string", enum: ["open", "in_progress", "closed", "on_hold"] },
+          priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
+          ticket_type: { type: "string" },
+          notes: { type: "string" },
+          due_date: { type: "string", description: "YYYY-MM-DD" },
+          assigned_collector_id: { type: "string" },
+        },
+        required: ["ticket_number"],
       },
     },
   },
@@ -285,7 +336,7 @@ const tools = [
     function: {
       name: "run_sql_query",
       description:
-        "Run a read-only SQL query for advanced analysis not covered by other tools. Only SELECT allowed. Key tables: acumatica_invoices (customer, customer_name, reference_number, type, status, amount, balance, date, due_date, color_status, description, terms), acumatica_payments (customer_id, customer_name, reference_number, type, status, payment_amount, application_date, doc_date, payment_method, payment_ref), acumatica_customers (customer_id, customer_name, customer_class, email_address, credit_limit, terms, customer_status, country, city, is_test_customer), collection_tickets (ticket_number, customer_id, customer_name, status, priority, ticket_type, notes, due_date, assigned_collector_id, created_at, resolved_at), payment_invoice_applications (payment_reference_number, invoice_reference_number, amount_paid, doc_type), collector_customer_assignments (customer_id, assigned_collector_id), user_profiles (id, full_name, email, role, account_status), invoice_color_status_history (invoice_id, old_status, new_status, changed_at, changed_by_user_id), invoice_memos (invoice_reference_number, memo_text, created_by_user_id, created_at).",
+        "Run a read-only SQL query for advanced analysis not covered by other tools. Only SELECT allowed. Key tables: acumatica_invoices (customer, customer_name, reference_number, type, status, amount, balance, date, due_date, color_status, description, terms), acumatica_payments (customer_id, customer_name, reference_number, type, status, payment_amount, application_date, doc_date, payment_method, payment_ref), acumatica_customers (customer_id, customer_name, customer_class, email_address, credit_limit, terms, customer_status, country, city, is_test_customer), collection_tickets (id, ticket_number, customer_id, customer_name, status, priority, ticket_type, notes, due_date, assigned_collector_id, created_at, resolved_at), ticket_notes (ticket_id, note_text, created_by_user_id, created_at), ticket_activity_log (ticket_id, activity_type, description, created_by, created_at), ticket_status_history (ticket_id, old_status, new_status, changed_by, changed_at, notes), payment_invoice_applications (payment_reference_number, invoice_reference_number, amount_paid, doc_type), collector_customer_assignments (customer_id, assigned_collector_id), user_profiles (id, full_name, email, role, account_status), invoice_color_status_history (invoice_id, old_status, new_status, changed_at, changed_by_user_id), invoice_memos (invoice_reference_number, memo_text, created_by_user_id, created_at).",
       parameters: {
         type: "object",
         properties: {
@@ -322,10 +373,16 @@ const tools = [
 ];
 
 // ── Tool implementations ────────────────────────────────────────────
+// Caller identity. The client below is service-role, so auth.uid() is NULL inside
+// the DB — any insert that would rely on get_user_org_id() (organization_id) or on
+// auth.uid() (note authorship) must pass these explicitly or the row is orphaned.
+type ToolCtx = { userId: string | null; orgId: string | null };
+
 async function executeTool(
   sb: ReturnType<typeof createClient>,
   name: string,
-  args: Record<string, any>
+  args: Record<string, any>,
+  ctx: ToolCtx = { userId: null, orgId: null }
 ): Promise<any> {
   switch (name) {
     case "find_customer": {
@@ -651,15 +708,84 @@ async function executeTool(
       const { data: customer } = await sb.from("acumatica_customers").select("customer_id, customer_name").eq("customer_id", args.customer_id).maybeSingle();
       if (!customer) return { error: `Customer '${args.customer_id}' not found` };
 
-      const ticketNumber = `TKT-${Date.now().toString(36).toUpperCase()}`;
+      // ticket_number is intentionally omitted: the set_ticket_number trigger only
+      // fills it when NULL, so passing our own would bypass the TKT###### sequence.
+      // organization_id must be explicit — get_user_org_id() is NULL under service role.
+      const insert: Record<string, any> = {
+        customer_id: customer.customer_id,
+        customer_name: customer.customer_name,
+        status: "open",
+        priority: args.priority || "medium",
+        ticket_type: args.ticket_type || "overdue payment",
+        notes: args.notes,
+      };
+      if (ctx.orgId) insert.organization_id = ctx.orgId;
+      if (args.due_date) insert.due_date = args.due_date;
+      if (args.assigned_collector_id) insert.assigned_collector_id = args.assigned_collector_id;
+
       const { data: ticket, error } = await sb
         .from("collection_tickets")
-        .insert({ ticket_number: ticketNumber, customer_id: customer.customer_id, customer_name: customer.customer_name, status: "open", priority: args.priority || "medium", ticket_type: args.ticket_type || "Collection", notes: args.notes })
+        .insert(insert)
         .select()
         .single();
 
       if (error) return { error: `Failed: ${error.message}` };
-      return { message: "Ticket created", ticket_number: ticketNumber, ticket };
+      return { message: "Ticket created", ticket_number: ticket?.ticket_number, ticket };
+    }
+
+    case "get_ticket_detail": {
+      let tq = sb.from("collection_tickets").select("*");
+      tq = args.ticket_number ? tq.eq("ticket_number", args.ticket_number) : tq.eq("id", args.ticket_id);
+      const { data: ticket } = await tq.maybeSingle();
+      if (!ticket) return { error: `Ticket '${args.ticket_number || args.ticket_id}' not found` };
+
+      const [notesRes, activityRes, historyRes] = await Promise.all([
+        sb.from("ticket_notes").select("note_text, created_by_user_id, created_at").eq("ticket_id", ticket.id).order("created_at", { ascending: false }).limit(30),
+        sb.from("ticket_activity_log").select("activity_type, description, created_at").eq("ticket_id", ticket.id).order("created_at", { ascending: false }).limit(30),
+        sb.from("ticket_status_history").select("old_status, new_status, changed_at, notes").eq("ticket_id", ticket.id).order("changed_at", { ascending: false }).limit(30),
+      ]);
+
+      return {
+        ticket,
+        notes: notesRes.data || [],
+        activity: activityRes.data || [],
+        status_history: historyRes.data || [],
+      };
+    }
+
+    case "add_ticket_note": {
+      const { data: ticket } = await sb.from("collection_tickets").select("id, ticket_number").eq("ticket_number", args.ticket_number).maybeSingle();
+      if (!ticket) return { error: `Ticket '${args.ticket_number}' not found` };
+
+      const { data: note, error } = await sb
+        .from("ticket_notes")
+        .insert({ ticket_id: ticket.id, note_text: args.note_text, created_by_user_id: ctx.userId })
+        .select()
+        .single();
+
+      if (error) return { error: `Failed: ${error.message}` };
+      return { message: `Note added to ${ticket.ticket_number}`, note };
+    }
+
+    case "update_ticket": {
+      const { data: ticket } = await sb.from("collection_tickets").select("id, ticket_number, status").eq("ticket_number", args.ticket_number).maybeSingle();
+      if (!ticket) return { error: `Ticket '${args.ticket_number}' not found` };
+
+      const patch: Record<string, any> = {};
+      for (const f of ["status", "priority", "ticket_type", "notes", "due_date", "assigned_collector_id"]) {
+        if (args[f] !== undefined && args[f] !== null) patch[f] = args[f];
+      }
+      if (Object.keys(patch).length === 0) return { error: "Nothing to update" };
+
+      const { data: updated, error } = await sb
+        .from("collection_tickets")
+        .update(patch)
+        .eq("id", ticket.id)
+        .select()
+        .single();
+
+      if (error) return { error: `Failed: ${error.message}` };
+      return { message: `Ticket ${ticket.ticket_number} updated`, changed: patch, ticket: updated };
     }
 
     case "get_monthly_summary": {
@@ -905,6 +1031,15 @@ Deno.serve(async (req: Request) => {
     const { data: { user } } = await anonClient.auth.getUser(token);
     if (!user) return errorResponse("Invalid session", 401);
 
+    // The service-role client has no auth.uid(), so resolve the caller's org here
+    // and pass it explicitly to any tool that writes rows.
+    const { data: callerProfile } = await supabase
+      .from("user_profiles")
+      .select("organization_id")
+      .eq("id", user.id)
+      .maybeSingle();
+    const toolCtx = { userId: user.id, orgId: (callerProfile as any)?.organization_id ?? null };
+
     const body = await req.json();
     const { message, conversation_history } = body;
     if (!message) return errorResponse("Message is required");
@@ -930,6 +1065,15 @@ RULES:
 - For customer comparisons use get_customer_level_analytics.
 - For complex queries not covered by other tools, use run_sql_query.
 - When asked to export/download/generate a report, use generate_report.
+
+TICKETS — you can fully manage collection tickets:
+- To find tickets use search_tickets (by status/priority/customer/collector).
+- To discuss ONE ticket (its story, notes, what happened) use get_ticket_detail — it returns the notes, activity log and status history. Summarise those rather than guessing.
+- To create a ticket use create_ticket. Resolve the customer with find_customer FIRST to get the customer_id. Never invent a ticket number — it is assigned automatically. Confirm back the ticket number that was created.
+- To log a call/promise/comment on a ticket use add_ticket_note.
+- To close, reprioritise, reassign or re-date a ticket use update_ticket.
+- If asked about a customer's tickets, use get_customer_detail (includes their tickets) or search_tickets with their customer_id.
+- Before create_ticket / update_ticket / add_ticket_note, briefly confirm the intent with the user if the request is ambiguous; otherwise just do it and report the result.
 - NEVER compute balances by summing rows yourself.
 - Format currency as $1,234.56. Be specific with numbers.
 - List results clearly. Offer follow-up actions when relevant.`;
@@ -962,7 +1106,7 @@ RULES:
       const toolResults = await Promise.all(
         assistantMessage.tool_calls.map(async (tc: any) => {
           const args = JSON.parse(tc.function.arguments || "{}");
-          const result = await executeTool(supabase, tc.function.name, args);
+          const result = await executeTool(supabase, tc.function.name, args, toolCtx);
           return { role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) };
         })
       );
