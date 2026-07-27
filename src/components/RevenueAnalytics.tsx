@@ -61,19 +61,33 @@ export default function RevenueAnalytics({ onBack, onNavigate }: RevenueAnalytic
       const startStr = startDate.toISOString().split('T')[0];
       const endStr = endDate.toISOString().split('T')[0];
 
-      const { data: payments, error: paymentsError } = await supabase
-        .from('acumatica_payments')
-        .select('application_date, doc_date, payment_amount, id')
-        .or(`and(doc_date.gte.${startStr},doc_date.lte.${endStr}),and(doc_date.is.null,application_date.gte.${startStr},application_date.lte.${endStr})`)
-        .order('application_date', { ascending: true });
+      // Paginate past PostgREST's ~1000-row cap so every KPI is computed over the
+      // FULL dataset. (A high .limit() does NOT bypass the cap — only .range() does.)
+      const PAGE = 1000;
+      const payments: any[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('acumatica_payments')
+          .select('application_date, doc_date, payment_amount, id')
+          .or(`and(doc_date.gte.${startStr},doc_date.lte.${endStr}),and(doc_date.is.null,application_date.gte.${startStr},application_date.lte.${endStr})`)
+          .order('id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        payments.push(...(data || []));
+        if (!data || data.length < PAGE) break;
+      }
 
-      if (paymentsError) throw paymentsError;
-
-      const { data: applications, error: appError } = await supabase
-        .from('payment_invoice_applications')
-        .select('payment_id, doc_type, amount_paid');
-
-      if (appError) throw appError;
+      const applications: any[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('payment_invoice_applications')
+          .select('payment_id, doc_type, amount_paid')
+          .order('payment_id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        applications.push(...(data || []));
+        if (!data || data.length < PAGE) break;
+      }
 
       const paymentAppMap = new Map<string, any[]>();
       applications?.forEach(app => {
