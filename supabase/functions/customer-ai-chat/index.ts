@@ -465,6 +465,11 @@ Deno.serve(async (req: Request) => {
     const { data: { user } } = await anonClient.auth.getUser(token);
     if (!user) return errorResponse("Invalid session", 401);
 
+    // Caller's org — used to prevent reading a customer from another tenant (IDOR).
+    const { data: callerProfile } = await supabase
+      .from("user_profiles").select("organization_id").eq("id", user.id).maybeSingle();
+    const callerOrg = callerProfile?.organization_id ?? null;
+
     const body = await req.json();
     const { message, conversation_history, customer_id } = body;
     if (!message) return errorResponse("Message is required");
@@ -472,9 +477,14 @@ Deno.serve(async (req: Request) => {
 
     const { data: customerInfo } = await supabase
       .from("acumatica_customers")
-      .select("customer_id, customer_name, customer_class, terms, credit_limit, email")
+      .select("customer_id, customer_name, customer_class, terms, credit_limit, email, organization_id")
       .eq("customer_id", customer_id)
       .maybeSingle();
+
+    // AuthZ: the requested customer must belong to the caller's organization.
+    if (!customerInfo || (callerOrg && customerInfo.organization_id !== callerOrg)) {
+      return errorResponse("Customer not found in your organization", 403);
+    }
 
     const customerName = customerInfo?.customer_name || customer_id;
     const today = new Date().toISOString().split("T")[0];

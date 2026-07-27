@@ -119,8 +119,20 @@ function downloadPDF(report: ReportData) {
   });
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatMessage(content: string): string {
-  return content
+  // Escape first — the reply echoes DB/customer-controlled fields (ticket notes,
+  // customer names, invoice descriptions, inbound email) and is rendered via
+  // dangerouslySetInnerHTML, so raw HTML in those fields would execute (stored XSS).
+  return escapeHtml(content)
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n/g, '<br/>')
     .replace(/\$([0-9,]+\.?\d*)/g, '<span class="font-semibold text-emerald-600">$$$1</span>');

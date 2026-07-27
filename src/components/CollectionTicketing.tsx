@@ -13,7 +13,8 @@ export default function CollectionTicketing() {
   };
 
   const handleBack = () => {
-    navigate('/admin-dashboard');
+    // /admin-dashboard is not a real route — go to the previous page instead.
+    rawNavigate(-1);
   };
 
   return (
