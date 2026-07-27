@@ -23,6 +23,25 @@ Deno.serve(async (req: Request) => {
       }
     );
 
+    // ── AuthZ: only an admin or manager may approve pending users ──
+    const token = req.headers.get('Authorization')?.replace('Bearer ', '');
+    if (!token) {
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const anonClient = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_ANON_KEY') ?? '');
+    const { data: { user: caller } } = await anonClient.auth.getUser(token);
+    if (!caller) {
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const { data: callerProfile } = await supabaseAdmin
+      .from('user_profiles').select('role').eq('id', caller.id).maybeSingle();
+    if (!callerProfile || !['admin', 'manager'].includes(callerProfile.role)) {
+      return new Response(JSON.stringify({ success: false, error: 'Forbidden: admin only' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     const { pending_user_id } = await req.json();
 
     if (!pending_user_id) {

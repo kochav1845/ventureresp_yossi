@@ -93,9 +93,21 @@ Deno.serve(async (req: Request) => {
     // Build the reset link on the SAME site + org path the user is on. The client
     // sends resetBase (e.g. https://stardevar.netlify.app/ventureresp/reset-password);
     // fall back to the Netlify host if it's missing/invalid.
-    const base = (typeof resetBase === 'string' && /^https?:\/\//.test(resetBase))
-      ? resetBase.replace(/\?.*$/, '').replace(/\/+$/, '')
-      : 'https://stardevar.netlify.app/reset-password';
+    // SECURITY: never trust the caller's host for the reset link (token exfiltration).
+    // Keep only the PATH the client sent (the /:org/reset-password route) and force a
+    // server-allowlisted host, so a spoofed resetBase=https://evil.com can't steal the token.
+    const ALLOWED_RESET_HOSTS = new Set(['stardevar.netlify.app']);
+    const DEFAULT_HOST = 'https://stardevar.netlify.app';
+    let base = `${DEFAULT_HOST}/reset-password`;
+    try {
+      if (typeof resetBase === 'string' && /^https?:\/\//.test(resetBase)) {
+        const u = new URL(resetBase);
+        const path = u.pathname.replace(/\/+$/, '') || '/reset-password';
+        base = ALLOWED_RESET_HOSTS.has(u.host)
+          ? `${u.protocol}//${u.host}${path}`
+          : `${DEFAULT_HOST}${path}`;
+      }
+    } catch (_) { /* keep default */ }
     const resetUrl = `${base}?resetlink=${token}`;
 
     // Send email with reset link

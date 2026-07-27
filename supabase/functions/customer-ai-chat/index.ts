@@ -417,11 +417,18 @@ async function executeTool(sb: any, name: string, args: any, customerId: string,
     case "run_customer_query": {
       let query = (args.query || "").trim();
       if (!query.toUpperCase().startsWith("SELECT")) return { error: "Only SELECT queries allowed." };
+      if (query.replace(/;\s*$/, "").includes(";")) return { error: "Only a single statement is allowed." };
 
       const forbidden = ["insert", "update", "delete", "drop", "alter", "create", "truncate", "grant", "revoke"];
       const lower = query.toLowerCase();
       for (const word of forbidden) {
         if (lower.includes(` ${word} `) || lower.startsWith(`${word} `)) return { error: `Forbidden: ${word}` };
+      }
+      // SECURITY: execute_readonly_sql bypasses RLS — block secrets/auth/PII surfaces.
+      const blockedObjects = ["password_reset", "api_keys", "email_settings", "auth.", "pg_catalog", "pg_shadow",
+        "information_schema", "vault", "secret", "credential", "service_role", "user_profiles", "pending_users"];
+      for (const b of blockedObjects) {
+        if (lower.includes(b)) return { error: `Querying '${b}' is not permitted.` };
       }
 
       query = query.replace(/\{customer_id\}/g, customerId);

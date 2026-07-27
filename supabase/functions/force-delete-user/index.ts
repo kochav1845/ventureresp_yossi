@@ -44,6 +44,31 @@ Deno.serve(async (req: Request) => {
       }
     );
 
+    // ── AuthZ: caller must be an authenticated admin ──
+    const authHeader = req.headers.get('Authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    if (!token) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const anonClient = createClient(supabaseUrl ?? '', Deno.env.get('SUPABASE_ANON_KEY') ?? '');
+    const { data: { user: caller } } = await anonClient.auth.getUser(token);
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const { data: callerProfile } = await supabaseAdmin
+      .from('user_profiles').select('role').eq('id', caller.id).maybeSingle();
+    if (!callerProfile || callerProfile.role !== 'admin') {
+      return new Response(JSON.stringify({ error: 'Forbidden: admin only' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    // Don't let an admin delete themselves via this endpoint.
+    if (caller.email === email) {
+      return new Response(JSON.stringify({ error: 'You cannot delete your own account here' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     console.log('Listing all users to find target...');
     const { data: users, error: listError } = await supabaseAdmin.auth.admin.listUsers();
     console.log('listUsers response:', { hasData: !!users, error: listError });

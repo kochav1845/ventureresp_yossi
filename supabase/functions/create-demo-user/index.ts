@@ -11,6 +11,14 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
+  // SECURITY: this endpoint created a fixed 'demo@demo.com' admin account with no
+  // authentication — a full admin-takeover hole. It is disabled in production.
+  return new Response(
+    JSON.stringify({ error: 'This endpoint has been disabled.' }),
+    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+
+  // eslint-disable-next-line no-unreachable
   try {
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',

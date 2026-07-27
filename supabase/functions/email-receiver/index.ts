@@ -123,6 +123,21 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
+  // SECURITY: this webhook can deactivate customers / suppress dunning, so verify a
+  // shared secret. Gated on EMAIL_RECEIVER_SECRET being set so inbound mail keeps
+  // working until you point SendGrid at ...?secret=<value> (or send X-Webhook-Secret).
+  // To activate: set the EMAIL_RECEIVER_SECRET function secret AND append the same
+  // ?secret= to the SendGrid Inbound Parse URL.
+  const expectedSecret = Deno.env.get("EMAIL_RECEIVER_SECRET");
+  if (expectedSecret) {
+    const url = new URL(req.url);
+    const provided = url.searchParams.get("secret") || req.headers.get("X-Webhook-Secret");
+    if (provided !== expectedSecret) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+  }
+
   try {
     console.log("=== INCOMING EMAIL ===");
     console.log("Request Method:", req.method);

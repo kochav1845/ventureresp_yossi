@@ -42,6 +42,20 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // ── AuthZ: admin/manager only (prevents open branded-email relay) ──
+    const token = req.headers.get('Authorization')?.replace('Bearer ', '');
+    if (!token) return new Response(JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const anonClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!);
+    const { data: { user: caller } } = await anonClient.auth.getUser(token);
+    if (!caller) return new Response(JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const { data: callerProfile } = await supabase
+      .from('user_profiles').select('role').eq('id', caller.id).maybeSingle();
+    if (!callerProfile || !['admin', 'manager'].includes(callerProfile.role))
+      return new Response(JSON.stringify({ error: 'Forbidden: admin only' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
     const { data: emailSettings } = await supabase
       .from('email_settings')
       .select('*')

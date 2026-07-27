@@ -27,6 +27,22 @@ Deno.serve(async (req: Request) => {
     const sendgridApiKey = Deno.env.get("SENDGRID_API_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // ── AuthZ: authenticated staff, OR an internal server-to-server call
+    // (request-password-reset / send-reminder-emails pass the service-role key). ──
+    const authToken = req.headers.get("Authorization")?.replace("Bearer ", "");
+    if (authToken !== supabaseServiceKey) {
+      if (!authToken) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
+      const { data: { user: caller } } = await anonClient.auth.getUser(authToken);
+      if (!caller) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data: callerProfile } = await supabase
+        .from("user_profiles").select("role").eq("id", caller.id).maybeSingle();
+      if (!callerProfile) return new Response(JSON.stringify({ success: false, error: "Forbidden" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const { to, subject, body, html, inbound_email_id, department }: SendEmailRequest = await req.json();
 
     if (!to || !subject || (!body && !html)) {
