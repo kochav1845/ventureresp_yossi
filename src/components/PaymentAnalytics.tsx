@@ -234,10 +234,20 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     if (customerMapLoadedRef.current && customerMapRef.current.size > 0) {
       return customerMapRef.current;
     }
-    const { data: customers } = await supabase
-      .from('acumatica_customers')
-      .select('customer_id, customer_name');
-    const map = new Map(customers?.map(c => [c.customer_id, c.customer_name]) || []);
+    // Paginate past the ~1000-row cap so every payment resolves a customer name.
+    const PAGE = 1000;
+    const customers: any[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from('acumatica_customers')
+        .select('customer_id, customer_name')
+        .order('customer_id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) break;
+      customers.push(...(data || []));
+      if (!data || data.length < PAGE) break;
+    }
+    const map = new Map(customers.map(c => [c.customer_id, c.customer_name]));
     customerMapRef.current = map;
     customerMapLoadedRef.current = true;
     return map;

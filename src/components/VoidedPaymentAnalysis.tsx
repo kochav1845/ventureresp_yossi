@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, AlertCircle, CheckCircle, XCircle, Search, Calendar } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { batchedInQuery } from '../lib/batchedQuery';
 
 interface VoidedPaymentAnalysisProps {
   onBack?: () => void;
@@ -34,26 +35,28 @@ export default function VoidedPaymentAnalysis({ onBack }: VoidedPaymentAnalysisP
   const loadDualEntryPayments = async () => {
     setLoading(true);
     try {
-      // Get all voided payments
-      const { data: voidedPayments, error: voidedError } = await supabase
-        .from('acumatica_payments')
-        .select('reference_number')
-        .eq('type', 'Voided Payment')
-        .order('application_date', { ascending: false });
+      // Get ALL voided payments — paginate past PostgREST's ~1000-row cap.
+      const PAGE = 1000;
+      const voidedPayments: any[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('acumatica_payments')
+          .select('reference_number')
+          .eq('type', 'Voided Payment')
+          .order('reference_number', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        voidedPayments.push(...(data || []));
+        if (!data || data.length < PAGE) break;
+      }
 
-      if (voidedError) throw voidedError;
+      const referenceNumbers = [...new Set(voidedPayments.map(p => p.reference_number))];
 
-      const referenceNumbers = [...new Set(voidedPayments?.map(p => p.reference_number) || [])];
-
-      // Get all payments with these reference numbers
-      const { data: allPayments, error: allError } = await supabase
-        .from('acumatica_payments')
-        .select('*')
-        .in('reference_number', referenceNumbers)
-        .order('application_date', { ascending: false })
-        .order('type', { ascending: true });
-
-      if (allError) throw allError;
+      // Get all payments with these refs — batched so it neither exceeds the URL
+      // length limit nor silently caps at 1000 rows.
+      const allPayments = await batchedInQuery<any>(
+        supabase, 'acumatica_payments', '*', 'reference_number', referenceNumbers, { batchSize: 150 }
+      );
 
       // Group by reference number
       const grouped = new Map<string, any[]>();

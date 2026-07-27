@@ -115,6 +115,22 @@ function getDefaultRouteForRole(role: string, orgSlug: string): string {
   }
 }
 
+// Client-side guard for admin-only pages (dev/diagnostic tools, secret viewers,
+// user management). The privileged BACKENDS are separately locked down (edge-fn
+// admin checks + RLS); this stops non-admins from opening the pages by URL.
+function RequireAdmin({ children }: { children: JSX.Element }) {
+  const { profile } = useAuth();
+  if (!profile || profile.role !== 'admin') {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center text-center p-8">
+        <p className="text-lg font-semibold text-gray-900">Admin access required</p>
+        <p className="text-sm text-gray-500 mt-1">You don’t have permission to view this page.</p>
+      </div>
+    );
+  }
+  return children;
+}
+
 function OrgAppContent() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const { user, profile, loading } = useAuth();
@@ -159,10 +175,10 @@ function OrgAppContent() {
         <Route path="invoice-breakdown" element={<InvoiceBreakdown />} />
         <Route path="voided-payment-analysis" element={<VoidedPaymentAnalysis />} />
         <Route path="voided-payments-by-date" element={<VoidedPaymentsByDate />} />
-        <Route path="webhooks" element={<WebhookConfiguration />} />
+        <Route path="webhooks" element={<RequireAdmin><WebhookConfiguration /></RequireAdmin>} />
         <Route path="sync-status" element={<SyncStatusDashboard />} />
-        <Route path="sync-config" element={<SyncConfiguration />} />
-        <Route path="invoice-status-admin" element={<InvoiceStatusAdminPanel />} />
+        <Route path="sync-config" element={<RequireAdmin><SyncConfiguration /></RequireAdmin>} />
+        <Route path="invoice-status-admin" element={<RequireAdmin><InvoiceStatusAdminPanel /></RequireAdmin>} />
         <Route path="invoice-status-analytics" element={<InvoiceStatusAnalytics />} />
         <Route path="customer-reports" element={<CustomerReportsMonthly />} />
         <Route path="customer-statements" element={<CustomerStatements />} />
@@ -172,7 +188,7 @@ function OrgAppContent() {
         <Route path="acumatica-files-test" element={<AcumaticaFilesTest />} />
         <Route path="reminders" element={<RemindersPortal />} />
         <Route path="proposed-reminder-rules" element={<ProposedReminderRulesSettings />} />
-        <Route path="credential-tester" element={<AcumaticaCredentialTester />} />
+        <Route path="credential-tester" element={<RequireAdmin><AcumaticaCredentialTester /></RequireAdmin>} />
         <Route path="batch-fetcher" element={<BatchApplicationFetcher />} />
         <Route path="bulk-fetcher" element={<BulkApplicationFetcher />} />
         <Route path="sync-logs" element={<SyncChangeLogsViewer />} />
@@ -199,10 +215,10 @@ function OrgAppContent() {
         <Route path="email-analytics" element={<EmailAnalytics />} />
         <Route path="collector-control-panel" element={<CollectorControlPanel />} />
         <Route path="collector-monitoring" element={<CollectorHub onBack={() => window.history.back()} />} />
-        <Route path="user-approval" element={<UserApprovalPanel />} />
-        <Route path="create-user" element={<AdminCreateUser />} />
+        <Route path="user-approval" element={<RequireAdmin><UserApprovalPanel /></RequireAdmin>} />
+        <Route path="create-user" element={<RequireAdmin><AdminCreateUser /></RequireAdmin>} />
         <Route path="payment-app-diagnostic" element={<PaymentApplicationDiagnostic />} />
-        <Route path="password-reset-tester" element={<PasswordResetTester />} />
+        <Route path="password-reset-tester" element={<RequireAdmin><PasswordResetTester /></RequireAdmin>} />
         <Route path="test-payment-sync" element={<TestPaymentAppAndAttachmentSync />} />
         <Route path="auto-backfill" element={<AutoBackfillMonitor />} />
         <Route path="payment-status-diagnostic" element={<PaymentStatusDiagnostic />} />
@@ -210,19 +226,19 @@ function OrgAppContent() {
         <Route path="live-sync-monitor" element={<LiveSyncMonitor />} />
         <Route path="payment-sync-health" element={<PaymentSyncHealthCheck />} />
         <Route path="payment-sync-diagnostic" element={<PaymentSyncDiagnostic />} />
-        <Route path="developer-tools" element={<DeveloperTools />} />
+        <Route path="developer-tools" element={<RequireAdmin><DeveloperTools /></RequireAdmin>} />
         <Route path="refetch-2024-payments" element={<Refetch2024Payments />} />
         <Route path="backfill-doc-dates" element={<BackfillDocDates />} />
         <Route path="payment-bulk-fetch" element={<AcumaticaPaymentFetch onBack={() => window.history.back()} />} />
-        <Route path="resend-temp-password" element={<ResendTemporaryPassword onBack={() => window.history.back()} />} />
-        <Route path="force-delete-user" element={<ForceDeleteUser onBack={() => window.history.back()} />} />
+        <Route path="resend-temp-password" element={<RequireAdmin><ResendTemporaryPassword onBack={() => window.history.back()} /></RequireAdmin>} />
+        <Route path="force-delete-user" element={<RequireAdmin><ForceDeleteUser onBack={() => window.history.back()} /></RequireAdmin>} />
         <Route path="ticket-status-settings" element={<TicketStatusManagement onBack={() => window.history.back()} />} />
         <Route path="invoice-color-settings" element={<InvoiceColorStatusManagement onBack={() => window.history.back()} />} />
         <Route path="auto-ticket-rules" element={<AutoTicketRules onBack={() => window.history.back()} />} />
         <Route path="sync-health" element={<SyncHealthDashboard />} />
         <Route path="last-15-days-payments" element={<Last15DaysPaymentFetch />} />
-        <Route path="email-settings" element={<EmailSettings />} />
-        <Route path="api-keys" element={<ApiKeyManagement />} />
+        <Route path="email-settings" element={<RequireAdmin><EmailSettings /></RequireAdmin>} />
+        <Route path="api-keys" element={<RequireAdmin><ApiKeyManagement /></RequireAdmin>} />
         <Route path="cron-jobs" element={<CronJobsMonitor />} />
       </Route>
 
