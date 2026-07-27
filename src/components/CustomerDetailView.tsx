@@ -5,7 +5,7 @@ import { supabase, logActivity } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { usePageCache } from '../contexts/PageCacheContext';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
-import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl } from '../lib/acumaticaLinks';
+import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl, getAcumaticaCustomerUrl } from '../lib/acumaticaLinks';
 import InvoiceFilterPanel from './InvoiceFilterPanel';
 import CustomerTimelineChart from './CustomerTimelineChart';
 import CustomerMonthlySheet from './CustomerMonthlySheet';
@@ -805,6 +805,16 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             <span className="text-xs text-gray-400 font-mono">{customer.customer_id}</span>
           </div>
           <div className="flex items-center gap-3">
+            <a
+              href={getAcumaticaCustomerUrl(customer.customer_id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open this customer in Acumatica"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              View in Acumatica
+            </a>
             {customer.contact_status === 'touched' ? (
               <span className="px-2 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
                 Contacted
