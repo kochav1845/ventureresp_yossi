@@ -1188,7 +1188,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                                     <Ticket className="w-3.5 h-3.5" />
                                   </button>
                                   <a
-                                    href={getAcumaticaInvoiceUrl(invoice.reference_number)}
+                                    href={getAcumaticaInvoiceUrl(invoice.reference_number, invoice.type)}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
@@ -1262,7 +1262,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                             <td className="px-4 py-2.5 text-sm text-gray-500 max-w-[200px] truncate">{invoice.description || '-'}</td>
                             <td className="px-4 py-2.5 text-right">
                               <a
-                                href={getAcumaticaInvoiceUrl(invoice.reference_number)}
+                                href={getAcumaticaInvoiceUrl(invoice.reference_number, invoice.type)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors opacity-0 group-hover:opacity-100 inline-flex"
@@ -1326,7 +1326,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                             <td className="px-4 py-2.5 text-sm text-gray-500 max-w-[200px] truncate">{invoice.description || '-'}</td>
                             <td className="px-4 py-2.5 text-right">
                               <a
-                                href={getAcumaticaInvoiceUrl(invoice.reference_number)}
+                                href={getAcumaticaInvoiceUrl(invoice.reference_number, invoice.type)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors opacity-0 group-hover:opacity-100 inline-flex"

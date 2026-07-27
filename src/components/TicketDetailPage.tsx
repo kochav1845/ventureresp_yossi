@@ -218,6 +218,7 @@ export default function TicketDetailPage() {
           amount: inv?.amount || 0,
           balance: inv?.balance || 0,
           invoice_status: inv?.status || 'Unknown',
+          invoice_type: inv?.type || 'Invoice',
           color_status: inv?.color_status || null,
           description: inv?.description || '',
           assignment_notes: a.notes || '',
@@ -1044,7 +1045,7 @@ export default function TicketDetailPage() {
                               <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">
                                 <div className="flex items-center gap-1.5">
                                   <span className="font-mono font-semibold text-gray-900">#{invoice.invoice_reference_number}</span>
-                                  <a href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number)} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 opacity-60 hover:opacity-100"><ExternalLink className="w-3 h-3" /></a>
+                                  <a href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number, (invoice as any).invoice_type ?? (invoice as any).type)} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 opacity-60 hover:opacity-100"><ExternalLink className="w-3 h-3" /></a>
                                 </div>
                               </td>
                               <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">
@@ -1146,7 +1147,7 @@ export default function TicketDetailPage() {
                                 <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap">
                                   <div className="flex items-center gap-1.5">
                                     <span className="font-mono font-medium">#{invoice.invoice_reference_number}</span>
-                                    <a href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number)} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-600"><ExternalLink className="w-2.5 h-2.5" /></a>
+                                    <a href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number, (invoice as any).invoice_type ?? (invoice as any).type)} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-600"><ExternalLink className="w-2.5 h-2.5" /></a>
                                   </div>
                                 </td>
                                 <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap"><span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">Paid</span></td>

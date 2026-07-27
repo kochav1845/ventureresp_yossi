@@ -455,7 +455,7 @@ export default function CollectorDashboard() {
                                 </div>
                                 <div className="ml-4 flex gap-2">
                                   <a
-                                    href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number)}
+                                    href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number, (invoice as any).invoice_type ?? (invoice as any).type)}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="p-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
@@ -546,7 +546,7 @@ export default function CollectorDashboard() {
                         </div>
                         <div className="ml-4 flex gap-2">
                           <a
-                            href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number)}
+                            href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number, (invoice as any).invoice_type ?? (invoice as any).type)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"

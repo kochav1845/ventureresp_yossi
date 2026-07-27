@@ -2217,7 +2217,7 @@ export default function InvoiceAnalyticsPage() {
                                               <td className="px-4 py-2.5 text-sm text-gray-600 max-w-[180px] truncate" title={invoice.description}>{invoice.description || '-'}</td>
                                               <td className="px-4 py-2.5 text-center">
                                                 <a
-                                                  href={getAcumaticaInvoiceUrl(invoice.reference_number)}
+                                                  href={getAcumaticaInvoiceUrl(invoice.reference_number, invoice.type)}
                                                   target="_blank"
                                                   rel="noopener noreferrer"
                                                   className="inline-flex items-center text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded p-1 transition-colors"

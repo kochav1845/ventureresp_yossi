@@ -2988,7 +2988,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                             </td>
                             <td className="px-4 py-3 text-center whitespace-nowrap">
                               <a
-                                href={getAcumaticaInvoiceUrl(app.invoice_ref)}
+                                href={getAcumaticaInvoiceUrl(app.invoice_ref, (app as any).doc_type)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
@@ -4190,7 +4190,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                                   <ExternalLink className="w-3 h-3" />
                                 </a>
                                 <a
-                                  href={getAcumaticaInvoiceUrl(app.invoice_reference_number)}
+                                  href={getAcumaticaInvoiceUrl(app.invoice_reference_number, app.doc_type)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-blue-500 hover:text-blue-700"
@@ -4558,7 +4558,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                           Application Date: {new Date(app.created_at).toLocaleString()}
                         </p>
                         <a
-                          href={getAcumaticaInvoiceUrl(app.invoice_reference_number)}
+                          href={getAcumaticaInvoiceUrl(app.invoice_reference_number, app.doc_type)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center px-3 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"

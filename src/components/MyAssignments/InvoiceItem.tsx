@@ -90,7 +90,7 @@ export default function InvoiceItem({
               #{invoice.invoice_reference_number}
             </span>
             <a
-              href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number)}
+              href={getAcumaticaInvoiceUrl(invoice.invoice_reference_number, (invoice as any).invoice_type ?? (invoice as any).type)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 hover:text-blue-800"
