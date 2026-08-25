@@ -1317,7 +1317,7 @@ export default function Customers({ onBack }: CustomersProps) {
     </div>
     {/* ── Advanced Filters drawer ─────────────────────────────────── */}
     {showFiltersDrawer && (
-      <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="fixed inset-0 z-[60] flex justify-end">
         <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowFiltersDrawer(false)} />
         <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col">
           <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -1552,7 +1552,7 @@ export default function Customers({ onBack }: CustomersProps) {
         </div>
       );
       return (
-        <div className="fixed inset-0 z-50 flex justify-end">
+        <div className="fixed inset-0 z-[60] flex justify-end">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowStatsDrawer(false)} />
           <div className="relative w-full max-w-lg bg-white h-full shadow-2xl flex flex-col">
             <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -1630,7 +1630,7 @@ export default function Customers({ onBack }: CustomersProps) {
 
     {/* ── Quick-filter editor ──────────────────────────────────────── */}
     {showQuickEditor && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowQuickEditor(false)} />
         <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl flex flex-col max-h-[85vh]">
           <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-gray-100">
