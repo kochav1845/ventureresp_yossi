@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import CustomerDetailView from './CustomerDetailView';
@@ -154,8 +154,12 @@ export default function Customers({ onBack }: CustomersProps) {
   const [showFilters, setShowFilters] = useState(() => cl?.showFilters ?? false);
   const [excludeCreditMemos, setExcludeCreditMemos] = useState(() => cl?.excludeCreditMemos ?? false);
   const [customersWithOpenTickets, setCustomersWithOpenTickets] = useState<Map<string, number>>(new Map());
-  const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
-  const [expandedInvoices, setExpandedInvoices] = useState<Map<string, any[]>>(new Map());
+  const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(() => cl?.expandedCustomerId ?? null);
+  const [expandedInvoices, setExpandedInvoices] = useState<Map<string, any[]>>(() => cl?.expandedInvoices ?? new Map());
+
+  // Scroll position of the list — preserved across going into a customer and back.
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollPosRef = useRef<number>(cl?.scrollPos ?? 0);
   const [loadingExpanded, setLoadingExpanded] = useState<string | null>(null);
   const [cachedStatsLoaded, setCachedStatsLoaded] = useState(() => cl?.cachedStatsLoaded ?? false);
   const [cachedStatsTime, setCachedStatsTime] = useState<string | null>(() => cl?.cachedStatsTime ?? null);
@@ -343,12 +347,21 @@ export default function Customers({ onBack }: CustomersProps) {
       currentPage, totalCount, grandTotalCustomers, searchQuery, showFilters,
       excludeCreditMemos, cachedStatsLoaded, cachedStatsTime, stats, filters,
       excludedCustomers, includedCustomers, quickFilters, hasDefaultFilters,
+      expandedCustomerId, expandedInvoices, scrollPos: scrollPosRef.current,
     };
   });
 
   useEffect(() => {
     return () => { setCachedState(stateRef.current); };
   }, []);
+
+  // Restore the list's scroll position after coming back from a customer (the
+  // detail is an inline early-return, so the scroll container is remounted).
+  useLayoutEffect(() => {
+    if (!customerIdParam && scrollContainerRef.current && scrollPosRef.current > 0) {
+      scrollContainerRef.current.scrollTop = scrollPosRef.current;
+    }
+  }, [customerIdParam]);
 
   useEffect(() => {
     // overdueBasis is part of the key: the cached rows are mapped to a single
@@ -1091,7 +1104,8 @@ export default function Customers({ onBack }: CustomersProps) {
             </div>
 
             {/* Table */}
-            <div className="flex-1 min-h-0 overflow-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+            <div ref={scrollContainerRef} onScroll={(e) => { scrollPosRef.current = e.currentTarget.scrollTop; }}
+              className="flex-1 min-h-0 overflow-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                   <tr>
