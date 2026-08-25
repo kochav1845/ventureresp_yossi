@@ -1284,12 +1284,19 @@ export default function Customers({ onBack }: CustomersProps) {
                           ) : (customer.invoice_count || 0)}
                         </td>
                         <td className="py-2.5 px-4 text-right text-sm text-gray-900 font-bold tabular-nums">
-                          {hasInvoiceLevelFilters ? (
-                            <span title={`$${(customer.filtered_gross_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} of $${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} matches filters`}>
-                              <span className="text-teal-700">${(customer.filtered_gross_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              <span className="text-gray-400 text-xs ml-1">of ${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            </span>
-                          ) : (
+                          {hasInvoiceLevelFilters ? (() => {
+                            // Respect the Credit Memos toggle in the filtered figure too:
+                            // included → net (credit memos subtracted); excluded → gross.
+                            const fb = excludeCreditMemos
+                              ? (customer.filtered_gross_balance || 0)
+                              : (customer.filtered_net_balance ?? customer.filtered_gross_balance ?? 0);
+                            return (
+                              <span title={`$${fb.toLocaleString('en-US', { minimumFractionDigits: 2 })} of $${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} matches filters${excludeCreditMemos ? '' : ' (credit memos applied)'}`}>
+                                <span className="text-teal-700">${fb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <span className="text-gray-400 text-xs ml-1">of ${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </span>
+                            );
+                          })() : (
                             <>${(customer.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
                           )}
                         </td>
