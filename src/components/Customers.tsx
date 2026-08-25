@@ -219,6 +219,7 @@ export default function Customers({ onBack }: CustomersProps) {
   // Clicking one applies it immediately; nothing is auto-applied on page load.
   const [quickFilters, setQuickFilters] = useState<QuickFilter[]>(() => cl?.quickFilters ?? DEFAULT_QUICK_FILTERS);
   const [showQuickEditor, setShowQuickEditor] = useState(false);
+  const [savingQuick, setSavingQuick] = useState(false);
   // Per-card customer search inside the quick-filter editor (key = `${idx}:${kind}`).
   const [qfSearch, setQfSearch] = useState<Record<string, string>>({});
   const quickFiltersLoaded = useRef(false);
@@ -246,17 +247,20 @@ export default function Customers({ onBack }: CustomersProps) {
   // Persist this user's quick filters. The user_analytics_default_filters row is
   // reused purely as storage — each quick filter carries its own include/exclude
   // lists, so nothing stored here is auto-applied when the page opens.
-  const saveQuickFilters = async (qf: QuickFilter[]) => {
+  // Returns null on success, or an error message. The caller surfaces failures so
+  // a blocked write (RLS / constraint) can never silently look "saved".
+  const saveQuickFilters = async (qf: QuickFilter[]): Promise<string | null> => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) return 'You are not signed in.';
     const { data: existing } = await supabase.from('user_analytics_default_filters')
       .select('filters, excluded_customers').eq('user_id', user.id).eq('page', 'customers').maybeSingle();
-    await supabase.from('user_analytics_default_filters').upsert({
+    const { error } = await supabase.from('user_analytics_default_filters').upsert({
       user_id: user.id, page: 'customers',
       filters: { ...((existing?.filters as any) || {}), quickFilters: qf },
       excluded_customers: (existing?.excluded_customers as any) ?? [],
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,page' });
+    return error ? (error.message || 'Save failed') : null;
   };
   const updateQuickFilter = (idx: number, patch: Partial<QuickFilter>) =>
     setQuickFilters(prev => prev.map((q, i) => i === idx ? { ...q, ...patch } : q));
@@ -1771,8 +1775,14 @@ export default function Customers({ onBack }: CustomersProps) {
           </div>
           <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 border-t border-gray-100">
             <button onClick={() => setQuickFilters(DEFAULT_QUICK_FILTERS)} className="text-xs text-gray-600 hover:text-gray-800">Reset to defaults</button>
-            <button onClick={async () => { await saveQuickFilters(quickFilters); setShowQuickEditor(false); }}
-              className="flex items-center gap-1.5 px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-medium"><Check size={15} /> Save</button>
+            <button disabled={savingQuick} onClick={async () => {
+                setSavingQuick(true);
+                const err = await saveQuickFilters(quickFilters);
+                setSavingQuick(false);
+                if (err) { alert('Could not save quick filters to the database:\n\n' + err); return; }
+                setShowQuickEditor(false);
+              }}
+              className="flex items-center gap-1.5 px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-medium disabled:opacity-60"><Check size={15} /> {savingQuick ? 'Saving…' : 'Save'}</button>
           </div>
         </div>
       </div>
