@@ -75,18 +75,26 @@ Deno.serve(async (req: Request) => {
 
     const excludedTypes = ['Credit Memo', 'Balance WO', 'Cash Sale', 'Cash Return'];
 
-    const { data: fetchedPayments, error: fetchError } = await supabase.rpc('get_payments_for_analytics', {
-      p_start_date: queryStartDate,
-      p_end_date: queryEndDate,
-      p_excluded_types: excludedTypes
-    });
-
-    if (fetchError) {
-      console.error('Error fetching payments:', fetchError);
-      throw fetchError;
+    // Paginate the RPC past PostgREST's ~1000-row cap (the function ORDERs BY id,
+    // so ranges are stable). Without this, a full-year fetch was silently capped at
+    // 1000 rows, so only the first ~2 months ever got cached.
+    const allPayments: any[] = [];
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error: fetchError } = await supabase
+        .rpc('get_payments_for_analytics', {
+          p_start_date: queryStartDate,
+          p_end_date: queryEndDate,
+          p_excluded_types: excludedTypes,
+        })
+        .range(from, from + PAGE - 1);
+      if (fetchError) {
+        console.error('Error fetching payments:', fetchError);
+        throw fetchError;
+      }
+      allPayments.push(...(data || []));
+      if (!data || data.length < PAGE) break;
     }
-
-    const allPayments: any[] = fetchedPayments || [];
 
     console.log(`Fetched ${allPayments.length} payments`);
 
