@@ -96,12 +96,13 @@ type QuickFilter = {
   excludedCustomers?: string[];
 };
 
+// Labels state the actual (inclusive) thresholds, e.g. "$10k+" = balance >= 10000.
 const DEFAULT_QUICK_FILTERS: QuickFilter[] = [
-  { label: 'High Balance', desc: '>$10k', filter: { minBalance: 10000 } },
-  { label: 'Medium Balance', desc: '$5k-$10k', filter: { minBalance: 5000, maxBalance: 10000 } },
-  { label: 'Many Invoices', desc: '>20 open', filter: { minInvoiceCount: 20 } },
-  { label: 'Overdue 90+', desc: 'days', filter: { minDaysOverdue: 90 } },
-  { label: 'Critical', desc: '>$20k', filter: { minBalance: 20000 }, logic: 'OR' },
+  { label: 'High Balance', desc: '$10k+', filter: { minBalance: 10000 } },
+  { label: 'Medium Balance', desc: '$5k–$10k', filter: { minBalance: 5000, maxBalance: 10000 } },
+  { label: 'Many Invoices', desc: '20+ open', filter: { minInvoiceCount: 20 } },
+  { label: 'Overdue 90+', desc: 'days past due', filter: { minDaysOverdue: 90 } },
+  { label: 'Critical', desc: '$20k+', filter: { minBalance: 20000 } },
 ];
 
 type CustomersProps = {
@@ -531,6 +532,50 @@ export default function Customers({ onBack }: CustomersProps) {
   }, [filteredCustomers, loadingMore, cachedStatsLoaded, hasActiveFilters]);
 
   const applyFilters = useCallback(async () => {
+    // ── OR mode ────────────────────────────────────────────────────────────
+    // The get_customers_with_balance RPC only ANDs its conditions, so it can't
+    // express an OR quick filter. Combine the customer-level condition groups
+    // (balance / open invoices / days overdue) with OR here, over the already-
+    // loaded list. Invoice-amount/date conditions are invoice-level and are not
+    // part of OR mode.
+    if (filters.logicOperator === 'OR') {
+      const groups: Array<(c: Customer) => boolean> = [];
+      if (filters.minBalance > 0 || filters.maxBalance !== Infinity)
+        groups.push(c => (c.balance ?? 0) >= filters.minBalance && (c.balance ?? 0) <= filters.maxBalance);
+      if (filters.minInvoiceCount > 0 || filters.maxInvoiceCount !== Infinity)
+        groups.push(c => (c.invoice_count ?? 0) >= filters.minInvoiceCount && (c.invoice_count ?? 0) <= filters.maxInvoiceCount);
+      if (filters.minDaysOverdue > 0 || filters.maxDaysOverdue !== Infinity)
+        groups.push(c => (c.max_days_overdue ?? 0) >= filters.minDaysOverdue && (c.max_days_overdue ?? 0) <= filters.maxDaysOverdue);
+
+      if (groups.length > 0) {
+        setHasActiveFilters(true);
+        const q = searchQuery.trim().toLowerCase();
+        let filtered = allCustomers.filter(c => {
+          if (q && !((c.name || '').toLowerCase().includes(q) || String(c.customer_id || c.id || '').toLowerCase().includes(q))) return false;
+          return groups.some(g => g(c));
+        });
+        filtered.sort((a, b) => {
+          let cmp = 0; const s = filters.sortBy;
+          if (s === 'balance') cmp = (a.balance || 0) - (b.balance || 0);
+          else if (s === 'invoice_count') cmp = (a.invoice_count || 0) - (b.invoice_count || 0);
+          else if (s === 'max_days_overdue') cmp = (a.max_days_overdue || 0) - (b.max_days_overdue || 0);
+          else if (s === 'name') cmp = a.name.localeCompare(b.name);
+          else if (s === 'email') cmp = a.email.localeCompare(b.email);
+          else if (s === 'created_at') cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          return filters.sortOrder === 'asc' ? cmp : -cmp;
+        });
+        if (includedSet.size) filtered = filtered.filter(c => includedSet.has(c.customer_id || c.id));
+        if (excludedSet.size) filtered = filtered.filter(c => !excludedSet.has(c.customer_id || c.id));
+        setFilteredCustomers(filtered);
+        setTotalCount(filtered.length);
+        const start = currentPage * PAGE_SIZE;
+        setCustomers(filtered.slice(start, start + PAGE_SIZE));
+        setLoading(false);
+        setLoadingMore(false);
+        return;
+      }
+    }
+
     const hasServerFilter =
       filters.minInvoiceAmount > 0 || filters.maxInvoiceAmount !== Infinity ||
       !!filters.dateFrom || !!filters.dateTo ||
