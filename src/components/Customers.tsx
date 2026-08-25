@@ -77,7 +77,9 @@ const DEFAULT_FILTERS: FilterConfig = {
   maxInvoiceAmount: Infinity,
   minDaysOverdue: 0,
   maxDaysOverdue: Infinity,
-  overdueBasis: 'due_date',
+  // Overdue is counted from the INVOICE date by default (so "Overdue 90+" = 90
+  // days since the invoice). The drawer toggle can still switch it to due date.
+  overdueBasis: 'invoice_date',
   dateFrom: '',
   dateTo: '',
   logicOperator: 'AND',
@@ -101,7 +103,7 @@ const DEFAULT_QUICK_FILTERS: QuickFilter[] = [
   { label: 'High Balance', desc: '$10k+', filter: { minBalance: 10000 } },
   { label: 'Medium Balance', desc: '$5k–$10k', filter: { minBalance: 5000, maxBalance: 10000 } },
   { label: 'Many Invoices', desc: '20+ open', filter: { minInvoiceCount: 20 } },
-  { label: 'Overdue 90+', desc: 'days past due', filter: { minDaysOverdue: 90 } },
+  { label: 'Overdue 90+', desc: 'days since invoice', filter: { minDaysOverdue: 90 } },
   { label: 'Critical', desc: '$20k+', filter: { minBalance: 20000 } },
 ];
 
