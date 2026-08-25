@@ -75,7 +75,8 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       rawNavigate(path, options);
     }
   };
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const orgId = (profile as any)?.organization_id ?? null;
   const { getCachedState, setCachedState } = usePageCache('payment-analytics');
   const cachedState = useRef(getCachedState());
   const c = cachedState.current;
@@ -337,7 +338,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({ ...requestBody, organizationId: orgId })
       });
 
       const result = await response.json();
@@ -920,7 +921,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                   'Authorization': `Bearer ${session.access_token}`,
                   'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ periodType: 'monthly', year })
+                body: JSON.stringify({ periodType: 'monthly', year, organizationId: orgId })
               });
               const result = await response.json();
               if (result.success) {
@@ -986,7 +987,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ periodType: 'monthly', year })
+        body: JSON.stringify({ periodType: 'monthly', year, organizationId: orgId })
       });
 
       const result = await response.json();
@@ -1142,7 +1143,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ periodType: 'yearly' })
+        body: JSON.stringify({ periodType: 'yearly', organizationId: orgId })
       });
 
       const result = await response.json();

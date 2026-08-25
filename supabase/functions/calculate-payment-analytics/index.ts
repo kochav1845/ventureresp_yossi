@@ -29,7 +29,13 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { periodType, year, month, day, startDate, endDate }: CalculateRequest = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
+    const { periodType, year, month, day, startDate, endDate, organizationId } = body as CalculateRequest & { organizationId?: string };
+    // Org is required — the cache is partitioned per organization (2-tenant DB).
+    if (!organizationId) {
+      return new Response(JSON.stringify({ error: "organizationId is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const now = new Date();
     const targetYear = year || now.getFullYear();
@@ -86,6 +92,7 @@ Deno.serve(async (req: Request) => {
           p_start_date: queryStartDate,
           p_end_date: queryEndDate,
           p_excluded_types: excludedTypes,
+          p_org_id: organizationId,
         })
         .range(from, from + PAGE - 1);
       if (fetchError) {
@@ -114,7 +121,7 @@ Deno.serve(async (req: Request) => {
         const dayYear = dateObj.getFullYear();
         const dayMonth = dateObj.getMonth() + 1;
         const dayDay = dateObj.getDate();
-        await calculateAndStore(supabase, 'daily', payments, dayYear, dayMonth, dayDay, date);
+        await calculateAndStore(supabase, 'daily', payments, dayYear, dayMonth, dayDay, date, organizationId);
       }
 
       return new Response(
@@ -141,7 +148,7 @@ Deno.serve(async (req: Request) => {
 
       for (const [monthKey, payments] of monthGroups.entries()) {
         const [monthYear, monthNum] = monthKey.split('-').map(Number);
-        await calculateAndStore(supabase, 'monthly', payments, monthYear, monthNum, null, null);
+        await calculateAndStore(supabase, 'monthly', payments, monthYear, monthNum, null, null, organizationId);
       }
 
       return new Response(
@@ -166,7 +173,7 @@ Deno.serve(async (req: Request) => {
       });
 
       for (const [yearNum, payments] of yearGroups.entries()) {
-        await calculateAndStore(supabase, 'yearly', payments, yearNum, null, null, null);
+        await calculateAndStore(supabase, 'yearly', payments, yearNum, null, null, null, organizationId);
       }
 
       return new Response(
@@ -201,7 +208,8 @@ async function calculateAndStore(
   year: number,
   month: number | null,
   day: number | null,
-  date: string | null
+  date: string | null,
+  orgId: string
 ) {
   const totalAmount = payments.reduce((sum, p) => sum + (parseFloat(p.payment_amount) || 0), 0);
   const paymentCount = payments.length;
@@ -259,6 +267,7 @@ async function calculateAndStore(
   let deleteQuery = supabase
     .from('cached_payment_analytics')
     .delete()
+    .eq('organization_id', orgId)
     .eq('period_type', periodType)
     .eq('year', year);
 
@@ -279,6 +288,7 @@ async function calculateAndStore(
   const { error } = await supabase
     .from('cached_payment_analytics')
     .insert({
+      organization_id: orgId,
       period_type: periodType,
       year,
       month: month,
