@@ -79,7 +79,9 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Query date range: ${queryStartDate} to ${queryEndDate}`);
 
-    const excludedTypes = ['Credit Memo', 'Balance WO', 'Cash Sale', 'Cash Return'];
+    // Match Acumatica's collected-payments total: exclude Refunds (money paid BACK
+    // to customers) and Credit Memos; keep Balance WO. Reconciled to the dollar.
+    const excludedTypes = ['Credit Memo', 'Refund', 'Cash Sale', 'Cash Return'];
 
     // Paginate the RPC past PostgREST's ~1000-row cap (the function ORDERs BY id,
     // so ranges are stable). Without this, a full-year fetch was silently capped at
