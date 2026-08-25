@@ -1240,11 +1240,13 @@ export default function Customers({ onBack }: CustomersProps) {
                             const d = new Date(lp.date);
                             const days = Math.floor((Date.now() - d.getTime()) / 86400000);
                             return (
-                              <span
-                                title={`$${lp.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} on ${d.toLocaleDateString()}${days >= 0 ? ` — ${days} day${days === 1 ? '' : 's'} ago` : ''}`}
-                                className={days > 90 ? 'text-red-600 font-semibold' : days > 60 ? 'text-amber-600 font-medium' : 'text-gray-700'}>
-                                {d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
-                              </span>
+                              <div className="leading-tight"
+                                title={`$${lp.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} on ${d.toLocaleDateString()}${days >= 0 ? ` — ${days} day${days === 1 ? '' : 's'} ago` : ''}`}>
+                                <div className={days > 90 ? 'text-red-600 font-semibold' : days > 60 ? 'text-amber-600 font-medium' : 'text-gray-700'}>
+                                  {d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                                </div>
+                                <div className="text-[11px] text-gray-500 font-medium">${lp.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                              </div>
                             );
                           })()}
                         </td>
