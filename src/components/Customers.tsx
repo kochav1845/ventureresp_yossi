@@ -2,10 +2,11 @@ import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import CustomerDetailView from './CustomerDetailView';
-import { ArrowLeft, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket, ChevronDown, Zap } from 'lucide-react';
+import { ArrowLeft, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket, ChevronDown, Zap, SlidersHorizontal, BarChart3, Save, Plus, Star, Bookmark, Settings, Check } from 'lucide-react';
 import { usePageCache } from '../contexts/PageCacheContext';
 import CustomerFiles from './CustomerFiles';
 import * as XLSX from 'xlsx';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, Cell, PieChart, Pie } from 'recharts';
 
 type Customer = {
   id: string;
@@ -84,12 +85,14 @@ const DEFAULT_FILTERS: FilterConfig = {
   sortOrder: 'desc'
 };
 
-const QUICK_FILTERS = [
+type QuickFilter = { label: string; desc?: string; filter: Partial<FilterConfig>; logic?: 'AND' | 'OR' };
+
+const DEFAULT_QUICK_FILTERS: QuickFilter[] = [
   { label: 'High Balance', desc: '>$10k', filter: { minBalance: 10000 } },
   { label: 'Medium Balance', desc: '$5k-$10k', filter: { minBalance: 5000, maxBalance: 10000 } },
   { label: 'Many Invoices', desc: '>20 open', filter: { minInvoiceCount: 20 } },
   { label: 'Overdue 90+', desc: 'days', filter: { minDaysOverdue: 90 } },
-  { label: 'Critical', desc: '>$20k', filter: { minBalance: 20000 }, logic: 'OR' as const },
+  { label: 'Critical', desc: '>$20k', filter: { minBalance: 20000 }, logic: 'OR' },
 ];
 
 type CustomersProps = {
@@ -183,6 +186,124 @@ export default function Customers({ onBack }: CustomersProps) {
     filters.minDaysOverdue > 0 || filters.maxDaysOverdue !== Infinity ||
     !!filters.dateFrom || !!filters.dateTo;
 
+  // ── Drawers ────────────────────────────────────────────────────────────
+  const [showFiltersDrawer, setShowFiltersDrawer] = useState(false);
+  const [showStatsDrawer, setShowStatsDrawer] = useState(false);
+
+  // ── Include-only / always-exclude customer lists (persisted) ────────────
+  const [excludedCustomers, setExcludedCustomers] = useState<string[]>(() => cl?.excludedCustomers ?? []);
+  const excludedSet = new Set(excludedCustomers);
+  const [excludeSearch, setExcludeSearch] = useState('');
+  const [includedCustomers, setIncludedCustomers] = useState<string[]>(() => cl?.includedCustomers ?? []);
+  const includedSet = new Set(includedCustomers);
+  const [includeSearch, setIncludeSearch] = useState('');
+
+  // ── Editable quick filters (per user) ──
+  const [quickFilters, setQuickFilters] = useState<QuickFilter[]>(() => cl?.quickFilters ?? DEFAULT_QUICK_FILTERS);
+  const [showQuickEditor, setShowQuickEditor] = useState(false);
+
+  // ── Saved default filters (per user, page='customers') ──────────────────
+  const [hasDefaultFilters, setHasDefaultFilters] = useState(() => cl?.hasDefaultFilters ?? false);
+  const [savingDefaults, setSavingDefaults] = useState(false);
+  const defaultsLoaded = useRef(false);
+
+  const loadDefaultFilters = useCallback(async () => {
+    if (defaultsLoaded.current) return;
+    defaultsLoaded.current = true;
+    // On navigate-back the page cache already holds the live filter state — don't
+    // clobber it by re-applying the saved defaults.
+    if (cachedListState.current) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase
+      .from('user_analytics_default_filters')
+      .select('filters, excluded_customers')
+      .eq('user_id', user.id)
+      .eq('page', 'customers')
+      .maybeSingle();
+    if (data) {
+      setHasDefaultFilters(true);
+      if (data.filters) {
+        // includedCustomers / quickFilters ride along in the filters JSON.
+        const { includedCustomers: incF, quickFilters: qfF, ...f } = data.filters as any;
+        const inf = (v: any) => (v === null || v === undefined ? Infinity : v);
+        setFilters({
+          ...DEFAULT_FILTERS, ...f,
+          maxBalance: inf(f.maxBalance), maxInvoiceCount: inf(f.maxInvoiceCount),
+          maxInvoiceAmount: inf(f.maxInvoiceAmount), maxDaysOverdue: inf(f.maxDaysOverdue),
+          dateFrom: '', dateTo: '',
+        });
+        if (Array.isArray(incF)) setIncludedCustomers(incF);
+        if (Array.isArray(qfF) && qfF.length) setQuickFilters(qfF);
+      }
+      if (Array.isArray(data.excluded_customers)) setExcludedCustomers(data.excluded_customers);
+    }
+  }, []);
+  useEffect(() => { loadDefaultFilters(); }, [loadDefaultFilters]);
+
+  const saveAsDefaultFilters = async () => {
+    setSavingDefaults(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setSavingDefaults(false); return; }
+    const { overdueBasis, sortBy, sortOrder, minBalance, maxBalance, minInvoiceCount, maxInvoiceCount,
+      minInvoiceAmount, maxInvoiceAmount, minDaysOverdue, maxDaysOverdue, logicOperator } = filters;
+    await supabase.from('user_analytics_default_filters').upsert({
+      user_id: user.id,
+      page: 'customers',
+      filters: { overdueBasis, sortBy, sortOrder, minBalance, maxBalance, minInvoiceCount, maxInvoiceCount,
+        minInvoiceAmount: minInvoiceAmount === Infinity ? 0 : minInvoiceAmount,
+        maxInvoiceAmount: maxInvoiceAmount === Infinity ? null : maxInvoiceAmount,
+        maxBalance: maxBalance === Infinity ? null : maxBalance,
+        maxInvoiceCount: maxInvoiceCount === Infinity ? null : maxInvoiceCount,
+        maxDaysOverdue: maxDaysOverdue === Infinity ? null : maxDaysOverdue,
+        minDaysOverdue, logicOperator,
+        includedCustomers,
+        quickFilters },
+      excluded_customers: excludedCustomers,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,page' });
+    // Rehydrate Infinity for the in-memory filters that JSON can't hold.
+    setHasDefaultFilters(true);
+    setSavingDefaults(false);
+  };
+
+  const removeDefaultFilters = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from('user_analytics_default_filters').delete().eq('user_id', user.id).eq('page', 'customers');
+    setHasDefaultFilters(false);
+  };
+
+  // Persist just the quick filters for this user, without touching their saved
+  // default filter values.
+  const saveQuickFilters = async (qf: QuickFilter[]) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: existing } = await supabase.from('user_analytics_default_filters')
+      .select('filters, excluded_customers').eq('user_id', user.id).eq('page', 'customers').maybeSingle();
+    await supabase.from('user_analytics_default_filters').upsert({
+      user_id: user.id, page: 'customers',
+      filters: { ...((existing?.filters as any) || {}), quickFilters: qf },
+      excluded_customers: (existing?.excluded_customers as any) ?? excludedCustomers,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,page' });
+  };
+  const updateQuickFilter = (idx: number, patch: Partial<QuickFilter>) =>
+    setQuickFilters(prev => prev.map((q, i) => i === idx ? { ...q, ...patch } : q));
+  const updateQuickFilterCond = (idx: number, patch: Partial<FilterConfig>) =>
+    setQuickFilters(prev => prev.map((q, i) => i === idx ? { ...q, filter: { ...q.filter, ...patch } } : q));
+
+  const addExcludedCustomer = (id: string) => {
+    if (!id) return;
+    setExcludedCustomers(prev => prev.includes(id) ? prev : [...prev, id]);
+  };
+  const removeExcludedCustomer = (id: string) => setExcludedCustomers(prev => prev.filter(x => x !== id));
+  const addIncludedCustomer = (id: string) => {
+    if (!id) return;
+    setIncludedCustomers(prev => prev.includes(id) ? prev : [...prev, id]);
+  };
+  const removeIncludedCustomer = (id: string) => setIncludedCustomers(prev => prev.filter(x => x !== id));
+
   const loadCachedStats = async () => {
     try {
       const { data, error } = await supabase
@@ -221,6 +342,7 @@ export default function Customers({ onBack }: CustomersProps) {
       customers, allCustomers, filteredCustomers, loadedCount,
       currentPage, totalCount, grandTotalCustomers, searchQuery, showFilters,
       excludeCreditMemos, cachedStatsLoaded, cachedStatsTime, stats, filters,
+      excludedCustomers, includedCustomers, quickFilters, hasDefaultFilters,
     };
   });
 
@@ -441,6 +563,8 @@ export default function Customers({ onBack }: CustomersProps) {
           filtered = filtered.concat(batch.map(item => mapCustomerRow(item)));
           if (batch.length < PAGE) break;
         }
+        if (includedSet.size) filtered = filtered.filter(c => includedSet.has(c.customer_id || c.id));
+        if (excludedSet.size) filtered = filtered.filter(c => !excludedSet.has(c.customer_id || c.id));
         setLoadedCount(filtered.length);
         setFilteredCustomers(filtered);
         setTotalCount(filtered.length);
@@ -468,11 +592,13 @@ export default function Customers({ onBack }: CustomersProps) {
       return filters.sortOrder === 'asc' ? comparison : -comparison;
     });
 
+    if (includedSet.size) filtered = filtered.filter(c => includedSet.has(c.customer_id || c.id));
+    if (excludedSet.size) filtered = filtered.filter(c => !excludedSet.has(c.customer_id || c.id));
     setFilteredCustomers(filtered);
     setTotalCount(filtered.length);
     const start = currentPage * PAGE_SIZE;
     setCustomers(filtered.slice(start, start + PAGE_SIZE));
-  }, [allCustomers, filters, searchQuery, currentPage, excludeCreditMemos]);
+  }, [allCustomers, filters, searchQuery, currentPage, excludeCreditMemos, excludedCustomers, includedCustomers]);
 
   useEffect(() => { applyFilters(); }, [applyFilters]);
 
@@ -535,7 +661,7 @@ export default function Customers({ onBack }: CustomersProps) {
       resetFilters();
       return;
     }
-    const preset = QUICK_FILTERS[index];
+    const preset = quickFilters[index];
     setFilters({
       ...DEFAULT_FILTERS,
       ...preset.filter,
@@ -856,265 +982,80 @@ export default function Customers({ onBack }: CustomersProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
-      <div className="max-w-[95%] mx-auto p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <button onClick={handleBack} className="p-2.5 hover:bg-white/80 rounded-xl transition-all duration-200 border border-transparent hover:border-gray-200 hover:shadow-sm">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Customers</h1>
-              <p className="text-sm text-gray-500 mt-0.5">
-                {grandTotalCustomers > 0 ? `${grandTotalCustomers.toLocaleString()} customers` : 'Loading...'}
-                {cachedStatsTime && !hasActiveFilters && (
-                  <span className="ml-2 text-gray-400">
-                    Updated {new Date(cachedStatsTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={exportToExcel} disabled={loading || filteredCustomers.length === 0}
-              data-tour="customer-export"
-              className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 border border-gray-200 rounded-xl transition-all duration-200 text-sm font-medium shadow-sm hover:shadow">
-              <Download size={16} /> Export
-            </button>
-            <button onClick={() => loadCustomersBatched()} disabled={loading}
-              className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl transition-all duration-200 text-sm font-medium shadow-sm hover:shadow">
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            </button>
-          </div>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" data-tour="customer-stats">
-          <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Customers</span>
-              <div className="p-1.5 bg-blue-50 rounded-lg"><Users className="w-3.5 h-3.5 text-blue-600" /></div>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">{stats.total_customers.toLocaleString()}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{stats.active_customers.toLocaleString()} active</p>
-          </div>
-          <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">With Debt</span>
-              <div className="p-1.5 bg-orange-50 rounded-lg"><FileText className="w-3.5 h-3.5 text-orange-600" /></div>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">{stats.customers_with_debt.toLocaleString()}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{stats.total_open_invoices.toLocaleString()} invoices</p>
-          </div>
-          <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Owed</span>
-              <div className="p-1.5 bg-emerald-50 rounded-lg"><DollarSign className="w-3.5 h-3.5 text-emerald-600" /></div>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">
-              ${stats.total_balance >= 1000000
-                ? `${(stats.total_balance / 1000000).toFixed(2)}M`
-                : stats.total_balance.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">{stats.customers_with_debt.toLocaleString()} customers</p>
-          </div>
-          <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Avg Balance</span>
-              <div className="p-1.5 bg-cyan-50 rounded-lg"><TrendingUp className="w-3.5 h-3.5 text-cyan-600" /></div>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">
-              ${stats.avg_balance.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">per debtor</p>
-          </div>
-        </div>
-
-        {/* Search + Filters Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
-          {/* Search Bar */}
-          <div className="p-4" data-tour="customer-search">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  placeholder="Search by name, email, or customer ID..."
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all duration-200 text-sm"
-                />
-              </div>
-              <button onClick={handleSearch} disabled={loading}
-                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:bg-gray-300 text-white rounded-xl transition-all duration-200 text-sm font-medium shadow-sm">
-                Search
-              </button>
-              {(isSearching || searchQuery) && (
-                <button onClick={() => { setSearchQuery(''); setIsSearching(false); setCurrentPage(0); }}
-                  className="px-3.5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl transition-all duration-200 text-sm">
-                  Clear
-                </button>
-              )}
-            </div>
-
-            {/* Quick Filters */}
-            <div className="flex items-center gap-2 mt-3 flex-wrap" data-tour="customer-quick-filters">
-              <Zap size={14} className="text-amber-500" />
-              {QUICK_FILTERS.map((qf, idx) => (
-                <button key={idx} onClick={() => applyQuickFilter(idx)}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200 border ${
-                    activeQuickFilter === idx
-                      ? 'bg-slate-800 text-white border-slate-800 shadow-sm'
-                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
-                  }`}>
-                  {qf.label} <span className={activeQuickFilter === idx ? 'text-gray-300' : 'text-gray-400'}>{qf.desc}</span>
-                </button>
-              ))}
-
-              <div className="flex-1" />
-            </div>
-          </div>
-
-          {/* Advanced Filters Toggle */}
-          <button onClick={() => setShowFilters(!showFilters)}
-            className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50/80 border-t border-gray-100 hover:bg-gray-100/80 transition-all duration-200">
-            <div className="flex items-center gap-2">
-              <Filter size={14} className="text-gray-400" />
-              <span className="text-xs font-medium text-gray-500">Advanced Filters</span>
-              {activeFilterCount > 0 && (
-                <span className="inline-flex items-center justify-center w-5 h-5 bg-blue-600 text-white text-[10px] font-bold rounded-full">
-                  {activeFilterCount}
-                </span>
-              )}
-            </div>
-            <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${showFilters ? 'rotate-180' : ''}`} />
+    <>
+    <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-slate-50 via-white to-blue-50">
+        {/* Top bar */}
+        <header className="flex-shrink-0 flex items-center gap-2.5 px-5 py-2.5 bg-white/80 backdrop-blur border-b border-gray-200">
+          <button onClick={handleBack} className="p-2 hover:bg-gray-100 rounded-lg transition-colors border border-transparent hover:border-gray-200 flex-shrink-0">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
+          <div className="flex-shrink-0 min-w-0">
+            <h1 className="text-lg font-bold text-gray-900 tracking-tight leading-tight">Customers</h1>
+            <p className="text-[11px] text-gray-500 leading-tight">
+              {grandTotalCustomers > 0 ? `${grandTotalCustomers.toLocaleString()} total` : 'Loading…'}
+              {excludedCustomers.length > 0 && <span className="text-amber-600"> · {excludedCustomers.length} excluded</span>}
+            </p>
+          </div>
+          <div className="flex-1 relative max-w-xl mx-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <input type="text" value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="Search name or customer ID…"
+              className="w-full pl-9 pr-24 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white text-sm transition-all" />
+            {(isSearching || searchQuery) && (
+              <button onClick={() => { setSearchQuery(''); setIsSearching(false); setCurrentPage(0); }}
+                className="absolute right-[70px] top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>
+            )}
+            <button onClick={handleSearch} disabled={loading}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-md text-xs font-medium">Search</button>
+          </div>
+          <div className="flex-1" />
+          <button onClick={() => setShowFiltersDrawer(true)}
+            className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors border flex-shrink-0 ${activeFilterCount > 0 ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+            <SlidersHorizontal size={15} /> Filters
+            {activeFilterCount > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-white text-blue-600 text-[10px] font-bold rounded-full">{activeFilterCount}</span>}
+          </button>
+          <button onClick={() => setShowStatsDrawer(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex-shrink-0">
+            <BarChart3 size={15} /> Statistics
+          </button>
+          <button onClick={exportToExcel} disabled={loading || filteredCustomers.length === 0} title="Export to Excel"
+            className="p-2 bg-white text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors flex-shrink-0"><Download size={16} /></button>
+          <button onClick={() => loadCustomersBatched()} disabled={loading} title="Refresh"
+            className="p-2 bg-white text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
+        </header>
 
-          {/* Advanced Filters Panel */}
-          {showFilters && (
-            <div className="px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/50" data-tour="customer-filters">
-              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-2">Customer Filters</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Customer Balance</label>
-                  <input type="number" value={filters.minBalance || ''} onChange={(e) => setFilters({ ...filters, minBalance: Number(e.target.value) || 0 })}
-                    placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Customer Balance</label>
-                  <input type="number" value={filters.maxBalance === Infinity ? '' : filters.maxBalance} onChange={(e) => setFilters({ ...filters, maxBalance: e.target.value ? Number(e.target.value) : Infinity })}
-                    placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Invoice Count</label>
-                  <input type="number" value={filters.minInvoiceCount || ''} onChange={(e) => setFilters({ ...filters, minInvoiceCount: Number(e.target.value) || 0 })}
-                    placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Invoice Count</label>
-                  <input type="number" value={filters.maxInvoiceCount === Infinity ? '' : filters.maxInvoiceCount} onChange={(e) => setFilters({ ...filters, maxInvoiceCount: e.target.value ? Number(e.target.value) : Infinity })}
-                    placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
-                </div>
-              </div>
-              <p className="text-[10px] font-bold text-teal-600 uppercase tracking-widest mb-2">Invoice Filters</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Invoice Amount</label>
-                  <input type="number" value={filters.minInvoiceAmount || ''} onChange={(e) => setFilters({ ...filters, minInvoiceAmount: Number(e.target.value) || 0 })}
-                    placeholder="0" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Invoice Amount</label>
-                  <input type="number" value={filters.maxInvoiceAmount === Infinity ? '' : filters.maxInvoiceAmount} onChange={(e) => setFilters({ ...filters, maxInvoiceAmount: e.target.value ? Number(e.target.value) : Infinity })}
-                    placeholder="Any" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Days Overdue</label>
-                  <input type="number" value={filters.minDaysOverdue || ''} onChange={(e) => setFilters({ ...filters, minDaysOverdue: Number(e.target.value) || 0 })}
-                    placeholder="0" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Days Overdue</label>
-                  <input type="number" value={filters.maxDaysOverdue === Infinity ? '' : filters.maxDaysOverdue} onChange={(e) => setFilters({ ...filters, maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
-                    placeholder="Any" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Overdue Counted From</label>
-                  <div className="flex rounded-lg border border-teal-200 overflow-hidden bg-white">
-                    {([
-                      { v: 'due_date' as const, label: 'Due Date' },
-                      { v: 'invoice_date' as const, label: 'Invoice Date' },
-                    ]).map((opt) => (
-                      <button key={opt.v} type="button"
-                        onClick={() => setFilters({ ...filters, overdueBasis: opt.v })}
-                        title={opt.v === 'due_date'
-                          ? 'Days past the invoice due date (true days overdue)'
-                          : 'Days since the invoice date'}
-                        className={`flex-1 px-3 py-2 text-sm transition-colors ${
-                          filters.overdueBasis === opt.v
-                            ? 'bg-teal-600 text-white font-semibold'
-                            : 'bg-white text-gray-600 hover:bg-teal-50'
-                        }`}>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Sort By</label>
-                  <select value={filters.sortBy} onChange={(e) => setFilters({ ...filters, sortBy: e.target.value as any })}
-                    data-tour="customer-sort"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
-                    <option value="balance">Balance</option>
-                    <option value="invoice_count">Invoice Count</option>
-                    <option value="max_days_overdue">Days Overdue</option>
-                    <option value="avg_days_to_collect">Avg Days to Collect</option>
-                    <option value="name">Customer Name</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Order</label>
-                  <select value={filters.sortOrder} onChange={(e) => setFilters({ ...filters, sortOrder: e.target.value as 'asc' | 'desc' })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
-                    <option value="desc">Highest First</option>
-                    <option value="asc">Lowest First</option>
-                  </select>
-                </div>
-              </div>
-              <div className="mt-3 flex items-center justify-between">
-                <button onClick={resetFilters}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all duration-200">
-                  <X size={12} /> Reset All
-                </button>
-                <span className="text-xs text-gray-500">
-                  Showing <span className="font-semibold text-gray-800">{filteredCustomers.length.toLocaleString()}</span> of {grandTotalCustomers.toLocaleString()}
-                </span>
-              </div>
-            </div>
+        {/* Quick filters */}
+        <div className="flex-shrink-0 flex items-center gap-2 px-5 py-2 border-b border-gray-100 bg-white/40 overflow-x-auto">
+          <Zap size={13} className="text-amber-500 flex-shrink-0" />
+          {quickFilters.map((qf, idx) => (
+            <button key={idx} onClick={() => applyQuickFilter(idx)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all border whitespace-nowrap flex-shrink-0 ${activeQuickFilter === idx ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
+              {qf.label} {qf.desc && <span className={activeQuickFilter === idx ? 'text-gray-300' : 'text-gray-400'}>{qf.desc}</span>}
+            </button>
+          ))}
+          <button onClick={() => setShowQuickEditor(true)} title="Edit quick filters"
+            className="p-1 text-gray-400 hover:text-blue-600 flex-shrink-0"><Settings size={14} /></button>
+          <div className="flex-1" />
+          <span className="text-[11px] text-gray-500 whitespace-nowrap flex-shrink-0">
+            {hasActiveFilters ? <>Showing <span className="font-semibold text-gray-700">{filteredCustomers.length.toLocaleString()}</span> of {grandTotalCustomers.toLocaleString()}</> : `${grandTotalCustomers.toLocaleString()} customers`}
+          </span>
+          {hasActiveFilters && (
+            <button onClick={resetFilters} className="flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap flex-shrink-0"><X size={11} /> Clear</button>
           )}
         </div>
 
-        {/* Active Filter Banner */}
-        {hasActiveFilters && (
-          <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl">
-            <Filter size={14} className="text-blue-600" />
-            <span className="text-xs font-medium text-blue-700">
-              Filters active -- showing {filteredCustomers.length.toLocaleString()} of {grandTotalCustomers.toLocaleString()} customers
-            </span>
-            <button onClick={resetFilters} className="ml-auto text-xs text-blue-600 hover:text-blue-800 font-medium">Clear all</button>
-          </div>
-        )}
-
+        {/* List */}
+        <main className="flex-1 min-h-0 flex flex-col px-4 py-3">
         {/* Customers Table */}
         {loading ? (
-          <div className="bg-white rounded-xl shadow-sm p-16 text-center border border-gray-100">
+          <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-xl shadow-sm border border-gray-100 p-16 text-center">
             <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600 mx-auto mb-4"></div>
             <p className="text-sm text-gray-500">Loading customers...</p>
           </div>
         ) : filteredCustomers.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm p-16 text-center border border-gray-100">
+          <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-xl shadow-sm border border-gray-100 p-16 text-center">
             <Users className="text-gray-300 mx-auto mb-4" size={48} />
             <p className="text-gray-500 mb-4">No customers found</p>
             {activeFilterCount > 0 && (
@@ -1125,7 +1066,7 @@ export default function Customers({ onBack }: CustomersProps) {
             )}
           </div>
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-tour="customer-list">
+          <div className="flex-1 min-h-0 flex flex-col bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-tour="customer-list">
             {/* Pagination Top */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
               <button onClick={goToPreviousPage} disabled={currentPage === 0 || loading}
@@ -1150,15 +1091,12 @@ export default function Customers({ onBack }: CustomersProps) {
             </div>
 
             {/* Table */}
-            <div className="max-h-[calc(100vh-420px)] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+            <div className="flex-1 min-h-0 overflow-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                   <tr>
                     <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('name')}>
                       <div className="flex items-center gap-1.5">Customer {getSortIcon('name')}</div>
-                    </th>
-                    <th className="text-left py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('email')}>
-                      <div className="flex items-center gap-1.5">Email {getSortIcon('email')}</div>
                     </th>
                     <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('invoice_count')}>
                       <div className="flex items-center justify-end gap-1.5">Invoices {getSortIcon('invoice_count')}</div>
@@ -1235,7 +1173,6 @@ export default function Customers({ onBack }: CustomersProps) {
                             </div>
                           </div>
                         </td>
-                        <td className="py-2.5 px-4 text-sm text-gray-600 truncate max-w-[200px]">{customer.email}</td>
                         <td className="py-2.5 px-4 text-right text-sm text-gray-800 font-medium tabular-nums">
                           {hasInvoiceLevelFilters ? (
                             <span title={`${customer.filtered_invoice_count || 0} of ${customer.invoice_count || 0} invoices match filters`}>
@@ -1311,7 +1248,7 @@ export default function Customers({ onBack }: CustomersProps) {
                       </tr>
                       {isExpanded && (
                         <tr>
-                          <td colSpan={9} className="bg-gray-50 px-6 py-3 border-b border-gray-200">
+                          <td colSpan={8} className="bg-gray-50 px-6 py-3 border-b border-gray-200">
                             {loadingExpanded === cidKey ? (
                               <div className="text-sm text-gray-500 py-2">Loading invoices...</div>
                             ) : (expandedInvoices.get(cidKey)?.length ? (
@@ -1376,7 +1313,375 @@ export default function Customers({ onBack }: CustomersProps) {
             </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
+    {/* ── Advanced Filters drawer ─────────────────────────────────── */}
+    {showFiltersDrawer && (
+      <div className="fixed inset-0 z-50 flex justify-end">
+        <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowFiltersDrawer(false)} />
+        <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col">
+          <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div className="flex items-center gap-2"><SlidersHorizontal size={18} className="text-blue-600" /><h2 className="text-base font-bold text-gray-900">Advanced Filters</h2></div>
+            <button onClick={() => setShowFiltersDrawer(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} className="text-gray-500" /></button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+            {/* Default filters */}
+            <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Bookmark size={14} className="text-blue-600" />
+                <span className="text-xs font-bold text-blue-700 uppercase tracking-wide">Default Filters</span>
+                {hasDefaultFilters && <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-emerald-600 font-semibold"><Star size={10} className="fill-emerald-500 text-emerald-500" /> Saved</span>}
+              </div>
+              <p className="text-[11px] text-gray-500 mb-2.5">Save the current filters and excluded customers as your default — they apply automatically each time you open this page.</p>
+              <div className="flex gap-2">
+                <button onClick={saveAsDefaultFilters} disabled={savingDefaults}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold disabled:opacity-60">
+                  <Save size={13} /> {savingDefaults ? 'Saving…' : 'Save as Default'}
+                </button>
+                {hasDefaultFilters && (
+                  <button onClick={removeDefaultFilters}
+                    className="px-3 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs font-semibold">Remove</button>
+                )}
+              </div>
+            </div>
+
+            {/* Customer filters */}
+            <div>
+              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-2">Customer</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Balance</label>
+                  <input type="number" value={filters.minBalance || ''} onChange={(e) => setFilters({ ...filters, minBalance: Number(e.target.value) || 0 })}
+                    placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Balance</label>
+                  <input type="number" value={filters.maxBalance === Infinity ? '' : filters.maxBalance} onChange={(e) => setFilters({ ...filters, maxBalance: e.target.value ? Number(e.target.value) : Infinity })}
+                    placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Invoice Count</label>
+                  <input type="number" value={filters.minInvoiceCount || ''} onChange={(e) => setFilters({ ...filters, minInvoiceCount: Number(e.target.value) || 0 })}
+                    placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Invoice Count</label>
+                  <input type="number" value={filters.maxInvoiceCount === Infinity ? '' : filters.maxInvoiceCount} onChange={(e) => setFilters({ ...filters, maxInvoiceCount: e.target.value ? Number(e.target.value) : Infinity })}
+                    placeholder="Any" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" />
+                </div>
+              </div>
+            </div>
+
+            {/* Invoice filters */}
+            <div>
+              <p className="text-[10px] font-bold text-teal-600 uppercase tracking-widest mb-2">Invoices</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Invoice Amount</label>
+                  <input type="number" value={filters.minInvoiceAmount || ''} onChange={(e) => setFilters({ ...filters, minInvoiceAmount: Number(e.target.value) || 0 })}
+                    placeholder="0" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Invoice Amount</label>
+                  <input type="number" value={filters.maxInvoiceAmount === Infinity ? '' : filters.maxInvoiceAmount} onChange={(e) => setFilters({ ...filters, maxInvoiceAmount: e.target.value ? Number(e.target.value) : Infinity })}
+                    placeholder="Any" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Days Overdue</label>
+                  <input type="number" value={filters.minDaysOverdue || ''} onChange={(e) => setFilters({ ...filters, minDaysOverdue: Number(e.target.value) || 0 })}
+                    placeholder="0" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Days Overdue</label>
+                  <input type="number" value={filters.maxDaysOverdue === Infinity ? '' : filters.maxDaysOverdue} onChange={(e) => setFilters({ ...filters, maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
+                    placeholder="Any" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Overdue Counted From</label>
+                  <div className="flex rounded-lg border border-teal-200 overflow-hidden bg-white">
+                    {([{ v: 'due_date', label: 'Due Date' }, { v: 'invoice_date', label: 'Invoice Date' }] as const).map((opt) => (
+                      <button key={opt.v} type="button" onClick={() => setFilters({ ...filters, overdueBasis: opt.v })}
+                        className={`flex-1 px-3 py-2 text-sm transition-colors ${filters.overdueBasis === opt.v ? 'bg-teal-600 text-white font-semibold' : 'bg-white text-gray-600 hover:bg-teal-50'}`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sort */}
+            <div>
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Sort</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Sort By</label>
+                  <select value={filters.sortBy} onChange={(e) => setFilters({ ...filters, sortBy: e.target.value as any })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
+                    <option value="balance">Balance</option>
+                    <option value="invoice_count">Invoice Count</option>
+                    <option value="max_days_overdue">Days Overdue</option>
+                    <option value="avg_days_to_collect">Avg Days to Collect</option>
+                    <option value="name">Customer Name</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Order</label>
+                  <select value={filters.sortOrder} onChange={(e) => setFilters({ ...filters, sortOrder: e.target.value as 'asc' | 'desc' })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
+                    <option value="desc">Highest First</option>
+                    <option value="asc">Lowest First</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Include-only customers */}
+            <div>
+              <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">Include Only</p>
+              <p className="text-[11px] text-gray-500 mb-2">When set, the list &amp; statistics show ONLY these customers.</p>
+              <div className="relative mb-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                <input value={includeSearch} onChange={(e) => setIncludeSearch(e.target.value)}
+                  placeholder="Search a customer to include…"
+                  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400" />
+                {includeSearch.trim().length >= 2 && (() => {
+                  const q = includeSearch.toLowerCase();
+                  const matches = allCustomers.filter(c => !includedSet.has(c.customer_id || c.id) && (((c.name || '').toLowerCase().includes(q)) || String(c.customer_id || c.id || '').toLowerCase().includes(q))).slice(0, 10);
+                  return (
+                    <div className="absolute z-10 mt-1 w-full max-h-52 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                      {matches.map(c => (
+                        <button key={c.id} onClick={() => { addIncludedCustomer(c.customer_id || c.id); setIncludeSearch(''); }}
+                          className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-emerald-50 text-sm border-b border-gray-50 last:border-0">
+                          <span className="truncate"><span className="font-medium text-gray-800">{c.name}</span> <span className="text-gray-400 text-xs">{c.customer_id || c.id}</span></span>
+                          <Plus size={14} className="text-emerald-600 flex-shrink-0" />
+                        </button>
+                      ))}
+                      {matches.length === 0 && <div className="px-3 py-2 text-xs text-gray-400">No matches.</div>}
+                    </div>
+                  );
+                })()}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {includedCustomers.length === 0 && <span className="text-[11px] text-gray-400">All customers (no include filter).</span>}
+                {includedCustomers.map(id => {
+                  const c = allCustomers.find(x => (x.customer_id || x.id) === id);
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded-md text-[11px] text-emerald-800">
+                      {c?.name || id}
+                      <button onClick={() => removeIncludedCustomer(id)} className="hover:text-emerald-950"><X size={11} /></button>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Always-exclude customers */}
+            <div>
+              <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mb-1">Always Exclude</p>
+              <p className="text-[11px] text-gray-500 mb-2">Hidden from the list and statistics everywhere on this page.</p>
+              <div className="relative mb-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                <input value={excludeSearch} onChange={(e) => setExcludeSearch(e.target.value)}
+                  placeholder="Search a customer to exclude…"
+                  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400" />
+                {excludeSearch.trim().length >= 2 && (() => {
+                  const q = excludeSearch.toLowerCase();
+                  const matches = allCustomers.filter(c => !excludedSet.has(c.customer_id || c.id) && (((c.name || '').toLowerCase().includes(q)) || String(c.customer_id || c.id || '').toLowerCase().includes(q))).slice(0, 10);
+                  return (
+                    <div className="absolute z-10 mt-1 w-full max-h-52 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                      {matches.map(c => (
+                        <button key={c.id} onClick={() => { addExcludedCustomer(c.customer_id || c.id); setExcludeSearch(''); }}
+                          className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-amber-50 text-sm border-b border-gray-50 last:border-0">
+                          <span className="truncate"><span className="font-medium text-gray-800">{c.name}</span> <span className="text-gray-400 text-xs">{c.customer_id || c.id}</span></span>
+                          <Plus size={14} className="text-amber-600 flex-shrink-0" />
+                        </button>
+                      ))}
+                      {matches.length === 0 && <div className="px-3 py-2 text-xs text-gray-400">No matches.</div>}
+                    </div>
+                  );
+                })()}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {excludedCustomers.length === 0 && <span className="text-[11px] text-gray-400">No customers excluded.</span>}
+                {excludedCustomers.map(id => {
+                  const c = allCustomers.find(x => (x.customer_id || x.id) === id);
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 border border-amber-200 rounded-md text-[11px] text-amber-800">
+                      {c?.name || id}
+                      <button onClick={() => removeExcludedCustomer(id)} className="hover:text-amber-950"><X size={11} /></button>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 border-t border-gray-100">
+            <button onClick={resetFilters} className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-800"><X size={12} /> Reset all</button>
+            <button onClick={() => setShowFiltersDrawer(false)} className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-medium">Done</button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ── Statistics drawer ────────────────────────────────────────── */}
+    {showStatsDrawer && (() => {
+      const withBal = allCustomers.filter(c => (c.balance || 0) > 0);
+      const money = (n: number) => n >= 1000000 ? `$${(n / 1000000).toFixed(2)}M` : `$${Math.round(n).toLocaleString()}`;
+      const balBuckets = [
+        { name: '<$1k', min: 0, max: 1000 }, { name: '$1–5k', min: 1000, max: 5000 },
+        { name: '$5–10k', min: 5000, max: 10000 }, { name: '$10–25k', min: 10000, max: 25000 },
+        { name: '$25k+', min: 25000, max: Infinity },
+      ].map(b => ({ name: b.name, count: withBal.filter(c => (c.balance || 0) >= b.min && (c.balance || 0) < b.max).length }));
+      const aging = [
+        { name: 'Current', min: -Infinity, max: 1 }, { name: '1–30', min: 1, max: 31 },
+        { name: '31–60', min: 31, max: 61 }, { name: '61–90', min: 61, max: 91 }, { name: '90+', min: 91, max: Infinity },
+      ].map(b => ({ name: b.name, count: withBal.filter(c => (c.max_days_overdue || 0) >= b.min && (c.max_days_overdue || 0) < b.max).length }));
+      const top = [...withBal].sort((a, b) => (b.balance || 0) - (a.balance || 0)).slice(0, 8)
+        .map(c => ({ name: (c.name || '').length > 20 ? (c.name || '').slice(0, 20) + '…' : (c.name || ''), balance: Math.round(c.balance || 0) }));
+      const colorMix = [
+        { name: 'Red', value: allCustomers.reduce((s, c) => s + (c.red_count || 0), 0), fill: '#ef4444' },
+        { name: 'Yellow', value: allCustomers.reduce((s, c) => s + (c.yellow_count || 0), 0), fill: '#f59e0b' },
+        { name: 'Green', value: allCustomers.reduce((s, c) => s + (c.green_count || 0), 0), fill: '#10b981' },
+      ].filter(d => d.value > 0);
+      const card = (label: string, value: string, sub: string) => (
+        <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">{label}</p>
+          <p className="text-xl font-bold text-gray-900 mt-0.5">{value}</p>
+          <p className="text-[11px] text-gray-400">{sub}</p>
+        </div>
+      );
+      return (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowStatsDrawer(false)} />
+          <div className="relative w-full max-w-lg bg-white h-full shadow-2xl flex flex-col">
+            <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2"><BarChart3 size={18} className="text-emerald-600" /><h2 className="text-base font-bold text-gray-900">Customer Statistics</h2></div>
+              <button onClick={() => setShowStatsDrawer(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} className="text-gray-500" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+              {hasActiveFilters && <p className="text-[11px] text-blue-600 -mb-2">Based on the {filteredCustomers.length.toLocaleString()} filtered customers.</p>}
+              <div className="grid grid-cols-2 gap-3">
+                {card('Customers', stats.total_customers.toLocaleString(), `${stats.active_customers.toLocaleString()} active`)}
+                {card('With Debt', stats.customers_with_debt.toLocaleString(), `${stats.total_open_invoices.toLocaleString()} invoices`)}
+                {card('Total Owed', money(stats.total_balance), `${stats.customers_with_debt.toLocaleString()} customers`)}
+                {card('Avg Balance', money(stats.avg_balance), 'per debtor')}
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-gray-700 mb-2">Balance distribution</p>
+                <ResponsiveContainer width="100%" height={170}>
+                  <BarChart data={balBuckets} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
+                    <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <RTooltip cursor={{ fill: '#f1f5f9' }} />
+                    <Bar dataKey="count" radius={[4, 4, 0, 0]} fill="#0a75b8" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-gray-700 mb-2">Aging — customers by days overdue</p>
+                <ResponsiveContainer width="100%" height={170}>
+                  <BarChart data={aging} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
+                    <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <RTooltip cursor={{ fill: '#f1f5f9' }} />
+                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                      {aging.map((_, i) => <Cell key={i} fill={['#10b981', '#84cc16', '#f59e0b', '#f97316', '#ef4444'][i]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-gray-700 mb-2">Top customers by balance</p>
+                <ResponsiveContainer width="100%" height={230}>
+                  <BarChart data={top} layout="vertical" margin={{ top: 0, right: 12, left: 0, bottom: 0 }}>
+                    <XAxis type="number" hide />
+                    <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                    <RTooltip cursor={{ fill: '#f1f5f9' }} formatter={(v: any) => money(Number(v))} />
+                    <Bar dataKey="balance" radius={[0, 4, 4, 0]} fill="#0a75b8" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {colorMix.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-700 mb-2">Invoice color mix</p>
+                  <ResponsiveContainer width="100%" height={190}>
+                    <PieChart>
+                      <Pie data={colorMix} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={2}>
+                        {colorMix.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                      </Pie>
+                      <RTooltip formatter={(v: any, n: any) => [`${Number(v).toLocaleString()} invoices`, n]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="flex items-center justify-center gap-4 -mt-2">
+                    {colorMix.map(d => <span key={d.name} className="inline-flex items-center gap-1.5 text-[11px] text-gray-600"><span className="w-2.5 h-2.5 rounded-full" style={{ background: d.fill }} />{d.name} · {d.value.toLocaleString()}</span>)}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    })()}
+
+    {/* ── Quick-filter editor ──────────────────────────────────────── */}
+    {showQuickEditor && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowQuickEditor(false)} />
+        <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl flex flex-col max-h-[85vh]">
+          <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div className="flex items-center gap-2"><Zap size={18} className="text-amber-500" /><h2 className="text-base font-bold text-gray-900">Quick Filters</h2></div>
+            <button onClick={() => setShowQuickEditor(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} className="text-gray-500" /></button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+            {quickFilters.map((qf, idx) => {
+              const num = (v: number | undefined) => (v === undefined || v === Infinity ? '' : v);
+              return (
+                <div key={idx} className="rounded-xl border border-gray-200 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <input value={qf.label} onChange={(e) => updateQuickFilter(idx, { label: e.target.value })}
+                      placeholder="Label" className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-medium" />
+                    <input value={qf.desc || ''} onChange={(e) => updateQuickFilter(idx, { desc: e.target.value })}
+                      placeholder="hint" className="w-24 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs" />
+                    <select value={qf.logic || 'AND'} onChange={(e) => updateQuickFilter(idx, { logic: e.target.value as 'AND' | 'OR' })}
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white"><option value="AND">AND</option><option value="OR">OR</option></select>
+                    <button onClick={() => setQuickFilters(prev => prev.filter((_, i) => i !== idx))}
+                      title="Delete" className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 size={15} /></button>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide">Min Balance
+                      <input type="number" value={num(qf.filter.minBalance)} onChange={(e) => updateQuickFilterCond(idx, { minBalance: Number(e.target.value) || 0 })}
+                        className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="0" /></label>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide">Max Balance
+                      <input type="number" value={num(qf.filter.maxBalance)} onChange={(e) => updateQuickFilterCond(idx, { maxBalance: e.target.value ? Number(e.target.value) : Infinity })}
+                        className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="Any" /></label>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide">Min Invoices
+                      <input type="number" value={num(qf.filter.minInvoiceCount)} onChange={(e) => updateQuickFilterCond(idx, { minInvoiceCount: Number(e.target.value) || 0 })}
+                        className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="0" /></label>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide">Min Days Overdue
+                      <input type="number" value={num(qf.filter.minDaysOverdue)} onChange={(e) => updateQuickFilterCond(idx, { minDaysOverdue: Number(e.target.value) || 0 })}
+                        className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="0" /></label>
+                  </div>
+                </div>
+              );
+            })}
+            <button onClick={() => setQuickFilters(prev => [...prev, { label: 'New filter', desc: '', filter: {} }])}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-dashed border-gray-300 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
+              <Plus size={15} /> Add quick filter
+            </button>
+          </div>
+          <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 border-t border-gray-100">
+            <button onClick={() => setQuickFilters(DEFAULT_QUICK_FILTERS)} className="text-xs text-gray-600 hover:text-gray-800">Reset to defaults</button>
+            <button onClick={async () => { await saveQuickFilters(quickFilters); setShowQuickEditor(false); }}
+              className="flex items-center gap-1.5 px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-medium"><Check size={15} /> Save</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
