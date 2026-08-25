@@ -1089,6 +1089,18 @@ export default function Customers({ onBack }: CustomersProps) {
               className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-md text-xs font-medium">Search</button>
           </div>
           <div className="flex-1" />
+          {/* Credit-memo toggle. ON (default) = include: each customer's credit memos
+              are subtracted so Balance shows the real net amount owed. OFF = gross. */}
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white flex-shrink-0"
+            title={!excludeCreditMemos
+              ? 'Credit memos INCLUDED — each customer’s credit memos are subtracted, so Balance is the real (net) amount they owe. Click to exclude them.'
+              : 'Credit memos EXCLUDED — Balance shows the gross amount and ignores credit memos. Click to include them.'}>
+            <span className="text-xs font-medium text-gray-600 whitespace-nowrap">Credit Memos</span>
+            <button role="switch" aria-checked={!excludeCreditMemos} onClick={() => setExcludeCreditMemos(v => !v)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${!excludeCreditMemos ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${!excludeCreditMemos ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
           <button onClick={() => setShowFiltersDrawer(true)}
             className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors border flex-shrink-0 ${activeFilterCount > 0 ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
             <SlidersHorizontal size={15} /> Filters
