@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef, Fragment } f
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import CustomerDetailView from './CustomerDetailView';
-import { ArrowLeft, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket, ChevronDown, Zap, SlidersHorizontal, BarChart3, Save, Plus, Star, Bookmark, Settings, Check } from 'lucide-react';
+import { ArrowLeft, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket, ChevronDown, Zap, SlidersHorizontal, BarChart3, Plus, Settings, Check } from 'lucide-react';
 import { usePageCache } from '../contexts/PageCacheContext';
 import CustomerFiles from './CustomerFiles';
 import * as XLSX from 'xlsx';
@@ -85,7 +85,16 @@ const DEFAULT_FILTERS: FilterConfig = {
   sortOrder: 'desc'
 };
 
-type QuickFilter = { label: string; desc?: string; filter: Partial<FilterConfig>; logic?: 'AND' | 'OR' };
+type QuickFilter = {
+  label: string;
+  desc?: string;
+  filter: Partial<FilterConfig>;
+  logic?: 'AND' | 'OR';
+  // A quick filter is a comprehensive, named preset: it can also pin the list to
+  // a specific set of customers, or always hide a set (e.g. "No Ditmus / Pinnacle").
+  includedCustomers?: string[];
+  excludedCustomers?: string[];
+};
 
 const DEFAULT_QUICK_FILTERS: QuickFilter[] = [
   { label: 'High Balance', desc: '>$10k', filter: { minBalance: 10000 } },
@@ -202,84 +211,37 @@ export default function Customers({ onBack }: CustomersProps) {
   const includedSet = new Set(includedCustomers);
   const [includeSearch, setIncludeSearch] = useState('');
 
-  // ── Editable quick filters (per user) ──
+  // ── Editable quick filters (per user) — comprehensive, named saved presets.
+  // Clicking one applies it immediately; nothing is auto-applied on page load.
   const [quickFilters, setQuickFilters] = useState<QuickFilter[]>(() => cl?.quickFilters ?? DEFAULT_QUICK_FILTERS);
   const [showQuickEditor, setShowQuickEditor] = useState(false);
+  // Per-card customer search inside the quick-filter editor (key = `${idx}:${kind}`).
+  const [qfSearch, setQfSearch] = useState<Record<string, string>>({});
+  const quickFiltersLoaded = useRef(false);
 
-  // ── Saved default filters (per user, page='customers') ──────────────────
-  const [hasDefaultFilters, setHasDefaultFilters] = useState(() => cl?.hasDefaultFilters ?? false);
-  const [savingDefaults, setSavingDefaults] = useState(false);
-  const defaultsLoaded = useRef(false);
-
-  const loadDefaultFilters = useCallback(async () => {
-    if (defaultsLoaded.current) return;
-    defaultsLoaded.current = true;
-    // On navigate-back the page cache already holds the live filter state — don't
-    // clobber it by re-applying the saved defaults.
+  // Load this user's saved quick filters. This does NOT apply any filter — it just
+  // populates the preset bar with what the user previously built.
+  const loadQuickFilters = useCallback(async () => {
+    if (quickFiltersLoaded.current) return;
+    quickFiltersLoaded.current = true;
+    // On navigate-back the page cache already holds the live quick filters.
     if (cachedListState.current) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const { data } = await supabase
       .from('user_analytics_default_filters')
-      .select('filters, excluded_customers')
+      .select('filters')
       .eq('user_id', user.id)
       .eq('page', 'customers')
       .maybeSingle();
-    if (data) {
-      setHasDefaultFilters(true);
-      if (data.filters) {
-        // includedCustomers / quickFilters ride along in the filters JSON.
-        const { includedCustomers: incF, quickFilters: qfF, ...f } = data.filters as any;
-        const inf = (v: any) => (v === null || v === undefined ? Infinity : v);
-        setFilters({
-          ...DEFAULT_FILTERS, ...f,
-          maxBalance: inf(f.maxBalance), maxInvoiceCount: inf(f.maxInvoiceCount),
-          maxInvoiceAmount: inf(f.maxInvoiceAmount), maxDaysOverdue: inf(f.maxDaysOverdue),
-          dateFrom: '', dateTo: '',
-        });
-        if (Array.isArray(incF)) setIncludedCustomers(incF);
-        if (Array.isArray(qfF) && qfF.length) setQuickFilters(qfF);
-      }
-      if (Array.isArray(data.excluded_customers)) setExcludedCustomers(data.excluded_customers);
-    }
+    const qf = (data?.filters as any)?.quickFilters;
+    if (Array.isArray(qf) && qf.length) setQuickFilters(qf);
   }, []);
-  useEffect(() => { loadDefaultFilters(); }, [loadDefaultFilters]);
+  useEffect(() => { loadQuickFilters(); }, [loadQuickFilters]);
 
-  const saveAsDefaultFilters = async () => {
-    setSavingDefaults(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setSavingDefaults(false); return; }
-    const { overdueBasis, sortBy, sortOrder, minBalance, maxBalance, minInvoiceCount, maxInvoiceCount,
-      minInvoiceAmount, maxInvoiceAmount, minDaysOverdue, maxDaysOverdue, logicOperator } = filters;
-    await supabase.from('user_analytics_default_filters').upsert({
-      user_id: user.id,
-      page: 'customers',
-      filters: { overdueBasis, sortBy, sortOrder, minBalance, maxBalance, minInvoiceCount, maxInvoiceCount,
-        minInvoiceAmount: minInvoiceAmount === Infinity ? 0 : minInvoiceAmount,
-        maxInvoiceAmount: maxInvoiceAmount === Infinity ? null : maxInvoiceAmount,
-        maxBalance: maxBalance === Infinity ? null : maxBalance,
-        maxInvoiceCount: maxInvoiceCount === Infinity ? null : maxInvoiceCount,
-        maxDaysOverdue: maxDaysOverdue === Infinity ? null : maxDaysOverdue,
-        minDaysOverdue, logicOperator,
-        includedCustomers,
-        quickFilters },
-      excluded_customers: excludedCustomers,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,page' });
-    // Rehydrate Infinity for the in-memory filters that JSON can't hold.
-    setHasDefaultFilters(true);
-    setSavingDefaults(false);
-  };
-
-  const removeDefaultFilters = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    await supabase.from('user_analytics_default_filters').delete().eq('user_id', user.id).eq('page', 'customers');
-    setHasDefaultFilters(false);
-  };
-
-  // Persist just the quick filters for this user, without touching their saved
-  // default filter values.
+  // Persist this user's quick filters. The user_analytics_default_filters row is
+  // reused purely as storage — each quick filter carries its own include/exclude
+  // lists, so nothing stored here is auto-applied when the page opens.
   const saveQuickFilters = async (qf: QuickFilter[]) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -288,7 +250,7 @@ export default function Customers({ onBack }: CustomersProps) {
     await supabase.from('user_analytics_default_filters').upsert({
       user_id: user.id, page: 'customers',
       filters: { ...((existing?.filters as any) || {}), quickFilters: qf },
-      excluded_customers: (existing?.excluded_customers as any) ?? excludedCustomers,
+      excluded_customers: (existing?.excluded_customers as any) ?? [],
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,page' });
   };
@@ -296,6 +258,13 @@ export default function Customers({ onBack }: CustomersProps) {
     setQuickFilters(prev => prev.map((q, i) => i === idx ? { ...q, ...patch } : q));
   const updateQuickFilterCond = (idx: number, patch: Partial<FilterConfig>) =>
     setQuickFilters(prev => prev.map((q, i) => i === idx ? { ...q, filter: { ...q.filter, ...patch } } : q));
+  // Add/remove a customer id in a quick filter's include or exclude list.
+  const toggleQuickFilterCustomer = (idx: number, kind: 'includedCustomers' | 'excludedCustomers', id: string, add: boolean) =>
+    setQuickFilters(prev => prev.map((q, i) => {
+      if (i !== idx) return q;
+      const cur = q[kind] ?? [];
+      return { ...q, [kind]: add ? (cur.includes(id) ? cur : [...cur, id]) : cur.filter(x => x !== id) };
+    }));
 
   const addExcludedCustomer = (id: string) => {
     if (!id) return;
@@ -346,7 +315,7 @@ export default function Customers({ onBack }: CustomersProps) {
       customers, allCustomers, filteredCustomers, loadedCount,
       currentPage, totalCount, grandTotalCustomers, searchQuery, showFilters,
       excludeCreditMemos, cachedStatsLoaded, cachedStatsTime, stats, filters,
-      excludedCustomers, includedCustomers, quickFilters, hasDefaultFilters,
+      excludedCustomers, includedCustomers, quickFilters,
       expandedCustomerId, expandedInvoices, scrollPos: scrollPosRef.current,
     };
   });
@@ -671,7 +640,13 @@ export default function Customers({ onBack }: CustomersProps) {
 
   const applyQuickFilter = (index: number) => {
     if (activeQuickFilter === index) {
-      resetFilters();
+      // Toggle off — clear this preset's field filters AND its customer lists.
+      setFilters({ ...DEFAULT_FILTERS });
+      setSearchQuery('');
+      setIncludedCustomers([]);
+      setExcludedCustomers([]);
+      setCurrentPage(0);
+      setActiveQuickFilter(null);
       return;
     }
     const preset = quickFilters[index];
@@ -680,6 +655,9 @@ export default function Customers({ onBack }: CustomersProps) {
       ...preset.filter,
       logicOperator: preset.logic || 'AND'
     });
+    // A quick filter can also pin the list to / hide a specific set of customers.
+    setIncludedCustomers(preset.includedCustomers ?? []);
+    setExcludedCustomers(preset.excludedCustomers ?? []);
     setCurrentPage(0);
     setActiveQuickFilter(index);
   };
@@ -1339,25 +1317,10 @@ export default function Customers({ onBack }: CustomersProps) {
             <button onClick={() => setShowFiltersDrawer(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} className="text-gray-500" /></button>
           </div>
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-            {/* Default filters */}
-            <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
-              <div className="flex items-center gap-2 mb-1.5">
-                <Bookmark size={14} className="text-blue-600" />
-                <span className="text-xs font-bold text-blue-700 uppercase tracking-wide">Default Filters</span>
-                {hasDefaultFilters && <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-emerald-600 font-semibold"><Star size={10} className="fill-emerald-500 text-emerald-500" /> Saved</span>}
-              </div>
-              <p className="text-[11px] text-gray-500 mb-2.5">Save the current filters and excluded customers as your default — they apply automatically each time you open this page.</p>
-              <div className="flex gap-2">
-                <button onClick={saveAsDefaultFilters} disabled={savingDefaults}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold disabled:opacity-60">
-                  <Save size={13} /> {savingDefaults ? 'Saving…' : 'Save as Default'}
-                </button>
-                {hasDefaultFilters && (
-                  <button onClick={removeDefaultFilters}
-                    className="px-3 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs font-semibold">Remove</button>
-                )}
-              </div>
-            </div>
+            <p className="text-[11px] text-gray-500">
+              Filters here apply right away. To save a filter you reuse — including specific customers to keep or hide —
+              build a <span className="font-semibold text-amber-600">Quick Filter</span> (the ⚡ bar) instead.
+            </p>
 
             {/* Customer filters */}
             <div>
@@ -1646,19 +1609,71 @@ export default function Customers({ onBack }: CustomersProps) {
     {showQuickEditor && (
       <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowQuickEditor(false)} />
-        <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl flex flex-col max-h-[85vh]">
+        <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[88vh]">
           <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <div className="flex items-center gap-2"><Zap size={18} className="text-amber-500" /><h2 className="text-base font-bold text-gray-900">Quick Filters</h2></div>
+            <div className="flex items-center gap-2">
+              <Zap size={18} className="text-amber-500" />
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Quick Filters</h2>
+                <p className="text-[11px] text-gray-500">Named presets — balances, invoices, overdue days, and specific customers to include or exclude. Click one to apply it instantly.</p>
+              </div>
+            </div>
             <button onClick={() => setShowQuickEditor(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} className="text-gray-500" /></button>
           </div>
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
             {quickFilters.map((qf, idx) => {
               const num = (v: number | undefined) => (v === undefined || v === Infinity ? '' : v);
+              const custPicker = (kind: 'includedCustomers' | 'excludedCustomers') => {
+                const inc = kind === 'includedCustomers';
+                const key = `${idx}:${inc ? 'inc' : 'exc'}`;
+                const term = qfSearch[key] || '';
+                const list = qf[kind] ?? [];
+                const set = new Set(list);
+                return (
+                  <div>
+                    <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${inc ? 'text-emerald-600' : 'text-amber-600'}`}>{inc ? 'Include Only' : 'Always Exclude'}</p>
+                    <div className="relative mb-1.5">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
+                      <input value={term} onChange={(e) => setQfSearch(s => ({ ...s, [key]: e.target.value }))}
+                        placeholder={inc ? 'Search a customer to include…' : 'Search a customer to exclude…'}
+                        className={`w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 ${inc ? 'focus:ring-emerald-400 focus:border-emerald-400' : 'focus:ring-amber-400 focus:border-amber-400'}`} />
+                      {term.trim().length >= 2 && (() => {
+                        const q = term.toLowerCase();
+                        const matches = allCustomers.filter(c => !set.has(c.customer_id || c.id) && (((c.name || '').toLowerCase().includes(q)) || String(c.customer_id || c.id || '').toLowerCase().includes(q))).slice(0, 8);
+                        return (
+                          <div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                            {matches.map(c => (
+                              <button key={c.id} onClick={() => { toggleQuickFilterCustomer(idx, kind, c.customer_id || c.id, true); setQfSearch(s => ({ ...s, [key]: '' })); }}
+                                className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left text-sm border-b border-gray-50 last:border-0 ${inc ? 'hover:bg-emerald-50' : 'hover:bg-amber-50'}`}>
+                                <span className="truncate"><span className="font-medium text-gray-800">{c.name}</span> <span className="text-gray-400 text-xs">{c.customer_id || c.id}</span></span>
+                                <Plus size={13} className={`flex-shrink-0 ${inc ? 'text-emerald-600' : 'text-amber-600'}`} />
+                              </button>
+                            ))}
+                            {matches.length === 0 && <div className="px-3 py-2 text-xs text-gray-400">No matches.</div>}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {list.length === 0 && <span className="text-[11px] text-gray-400">{inc ? 'All customers.' : 'None excluded.'}</span>}
+                      {list.map(id => {
+                        const c = allCustomers.find(x => (x.customer_id || x.id) === id);
+                        return (
+                          <span key={id} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] ${inc ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-amber-50 border border-amber-200 text-amber-800'}`}>
+                            {c?.name || id}
+                            <button onClick={() => toggleQuickFilterCustomer(idx, kind, id, false)} className={inc ? 'hover:text-emerald-950' : 'hover:text-amber-950'}><X size={11} /></button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              };
               return (
-                <div key={idx} className="rounded-xl border border-gray-200 p-3">
-                  <div className="flex items-center gap-2 mb-2">
+                <div key={idx} className="rounded-xl border border-gray-200 p-3 space-y-3">
+                  <div className="flex items-center gap-2">
                     <input value={qf.label} onChange={(e) => updateQuickFilter(idx, { label: e.target.value })}
-                      placeholder="Label" className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-medium" />
+                      placeholder="Filter name (e.g. No Ditmus / No Pinnacle)" className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-medium" />
                     <input value={qf.desc || ''} onChange={(e) => updateQuickFilter(idx, { desc: e.target.value })}
                       placeholder="hint" className="w-24 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs" />
                     <select value={qf.logic || 'AND'} onChange={(e) => updateQuickFilter(idx, { logic: e.target.value as 'AND' | 'OR' })}
@@ -1676,14 +1691,30 @@ export default function Customers({ onBack }: CustomersProps) {
                     <label className="text-[10px] text-gray-500 uppercase tracking-wide">Min Invoices
                       <input type="number" value={num(qf.filter.minInvoiceCount)} onChange={(e) => updateQuickFilterCond(idx, { minInvoiceCount: Number(e.target.value) || 0 })}
                         className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="0" /></label>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide">Max Invoices
+                      <input type="number" value={num(qf.filter.maxInvoiceCount)} onChange={(e) => updateQuickFilterCond(idx, { maxInvoiceCount: e.target.value ? Number(e.target.value) : Infinity })}
+                        className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="Any" /></label>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide">Min Inv Amount
+                      <input type="number" value={num(qf.filter.minInvoiceAmount)} onChange={(e) => updateQuickFilterCond(idx, { minInvoiceAmount: Number(e.target.value) || 0 })}
+                        className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="0" /></label>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide">Max Inv Amount
+                      <input type="number" value={num(qf.filter.maxInvoiceAmount)} onChange={(e) => updateQuickFilterCond(idx, { maxInvoiceAmount: e.target.value ? Number(e.target.value) : Infinity })}
+                        className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="Any" /></label>
                     <label className="text-[10px] text-gray-500 uppercase tracking-wide">Min Days Overdue
                       <input type="number" value={num(qf.filter.minDaysOverdue)} onChange={(e) => updateQuickFilterCond(idx, { minDaysOverdue: Number(e.target.value) || 0 })}
                         className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="0" /></label>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide">Max Days Overdue
+                      <input type="number" value={num(qf.filter.maxDaysOverdue)} onChange={(e) => updateQuickFilterCond(idx, { maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
+                        className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="Any" /></label>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+                    {custPicker('includedCustomers')}
+                    {custPicker('excludedCustomers')}
                   </div>
                 </div>
               );
             })}
-            <button onClick={() => setQuickFilters(prev => [...prev, { label: 'New filter', desc: '', filter: {} }])}
+            <button onClick={() => setQuickFilters(prev => [...prev, { label: 'New filter', desc: '', filter: {}, includedCustomers: [], excludedCustomers: [] }])}
               className="w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-dashed border-gray-300 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
               <Plus size={15} /> Add quick filter
             </button>
