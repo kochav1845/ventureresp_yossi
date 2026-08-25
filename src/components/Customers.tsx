@@ -94,6 +94,8 @@ type QuickFilter = {
   logic?: 'AND' | 'OR';
   // A quick filter is a comprehensive, named preset: it can also pin the list to
   // a specific set of customers, or always hide a set (e.g. "No Ditmus / Pinnacle").
+  // The two are mutually exclusive — customerMode picks which one is in effect.
+  customerMode?: 'include' | 'exclude';
   includedCustomers?: string[];
   excludedCustomers?: string[];
 };
@@ -276,6 +278,12 @@ export default function Customers({ onBack }: CustomersProps) {
       const cur = q[kind] ?? [];
       return { ...q, [kind]: add ? (cur.includes(id) ? cur : [...cur, id]) : cur.filter(x => x !== id) };
     }));
+  // Include-only and Exclude are mutually exclusive (including a set already hides
+  // everyone else), so switching modes clears the opposite list.
+  const setQuickFilterMode = (idx: number, mode: 'include' | 'exclude') =>
+    setQuickFilters(prev => prev.map((q, i) => i === idx
+      ? (mode === 'include' ? { ...q, customerMode: 'include', excludedCustomers: [] } : { ...q, customerMode: 'exclude', includedCustomers: [] })
+      : q));
 
   const addExcludedCustomer = (id: string) => {
     if (!id) return;
@@ -1738,6 +1746,7 @@ export default function Customers({ onBack }: CustomersProps) {
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
             {quickFilters.map((qf, idx) => {
               const num = (v: number | undefined) => (v === undefined || v === Infinity ? '' : v);
+              const mode: 'include' | 'exclude' = qf.customerMode ?? ((qf.excludedCustomers?.length && !(qf.includedCustomers?.length)) ? 'exclude' : 'include');
               const custPicker = (kind: 'includedCustomers' | 'excludedCustomers') => {
                 const inc = kind === 'includedCustomers';
                 const key = `${idx}:${inc ? 'inc' : 'exc'}`;
@@ -1746,7 +1755,6 @@ export default function Customers({ onBack }: CustomersProps) {
                 const set = new Set(list);
                 return (
                   <div>
-                    <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${inc ? 'text-emerald-600' : 'text-amber-600'}`}>{inc ? 'Include Only' : 'Always Exclude'}</p>
                     <div className="relative mb-1.5">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                       <input value={term} onChange={(e) => setQfSearch(s => ({ ...s, [key]: e.target.value }))}
@@ -1822,14 +1830,25 @@ export default function Customers({ onBack }: CustomersProps) {
                       <input type="number" value={num(qf.filter.maxDaysOverdue)} onChange={(e) => updateQuickFilterCond(idx, { maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
                         className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="Any" /></label>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-gray-100">
-                    {custPicker('includedCustomers')}
-                    {custPicker('excludedCustomers')}
+                  <div className="pt-2 border-t border-gray-100">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Customers</span>
+                      <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                        <button type="button" onClick={() => setQuickFilterMode(idx, 'include')}
+                          className={`px-2.5 py-1 text-xs font-medium transition-colors ${mode === 'include' ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Include only</button>
+                        <button type="button" onClick={() => setQuickFilterMode(idx, 'exclude')}
+                          className={`px-2.5 py-1 text-xs font-medium transition-colors border-l border-gray-200 ${mode === 'exclude' ? 'bg-amber-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Exclude</button>
+                      </div>
+                      <span className="text-[11px] text-gray-400">
+                        {mode === 'include' ? 'show ONLY the customers you pick' : 'show everyone EXCEPT the customers you pick'}
+                      </span>
+                    </div>
+                    {custPicker(mode === 'include' ? 'includedCustomers' : 'excludedCustomers')}
                   </div>
                 </div>
               );
             })}
-            <button onClick={() => setQuickFilters(prev => [...prev, { label: 'New filter', desc: '', filter: {}, includedCustomers: [], excludedCustomers: [] }])}
+            <button onClick={() => setQuickFilters(prev => [...prev, { label: 'New filter', desc: '', filter: {}, customerMode: 'include', includedCustomers: [], excludedCustomers: [] }])}
               className="w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-dashed border-gray-300 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
               <Plus size={15} /> Add quick filter
             </button>
