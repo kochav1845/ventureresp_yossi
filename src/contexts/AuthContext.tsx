@@ -28,6 +28,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [originalProfile, setOriginalProfile] = useState<UserProfile | null>(null);
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
+  // Which user id we've already loaded a profile for. Lets the auth-state handler
+  // ignore the repeat SIGNED_IN / TOKEN_REFRESHED events supabase-js fires when a
+  // tab regains focus, so those don't flip global `loading` and remount the app.
+  const loadedProfileForUser = useRef<string | null>(null);
 
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current) {
@@ -141,17 +145,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     initAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       (async () => {
         try {
+          // Supabase refreshes the token whenever a tab regains focus, firing
+          // TOKEN_REFRESHED (and sometimes a repeat SIGNED_IN). These are NOT real
+          // sign-in transitions — reacting to them (setLoading(true) + refetch)
+          // unmounts the whole app and wipes every page's in-memory state (scroll,
+          // filters, expanded rows). So only act on genuine transitions.
+          if (event === 'SIGNED_OUT') {
+            loadedProfileForUser.current = null;
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+            return;
+          }
+          // Token refresh / user metadata update: the supabase client already holds
+          // the fresh session internally, so there's nothing the UI needs to do.
+          if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+            return;
+          }
+          // SIGNED_IN / INITIAL_SESSION
           if (session?.user) {
+            const impersonationData = localStorage.getItem('impersonation');
+            if (impersonationData) return; // handled by initAuth()
+            // Already have this user's profile (e.g. focus re-emitted SIGNED_IN)?
+            // Don't touch loading or refetch — that's what caused the tab-return
+            // refresh.
+            if (loadedProfileForUser.current === session.user.id) return;
             setLoading(true);
             setUser(session.user);
-            const impersonationData = localStorage.getItem('impersonation');
-            if (!impersonationData) {
-              await loadProfile(session.user.id);
-            }
+            await loadProfile(session.user.id);
           } else {
+            loadedProfileForUser.current = null;
             setUser(null);
             setProfile(null);
             setLoading(false);
@@ -185,11 +211,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
       setProfile(data);
+      loadedProfileForUser.current = userId;
     } catch (error: any) {
       console.error('Error loading profile:', error);
 
       // If we've exhausted retries, clear auth
       console.error('Failed to load profile. Clearing auth state.');
+      loadedProfileForUser.current = null;
       await supabase.auth.signOut();
       setUser(null);
       setProfile(null);

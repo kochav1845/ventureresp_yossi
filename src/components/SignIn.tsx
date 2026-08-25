@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, Clock, CheckCircle, User, ArrowLeft, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useOrg } from '../contexts/OrgContext';
 import { logActivity, supabase } from '../lib/supabase';
 
 const CAROUSEL_IMAGES = [
@@ -27,7 +28,7 @@ const CAROUSEL_IMAGES = [
   },
 ];
 
-function ImageCarousel() {
+function ImageCarousel({ logoUrl, orgName }: { logoUrl?: string | null; orgName?: string }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [fadeState, setFadeState] = useState<'visible' | 'fading'>('visible');
 
@@ -65,11 +66,11 @@ function ImageCarousel() {
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/40" />
 
       <div className="absolute top-8 left-8 right-8">
-        <img
-          src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
-          alt="Logo"
-          className="h-14 w-auto drop-shadow-lg"
-        />
+        {logoUrl ? (
+          <img src={logoUrl} alt={orgName || 'Logo'} className="h-14 w-auto drop-shadow-lg" />
+        ) : orgName ? (
+          <span className="text-2xl font-bold text-white drop-shadow-lg tracking-tight">{orgName}</span>
+        ) : null}
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 p-8">
@@ -124,6 +125,7 @@ export default function SignIn() {
   const [accountStatus, setAccountStatus] = useState<'pending' | 'rejected' | 'approved' | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const { signIn, signUp } = useAuth();
+  const { org } = useOrg();
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -496,19 +498,21 @@ export default function SignIn() {
     <div className="min-h-screen flex">
       {/* Left side - Image Carousel */}
       <div className="hidden lg:block lg:w-1/2 xl:w-[55%]">
-        <ImageCarousel />
+        <ImageCarousel logoUrl={org?.logo_url} orgName={org?.name} />
       </div>
 
       {/* Right side - Form */}
       <div className="w-full lg:w-1/2 xl:w-[45%] flex flex-col bg-white">
         {/* Mobile-only logo */}
-        <div className="lg:hidden flex items-center justify-center py-6 border-b border-gray-100">
-          <img
-            src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
-            alt="Logo"
-            className="h-12 w-auto"
-          />
-        </div>
+        {(org?.logo_url || org?.name) && (
+          <div className="lg:hidden flex items-center justify-center py-6 border-b border-gray-100">
+            {org?.logo_url ? (
+              <img src={org.logo_url} alt={org?.name || 'Logo'} className="h-12 w-auto" />
+            ) : (
+              <span className="text-xl font-bold text-gray-900 tracking-tight">{org?.name}</span>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 flex items-center justify-center px-6 py-12 sm:px-12 lg:px-16">
           <div className="w-full max-w-md">

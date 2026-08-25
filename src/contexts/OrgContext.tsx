@@ -7,6 +7,7 @@ interface Organization {
   slug: string;
   name: string;
   is_active: boolean;
+  logo_url?: string | null;
 }
 
 interface OrgContextType {

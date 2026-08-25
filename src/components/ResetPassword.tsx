@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Lock, AlertCircle, CheckCircle } from 'lucide-react';
+import { useOrg } from '../contexts/OrgContext';
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -13,6 +14,11 @@ export default function ResetPassword() {
   const [checkingToken, setCheckingToken] = useState(true);
   const [success, setSuccess] = useState(false);
   const navigate = useNavigate();
+  const { org } = useOrg();
+  // Org-aware brand mark (falls back to the org name if it has no logo).
+  const brandLogo = org?.logo_url
+    ? <img src={org.logo_url} alt={org?.name || 'Logo'} className="h-20 w-auto" />
+    : <span className="text-2xl font-bold text-white tracking-tight">{org?.name || ''}</span>;
 
   useEffect(() => {
     const token = searchParams.get('resetlink');
@@ -128,11 +134,7 @@ export default function ResetPassword() {
           <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
             <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-8 text-white">
               <div className="flex items-center justify-center">
-                <img
-                  src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
-                  alt="Logo"
-                  className="h-20 w-auto"
-                />
+                {brandLogo}
               </div>
             </div>
 
@@ -164,11 +166,7 @@ export default function ResetPassword() {
           <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
             <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-8 text-white">
               <div className="flex items-center justify-center">
-                <img
-                  src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
-                  alt="Logo"
-                  className="h-20 w-auto"
-                />
+                {brandLogo}
               </div>
             </div>
 
@@ -199,11 +197,7 @@ export default function ResetPassword() {
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
           <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-8 text-white">
             <div className="flex items-center justify-center">
-              <img
-                src="https://ahmrghovmuxowchijumv.supabase.co/storage/v1/object/public/uploaded-images/-logoventure_1644182585__38264.webp"
-                alt="Logo"
-                className="h-20 w-auto"
-              />
+              {brandLogo}
             </div>
           </div>
 

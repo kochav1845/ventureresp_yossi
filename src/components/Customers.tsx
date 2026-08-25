@@ -173,7 +173,11 @@ export default function Customers({ onBack }: CustomersProps) {
   const [cachedStatsLoaded, setCachedStatsLoaded] = useState(() => cl?.cachedStatsLoaded ?? false);
   const [cachedStatsTime, setCachedStatsTime] = useState<string | null>(() => cl?.cachedStatsTime ?? null);
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
-  const [activeQuickFilter, setActiveQuickFilter] = useState<number | null>(null);
+  // Persisted so the active quick-filter chip stays highlighted after navigating
+  // into a customer and back (the applied filters are restored from cache too).
+  const [activeQuickFilter, setActiveQuickFilter] = useState<number | null>(() => cl?.activeQuickFilter ?? null);
+  // customer_id -> most recent payment (date + amount), loaded in bulk.
+  const [lastPayments, setLastPayments] = useState<Map<string, { date: string; amount: number }>>(() => cl?.lastPayments ?? new Map());
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '' });
 
@@ -315,7 +319,7 @@ export default function Customers({ onBack }: CustomersProps) {
       customers, allCustomers, filteredCustomers, loadedCount,
       currentPage, totalCount, grandTotalCustomers, searchQuery, showFilters,
       excludeCreditMemos, cachedStatsLoaded, cachedStatsTime, stats, filters,
-      excludedCustomers, includedCustomers, quickFilters,
+      excludedCustomers, includedCustomers, quickFilters, activeQuickFilter, lastPayments,
       expandedCustomerId, expandedInvoices, scrollPos: scrollPosRef.current,
     };
   });
@@ -399,6 +403,34 @@ export default function Customers({ onBack }: CustomersProps) {
       console.error('Error loading customers with open tickets:', error);
     }
   };
+
+  // Bulk-load each customer's most recent payment (Payment/Prepayment). One
+  // paginated RPC for the whole org — RLS scopes it. Powers the Last Payment column.
+  const loadLastPayments = async () => {
+    try {
+      const PAGE = 1000;
+      const map = new Map<string, { date: string; amount: number }>();
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .rpc('get_last_payments_by_customer')
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const batch = data || [];
+        batch.forEach((r: any) => {
+          if (r.customer_id) map.set(String(r.customer_id), { date: r.last_payment_date, amount: Number(r.last_payment_amount) || 0 });
+        });
+        if (batch.length < PAGE) break;
+      }
+      setLastPayments(map);
+    } catch (e) {
+      console.error('Error loading last payments:', e);
+    }
+  };
+  // Load once on mount (skip if the page cache already carried the map back).
+  useEffect(() => {
+    if (lastPayments.size === 0) loadLastPayments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const mapCustomerRow = (item: any) => ({
     id: item.customer_id || item.id,
@@ -634,6 +666,10 @@ export default function Customers({ onBack }: CustomersProps) {
   const resetFilters = () => {
     setFilters({ ...DEFAULT_FILTERS });
     setSearchQuery('');
+    // Reset All clears everything — including any customer include/exclude and the
+    // active quick filter, so no preset stays "assigned" after a reset.
+    setIncludedCustomers([]);
+    setExcludedCustomers([]);
     setCurrentPage(0);
     setActiveQuickFilter(null);
   };
@@ -1099,8 +1135,8 @@ export default function Customers({ onBack }: CustomersProps) {
                     <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('max_days_overdue')}>
                       <div className="flex items-center justify-end gap-1.5">Overdue {getSortIcon('max_days_overdue')}</div>
                     </th>
-                    <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('avg_days_to_collect')}>
-                      <div className="flex items-center justify-end gap-1.5">Avg Collect {getSortIcon('avg_days_to_collect')}</div>
+                    <th className="text-right py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                      <div className="flex items-center justify-end gap-1.5">Last Payment</div>
                     </th>
                     <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Resp.</th>
                     <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Exclude from Payment Analytics">
@@ -1143,8 +1179,11 @@ export default function Customers({ onBack }: CustomersProps) {
                                 {(() => {
                                   const tc = customersWithOpenTickets.get(customer.id) || 0;
                                   return (
-                                    <button onClick={() => navigate(`/collection-ticketing?customerId=${customer.id}`)}
-                                      title={tc > 0 ? `${tc} open ticket(s) -- click to view / add` : 'Add a ticket for this customer'}
+                                    <button onClick={() => {
+                                        const prefix = orgSlug ? `/${orgSlug}` : '';
+                                        window.open(`${prefix}/collection-ticketing?customerId=${customer.id}`, '_blank', 'noopener,noreferrer');
+                                      }}
+                                      title={tc > 0 ? `${tc} open ticket(s) -- click to view / add (opens in a new tab)` : 'Add a ticket for this customer (opens in a new tab)'}
                                       className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] transition-colors border ${
                                         tc > 0
                                           ? 'bg-red-100 border-red-200 hover:bg-red-200 text-red-700'
@@ -1190,8 +1229,20 @@ export default function Customers({ onBack }: CustomersProps) {
                             (customer.max_days_overdue || 0) > 30 ? 'text-amber-500' : 'text-gray-500'
                           }`}>{customer.max_days_overdue || 0}</span>
                         </td>
-                        <td className="py-2.5 px-4 text-right text-sm text-gray-600 tabular-nums">
-                          {customer.avg_days_to_collect != null ? `${customer.avg_days_to_collect}d` : '--'}
+                        <td className="py-2.5 px-4 text-right text-sm tabular-nums">
+                          {(() => {
+                            const lp = lastPayments.get(customer.customer_id || customer.id);
+                            if (!lp || !lp.date) return <span className="text-gray-400">--</span>;
+                            const d = new Date(lp.date);
+                            const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+                            return (
+                              <span
+                                title={`$${lp.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} on ${d.toLocaleDateString()}${days >= 0 ? ` — ${days} day${days === 1 ? '' : 's'} ago` : ''}`}
+                                className={days > 90 ? 'text-red-600 font-semibold' : days > 60 ? 'text-amber-600 font-medium' : 'text-gray-700'}>
+                                {d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="py-2.5 px-4">
                           <div className="flex justify-center">
@@ -1398,7 +1449,6 @@ export default function Customers({ onBack }: CustomersProps) {
                     <option value="balance">Balance</option>
                     <option value="invoice_count">Invoice Count</option>
                     <option value="max_days_overdue">Days Overdue</option>
-                    <option value="avg_days_to_collect">Avg Days to Collect</option>
                     <option value="name">Customer Name</option>
                   </select>
                 </div>

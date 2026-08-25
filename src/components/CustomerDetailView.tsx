@@ -166,6 +166,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [filteredStats, setFilteredStats] = useState<any>(() => cd?.filteredStats ?? null);
   const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
   const [avgDaysToCollect, setAvgDaysToCollect] = useState<number | null>(() => cd?.avgDaysToCollect ?? null);
+  const [lastPayment, setLastPayment] = useState<{ date: string; amount: number } | null>(() => cd?.lastPayment ?? null);
   const [excludeCreditMemos, setExcludeCreditMemos] = useState(() => cd?.excludeCreditMemos ?? false);
   const [showTimeline, setShowTimeline] = useState(false);
 
@@ -177,7 +178,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     stateRef.current = {
       customer, displayedInvoices, payments, customerNotes, tickets, activeTab,
       invoiceCounts, invoiceColorCounts, advancedFilters, invoiceStats, filteredStats,
-      avgDaysToCollect, excludeCreditMemos, hasMore,
+      avgDaysToCollect, lastPayment, excludeCreditMemos, hasMore,
     };
   });
 
@@ -354,6 +355,18 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       if (!avgDaysError && avgDays !== null) {
         setAvgDaysToCollect(avgDays);
       }
+
+      // Most recent real payment (Payment/Prepayment) for this customer.
+      const { data: lastPay } = await supabase
+        .from('acumatica_payments')
+        .select('payment_amount, application_date')
+        .eq('customer_id', customerId)
+        .in('type', ['Payment', 'Prepayment'])
+        .not('application_date', 'is', null)
+        .order('application_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setLastPayment(lastPay?.application_date ? { date: lastPay.application_date, amount: Number(lastPay.payment_amount) || 0 } : null);
 
       const { data: notesData, error: notesError } = await supabase
         .from('customer_notes')
@@ -861,16 +874,22 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                 </div>
               </div>
 
-              {/* Avg Collection */}
+              {/* Last Payment */}
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Avg Collection</p>
-                {avgDaysToCollect !== null ? (
+                <p className="text-xs font-medium text-gray-500 mb-1">Last Payment</p>
+                {lastPayment ? (
                   <>
-                    <p className="text-xl font-bold text-gray-900">{avgDaysToCollect}<span className="text-sm font-normal text-gray-400 ml-0.5">d</span></p>
-                    <p className="text-[11px] text-gray-500 mt-1.5">Invoice to payment</p>
+                    <p className="text-xl font-bold text-gray-900">{new Date(lastPayment.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                    <p className="text-[11px] text-gray-500 mt-1.5">
+                      {formatCurrency(lastPayment.amount)}
+                      {(() => {
+                        const days = Math.floor((Date.now() - new Date(lastPayment.date).getTime()) / 86400000);
+                        return days >= 0 ? ` · ${days} day${days === 1 ? '' : 's'} ago` : '';
+                      })()}
+                    </p>
                   </>
                 ) : (
-                  <p className="text-sm text-gray-400 mt-1">No data</p>
+                  <p className="text-sm text-gray-400 mt-1">No payments</p>
                 )}
               </div>
 
