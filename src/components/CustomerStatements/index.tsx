@@ -1,7 +1,9 @@
-import { Search, X, ArrowUpDown, DollarSign, FileText, Users, Clock, CheckSquare, Square, FlaskConical, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { Search, X, ArrowUpDown, DollarSign, FileText, Users, Clock, CheckSquare, Square, FlaskConical, Loader2, Zap } from 'lucide-react';
 import { useCustomerStatements } from './useCustomerStatements';
 import CustomerStatementCard from './CustomerStatementCard';
 import StatementActions from './StatementActions';
+import AutoStatementsSidebar from './AutoStatementsSidebar';
 import type { SortField } from './types';
 
 const fmtCurrency = (n: number) =>
@@ -17,6 +19,8 @@ export default function CustomerStatements() {
     showTestCustomers, toggleTestCustomers,
     ensureInvoicesLoaded,
   } = useCustomerStatements();
+
+  const [showAuto, setShowAuto] = useState(false);
 
   const selectedCustomers = customers.filter(c => selectedIds.has(c.customer_id));
   const totalBalance = customers.reduce((s, c) => s + c.total_balance, 0);
@@ -47,7 +51,14 @@ export default function CustomerStatements() {
               : 'Select customers to download or email their open balance statements'}
           </p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-1.5 border border-gray-200 inline-flex shrink-0" data-tour="statement-view-toggle">
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={() => setShowAuto(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors"
+          >
+            <Zap className="w-4 h-4" /> Automatic
+          </button>
+          <div className="bg-white rounded-xl shadow-sm p-1.5 border border-gray-200 inline-flex" data-tour="statement-view-toggle">
           <button
             onClick={() => toggleTestCustomers(false)}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
@@ -69,6 +80,7 @@ export default function CustomerStatements() {
             <FlaskConical className="w-3.5 h-3.5" />
             Test Customers
           </button>
+          </div>
         </div>
       </div>
 
@@ -220,6 +232,14 @@ export default function CustomerStatements() {
           </div>
         )}
       </div>
+
+      <AutoStatementsSidebar
+        open={showAuto}
+        onClose={() => setShowAuto(false)}
+        customers={customers}
+        templates={templates}
+        defaultTemplateId={selectedTemplateId}
+      />
     </div>
   );
 }
