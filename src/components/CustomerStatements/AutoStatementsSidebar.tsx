@@ -54,6 +54,7 @@ export default function AutoStatementsSidebar({ open, onClose, customers, templa
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [enabled, setEnabled] = useState(false); // org-level master switch
 
   const [allRule, setAllRule] = useState<AllRule>({
     is_active: false, day_of_month: 1, time_of_day: '09:00',
@@ -107,6 +108,8 @@ export default function AutoStatementsSidebar({ open, onClose, customers, templa
           is_active: r.is_active,
         })).filter((r: CustomerRule) => r.customer_id));
         setRemovedIds([]);
+        const { data: c } = await supabase.from('statement_auto_send_config').select('enabled').maybeSingle();
+        if (!cancelled) setEnabled(!!c?.enabled);
       } catch (e) {
         console.error('Error loading auto-statement rules:', e);
       } finally {
@@ -202,6 +205,21 @@ export default function AutoStatementsSidebar({ open, onClose, customers, templa
     }
   };
 
+  const toggleEnabled = async (next: boolean) => {
+    if (next && !window.confirm(
+      'Turn ON automated statement sending?\n\nCustomers matching your ACTIVE rules will be emailed their statements automatically on the scheduled day (via the same sender as manual statements). Make sure your rules are correct first.'
+    )) return;
+    try {
+      const { error } = await supabase.from('statement_auto_send_config').upsert({
+        organization_id: org?.id ?? null, enabled: next, updated_at: new Date().toISOString(), updated_by: user?.id ?? null,
+      }, { onConflict: 'organization_id' });
+      if (error) throw error;
+      setEnabled(next);
+    } catch (e: any) {
+      alert('Could not update automated sending:\n\n' + (e?.message || e));
+    }
+  };
+
   if (!open) return null;
 
   const excludedSet = new Set(allRule.excluded_customer_ids);
@@ -236,12 +254,22 @@ export default function AutoStatementsSidebar({ open, onClose, customers, templa
           <div className="flex-1 flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
         ) : (
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-            {/* Not-yet-live notice */}
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-              <AlertTriangle size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
-              <p className="text-[11px] text-amber-800 leading-relaxed">
-                Rules are saved here and use the same email sender as manual statements. Scheduled
-                delivery is switched on separately — nothing sends automatically until that's activated.
+            {/* Master switch */}
+            <div className={`rounded-xl border p-3 ${enabled ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {enabled ? <Check size={15} className="text-emerald-600" /> : <AlertTriangle size={15} className="text-amber-600" />}
+                  <span className={`text-sm font-semibold ${enabled ? 'text-emerald-800' : 'text-amber-800'}`}>Automated sending is {enabled ? 'ON' : 'OFF'}</span>
+                </div>
+                <button role="switch" aria-checked={enabled} onClick={() => toggleEnabled(!enabled)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+              <p className={`text-[11px] mt-1.5 leading-relaxed ${enabled ? 'text-emerald-700' : 'text-amber-700'}`}>
+                {enabled
+                  ? 'Customers matching your active rules are emailed their statements automatically on the scheduled day.'
+                  : 'Rules below are saved but nothing is emailed until you switch this on. Uses the same sender as manual statements.'}
               </p>
             </div>
 
