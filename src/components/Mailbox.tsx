@@ -81,6 +81,13 @@ export default function Mailbox() {
     } catch { /* invalid url */ }
   }, [token, settings.embed_url, settings.domain]);
   useEffect(() => { postToken(); }, [postToken]);
+  // The embedded inbox posts this when it's mounted and ready to receive the
+  // session — hand it the token then (closes the load/listen race).
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => { if (e.data && e.data.type === 'venture-inbox-ready') postToken(); };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [postToken]);
 
   const saveOrg = async () => {
     setSavingOrg(true);
@@ -110,8 +117,9 @@ export default function Mailbox() {
     finally { setSavingCred(false); }
   };
 
+  // Tokens are handed over via postMessage (see postToken), not the URL.
   const iframeSrc = settings.embed_url
-    ? `${settings.embed_url}${settings.embed_url.includes('?') ? '&' : '?'}domain=${encodeURIComponent(settings.domain)}${token ? `&access_token=${encodeURIComponent(token.access_token)}` : ''}`
+    ? `${settings.embed_url}${settings.embed_url.includes('?') ? '&' : '?'}domain=${encodeURIComponent(settings.domain)}`
     : '';
 
   if (loading) {
