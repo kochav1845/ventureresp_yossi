@@ -503,33 +503,33 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
       onClick={onClose}
     >
       <div
-        className="bg-slate-800 border border-slate-700 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-[#efe6d6] border border-[#d8c3a0] rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-6 border-b border-slate-700">
+        <div className="flex items-center justify-between p-6 border-b border-[#d8c3a0]">
           <div>
-            <h2 className="text-2xl font-bold text-white">
+            <h2 className="text-2xl font-bold text-[#4a3b28]">
               Ticket {ticket.ticket_number}
             </h2>
-            <p className="text-slate-400 text-sm mt-1">
+            <p className="text-[#8a7859] text-sm mt-1">
               {ticket.customer_name}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white transition-colors"
+            className="text-[#8a7859] hover:text-[#4a3b28] transition-colors"
           >
             <X className="w-6 h-6" />
           </button>
         </div>
 
-        <div className="flex border-b border-slate-700">
+        <div className="flex border-b border-[#d8c3a0]">
           <button
             onClick={() => setActiveTab('memos')}
             className={`flex-1 px-6 py-3 text-sm font-medium transition-colors ${
               activeTab === 'memos'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                ? 'bg-[#a97f4e] text-white'
+                : 'text-[#8a7859] hover:text-[#4a3b28] hover:bg-[#ece0c9]'
             }`}
           >
             <FileText className="w-4 h-4 inline mr-2" />
@@ -539,8 +539,8 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
             onClick={() => setActiveTab('activity')}
             className={`flex-1 px-6 py-3 text-sm font-medium transition-colors ${
               activeTab === 'activity'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                ? 'bg-[#a97f4e] text-white'
+                : 'text-[#8a7859] hover:text-[#4a3b28] hover:bg-[#ece0c9]'
             }`}
           >
             <FileText className="w-4 h-4 inline mr-2" />
@@ -551,16 +551,16 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
         <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#a97f4e]"></div>
             </div>
           ) : activeTab === 'memos' ? (
             <div className="space-y-4">
-              <div className="bg-slate-900 rounded-lg p-4">
+              <div className="bg-[#faf5ec] border border-[#e7d9bf] rounded-lg p-4">
                 <textarea
                   value={newMemo}
                   onChange={(e) => setNewMemo(e.target.value)}
                   placeholder="Add a text note..."
-                  className="w-full bg-slate-800 text-white rounded-lg px-4 py-3 border border-slate-700 focus:outline-none focus:border-blue-500 resize-none"
+                  className="w-full bg-white text-[#4a3b28] rounded-lg px-4 py-3 border border-[#d8c3a0] focus:outline-none focus:border-[#a97f4e] resize-none"
                   rows={3}
                   disabled={saving}
                 />
@@ -571,16 +571,16 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
                   onDrop={handleDrop}
                   className={`mt-3 border-2 border-dashed rounded-lg p-6 transition-colors ${
                     isDragging
-                      ? 'border-blue-500 bg-blue-500/10'
-                      : 'border-slate-700 bg-slate-800/50'
+                      ? 'border-[#a97f4e] bg-[#a97f4e]/10'
+                      : 'border-[#d8c3a0] bg-[#f3ebdd]'
                   }`}
                 >
                   <div className="text-center">
-                    <FileText className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                    <p className="text-slate-300 text-sm font-medium mb-1">
+                    <FileText className="w-8 h-8 text-[#8a7859] mx-auto mb-2" />
+                    <p className="text-[#5c4a33] text-sm font-medium mb-1">
                       Drag and drop files here
                     </p>
-                    <p className="text-slate-500 text-xs mb-3">
+                    <p className="text-[#9a8a70] text-xs mb-3">
                       Supports documents, images, EML files, and more (max 25MB each)
                     </p>
                     <input
@@ -593,7 +593,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
                     <button
                       onClick={() => documentInputRef.current?.click()}
                       disabled={saving}
-                      className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 text-white rounded-lg text-sm font-medium transition-colors"
+                      className="px-4 py-2 bg-[#8b6f4e] hover:bg-[#75593c] disabled:bg-[#cbb894] text-white rounded-lg text-sm font-medium transition-colors"
                     >
                       Browse Files
                     </button>
@@ -602,22 +602,22 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
 
                 {selectedDocuments.length > 0 && (
                   <div className="mt-3 space-y-2">
-                    <p className="text-slate-400 text-sm font-medium">Attached Documents:</p>
+                    <p className="text-[#8a7859] text-sm font-medium">Attached Documents:</p>
                     {selectedDocuments.map((doc, index) => (
                       <div
                         key={index}
-                        className="flex items-center justify-between bg-slate-800 rounded-lg p-3"
+                        className="flex items-center justify-between bg-[#f3ebdd] rounded-lg p-3"
                       >
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           <span className="text-2xl">{getFileIcon(doc.name)}</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-slate-300 text-sm truncate">{doc.name}</p>
-                            <p className="text-slate-500 text-xs">{formatFileSize(doc.size)}</p>
+                            <p className="text-[#5c4a33] text-sm truncate">{doc.name}</p>
+                            <p className="text-[#9a8a70] text-xs">{formatFileSize(doc.size)}</p>
                           </div>
                         </div>
                         <button
                           onClick={() => removeDocument(index)}
-                          className="text-red-400 hover:text-red-300 transition-colors flex-shrink-0"
+                          className="text-red-500 hover:text-red-600 transition-colors flex-shrink-0"
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -643,15 +643,15 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
                 )}
 
                 {audioBlob && (
-                  <div className="mt-3 bg-slate-800 rounded-lg p-3 flex items-center justify-between">
+                  <div className="mt-3 bg-[#f3ebdd] rounded-lg p-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Mic className="w-4 h-4 text-green-400" />
-                      <span className="text-slate-300 text-sm">Voice note recorded</span>
-                      <span className="text-slate-400 text-sm">({formatDuration(recordingDuration)})</span>
+                      <Mic className="w-4 h-4 text-green-600" />
+                      <span className="text-[#5c4a33] text-sm">Voice note recorded</span>
+                      <span className="text-[#8a7859] text-sm">({formatDuration(recordingDuration)})</span>
                     </div>
                     <button
                       onClick={cancelRecording}
-                      className="text-red-400 hover:text-red-300"
+                      className="text-red-500 hover:text-red-600"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -664,7 +664,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
                       <button
                         onClick={handleSaveMemo}
                         disabled={saving || (!newMemo.trim() && !audioBlob && !selectedImage && selectedDocuments.length === 0)}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-[#8b6f4e] hover:bg-[#75593c] disabled:bg-[#cbb894] disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
                       >
                         <Save className="w-4 h-4" />
                         {saving ? 'Saving...' : 'Save Memo'}
@@ -673,7 +673,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
                       <button
                         onClick={startRecording}
                         disabled={saving || audioBlob !== null}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-[#cbb894] disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
                       >
                         <Mic className="w-4 h-4" />
                         Record Voice
@@ -689,7 +689,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
                       <button
                         onClick={() => imageInputRef.current?.click()}
                         disabled={saving || selectedImage !== null}
-                        className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-[#cbb894] disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
                       >
                         <ImageIcon className="w-4 h-4" />
                         Add Image
@@ -703,7 +703,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
                       </div>
                       <button
                         onClick={stopRecording}
-                        className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-[#8b6f4e] hover:bg-[#75593c] text-white rounded-lg font-medium transition-colors"
                       >
                         <StopCircle className="w-4 h-4" />
                         Stop
@@ -714,7 +714,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
               </div>
 
               {memos.map((memo) => (
-                <div key={memo.id} className="bg-slate-900 rounded-lg p-4">
+                <div key={memo.id} className="bg-[#faf5ec] border border-[#e7d9bf] rounded-lg p-4">
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-start gap-3 flex-1">
                       <div
@@ -725,18 +725,18 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-white font-medium">{memo.user_email}</span>
-                          <span className="text-slate-500 text-sm">{formatDateTimeUtil(memo.created_at)}</span>
+                          <span className="text-[#4a3b28] font-medium">{memo.user_email}</span>
+                          <span className="text-[#9a8a70] text-sm">{formatDateTimeUtil(memo.created_at)}</span>
                         </div>
                         {memo.memo_text && (
-                          <p className="text-slate-300 mt-2 whitespace-pre-wrap">{memo.memo_text}</p>
+                          <p className="text-[#5c4a33] mt-2 whitespace-pre-wrap">{memo.memo_text}</p>
                         )}
                       </div>
                     </div>
                     {memo.created_by_user_id === user?.id && (
                       <button
                         onClick={() => handleDeleteMemo(memo.id, memo.voice_note_url, memo.image_url, memo.document_urls)}
-                        className="text-red-400 hover:text-red-300 transition-colors flex-shrink-0"
+                        className="text-red-500 hover:text-red-600 transition-colors flex-shrink-0"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -744,12 +744,12 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
                   </div>
 
                   {memo.has_voice_note && memo.voice_signed_url && (
-                    <div className="mt-3 bg-slate-800 rounded-lg p-3">
+                    <div className="mt-3 bg-[#f3ebdd] rounded-lg p-3">
                       <div className="flex items-center gap-2 mb-2">
-                        <Mic className="w-4 h-4 text-green-400" />
-                        <span className="text-slate-300 text-sm">Voice Note</span>
+                        <Mic className="w-4 h-4 text-green-600" />
+                        <span className="text-[#5c4a33] text-sm">Voice Note</span>
                         {memo.voice_note_duration && (
-                          <span className="text-slate-400 text-sm">({formatDuration(memo.voice_note_duration)})</span>
+                          <span className="text-[#8a7859] text-sm">({formatDuration(memo.voice_note_duration)})</span>
                         )}
                       </div>
                       <audio
@@ -775,7 +775,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
 
                   {memo.document_signed_urls && memo.document_signed_urls.length > 0 && (
                     <div className="mt-3 space-y-2">
-                      <p className="text-slate-400 text-xs font-medium">Attached Documents:</p>
+                      <p className="text-[#8a7859] text-xs font-medium">Attached Documents:</p>
                       {memo.document_signed_urls.map((url, index) => {
                         const fileName = memo.document_names?.[index] || `Document ${index + 1}`;
                         return (
@@ -784,13 +784,13 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
                             href={url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-2 bg-slate-800 rounded-lg p-3 hover:bg-slate-700 transition-colors group"
+                            className="flex items-center gap-2 bg-[#f3ebdd] rounded-lg p-3 hover:bg-[#ece0c9] transition-colors group"
                           >
                             <span className="text-xl">{getFileIcon(fileName)}</span>
-                            <span className="text-slate-300 text-sm flex-1 truncate group-hover:text-white">
+                            <span className="text-[#5c4a33] text-sm flex-1 truncate group-hover:text-[#4a3b28]">
                               {fileName}
                             </span>
-                            <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:text-blue-400 transform rotate-180" />
+                            <ArrowLeft className="w-4 h-4 text-[#9a8a70] group-hover:text-[#a97f4e] transform rotate-180" />
                           </a>
                         );
                       })}
@@ -800,7 +800,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
               ))}
 
               {memos.length === 0 && (
-                <div className="text-center py-12 text-slate-500">
+                <div className="text-center py-12 text-[#9a8a70]">
                   No memos yet. Add one above to get started.
                 </div>
               )}
@@ -808,7 +808,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
           ) : (
             <div className="space-y-3">
               {activityLogs.map((log) => (
-                <div key={log.id} className="bg-slate-900 rounded-lg p-4">
+                <div key={log.id} className="bg-[#faf5ec] border border-[#e7d9bf] rounded-lg p-4">
                   <div className="flex items-start gap-3">
                     <span className="text-2xl">{getActivityIcon(log.activity_type)}</span>
                     <div className="flex-1">
@@ -821,19 +821,19 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
                             >
                               {log.user_email?.[0]?.toUpperCase()}
                             </div>
-                            <span className="text-white font-medium">{log.user_email}</span>
+                            <span className="text-[#4a3b28] font-medium">{log.user_email}</span>
                           </>
                         )}
-                        <span className="text-slate-500 text-sm">{formatDateTimeUtil(log.created_at)}</span>
+                        <span className="text-[#9a8a70] text-sm">{formatDateTimeUtil(log.created_at)}</span>
                       </div>
-                      <p className="text-slate-300 mt-2">{log.description}</p>
+                      <p className="text-[#5c4a33] mt-2">{log.description}</p>
                     </div>
                   </div>
                 </div>
               ))}
 
               {activityLogs.length === 0 && (
-                <div className="text-center py-12 text-slate-500">
+                <div className="text-center py-12 text-[#9a8a70]">
                   No activity logged yet.
                 </div>
               )}
