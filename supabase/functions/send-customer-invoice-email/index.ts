@@ -46,6 +46,7 @@ interface RequestBody {
   excelBase64?: string;
   sentByUserId?: string;
   department?: string;
+  organizationId?: string;
 }
 
 const formatCurrency = (amount: number) => {
@@ -139,7 +140,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body: RequestBody = await req.json();
-    const { templateId, templateName, template, customerData, pdfBase64, excelBase64, sentByUserId, department } = body;
+    const { templateId, templateName, template, customerData, pdfBase64, excelBase64, sentByUserId, department, organizationId } = body;
 
     if (!template || !customerData || !customerData.customer_email) {
       return new Response(
@@ -151,16 +152,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Checked later — but only when we actually fall back to Venture's own SendGrid.
+    // An org routing through its email system doesn't need a Venture SendGrid key.
     const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
-    if (!SENDGRID_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: 'SendGrid API key not configured' }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -228,6 +222,61 @@ Deno.serve(async (req: Request) => {
         type: 'application/pdf',
         disposition: 'attachment',
       });
+    }
+
+    // ── Route through the org's own email system, if configured ─────────────
+    // When the org has an embedded email system set up (org_email_settings with a
+    // service secret + domain + auth/send URL), send the finished statement out
+    // through THAT system so it comes from the org's domain and lands in its Sent
+    // folder — instead of Venture's own SendGrid. Falls back to SendGrid on error.
+    let orgId = organizationId;
+    if (!orgId && sentByUserId) {
+      const { data: prof } = await supabase.from('user_profiles').select('organization_id').eq('id', sentByUserId).maybeSingle();
+      orgId = prof?.organization_id || undefined;
+    }
+    if (orgId) {
+      const { data: oes } = await supabase.from('org_email_settings').select('*').eq('organization_id', orgId).maybeSingle();
+      const sendUrl = oes?.auth_url ? String(oes.auth_url).replace(/\/[^/]+$/, '/send-email') : null;
+      if (oes?.service_secret && oes?.domain && sendUrl) {
+        try {
+          const svcResp = await fetch(sendUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Service-Secret': oes.service_secret },
+            body: JSON.stringify({
+              from: arFromEmail, fromName: arFromName,
+              to: customerData.customer_email, toName: customerData.customer_name,
+              subject: emailSubject, html: htmlContent, domain: oes.domain,
+              attachments: attachments.map(a => ({ content: a.content, filename: a.filename, type: a.type })),
+            }),
+          });
+          const svcResult = await svcResp.json().catch(() => ({}));
+          const ok = svcResp.ok && svcResult.success;
+          await supabase.from('customer_email_logs').insert({
+            customer_id: customerData.customer_id, customer_name: customerData.customer_name, customer_email: customerData.customer_email,
+            template_id: templateId || null, template_name: templateName || 'Custom Template', subject: emailSubject,
+            sendgrid_message_id: ok ? (svcResult.messageId || null) : null,
+            status: ok ? 'sent' : 'failed', error_message: ok ? null : (svcResult.error || `HTTP ${svcResp.status}`),
+            invoice_count: customerData.invoices?.length || 0, total_balance: customerData.balance || 0,
+            had_pdf_attachment: !!(excelBase64 || pdfBase64), sent_by_user_id: sentByUserId || null,
+          });
+          if (!ok) {
+            return new Response(JSON.stringify({ error: 'Failed to send via email system', details: svcResult.error || `HTTP ${svcResp.status}` }),
+              { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }
+          return new Response(JSON.stringify({ success: true, message: 'Email sent via email system', messageId: svcResult.messageId, routedVia: 'email-system' }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        } catch (e) {
+          console.error('Email-system routing failed, falling back to SendGrid:', e);
+          // fall through to Venture's own SendGrid below
+        }
+      }
+    }
+
+    if (!SENDGRID_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: 'SendGrid API key not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const emailData = {

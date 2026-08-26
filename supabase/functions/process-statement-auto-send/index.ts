@@ -161,6 +161,7 @@ Deno.serve(async (req: Request) => {
                   days_overdue: daysOverdue,
                 },
                 department: "ar",
+                organizationId: orgId,
               }),
             });
             const result = await resp.json().catch(() => ({}));
