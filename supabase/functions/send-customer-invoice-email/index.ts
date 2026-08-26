@@ -243,7 +243,8 @@ Deno.serve(async (req: Request) => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Service-Secret': oes.service_secret },
             body: JSON.stringify({
-              from: arFromEmail, fromName: arFromName,
+              // Send from the org's own domain so its SendGrid domain-auth accepts it.
+              from: oes.domain ? `ar@${oes.domain}` : arFromEmail, fromName: arFromName,
               to: customerData.customer_email, toName: customerData.customer_name,
               subject: emailSubject, html: htmlContent, domain: oes.domain,
               attachments: attachments.map(a => ({ content: a.content, filename: a.filename, type: a.type })),
