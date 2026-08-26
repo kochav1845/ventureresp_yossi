@@ -85,6 +85,7 @@ import InvoiceBreakdown from './components/InvoiceBreakdown';
 import EmailSettings from './components/EmailSettings';
 import TicketDetailPage from './components/TicketDetailPage';
 import CustomerStatements from './components/CustomerStatements';
+import Mailbox from './components/Mailbox';
 import ApiKeyManagement from './components/ApiKeyManagement';
 import CronJobsMonitor from './components/CronJobsMonitor';
 import InvoiceAnalyticsPage from './components/InvoiceAnalyticsPage';
@@ -182,6 +183,7 @@ function OrgAppContent() {
         <Route path="invoice-status-analytics" element={<InvoiceStatusAnalytics />} />
         <Route path="customer-reports" element={<CustomerReportsMonthly />} />
         <Route path="customer-statements" element={<CustomerStatements />} />
+        <Route path="mailbox" element={<Mailbox />} />
         <Route path="customer-report-templates" element={<CustomerReportTemplates />} />
         <Route path="customer-email-tracking" element={<CustomerEmailTracking />} />
         <Route path="system-documentation" element={<SystemDocumentation />} />
