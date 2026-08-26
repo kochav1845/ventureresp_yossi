@@ -1,4 +1,5 @@
-import { CheckSquare, Square, ChevronDown, ChevronUp, Mail, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { CheckSquare, Square, ChevronDown, ChevronUp, Mail, AlertTriangle, ListPlus } from 'lucide-react';
 import type { StatementCustomer } from './types';
 
 interface Props {
@@ -34,9 +35,16 @@ function getAgingLabel(days: number): string {
   return '90+ days';
 }
 
+const INITIAL_INVOICE_COUNT = 5;
+
 export default function CustomerStatementCard({ customer, selected, expanded, loadingInvoices, onToggleSelect, onToggleExpand }: Props) {
+  // Show only the first few invoices when a customer is opened; reveal the rest on demand.
+  const [showAll, setShowAll] = useState(false);
   const allInvoices = customer.invoices.filter(inv => inv.balance !== 0);
   const openInvoices = allInvoices.filter(inv => inv.balance > 0);
+  const sortedInvoices = [...allInvoices].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const visibleInvoices = showAll ? sortedInvoices : sortedInvoices.slice(0, INITIAL_INVOICE_COUNT);
+  const hiddenCount = sortedInvoices.length - visibleInvoices.length;
   const agingBuckets = { current: 0, d30: 0, d60: 0, d90: 0, d90plus: 0 };
   openInvoices.forEach(inv => {
     const d = inv.days_overdue;
@@ -148,8 +156,7 @@ export default function CustomerStatementCard({ customer, selected, expanded, lo
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {allInvoices
-                  .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                {visibleInvoices
                   .map(inv => {
                     const isCredit = inv.balance < 0;
                     return (
@@ -183,6 +190,18 @@ export default function CustomerStatementCard({ customer, selected, expanded, lo
               </tfoot>
             </table>
           </div>
+
+          {sortedInvoices.length > INITIAL_INVOICE_COUNT && (
+            <button
+              onClick={() => setShowAll(v => !v)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-blue-600 hover:text-blue-700 bg-white hover:bg-blue-50 border border-gray-200 rounded-lg transition-colors"
+            >
+              {showAll
+                ? <>Show fewer</>
+                : <><ListPlus className="w-4 h-4" /> View all {sortedInvoices.length} invoices ({hiddenCount} more)</>
+              }
+            </button>
+          )}
           </>
           )}
         </div>
