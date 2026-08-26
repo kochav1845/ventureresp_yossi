@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useOrgNavigation } from '../../hooks/useOrgNavigation';
 import {
   Calendar as CalendarIcon,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
   DollarSign,
@@ -51,6 +52,16 @@ interface PromiseEvent {
   ticket_status: string;
 }
 
+interface DueEvent {
+  ticket_id: string;
+  ticket_number: string;
+  customer_name: string;
+  due_date: string;
+  ticket_status: string;
+  priority?: string;
+  total_balance: number;
+}
+
 interface ReminderEvent {
   id: string;
   reminder_date: string;
@@ -81,6 +92,7 @@ interface DayData {
   promises: PromiseEvent[];
   reminders: ReminderEvent[];
   emails: EmailScheduleEvent[];
+  due: DueEvent[];
   note?: DayNote;
 }
 
@@ -126,10 +138,11 @@ export default function CollectorCalendar() {
 
       const map = new Map<string, DayData>();
       const ensureDay = (key: string) => {
-        if (!map.has(key)) map.set(key, { promises: [], reminders: [], emails: [] });
+        if (!map.has(key)) map.set(key, { promises: [], reminders: [], emails: [], due: [] });
       };
 
       const promises: any[] = result?.promises || [];
+      const dueTickets: any[] = result?.due_dates || [];
       const reminders: any[] = result?.reminders || [];
       const notes: any[] = result?.notes || [];
       const emailSchedules: any[] = result?.email_schedules || [];
@@ -144,6 +157,20 @@ export default function CollectorCalendar() {
           promise_date: ticket.promise_date,
           total_balance: parseFloat(ticket.total_balance) || 0,
           ticket_status: ticket.ticket_status
+        });
+      }
+
+      for (const t of dueTickets) {
+        const dateKey = String(t.due_date).split('T')[0];
+        ensureDay(dateKey);
+        map.get(dateKey)!.due.push({
+          ticket_id: t.ticket_id,
+          ticket_number: t.ticket_number,
+          customer_name: t.customer_name,
+          due_date: t.due_date,
+          ticket_status: t.ticket_status,
+          priority: t.priority,
+          total_balance: parseFloat(t.total_balance) || 0
         });
       }
 
@@ -452,6 +479,8 @@ function MonthlyView({
           const hasEmails = (data?.emails?.length || 0) > 0;
           const hasNote = !!data?.note;
           const totalPromise = data?.promises.reduce((s, p) => s + p.total_balance, 0) || 0;
+          const hasDue = (data?.due?.length || 0) > 0;
+          const openDueCount = (data?.due || []).filter(d => d.ticket_status !== 'closed').length;
 
           return (
             <button
@@ -495,6 +524,12 @@ function MonthlyView({
                     <span>{data!.emails.length}</span>
                   </div>
                 )}
+                {hasDue && (
+                  <div className={`flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium truncate ${openDueCount > 0 ? 'bg-rose-100 text-rose-700' : 'bg-gray-100 text-gray-500'}`}>
+                    <CalendarClock className="w-2.5 h-2.5 flex-shrink-0" />
+                    <span className="truncate">{data!.due.length} due</span>
+                  </div>
+                )}
                 {hasNote && (
                   <div className="flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 rounded text-[10px] text-blue-700">
                     <StickyNote className="w-2.5 h-2.5 flex-shrink-0" />
@@ -534,7 +569,8 @@ function DailyView({
         const hasPromises = (data?.promises.length || 0) > 0;
         const hasReminders = (data?.reminders.length || 0) > 0;
         const hasNote = !!data?.note;
-        const hasAnyEvent = hasPromises || hasReminders || hasNote;
+        const hasDue = (data?.due?.length || 0) > 0;
+        const hasAnyEvent = hasPromises || hasReminders || hasNote || hasDue;
 
         return (
           <button
@@ -579,6 +615,13 @@ function DailyView({
                     }`}>
                       <Bell className="w-3 h-3" />
                       <span className="truncate max-w-[150px]">{r.reminder_message}</span>
+                    </div>
+                  ))}
+                  {hasDue && data!.due.map((d, i) => (
+                    <div key={`due-${i}`} className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs border ${d.ticket_status === 'closed' ? 'bg-gray-50 border-gray-200 text-gray-500' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+                      <CalendarClock className="w-3 h-3" />
+                      <span className="font-medium">{d.customer_name}</span>
+                      <span className="opacity-70">#{d.ticket_number}</span>
                     </div>
                   ))}
                   {hasNote && (
@@ -700,6 +743,7 @@ function DayDetailPanel({
 }) {
   const promises = dayData?.promises || [];
   const reminders = dayData?.reminders || [];
+  const due = dayData?.due || [];
   const totalPromiseAmount = promises.reduce((s, p) => s + p.total_balance, 0);
   const isPast = date < new Date() && !isToday(date);
 
@@ -718,6 +762,51 @@ function DayDetailPanel({
           <X className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Due tickets */}
+      {due.length > 0 && (
+        <div className="mb-4">
+          <div className="flex items-center gap-1.5 mb-2">
+            <CalendarClock className="w-3.5 h-3.5 text-rose-600" />
+            <span className="text-xs font-semibold text-rose-800 uppercase tracking-wide">
+              Due Today ({due.length})
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {due.map((d, i) => {
+              const overdue = isPast && d.ticket_status !== 'closed';
+              return (
+                <button
+                  key={i}
+                  onClick={() => onNavigate(`/ticket/${d.ticket_id}`)}
+                  className={`w-full text-left px-3 py-2 rounded-lg border text-xs transition-colors ${
+                    d.ticket_status === 'closed'
+                      ? 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                      : overdue
+                        ? 'bg-red-50 border-red-200 text-red-800 hover:bg-red-100'
+                        : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{d.customer_name}</span>
+                    {d.total_balance > 0 && (
+                      <span className="font-bold">${d.total_balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between mt-0.5 text-[10px] opacity-75">
+                    <span>Ticket #{d.ticket_number}{d.priority ? ` · ${d.priority}` : ''}</span>
+                    {overdue && (
+                      <span className="flex items-center gap-0.5 text-red-600 font-medium">
+                        <AlertCircle className="w-2.5 h-2.5" /> Overdue
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Promises */}
       {promises.length > 0 && (
@@ -896,7 +985,7 @@ function DayDetailPanel({
       </div>
 
       {/* Empty state */}
-      {promises.length === 0 && reminders.length === 0 && (dayData?.emails?.length || 0) === 0 && !dayData?.note && !editingNote && (
+      {promises.length === 0 && reminders.length === 0 && due.length === 0 && (dayData?.emails?.length || 0) === 0 && !dayData?.note && !editingNote && (
         <div className="text-center py-4 text-gray-400 text-xs mt-2">
           No events scheduled for this day
         </div>
