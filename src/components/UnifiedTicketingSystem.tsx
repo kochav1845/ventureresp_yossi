@@ -30,6 +30,34 @@ import TicketFilterSidebar, { TicketAdvancedFilters, emptyFilters } from './MyAs
 import CollectorCalendar from './MyAssignments/CollectorCalendar';
 import { format } from 'date-fns';
 import { isDatePast, formatDate as formatDateUtil } from '../lib/dateUtils';
+import PageHelp, { HelpSection } from './PageHelp';
+
+const TICKETS_HELP: HelpSection[] = [
+  {
+    heading: 'What this page does',
+    items: [
+      { label: 'Tickets & assignments', body: 'Work your collection tickets: see what’s assigned to you, add notes/memos, record promises and reminders, and email customers.' },
+    ],
+  },
+  {
+    heading: 'Tabs',
+    items: [
+      { label: 'Create', body: 'Build a new ticket from a customer’s open invoices.' },
+      { label: 'Tickets', body: 'Your list of tickets — the number is how many match the current filters.' },
+      { label: 'Calendar', body: 'A month view of your promises (green), ticket due dates (rose/red when overdue), reminders (amber), and scheduled emails. Click an item to open its ticket.' },
+    ],
+  },
+  {
+    heading: 'On a ticket',
+    items: [
+      { label: 'Priority & status', body: 'Colored labels show urgency and where the ticket stands (open, promised, disputed, closed…).' },
+      { label: 'Set Reminder', body: 'Create a dated follow-up for yourself — it shows on your Calendar that day (and can email you). Click it on the calendar to jump back to the ticket.' },
+      { label: 'Promise date', body: 'Record a customer’s promise-to-pay date; shows as a green “Promise” on the calendar.' },
+      { label: 'Memos & Notes', body: 'Attach text/voice notes, images or documents; “Activity Log” shows the ticket’s history.' },
+      { label: 'Cust Bal / Last Pmt / Oldest Inv', body: 'Quick stats: current balance, last payment, and the oldest open invoice.' },
+    ],
+  },
+];
 
 interface UnifiedTicketingSystemProps {
   showOnlyAssigned?: boolean;
@@ -1467,6 +1495,7 @@ export default function UnifiedTicketingSystem({
               </button>
             )}
             <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+            <PageHelp title={title} sections={TICKETS_HELP} />
           </div>
           {!showOnlyAssigned && (
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1" data-tour="ticket-tabs">

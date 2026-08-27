@@ -4,7 +4,43 @@ import { useCustomerStatements } from './useCustomerStatements';
 import CustomerStatementCard from './CustomerStatementCard';
 import StatementActions from './StatementActions';
 import AutoStatementsSidebar from './AutoStatementsSidebar';
+import PageHelp, { HelpSection } from '../PageHelp';
 import type { SortField, StatementPeriod } from './types';
+
+const STATEMENTS_HELP: HelpSection[] = [
+  {
+    heading: 'What this page does',
+    items: [
+      { label: 'Customer Statements', body: 'Pick customers and email (or download) their open-balance statement. Emails go out through your email system and appear in Sent.' },
+    ],
+  },
+  {
+    heading: 'Choosing who to send to',
+    items: [
+      { label: 'Search / Min Balance / Sort', body: 'Narrow by name, ID or email, a minimum balance, and sort order.' },
+      { label: 'Invoiced in (period)', body: 'Attach each customer’s invoice activity for a window (last month, this month, last 30/90 days). Each shows an “Invoiced $X · N” chip.' },
+      { label: 'Only customers invoiced in period', body: 'Hide anyone who wasn’t billed in that window.' },
+      { label: 'Min invoiced', body: 'Keep only customers invoiced at least this much in the period.' },
+      { label: 'Select all / checkboxes', body: 'Tick the customers to send to; the selected count shows on the right.' },
+    ],
+  },
+  {
+    heading: 'A customer card (expanded)',
+    items: [
+      { label: 'Aging buckets', body: 'Current / 1–30 / 31–60 / 61–90 / 90+ totals of their open balance.' },
+      { label: 'First 5 invoices + “View all”', body: 'Shows the first 5 invoices; “View all” reveals the rest.' },
+      { label: '“No email” flag', body: 'Amber warning that the customer has no email on file and can’t be emailed.' },
+    ],
+  },
+  {
+    heading: 'Sending',
+    items: [
+      { label: 'Email Statements', body: 'Emails the selected customers their statement.' },
+      { label: 'Automatic (⚡)', body: 'Schedule statements to send themselves — everyone on a chosen day, or specific customers on their own day, with exclusions. Off until you switch it on.' },
+      { label: 'Test Customers toggle', body: 'Switch to test customers to safely verify the workflow before sending to real ones.' },
+    ],
+  },
+];
 
 const fmtCurrency = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
@@ -53,6 +89,7 @@ export default function CustomerStatements() {
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          <PageHelp title="Statements" intro="Select customers and send them their account statement. Here's what each control means:" sections={STATEMENTS_HELP} />
           <button
             onClick={() => setShowAuto(true)}
             className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors"

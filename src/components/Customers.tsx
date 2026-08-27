@@ -5,6 +5,7 @@ import CustomerDetailView from './CustomerDetailView';
 import { ArrowLeft, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket, ChevronDown, Zap, SlidersHorizontal, BarChart3, Plus, Settings, Check } from 'lucide-react';
 import { usePageCache } from '../contexts/PageCacheContext';
 import CustomerFiles from './CustomerFiles';
+import PageHelp, { HelpSection } from './PageHelp';
 import * as XLSX from 'xlsx';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, Cell, PieChart, Pie } from 'recharts';
 
@@ -133,6 +134,50 @@ function OverdueDatePicker({ onPick, title }: { onPick: (days: number) => void; 
     </>
   );
 }
+
+const CUSTOMERS_HELP: HelpSection[] = [
+  {
+    heading: 'The colored dot next to each customer',
+    items: [
+      { swatch: '#ef4444', label: 'Red dot', body: 'The customer has at least one “red” invoice — overdue past its red threshold (severely late). Work these first.' },
+      { swatch: '#f59e0b', label: 'Yellow dot', body: 'Their worst invoice is “yellow” — moderately overdue, not yet red.' },
+      { swatch: '#10b981', label: 'Green dot', body: 'All open invoices are “green” — current or only slightly aged.' },
+      { swatch: '#d1d5db', label: 'Gray dot', body: 'No open invoices with a balance.' },
+      { swatch: '#fca5a5', label: 'Whole row shaded red', body: 'The customer’s worst invoice is at/past their red-threshold days — a flag for the most overdue accounts.' },
+    ],
+  },
+  {
+    heading: 'Columns',
+    items: [
+      { label: 'Customer (name + ID)', body: 'Name and account ID. Click the name to open the customer’s full detail in a new tab.' },
+      { label: 'Invoices', body: 'Number of open invoices. Under an invoice-level filter it shows “matched / total”.' },
+      { label: 'Balance', body: 'What they owe. Credit Memos ON = net (credit memos subtracted); OFF = gross. Under a filter it shows “X of Y”.' },
+      { label: 'Overdue', body: 'Most days any open invoice is overdue — counted from the invoice date by default (change in Filters). Red >90, orange >60, amber >30.' },
+      { label: 'Last Payment', body: 'Date + amount of their most recent payment. Turns amber/red after 60/90+ days with no payment.' },
+      { label: 'Resp.', body: '“Responded this month.” Tick it to mark whether the customer answered collection outreach this month.' },
+      { label: 'Pay', body: 'Eye toggle: include/exclude this customer from Payment Analytics. Green eye = included; red crossed-eye = excluded.' },
+    ],
+  },
+  {
+    heading: 'Buttons & actions on a row',
+    items: [
+      { label: '+ Ticket / N Tickets', body: 'Open the customer’s collection tickets or create one (opens in a new tab). A red badge means open tickets.' },
+      { label: 'Expand arrow (›)', body: 'Drops down the customer’s open invoices inline.' },
+      { label: 'Postpone chip / ▶', body: 'Shown when the customer is postponed until a date; click to remove the postponement.' },
+      { label: 'Clock / Files / Edit / Delete', body: 'View upcoming scheduled emails, view attached files, edit name & email, or delete the customer.' },
+    ],
+  },
+  {
+    heading: 'Top-of-page controls',
+    items: [
+      { label: 'Quick filters (⚡ bar)', body: 'One-click saved presets. Click to apply (highlighted when active), click again to clear. Use ⚙ to build your own — balances, invoices, days overdue, and specific customers to include/exclude.' },
+      { label: 'Credit Memos toggle', body: 'ON = balances are net (each customer’s credit memos subtracted = the real amount owed). OFF = gross, ignoring credit memos.' },
+      { label: 'Filters', body: 'Full filter drawer: min/max balance, invoice count/amount, days overdue (with a 📅 date picker), overdue basis, sort, and include/exclude customers.' },
+      { label: 'Statistics', body: 'A drawer of charts — balance distribution, aging, top customers, and the invoice color mix.' },
+      { label: 'Export / Refresh', body: 'Download the current (filtered) list to Excel, or reload the data.' },
+    ],
+  },
+];
 
 type CustomersProps = {
   onBack?: () => void;
@@ -1122,6 +1167,7 @@ export default function Customers({ onBack }: CustomersProps) {
               className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-md text-xs font-medium">Search</button>
           </div>
           <div className="flex-1" />
+          <PageHelp title="Customers" intro="Every customer with their balance and status, so you can prioritise collections, filter/segment them, and act. Here's what each part means:" sections={CUSTOMERS_HELP} />
           {/* Credit-memo toggle. ON (default) = include: each customer's credit memos
               are subtracted so Balance shows the real net amount owed. OFF = gross. */}
           <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white flex-shrink-0"
