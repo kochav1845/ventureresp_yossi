@@ -1118,8 +1118,6 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
                 <RouteRow path="/customer-statements" component="CustomerStatements" desc="Statement distribution" />
                 <RouteRow path="/customer-reports" component="CustomerReportsMonthly" desc="Batch statement generation" />
                 <RouteRow path="/customer-report-templates" component="CustomerReportTemplates" desc="Statement template management" />
-                <RouteRow path="/customer-email-tracking" component="CustomerEmailTracking" desc="Per-customer email history" />
-                <RouteRow path="/assignments" component="CustomerAssignments" desc="Email campaign assignments" />
                 <RouteRow path="/my-assignments" component="MyAssignments" desc="Collector's assigned tickets" />
                 <RouteRow path="/collection-ticketing" component="CollectionTicketing" desc="Create/manage tickets" />
                 <RouteRow path="/ticket/:ticketId" component="TicketDetailPage" desc="Individual ticket detail" />
@@ -1128,11 +1126,8 @@ export default function SystemDocumentation({ onBack }: SystemDocumentationProps
                 <RouteRow path="/payment-analytics" component="PaymentAnalytics" desc="Payment detail analytics" />
                 <RouteRow path="/payment-breakdown" component="PaymentBreakdown" desc="Month-by-month payment comparison" />
                 <RouteRow path="/reminders" component="RemindersPortal" desc="Full reminder management" />
-                <RouteRow path="/inbox" component="InboxDashboard" desc="Inbound email inbox" />
-                <RouteRow path="/formulas" component="EmailFormulas" desc="Email schedule formulas" />
-                <RouteRow path="/templates" component="EmailTemplates" desc="Email templates" />
+                <RouteRow path="/inbox" component="Mailbox" desc="Embedded webmail inbox" />
                 <RouteRow path="/email-settings" component="EmailSettings" desc="Email configuration" />
-                <RouteRow path="/email-analytics" component="EmailAnalytics" desc="Email sending metrics" />
                 <RouteRow path="/collector-performance" component="CollectorHub" desc="Collector performance dashboard" />
                 <RouteRow path="/collector-control-panel" component="CollectorControlPanel" desc="Collector management" />
               </tbody>
