@@ -8,7 +8,6 @@ import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl, getAcumaticaCustomerUrl } from '../lib/acumaticaLinks';
 import InvoiceFilterPanel from './InvoiceFilterPanel';
 import CustomerTimelineChart from './CustomerTimelineChart';
-import CustomerMonthlySheet from './CustomerMonthlySheet';
 import CustomerAIChat from './CustomerAIChat';
 
 interface CustomerDetailViewProps {
@@ -137,7 +136,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [loadingTickets, setLoadingTickets] = useState(() => !cd);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [activeTab, setActiveTab] = useState<'open-invoices' | 'balanced-invoices' | 'paid-invoices' | 'payments' | 'email-tracking'>(() => cd?.activeTab ?? 'open-invoices');
+  const [activeTab, setActiveTab] = useState<'open-invoices' | 'balanced-invoices' | 'paid-invoices' | 'payments'>(() => cd?.activeTab ?? 'open-invoices');
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('general');
   const [savingNote, setSavingNote] = useState(false);
@@ -1073,7 +1072,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                 { key: 'balanced-invoices', label: 'Balanced', count: invoiceCounts.balanced, color: 'amber' },
                 { key: 'paid-invoices', label: 'Paid', count: invoiceCounts.paid, color: 'green' },
                 { key: 'payments', label: 'Payments', count: paymentCount, color: 'blue' },
-                { key: 'email-tracking', label: 'Emails', count: null, color: 'teal' },
               ].map(tab => (
                 <button
                   key={tab.key}
@@ -1440,13 +1438,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               </div>
             )}
 
-            {activeTab === 'email-tracking' && customer && (
-              <CustomerMonthlySheet
-                customerId={customer.customer_id}
-                customerName={customer.customer_name}
-                customerEmail={customer.email_address || ''}
-              />
-            )}
           </div>
         </div>
 

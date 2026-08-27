@@ -198,12 +198,11 @@ export default function Layout() {
     },
   ];
 
+  // Starting the email system fresh — only the new embedded Inbox is exposed. The
+  // old formula/template/assignment/tracking screens are still in code (reachable by
+  // direct URL) but removed from the nav.
   const emailSystemItems = !isComponentLocked(LOCKABLE_COMPONENTS.EMAIL_SYSTEM) ? [
     { id: 'inbox', name: 'Inbox', icon: Inbox },
-    { id: 'assignments', name: 'Assignments', icon: LinkIcon },
-    { id: 'formulas', name: 'Formulas', icon: Calendar },
-    { id: 'templates', name: 'Templates', icon: Mail },
-    { id: 'customer-email-tracking', name: 'Email Tracking', icon: MailCheck },
   ] : [];
 
   const adminDashboardItems = !settingsLocked ? [
@@ -221,7 +220,6 @@ export default function Layout() {
       { id: 'payment-breakdown', name: 'Payment Breakdown', icon: CreditCard },
       { id: 'voided-payment-analysis', name: 'Voided Payment Analysis', icon: Ban },
     ] : []),
-    { id: 'email-analytics', name: 'Email Analytics', icon: MailCheck },
   ] : [];
 
   const adminSettingsItems = !settingsLocked ? [
