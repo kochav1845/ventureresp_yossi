@@ -1285,9 +1285,6 @@ export default function Customers({ onBack }: CustomersProps) {
                       <div className="flex items-center justify-end gap-1.5">Last Payment</div>
                     </th>
                     <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Resp.</th>
-                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider" title="Exclude from Payment Analytics">
-                      <div className="flex items-center justify-center gap-1"><EyeOff size={12} /><span>Pay</span></div>
-                    </th>
                     <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
@@ -1408,16 +1405,6 @@ export default function Customers({ onBack }: CustomersProps) {
                           </div>
                         </td>
                         <td className="py-2.5 px-4">
-                          <div className="flex justify-center">
-                            <button onClick={() => togglePaymentAnalyticsExclusion(customer.customer_id || customer.id, customer.exclude_from_payment_analytics || false)}
-                              disabled={updating === customer.customer_id || updating === customer.id}
-                              className="p-0.5 rounded transition-colors hover:bg-gray-100"
-                              title={customer.exclude_from_payment_analytics ? "Excluded -- click to include" : "Included -- click to exclude"}>
-                              {customer.exclude_from_payment_analytics ? <EyeOff className="text-red-500" size={16} /> : <Eye className="text-emerald-500" size={16} />}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-4">
                           <div className="flex justify-center gap-1">
                             {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
                               <button onClick={() => handleUnpostpone(customer.id)} disabled={updating === customer.id}
@@ -1425,10 +1412,6 @@ export default function Customers({ onBack }: CustomersProps) {
                                 <Play size={14} />
                               </button>
                             )}
-                            <button onClick={() => { setViewingSchedule({ id: customer.id, name: customer.name }); loadScheduledEmails(customer.id); }}
-                              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="View Schedule">
-                              <Clock size={14} />
-                            </button>
                             <button onClick={() => setViewingFiles({ id: customer.id, name: customer.name })}
                               className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="View Files">
                               <FileText size={14} />
@@ -1446,7 +1429,7 @@ export default function Customers({ onBack }: CustomersProps) {
                       </tr>
                       {isExpanded && (
                         <tr>
-                          <td colSpan={8} className="bg-gray-50 px-6 py-3 border-b border-gray-200">
+                          <td colSpan={7} className="bg-gray-50 px-6 py-3 border-b border-gray-200">
                             {loadingExpanded === cidKey ? (
                               <div className="text-sm text-gray-500 py-2">Loading invoices...</div>
                             ) : (() => {
