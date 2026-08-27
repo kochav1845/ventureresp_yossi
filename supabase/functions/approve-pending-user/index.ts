@@ -71,6 +71,23 @@ Deno.serve(async (req: Request) => {
 
     console.log('Found pending user:', pendingUser.email);
 
+    // New flow: the account was already created at signup with the user's OWN
+    // password (a profile row already exists for this email). Just approve it —
+    // no re-creation, no throwaway temporary password.
+    const { data: existingProfile } = await supabaseAdmin
+      .from('user_profiles').select('id').eq('email', pendingUser.email).maybeSingle();
+    if (existingProfile) {
+      await supabaseAdmin
+        .from('pending_users')
+        .update({ status: 'approved', reviewed_at: new Date().toISOString() })
+        .eq('id', pending_user_id);
+      return new Response(
+        JSON.stringify({ success: true, user_id: existingProfile.id, already_existed: true }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ── Legacy path: no account yet → create one with a temporary password. ──
     // Generate a secure temporary password
     const generatePassword = () => {
       const length = 16;

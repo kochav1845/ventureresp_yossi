@@ -188,40 +188,16 @@ export default function SignIn() {
             }
           }
         } else {
-          const { data: existingPending } = await supabase
-            .from('pending_users')
-            .select('*')
-            .eq('email', email)
-            .maybeSingle();
-
-          if (existingPending) {
-            setError('An account request with this email already exists. Please check your status or contact an administrator.');
-            setLoading(false);
-            return;
-          }
-
-          // Look up org id from slug
-          let orgId: string | null = null;
-          if (orgSlug) {
-            const { data: orgData } = await supabase
-              .from('organizations')
-              .select('id')
-              .eq('slug', orgSlug)
-              .maybeSingle();
-            orgId = orgData?.id || null;
-          }
-
-          const { error: insertError } = await supabase
-            .from('pending_users')
-            .insert({
-              full_name: fullName,
-              email: email,
-              status: 'pending',
-              organization_id: orgId
-            });
-
-          if (insertError) {
-            setError(insertError.message || 'Error creating account request');
+          // Create the account with the password the user chose (server-side, via
+          // submit-signup) and file the pending request. Access stays gated until an
+          // admin approves; approval then unlocks THIS password (no temp password).
+          const { data: fnData, error: fnErr } = await supabase.functions.invoke('submit-signup', {
+            body: { email, password, full_name: fullName, org_slug: orgSlug },
+          });
+          if (fnErr) {
+            setError(fnErr.message || 'Error creating account request');
+          } else if (fnData && fnData.success === false) {
+            setError(fnData.error || 'Error creating account request');
           } else {
             setAccountStatus('pending');
           }
