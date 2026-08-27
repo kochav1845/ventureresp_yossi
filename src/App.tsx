@@ -159,7 +159,10 @@ function OrgAppContent() {
 
       <Route path="/" element={<Layout />}>
         <Route index element={<Navigate to={defaultRoute} replace />} />
-        <Route path="inbox" element={<InboxDashboard />} />
+        {/* The Inbox IS the embedded email now (unified). The old built-in
+            InboxDashboard stays reachable at /legacy-inbox if ever needed. */}
+        <Route path="inbox" element={<Mailbox />} />
+        <Route path="legacy-inbox" element={<InboxDashboard />} />
         <Route path="formulas" element={<EmailFormulas />} />
         <Route path="templates" element={<EmailTemplates />} />
         <Route path="customers" element={<Customers />} />

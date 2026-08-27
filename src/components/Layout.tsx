@@ -200,7 +200,6 @@ export default function Layout() {
 
   const emailSystemItems = !isComponentLocked(LOCKABLE_COMPONENTS.EMAIL_SYSTEM) ? [
     { id: 'inbox', name: 'Inbox', icon: Inbox },
-    { id: 'mailbox', name: 'Mailbox', icon: Mail },
     { id: 'assignments', name: 'Assignments', icon: LinkIcon },
     { id: 'formulas', name: 'Formulas', icon: Calendar },
     { id: 'templates', name: 'Templates', icon: Mail },
