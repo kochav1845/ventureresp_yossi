@@ -67,6 +67,7 @@ interface ReminderEvent {
   reminder_date: string;
   reminder_message: string;
   invoice_reference?: string;
+  ticket_id?: string;
   ticket_number?: string;
   customer_name?: string;
   is_triggered: boolean;
@@ -181,7 +182,11 @@ export default function CollectorCalendar() {
           id: reminder.id,
           reminder_date: reminder.reminder_date,
           reminder_message: reminder.reminder_message || '',
-          is_triggered: reminder.is_triggered
+          is_triggered: reminder.is_triggered,
+          ticket_id: reminder.ticket_id || undefined,
+          ticket_number: reminder.ticket_number || undefined,
+          customer_name: reminder.customer_name || undefined,
+          invoice_reference: reminder.invoice_reference || undefined,
         });
       }
 
@@ -861,26 +866,37 @@ function DayDetailPanel({
             </span>
           </div>
           <div className="space-y-1.5">
-            {reminders.map((r, i) => (
-              <div
-                key={i}
-                className={`px-3 py-2 rounded-lg border text-xs ${
-                  r.is_triggered
-                    ? 'bg-gray-50 border-gray-200 text-gray-500 line-through'
-                    : 'bg-amber-50 border-amber-200 text-amber-800'
-                }`}
-              >
-                <div className="flex items-center gap-1.5">
-                  <Clock className="w-3 h-3 flex-shrink-0" />
-                  <span>{r.reminder_message}</span>
-                </div>
-                {r.reminder_date.includes('T') && (
-                  <div className="text-[10px] mt-0.5 opacity-75 ml-4.5">
-                    {format(parseISO(r.reminder_date), 'h:mm a')}
+            {reminders.map((r, i) => {
+              const clickable = !!r.ticket_id;
+              const cls = `w-full text-left px-3 py-2 rounded-lg border text-xs transition-colors ${
+                r.is_triggered
+                  ? 'bg-gray-50 border-gray-200 text-gray-500 line-through'
+                  : 'bg-amber-50 border-amber-200 text-amber-800'
+              } ${clickable ? 'hover:bg-amber-100 cursor-pointer' : ''}`;
+              const inner = (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-3 h-3 flex-shrink-0" />
+                    <span className="font-medium">{r.reminder_message}</span>
                   </div>
-                )}
-              </div>
-            ))}
+                  {(r.customer_name || r.ticket_number) && (
+                    <div className="text-[10px] mt-0.5 opacity-80 ml-[18px]">
+                      {r.customer_name}{r.ticket_number ? ` · #${r.ticket_number}` : ''}
+                    </div>
+                  )}
+                  {r.reminder_date.includes('T') && (
+                    <div className="text-[10px] mt-0.5 opacity-75 ml-[18px]">
+                      {format(parseISO(r.reminder_date), 'h:mm a')}
+                    </div>
+                  )}
+                </>
+              );
+              return clickable ? (
+                <button key={i} onClick={() => onNavigate(`/ticket/${r.ticket_id}`)} className={cls}>{inner}</button>
+              ) : (
+                <div key={i} className={cls}>{inner}</div>
+              );
+            })}
           </div>
         </div>
       )}
