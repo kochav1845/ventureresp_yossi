@@ -1285,7 +1285,6 @@ export default function Customers({ onBack }: CustomersProps) {
                       <div className="flex items-center justify-end gap-1.5">Last Payment</div>
                     </th>
                     <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Resp.</th>
-                    <th className="text-center py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1404,32 +1403,10 @@ export default function Customers({ onBack }: CustomersProps) {
                             </button>
                           </div>
                         </td>
-                        <td className="py-2.5 px-4">
-                          <div className="flex justify-center gap-1">
-                            {customer.postpone_until && new Date(customer.postpone_until) > new Date() && (
-                              <button onClick={() => handleUnpostpone(customer.id)} disabled={updating === customer.id}
-                                className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors" title="Remove Postponement">
-                                <Play size={14} />
-                              </button>
-                            )}
-                            <button onClick={() => setViewingFiles({ id: customer.id, name: customer.name })}
-                              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="View Files">
-                              <FileText size={14} />
-                            </button>
-                            <button onClick={() => handleEdit(customer)}
-                              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors" title="Edit">
-                              <Edit2 size={14} />
-                            </button>
-                            <button onClick={() => handleDelete(customer.id)}
-                              className="p-1.5 bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 rounded-lg transition-colors" title="Delete">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
                       </tr>
                       {isExpanded && (
                         <tr>
-                          <td colSpan={7} className="bg-gray-50 px-6 py-3 border-b border-gray-200">
+                          <td colSpan={6} className="bg-gray-50 px-6 py-3 border-b border-gray-200">
                             {loadingExpanded === cidKey ? (
                               <div className="text-sm text-gray-500 py-2">Loading invoices...</div>
                             ) : (() => {
