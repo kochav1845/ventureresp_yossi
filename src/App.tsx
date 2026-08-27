@@ -6,12 +6,8 @@ import { OrgProvider, useOrg } from './contexts/OrgContext';
 import SignIn from './components/SignIn';
 import ResetPassword from './components/ResetPassword';
 import Layout from './components/Layout';
-import EmailFormulas from './components/EmailFormulas';
-import EmailTemplates from './components/EmailTemplates';
 import Customers from './components/Customers';
-import CustomerAssignments from './components/CustomerAssignments';
 import CronMonitor from './components/CronMonitor';
-import InboxDashboard from './components/InboxDashboard';
 import SchedulerLogs from './components/SchedulerLogs';
 import AcumaticaInvoiceTest from './components/AcumaticaInvoiceTest';
 import AcumaticaCustomers from './components/AcumaticaCustomers';
@@ -21,7 +17,6 @@ import InvoiceStatusAnalytics from './components/InvoiceStatusAnalytics';
 import PaymentAnalytics from './components/PaymentAnalytics';
 import CustomerReportsMonthly from './components/CustomerReportsMonthly';
 import CustomerReportTemplates from './components/CustomerReportTemplates';
-import CustomerEmailTracking from './components/CustomerEmailTracking';
 import SystemDocumentation from './components/SystemDocumentation';
 import WebhookConfiguration from './components/WebhookConfiguration';
 import SyncStatusDashboard from './components/SyncStatusDashboard';
@@ -53,7 +48,6 @@ import CollectorHub from './components/CollectorHub';
 import RevenueAnalytics from './components/RevenueAnalytics';
 import CustomerAnalyticsPage from './components/CustomerAnalyticsPage';
 import UserActivityAnalytics from './components/UserActivityAnalytics';
-import EmailAnalytics from './components/EmailAnalytics';
 import CollectorControlPanel from './components/CollectorControlPanel';
 import UserApprovalPanel from './components/UserApprovalPanel';
 import PaymentApplicationDiagnostic from './components/PaymentApplicationDiagnostic';
@@ -159,14 +153,9 @@ function OrgAppContent() {
 
       <Route path="/" element={<Layout />}>
         <Route index element={<Navigate to={defaultRoute} replace />} />
-        {/* The Inbox IS the embedded email now (unified). The old built-in
-            InboxDashboard stays reachable at /legacy-inbox if ever needed. */}
+        {/* The Inbox is the embedded webmail (old email system removed). */}
         <Route path="inbox" element={<Mailbox />} />
-        <Route path="legacy-inbox" element={<InboxDashboard />} />
-        <Route path="formulas" element={<EmailFormulas />} />
-        <Route path="templates" element={<EmailTemplates />} />
         <Route path="customers" element={<Customers />} />
-        <Route path="assignments" element={<CustomerAssignments />} />
         <Route path="schedule" element={<CronMonitor />} />
         <Route path="logs" element={<SchedulerLogs />} />
         <Route path="acumatica" element={<AcumaticaInvoiceTest />} />
@@ -188,7 +177,6 @@ function OrgAppContent() {
         <Route path="customer-statements" element={<CustomerStatements />} />
         <Route path="mailbox" element={<Mailbox />} />
         <Route path="customer-report-templates" element={<CustomerReportTemplates />} />
-        <Route path="customer-email-tracking" element={<CustomerEmailTracking />} />
         <Route path="system-documentation" element={<SystemDocumentation />} />
         <Route path="acumatica-files-test" element={<AcumaticaFilesTest />} />
         <Route path="reminders" element={<RemindersPortal />} />
@@ -217,7 +205,6 @@ function OrgAppContent() {
         <Route path="revenue-analytics" element={<RevenueAnalytics />} />
         <Route path="customer-analytics" element={<CustomerAnalyticsPage />} />
         <Route path="user-activity" element={<UserActivityAnalytics />} />
-        <Route path="email-analytics" element={<EmailAnalytics />} />
         <Route path="collector-control-panel" element={<CollectorControlPanel />} />
         <Route path="collector-monitoring" element={<CollectorHub onBack={() => window.history.back()} />} />
         <Route path="user-approval" element={<RequireAdmin><UserApprovalPanel /></RequireAdmin>} />
