@@ -240,6 +240,9 @@ export default function Customers({ onBack }: CustomersProps) {
   const [customersWithOpenTickets, setCustomersWithOpenTickets] = useState<Map<string, number>>(new Map());
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(() => cl?.expandedCustomerId ?? null);
   const [expandedInvoices, setExpandedInvoices] = useState<Map<string, any[]>>(() => cl?.expandedInvoices ?? new Map());
+  // Inline invoice dropdown: show open-only vs all, and cap the visible rows at 7.
+  const [invView, setInvView] = useState<'open' | 'all'>('open');
+  const [showAllInvRows, setShowAllInvRows] = useState(false);
 
   // Scroll position of the list — preserved across going into a customer and back.
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -454,6 +457,7 @@ export default function Customers({ onBack }: CustomersProps) {
     const cid = customer.customer_id || customer.id;
     if (expandedCustomerId === cid) { setExpandedCustomerId(null); return; }
     setExpandedCustomerId(cid);
+    setShowAllInvRows(false); // each newly-opened customer starts collapsed at 7 rows
     if (!expandedInvoices.has(cid)) {
       setLoadingExpanded(cid);
       try {
@@ -1445,41 +1449,71 @@ export default function Customers({ onBack }: CustomersProps) {
                           <td colSpan={8} className="bg-gray-50 px-6 py-3 border-b border-gray-200">
                             {loadingExpanded === cidKey ? (
                               <div className="text-sm text-gray-500 py-2">Loading invoices...</div>
-                            ) : (expandedInvoices.get(cidKey)?.length ? (
-                              <div className="overflow-x-auto">
-                                <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                  {expandedInvoices.get(cidKey)!.length} invoice(s)
+                            ) : (() => {
+                              const all = expandedInvoices.get(cidKey) || [];
+                              if (all.length === 0) return <div className="text-sm text-gray-500 py-2">No invoices found for this customer.</div>;
+                              const openList = all.filter((i: any) => Number(i.balance) !== 0);
+                              const list = invView === 'open' ? openList : all;
+                              const visible = showAllInvRows ? list : list.slice(0, 7);
+                              return (
+                                <div className="overflow-x-auto">
+                                  <div className="flex items-center justify-between mb-1.5 gap-2">
+                                    <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                                      {list.length} {invView === 'open' ? 'open ' : ''}invoice{list.length === 1 ? '' : 's'}
+                                      {invView === 'open' && all.length !== openList.length && <span className="text-gray-400"> · {all.length} total</span>}
+                                    </div>
+                                    <div className="flex rounded-md border border-gray-200 overflow-hidden text-[11px] flex-shrink-0">
+                                      {(['open', 'all'] as const).map(v => (
+                                        <button key={v} onClick={() => { setInvView(v); setShowAllInvRows(false); }}
+                                          className={`px-2.5 py-1 font-medium transition-colors ${invView === v ? 'bg-slate-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>
+                                          {v === 'open' ? 'Open only' : 'All'}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  {list.length === 0 ? (
+                                    <div className="text-xs text-gray-400 py-2">No open invoices — switch to “All” to see paid/closed ones.</div>
+                                  ) : (
+                                    <>
+                                      <div className={showAllInvRows ? 'max-h-72 overflow-y-auto rounded border border-gray-100' : ''}>
+                                        <table className="w-full text-xs">
+                                          <thead className="sticky top-0 bg-gray-100">
+                                            <tr className="text-gray-500 text-left">
+                                              <th className="py-1 px-2">Invoice #</th>
+                                              <th className="py-1 px-2">Type</th>
+                                              <th className="py-1 px-2">Status</th>
+                                              <th className="py-1 px-2">Date</th>
+                                              <th className="py-1 px-2">Due</th>
+                                              <th className="py-1 px-2 text-right">Amount</th>
+                                              <th className="py-1 px-2 text-right">Balance</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {visible.map((inv: any, idx: number) => (
+                                              <tr key={`${inv.reference_number}-${inv.type}-${idx}`} className="border-t border-gray-100">
+                                                <td className="py-1 px-2 font-medium text-gray-800">{inv.reference_number}</td>
+                                                <td className="py-1 px-2 text-gray-600">{inv.type}</td>
+                                                <td className="py-1 px-2 text-gray-600">{inv.status}</td>
+                                                <td className="py-1 px-2 text-gray-600">{inv.date ? String(inv.date).split('T')[0] : ''}</td>
+                                                <td className="py-1 px-2 text-gray-600">{inv.due_date ? String(inv.due_date).split('T')[0] : ''}</td>
+                                                <td className="py-1 px-2 text-right tabular-nums">${(inv.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                                <td className="py-1 px-2 text-right tabular-nums font-semibold">${(inv.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                      {list.length > 7 && (
+                                        <button onClick={() => setShowAllInvRows(v => !v)}
+                                          className="mt-1.5 w-full py-1.5 text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors">
+                                          {showAllInvRows ? 'Show fewer' : `View all ${list.length} invoices`}
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
                                 </div>
-                                <table className="w-full text-xs">
-                                  <thead>
-                                    <tr className="text-gray-500 text-left">
-                                      <th className="py-1 px-2">Invoice #</th>
-                                      <th className="py-1 px-2">Type</th>
-                                      <th className="py-1 px-2">Status</th>
-                                      <th className="py-1 px-2">Date</th>
-                                      <th className="py-1 px-2">Due</th>
-                                      <th className="py-1 px-2 text-right">Amount</th>
-                                      <th className="py-1 px-2 text-right">Balance</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {expandedInvoices.get(cidKey)!.map((inv: any, idx: number) => (
-                                      <tr key={`${inv.reference_number}-${inv.type}-${idx}`} className="border-t border-gray-100">
-                                        <td className="py-1 px-2 font-medium text-gray-800">{inv.reference_number}</td>
-                                        <td className="py-1 px-2 text-gray-600">{inv.type}</td>
-                                        <td className="py-1 px-2 text-gray-600">{inv.status}</td>
-                                        <td className="py-1 px-2 text-gray-600">{inv.date ? String(inv.date).split('T')[0] : ''}</td>
-                                        <td className="py-1 px-2 text-gray-600">{inv.due_date ? String(inv.due_date).split('T')[0] : ''}</td>
-                                        <td className="py-1 px-2 text-right tabular-nums">${(inv.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                        <td className="py-1 px-2 text-right tabular-nums font-semibold">${(inv.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            ) : (
-                              <div className="text-sm text-gray-500 py-2">No invoices found for this customer.</div>
-                            ))}
+                              );
+                            })()}
                           </td>
                         </tr>
                       )}
