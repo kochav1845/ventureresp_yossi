@@ -20,7 +20,13 @@ export interface StatementCustomer {
   open_invoice_count: number;
   max_days_overdue: number;
   invoices: StatementInvoice[];
+  // Invoice activity within the selected period (populated from the activity RPC).
+  invoiced_count?: number;
+  invoiced_amount?: number;
+  last_invoice_date?: string | null;
 }
+
+export type StatementPeriod = 'last_month' | 'this_month' | 'last_30' | 'last_90' | 'all';
 
 export interface ReportTemplate {
   id: string;
@@ -32,5 +38,5 @@ export interface ReportTemplate {
   is_default: boolean;
 }
 
-export type SortField = 'name' | 'balance' | 'invoices' | 'overdue';
+export type SortField = 'name' | 'balance' | 'invoices' | 'overdue' | 'invoiced';
 export type SortOrder = 'asc' | 'desc';

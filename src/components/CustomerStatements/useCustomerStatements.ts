@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import type { StatementCustomer, StatementInvoice, ReportTemplate, SortField, SortOrder } from './types';
+import type { StatementCustomer, StatementInvoice, ReportTemplate, SortField, SortOrder, StatementPeriod } from './types';
 
 const BATCH_SIZE = 200;
 
@@ -28,6 +28,12 @@ export function useCustomerStatements() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [minBalance, setMinBalance] = useState(0);
+  // Period-based invoice-activity segmentation.
+  const [period, setPeriod] = useState<StatementPeriod>('last_month');
+  const [onlyInvoiced, setOnlyInvoiced] = useState(false);
+  const [minInvoicedAmount, setMinInvoicedAmount] = useState(0);
+  const [activityMap, setActivityMap] = useState<Record<string, { count: number; amount: number; last: string | null }>>({});
+  const [activityLoading, setActivityLoading] = useState(false);
   const [sortField, setSortField] = useState<SortField>('balance');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -204,8 +210,53 @@ export function useCustomerStatements() {
     loadTemplates();
   }, [loadData, loadTemplates, showTestCustomers]);
 
+  // ── Invoice-activity for the selected period ────────────────────────────
+  const periodRange = (p: StatementPeriod): { from: string; to: string } | null => {
+    const now = new Date();
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (p === 'all') return null;
+    if (p === 'last_month') return { from: fmt(new Date(now.getFullYear(), now.getMonth() - 1, 1)), to: fmt(new Date(now.getFullYear(), now.getMonth(), 0)) };
+    if (p === 'this_month') return { from: fmt(new Date(now.getFullYear(), now.getMonth(), 1)), to: fmt(now) };
+    if (p === 'last_30') { const f = new Date(now); f.setDate(f.getDate() - 30); return { from: fmt(f), to: fmt(now) }; }
+    if (p === 'last_90') { const f = new Date(now); f.setDate(f.getDate() - 90); return { from: fmt(f), to: fmt(now) }; }
+    return null;
+  };
+
+  const loadActivity = useCallback(async (p: StatementPeriod) => {
+    const range = periodRange(p);
+    if (!range) { setActivityMap({}); return; }
+    setActivityLoading(true);
+    try {
+      const map: Record<string, { count: number; amount: number; last: string | null }> = {};
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .rpc('get_customer_invoice_activity', { p_from: range.from, p_to: range.to })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const batch = data || [];
+        batch.forEach((r: any) => { map[r.customer_id] = { count: Number(r.inv_count) || 0, amount: Number(r.inv_amount) || 0, last: r.last_invoice_date }; });
+        if (batch.length < PAGE) break;
+      }
+      setActivityMap(map);
+    } catch (e) {
+      console.error('Error loading invoice activity:', e);
+    } finally {
+      setActivityLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadActivity(period); }, [period, loadActivity]);
+
   const filtered = (() => {
-    let list = customers.filter(c => c.total_balance >= minBalance);
+    // Attach the period's invoice activity to each customer, then filter.
+    let list = customers.map(c => {
+      const a = activityMap[c.customer_id];
+      return { ...c, invoiced_count: a?.count ?? 0, invoiced_amount: a?.amount ?? 0, last_invoice_date: a?.last ?? null };
+    }).filter(c => c.total_balance >= minBalance);
+
+    if (onlyInvoiced) list = list.filter(c => (c.invoiced_count ?? 0) > 0);
+    if (minInvoicedAmount > 0) list = list.filter(c => (c.invoiced_amount ?? 0) >= minInvoicedAmount);
 
     if (search.trim()) {
       const s = search.toLowerCase().trim();
@@ -222,6 +273,7 @@ export function useCustomerStatements() {
       else if (sortField === 'balance') cmp = a.total_balance - b.total_balance;
       else if (sortField === 'invoices') cmp = a.open_invoice_count - b.open_invoice_count;
       else if (sortField === 'overdue') cmp = a.max_days_overdue - b.max_days_overdue;
+      else if (sortField === 'invoiced') cmp = (a.invoiced_amount ?? 0) - (b.invoiced_amount ?? 0);
       return sortOrder === 'asc' ? cmp : -cmp;
     });
 
@@ -273,6 +325,13 @@ export function useCustomerStatements() {
     setSearch,
     minBalance,
     setMinBalance,
+    period,
+    setPeriod,
+    onlyInvoiced,
+    setOnlyInvoiced,
+    minInvoicedAmount,
+    setMinInvoicedAmount,
+    activityLoading,
     sortField,
     setSortField,
     sortOrder,

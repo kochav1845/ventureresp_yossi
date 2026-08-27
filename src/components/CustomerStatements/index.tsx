@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Search, X, ArrowUpDown, DollarSign, FileText, Users, Clock, CheckSquare, Square, FlaskConical, Loader2, Zap } from 'lucide-react';
+import { Search, X, ArrowUpDown, DollarSign, FileText, Users, Clock, CheckSquare, Square, FlaskConical, Loader2, Zap, Calendar } from 'lucide-react';
 import { useCustomerStatements } from './useCustomerStatements';
 import CustomerStatementCard from './CustomerStatementCard';
 import StatementActions from './StatementActions';
 import AutoStatementsSidebar from './AutoStatementsSidebar';
-import type { SortField } from './types';
+import type { SortField, StatementPeriod } from './types';
 
 const fmtCurrency = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
@@ -14,6 +14,7 @@ export default function CustomerStatements() {
     customers, loading, loadingMore, totalLoaded, loadingInvoices, templates, selectedTemplateId, setSelectedTemplateId,
     selectedIds, toggleCustomer, selectAll, deselectAll,
     search, setSearch, minBalance, setMinBalance,
+    period, setPeriod, onlyInvoiced, setOnlyInvoiced, minInvoicedAmount, setMinInvoicedAmount, activityLoading,
     sortField, setSortField, sortOrder, setSortOrder,
     expandedId, toggleExpand,
     showTestCustomers, toggleTestCustomers,
@@ -154,6 +155,7 @@ export default function CustomerStatements() {
               <option value="balance">Balance</option>
               <option value="invoices">Invoices</option>
               <option value="overdue">Days Overdue</option>
+              <option value="invoiced">Invoiced (period)</option>
             </select>
             <button
               onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
@@ -161,6 +163,44 @@ export default function CustomerStatements() {
             >
               {sortOrder === 'asc' ? 'Asc' : 'Desc'}
             </button>
+          </div>
+        </div>
+
+        {/* Invoice-activity segmentation */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-gray-400" />
+            <label className="text-sm text-gray-600 whitespace-nowrap">Invoiced in</label>
+            <select
+              value={period}
+              onChange={e => setPeriod(e.target.value as StatementPeriod)}
+              className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-blue-400"
+            >
+              <option value="last_month">Last month</option>
+              <option value="this_month">This month</option>
+              <option value="last_30">Last 30 days</option>
+              <option value="last_90">Last 90 days</option>
+              <option value="all">Off</option>
+            </select>
+            {activityLoading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+          </div>
+          <label className={`flex items-center gap-2 text-sm cursor-pointer ${period === 'all' ? 'text-gray-300' : 'text-gray-600'}`}>
+            <input type="checkbox" disabled={period === 'all'} checked={onlyInvoiced} onChange={e => setOnlyInvoiced(e.target.checked)} className="rounded accent-blue-600" />
+            Only customers invoiced in period
+          </label>
+          <div className="flex items-center gap-2">
+            <label className={`text-sm whitespace-nowrap ${period === 'all' ? 'text-gray-300' : 'text-gray-600'}`}>Min invoiced</label>
+            <div className="relative">
+              <DollarSign className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="number"
+                disabled={period === 'all'}
+                value={minInvoicedAmount || ''}
+                onChange={e => setMinInvoicedAmount(Number(e.target.value) || 0)}
+                placeholder="0"
+                className="w-28 pl-8 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
+              />
+            </div>
           </div>
         </div>
 

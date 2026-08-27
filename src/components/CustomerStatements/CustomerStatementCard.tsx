@@ -88,6 +88,12 @@ export default function CustomerStatementCard({ customer, selected, expanded, lo
             {customer.terms && (
               <span className="text-xs text-gray-400">Terms: {customer.terms}</span>
             )}
+            {(customer.invoiced_amount ?? 0) > 0 && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5"
+                title={`Invoiced ${fmtCurrency(customer.invoiced_amount || 0)} across ${customer.invoiced_count || 0} invoice(s) in the selected period`}>
+                Invoiced {fmtCurrency(customer.invoiced_amount || 0)} · {customer.invoiced_count || 0}
+              </span>
+            )}
           </div>
         </div>
 
