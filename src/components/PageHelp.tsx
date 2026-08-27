@@ -1,4 +1,5 @@
 import { useState, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { HelpCircle, X } from 'lucide-react';
 
 export type HelpItem = {
@@ -29,7 +30,7 @@ export default function PageHelp({ title, intro, sections }: { title: string; in
         <HelpCircle size={15} /> Help
       </button>
 
-      {open && (
+      {open && createPortal(
         <div className="fixed inset-0 z-[70] flex justify-end">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col">
@@ -71,7 +72,8 @@ export default function PageHelp({ title, intro, sections }: { title: string; in
               </p>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
