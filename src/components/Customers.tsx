@@ -109,6 +109,31 @@ const DEFAULT_QUICK_FILTERS: QuickFilter[] = [
   { label: 'Critical', desc: '$20k+', filter: { minBalance: 20000 } },
 ];
 
+// A calendar button next to a "days overdue" field: pick a date and it fills in the
+// day count = today − that date (so you can say "overdue since May 28" instead of
+// counting the days yourself).
+function OverdueDatePicker({ onPick, title }: { onPick: (days: number) => void; title: string }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const today = new Date().toISOString().split('T')[0];
+  return (
+    <>
+      <button type="button" title={title}
+        onClick={() => { const el = ref.current as any; try { el?.showPicker?.(); } catch { el?.focus(); } }}
+        className="px-2.5 border border-teal-200 rounded-lg hover:bg-teal-50 text-teal-600 flex-shrink-0 flex items-center">
+        <Calendar size={15} />
+      </button>
+      <input ref={ref} type="date" max={today} tabIndex={-1}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (!v) return;
+          const picked = new Date(v + 'T00:00:00');
+          onPick(Math.max(0, Math.floor((Date.now() - picked.getTime()) / 86400000)));
+        }}
+        style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
+    </>
+  );
+}
+
 type CustomersProps = {
   onBack?: () => void;
 };
@@ -1496,13 +1521,19 @@ export default function Customers({ onBack }: CustomersProps) {
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Days Overdue</label>
-                  <input type="number" value={filters.minDaysOverdue || ''} onChange={(e) => setFilters({ ...filters, minDaysOverdue: Number(e.target.value) || 0 })}
-                    placeholder="0" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
+                  <div className="flex gap-1.5">
+                    <input type="number" value={filters.minDaysOverdue || ''} onChange={(e) => setFilters({ ...filters, minDaysOverdue: Number(e.target.value) || 0 })}
+                      placeholder="0" className="flex-1 min-w-0 px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
+                    <OverdueDatePicker title="Pick a date — sets Min Days Overdue to today minus that date (overdue since…)" onPick={(days) => setFilters(f => ({ ...f, minDaysOverdue: days }))} />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Days Overdue</label>
-                  <input type="number" value={filters.maxDaysOverdue === Infinity ? '' : filters.maxDaysOverdue} onChange={(e) => setFilters({ ...filters, maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
-                    placeholder="Any" className="w-full px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
+                  <div className="flex gap-1.5">
+                    <input type="number" value={filters.maxDaysOverdue === Infinity ? '' : filters.maxDaysOverdue} onChange={(e) => setFilters({ ...filters, maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
+                      placeholder="Any" className="flex-1 min-w-0 px-3 py-2 border border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" />
+                    <OverdueDatePicker title="Pick a date — sets Max Days Overdue to today minus that date" onPick={(days) => setFilters(f => ({ ...f, maxDaysOverdue: days }))} />
+                  </div>
                 </div>
                 <div className="col-span-2">
                   <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Overdue Counted From</label>
@@ -1831,11 +1862,17 @@ export default function Customers({ onBack }: CustomersProps) {
                       <input type="number" value={num(qf.filter.maxInvoiceAmount)} onChange={(e) => updateQuickFilterCond(idx, { maxInvoiceAmount: e.target.value ? Number(e.target.value) : Infinity })}
                         className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="Any" /></label>
                     <label className="text-[10px] text-gray-500 uppercase tracking-wide">Min Days Overdue
-                      <input type="number" value={num(qf.filter.minDaysOverdue)} onChange={(e) => updateQuickFilterCond(idx, { minDaysOverdue: Number(e.target.value) || 0 })}
-                        className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="0" /></label>
+                      <div className="flex gap-1 mt-0.5">
+                        <input type="number" value={num(qf.filter.minDaysOverdue)} onChange={(e) => updateQuickFilterCond(idx, { minDaysOverdue: Number(e.target.value) || 0 })}
+                          className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="0" />
+                        <OverdueDatePicker title="Pick a date — overdue since…" onPick={(days) => updateQuickFilterCond(idx, { minDaysOverdue: days })} />
+                      </div></label>
                     <label className="text-[10px] text-gray-500 uppercase tracking-wide">Max Days Overdue
-                      <input type="number" value={num(qf.filter.maxDaysOverdue)} onChange={(e) => updateQuickFilterCond(idx, { maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
-                        className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="Any" /></label>
+                      <div className="flex gap-1 mt-0.5">
+                        <input type="number" value={num(qf.filter.maxDaysOverdue)} onChange={(e) => updateQuickFilterCond(idx, { maxDaysOverdue: e.target.value ? Number(e.target.value) : Infinity })}
+                          className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded text-sm" placeholder="Any" />
+                        <OverdueDatePicker title="Pick a date" onPick={(days) => updateQuickFilterCond(idx, { maxDaysOverdue: days })} />
+                      </div></label>
                   </div>
                   <div className="pt-2 border-t border-gray-100">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
