@@ -1483,7 +1483,7 @@ export default function UnifiedTicketingSystem({
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Top header bar */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <div className="flex items-center gap-4">
             {onBack && (
               <button
@@ -1494,15 +1494,15 @@ export default function UnifiedTicketingSystem({
                 Back
               </button>
             )}
-            <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+            <h1 className="text-2xl font-bold text-gray-900 whitespace-nowrap">{title}</h1>
             <PageHelp title={title} sections={TICKETS_HELP} />
           </div>
           {!showOnlyAssigned && (
-            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1" data-tour="ticket-tabs">
+            <div className="flex flex-wrap items-center gap-1 bg-gray-100 rounded-lg p-1" data-tour="ticket-tabs">
               <button
                 onClick={() => { setActiveTab('create'); setSelectedTickets(new Set()); }}
                 data-tour="ticket-create"
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'create'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-gray-600 hover:bg-white hover:shadow-sm'
@@ -1513,7 +1513,7 @@ export default function UnifiedTicketingSystem({
               </button>
               <button
                 onClick={() => { setActiveTab('tickets'); setSelectedTickets(new Set()); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'tickets'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-gray-600 hover:bg-white hover:shadow-sm'
@@ -1524,7 +1524,7 @@ export default function UnifiedTicketingSystem({
               </button>
               <button
                 onClick={() => { setActiveTab('individual'); setSelectedTickets(new Set()); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'individual'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-gray-600 hover:bg-white hover:shadow-sm'
@@ -1535,7 +1535,7 @@ export default function UnifiedTicketingSystem({
               </button>
               <button
                 onClick={() => { setActiveTab('overdue'); setSelectedTickets(new Set()); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'overdue'
                     ? 'bg-red-600 text-white shadow-sm'
                     : 'text-gray-600 hover:bg-white hover:shadow-sm'
@@ -1546,7 +1546,7 @@ export default function UnifiedTicketingSystem({
               </button>
               <button
                 onClick={() => { setActiveTab('closed'); setSelectedTickets(new Set()); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'closed'
                     ? 'bg-gray-700 text-white shadow-sm'
                     : 'text-gray-600 hover:bg-white hover:shadow-sm'

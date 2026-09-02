@@ -543,7 +543,7 @@ export default function TicketCard({
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <span
               onClick={() => {
@@ -567,7 +567,7 @@ export default function TicketCard({
               Acumatica
             </a>
           </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
             <button
               onClick={() => onOpenTicketMemo(ticket)}
               className="px-2 py-1 bg-gray-700 text-white rounded text-[11px] hover:bg-gray-800 transition-colors flex items-center gap-1"
