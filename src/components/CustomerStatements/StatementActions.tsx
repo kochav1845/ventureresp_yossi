@@ -6,15 +6,19 @@ import {
   generateBatchStatementExcel,
   uint8ArrayToBase64,
   downloadExcelFile,
+  DEFAULT_EXCEL_LAYOUT,
 } from '../../lib/statementExport';
 import EmailPreviewModal from './EmailPreviewModal';
-import type { StatementCustomer, ReportTemplate } from './types';
+import type { StatementCustomer, ReportTemplate, StatementExcelTemplate } from './types';
 
 interface Props {
   selectedCustomers: StatementCustomer[];
   templates: ReportTemplate[];
   selectedTemplateId: string | null;
   onTemplateChange: (id: string) => void;
+  excelTemplates: StatementExcelTemplate[];
+  selectedExcelTemplateId: string | null;
+  onExcelTemplateChange: (id: string | null) => void;
   ensureInvoicesLoaded: (customerIds: string[]) => Promise<Record<string, import('./types').StatementInvoice[]>>;
 }
 
@@ -27,7 +31,7 @@ interface EmailProgress {
   error?: string;
 }
 
-export default function StatementActions({ selectedCustomers, templates, selectedTemplateId, onTemplateChange, ensureInvoicesLoaded }: Props) {
+export default function StatementActions({ selectedCustomers, templates, selectedTemplateId, onTemplateChange, excelTemplates, selectedExcelTemplateId, onExcelTemplateChange, ensureInvoicesLoaded }: Props) {
   const { profile } = useAuth();
   const [actionMode, setActionMode] = useState<ActionMode>(null);
   const [sending, setSending] = useState(false);
@@ -37,6 +41,8 @@ export default function StatementActions({ selectedCustomers, templates, selecte
   const [testEmail, setTestEmail] = useState('');
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+  // Layout for the per-customer Excel sheet; built-in default when no template exists.
+  const excelLayout = excelTemplates.find(t => t.id === selectedExcelTemplateId)?.layout || DEFAULT_EXCEL_LAYOUT;
   const customersWithEmail = useTestEmail ? selectedCustomers : selectedCustomers.filter(c => c.email);
 
   const [preparingData, setPreparingData] = useState(false);
@@ -65,7 +71,7 @@ export default function StatementActions({ selectedCustomers, templates, selecte
       downloadExcelFile(data, `Customer_Statements_${new Date().toISOString().split('T')[0]}.xlsx`);
     } else {
       customersWithInvoices.forEach(customer => {
-        const data = generateCustomerStatementExcel(customer);
+        const data = generateCustomerStatementExcel(customer, excelLayout);
         const safeName = customer.customer_name.replace(/[^a-zA-Z0-9]/g, '_');
         downloadExcelFile(data, `Statement_${safeName}_${new Date().toISOString().split('T')[0]}.xlsx`);
       });
@@ -121,7 +127,7 @@ export default function StatementActions({ selectedCustomers, templates, selecte
       setEmailProgress([...progress]);
 
       try {
-        const excelData = generateCustomerStatementExcel(customerWithInvoices);
+        const excelData = generateCustomerStatementExcel(customerWithInvoices, excelLayout);
         const base64 = uint8ArrayToBase64(excelData);
 
         const positiveInvoices = customerInvoices.filter(inv => inv.balance > 0);
@@ -266,6 +272,20 @@ export default function StatementActions({ selectedCustomers, templates, selecte
                 <span className="text-sm text-gray-700">Separate file per customer</span>
               </label>
             </div>
+            {excelTemplates.length > 0 && downloadType === 'individual' && (
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-700 font-medium whitespace-nowrap">Excel template:</label>
+                <select
+                  value={selectedExcelTemplateId || ''}
+                  onChange={e => onExcelTemplateChange(e.target.value || null)}
+                  className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:ring-2 focus:ring-emerald-400 focus:border-transparent"
+                >
+                  {excelTemplates.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}{t.is_default ? ' (Default)' : ''}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex-1" />
             <button
               onClick={handleDownload}
@@ -313,6 +333,20 @@ export default function StatementActions({ selectedCustomers, templates, selecte
                   </option>
                 ))}
               </select>
+              {excelTemplates.length > 0 && (
+                <>
+                  <label className="text-sm text-gray-700 font-medium whitespace-nowrap">Excel template:</label>
+                  <select
+                    value={selectedExcelTemplateId || ''}
+                    onChange={e => onExcelTemplateChange(e.target.value || null)}
+                    className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  >
+                    {excelTemplates.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}{t.is_default ? ' (Default)' : ''}</option>
+                    ))}
+                  </select>
+                </>
+              )}
             </div>
 
             <div className="flex items-center gap-4 flex-wrap p-3 rounded-lg border border-gray-200 bg-white">

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import type { StatementCustomer, StatementInvoice, ReportTemplate, SortField, SortOrder, StatementPeriod } from './types';
+import type { StatementCustomer, StatementInvoice, ReportTemplate, StatementExcelTemplate, SortField, SortOrder, StatementPeriod } from './types';
+import { normalizeExcelLayout } from '../../lib/statementExport';
 
 const BATCH_SIZE = 200;
 
@@ -25,6 +26,8 @@ export function useCustomerStatements() {
   const [totalLoaded, setTotalLoaded] = useState(0);
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [excelTemplates, setExcelTemplates] = useState<StatementExcelTemplate[]>([]);
+  const [selectedExcelTemplateId, setSelectedExcelTemplateId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [minBalance, setMinBalance] = useState(0);
@@ -205,10 +208,38 @@ export function useCustomerStatements() {
     }
   }, []);
 
+  // Excel layout templates. If the table doesn't exist yet the query fails
+  // quietly and the built-in default layout is used.
+  const loadExcelTemplates = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('statement_excel_templates')
+        .select('id, name, layout, is_default')
+        .order('is_default', { ascending: false })
+        .order('name');
+      if (error) throw error;
+      const mapped: StatementExcelTemplate[] = (data || []).map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        layout: normalizeExcelLayout(t.layout),
+        is_default: !!t.is_default,
+      }));
+      setExcelTemplates(mapped);
+      setSelectedExcelTemplateId(prev => {
+        if (prev && mapped.some(t => t.id === prev)) return prev;
+        const def = mapped.find(t => t.is_default);
+        return def?.id || mapped[0]?.id || null;
+      });
+    } catch (err) {
+      console.error('Error loading excel statement templates:', err);
+    }
+  }, []);
+
   useEffect(() => {
     loadData(showTestCustomers);
     loadTemplates();
-  }, [loadData, loadTemplates, showTestCustomers]);
+    loadExcelTemplates();
+  }, [loadData, loadTemplates, loadExcelTemplates, showTestCustomers]);
 
   // ── Invoice-activity for the selected period ────────────────────────────
   const periodRange = (p: StatementPeriod): { from: string; to: string } | null => {
@@ -317,6 +348,10 @@ export function useCustomerStatements() {
     templates,
     selectedTemplateId,
     setSelectedTemplateId,
+    excelTemplates,
+    selectedExcelTemplateId,
+    setSelectedExcelTemplateId,
+    refreshExcelTemplates: loadExcelTemplates,
     selectedIds,
     toggleCustomer,
     selectAll,

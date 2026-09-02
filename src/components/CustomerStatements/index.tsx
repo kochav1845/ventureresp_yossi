@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Search, X, ArrowUpDown, DollarSign, FileText, Users, Clock, CheckSquare, Square, FlaskConical, Loader2, Zap, Calendar } from 'lucide-react';
+import { Search, X, ArrowUpDown, DollarSign, FileText, Users, Clock, CheckSquare, Square, FlaskConical, Loader2, Zap, Calendar, Settings } from 'lucide-react';
 import { useCustomerStatements } from './useCustomerStatements';
 import CustomerStatementCard from './CustomerStatementCard';
 import StatementActions from './StatementActions';
 import AutoStatementsSidebar from './AutoStatementsSidebar';
+import ExcelTemplateSettings from './ExcelTemplateSettings';
 import PageHelp, { HelpSection } from '../PageHelp';
 import type { SortField, StatementPeriod } from './types';
 
@@ -48,6 +49,7 @@ const fmtCurrency = (n: number) =>
 export default function CustomerStatements() {
   const {
     customers, loading, loadingMore, totalLoaded, loadingInvoices, templates, selectedTemplateId, setSelectedTemplateId,
+    excelTemplates, selectedExcelTemplateId, setSelectedExcelTemplateId, refreshExcelTemplates,
     selectedIds, toggleCustomer, selectAll, deselectAll,
     search, setSearch, minBalance, setMinBalance,
     period, setPeriod, onlyInvoiced, setOnlyInvoiced, minInvoicedAmount, setMinInvoicedAmount, activityLoading,
@@ -58,6 +60,7 @@ export default function CustomerStatements() {
   } = useCustomerStatements();
 
   const [showAuto, setShowAuto] = useState(false);
+  const [showExcelSettings, setShowExcelSettings] = useState(false);
 
   const selectedCustomers = customers.filter(c => selectedIds.has(c.customer_id));
   const totalBalance = customers.reduce((s, c) => s + c.total_balance, 0);
@@ -90,6 +93,13 @@ export default function CustomerStatements() {
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <PageHelp title="Statements" intro="Select customers and send them their account statement. Here's what each control means:" sections={STATEMENTS_HELP} />
+          <button
+            onClick={() => setShowExcelSettings(true)}
+            title="Excel statement templates"
+            className="flex items-center gap-1.5 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors"
+          >
+            <Settings className="w-4 h-4" /> Settings
+          </button>
           <button
             onClick={() => setShowAuto(true)}
             className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors"
@@ -271,6 +281,9 @@ export default function CustomerStatements() {
           templates={templates}
           selectedTemplateId={selectedTemplateId}
           onTemplateChange={setSelectedTemplateId}
+          excelTemplates={excelTemplates}
+          selectedExcelTemplateId={selectedExcelTemplateId}
+          onExcelTemplateChange={setSelectedExcelTemplateId}
           ensureInvoicesLoaded={ensureInvoicesLoaded}
         />
       </div>
@@ -316,6 +329,13 @@ export default function CustomerStatements() {
         customers={customers}
         templates={templates}
         defaultTemplateId={selectedTemplateId}
+      />
+
+      <ExcelTemplateSettings
+        open={showExcelSettings}
+        onClose={() => setShowExcelSettings(false)}
+        templates={excelTemplates}
+        onTemplatesChanged={refreshExcelTemplates}
       />
     </div>
   );

@@ -24,6 +24,95 @@ export interface StatementCustomerData {
   invoices: StatementInvoice[];
 }
 
+// ── Excel statement template (layout) ─────────────────────────────────────
+// Controls how the per-customer statement sheet looks. Stored as jsonb in
+// `statement_excel_templates.layout` and edited from the Statements page
+// settings drawer. `DEFAULT_EXCEL_LAYOUT` reproduces the original hardcoded
+// sheet, and is used whenever no template is configured.
+
+export interface StatementExcelColumn {
+  key: string;
+  label: string;
+  enabled: boolean;
+}
+
+export interface StatementExcelLayout {
+  title: string; // supports {{customer_name}}, {{customer_id}}, {{date}}
+  sheet_name: string;
+  customer_fields: string[]; // ordered keys from CUSTOMER_FIELD_DEFS
+  show_aging_summary: boolean;
+  columns: StatementExcelColumn[];
+  show_total_row: boolean;
+}
+
+export const CUSTOMER_FIELD_DEFS: { key: string; label: string }[] = [
+  { key: 'customer_name', label: 'Customer' },
+  { key: 'customer_id', label: 'Customer ID' },
+  { key: 'email', label: 'Email' },
+  { key: 'terms', label: 'Terms' },
+  { key: 'statement_date', label: 'Statement Date' },
+  { key: 'total_balance', label: 'Total Open Balance' },
+];
+
+export const INVOICE_COLUMN_DEFS: { key: string; label: string; width: number }[] = [
+  { key: 'reference_number', label: 'Invoice #', width: 18 },
+  { key: 'date', label: 'Date', width: 14 },
+  { key: 'due_date', label: 'Due Date', width: 14 },
+  { key: 'description', label: 'Description', width: 35 },
+  { key: 'amount', label: 'Amount', width: 14 },
+  { key: 'balance', label: 'Balance', width: 14 },
+  { key: 'days_overdue', label: 'Days Overdue', width: 10 },
+  { key: 'aging', label: 'Aging', width: 10 },
+  { key: 'type', label: 'Type', width: 14 },
+  { key: 'status', label: 'Status', width: 12 },
+];
+
+export const DEFAULT_EXCEL_LAYOUT: StatementExcelLayout = {
+  title: 'Account Statement',
+  sheet_name: 'Statement',
+  customer_fields: ['customer_name', 'customer_id', 'email', 'terms', 'statement_date', 'total_balance'],
+  show_aging_summary: true,
+  columns: INVOICE_COLUMN_DEFS.map(c => ({
+    key: c.key,
+    label: c.label,
+    enabled: c.key !== 'type' && c.key !== 'status',
+  })),
+  show_total_row: true,
+};
+
+// Merge a stored layout with defaults so older/partial layouts never break.
+export function normalizeExcelLayout(raw: any): StatementExcelLayout {
+  if (!raw || typeof raw !== 'object') return DEFAULT_EXCEL_LAYOUT;
+  const validCols = new Set(INVOICE_COLUMN_DEFS.map(c => c.key));
+  const columns: StatementExcelColumn[] = Array.isArray(raw.columns)
+    ? raw.columns.filter((c: any) => c && validCols.has(c.key)).map((c: any) => ({
+        key: c.key,
+        label: typeof c.label === 'string' && c.label.trim()
+          ? c.label
+          : (INVOICE_COLUMN_DEFS.find(d => d.key === c.key)?.label || c.key),
+        enabled: c.enabled !== false,
+      }))
+    : DEFAULT_EXCEL_LAYOUT.columns;
+  // Append any columns the stored layout doesn't know about yet (disabled).
+  INVOICE_COLUMN_DEFS.forEach(def => {
+    if (!columns.some(c => c.key === def.key)) {
+      columns.push({ key: def.key, label: def.label, enabled: false });
+    }
+  });
+  return {
+    title: typeof raw.title === 'string' ? raw.title : DEFAULT_EXCEL_LAYOUT.title,
+    sheet_name: typeof raw.sheet_name === 'string' && raw.sheet_name.trim()
+      ? raw.sheet_name.trim().slice(0, 31)
+      : DEFAULT_EXCEL_LAYOUT.sheet_name,
+    customer_fields: Array.isArray(raw.customer_fields)
+      ? raw.customer_fields.filter((f: any) => CUSTOMER_FIELD_DEFS.some(d => d.key === f))
+      : DEFAULT_EXCEL_LAYOUT.customer_fields,
+    show_aging_summary: raw.show_aging_summary !== false,
+    columns: columns.some(c => c.enabled) ? columns : DEFAULT_EXCEL_LAYOUT.columns,
+    show_total_row: raw.show_total_row !== false,
+  };
+}
+
 const fmtCurrency = (n: number) => n < 0 ? `-$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`;
 const fmtDate = (s: string) => {
   if (!s) return '';
@@ -53,70 +142,107 @@ function calculateAging(invoices: StatementInvoice[]) {
   return buckets;
 }
 
-export function generateCustomerStatementExcel(customer: StatementCustomerData): Uint8Array {
+function invoiceCellValue(inv: StatementInvoice, key: string): any {
+  switch (key) {
+    case 'reference_number': return inv.reference_number;
+    case 'date': return fmtDate(inv.date);
+    case 'due_date': return fmtDate(inv.due_date);
+    case 'description': return inv.description || '';
+    case 'amount': return fmtCurrency(inv.amount);
+    case 'balance': return fmtCurrency(inv.balance);
+    case 'days_overdue': return inv.balance < 0 ? '' : inv.days_overdue;
+    case 'aging': return inv.balance < 0 ? 'Credit' : getAgingBucket(inv.days_overdue);
+    case 'type': return inv.type || 'Invoice';
+    case 'status': return inv.status || '';
+    default: return '';
+  }
+}
+
+function substituteTitle(title: string, customer: StatementCustomerData, today: string): string {
+  return title
+    .replace(/\{\{customer_name\}\}/g, customer.customer_name)
+    .replace(/\{\{customer_id\}\}/g, customer.customer_id)
+    .replace(/\{\{date\}\}/g, today);
+}
+
+export function generateCustomerStatementExcel(
+  customer: StatementCustomerData,
+  layout: StatementExcelLayout = DEFAULT_EXCEL_LAYOUT,
+): Uint8Array {
   const wb = XLSX.utils.book_new();
   const aging = calculateAging(customer.invoices);
   const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 
-  const headerRows: any[][] = [
-    ['Account Statement'],
-    [],
-    ['Customer:', customer.customer_name],
-    ['Customer ID:', customer.customer_id],
-    ['Email:', customer.email || 'N/A'],
-    ['Terms:', customer.terms || 'N/A'],
-    ['Statement Date:', today],
-    ['Total Open Balance:', fmtCurrency(customer.total_balance)],
-    [],
-    ['Aging Summary'],
-    ['Current', '1-30 Days', '31-60 Days', '61-90 Days', '90+ Days', 'Total'],
-    [
+  const customerFieldValue = (key: string): string => {
+    switch (key) {
+      case 'customer_name': return customer.customer_name;
+      case 'customer_id': return customer.customer_id;
+      case 'email': return customer.email || 'N/A';
+      case 'terms': return customer.terms || 'N/A';
+      case 'statement_date': return today;
+      case 'total_balance': return fmtCurrency(customer.total_balance);
+      default: return '';
+    }
+  };
+
+  const rows: any[][] = [];
+  if (layout.title.trim()) {
+    rows.push([substituteTitle(layout.title, customer, today)]);
+    rows.push([]);
+  }
+
+  if (layout.customer_fields.length > 0) {
+    layout.customer_fields.forEach(key => {
+      const def = CUSTOMER_FIELD_DEFS.find(d => d.key === key);
+      if (def) rows.push([`${def.label}:`, customerFieldValue(key)]);
+    });
+    rows.push([]);
+  }
+
+  if (layout.show_aging_summary) {
+    rows.push(['Aging Summary']);
+    rows.push(['Current', '1-30 Days', '31-60 Days', '61-90 Days', '90+ Days', 'Total']);
+    rows.push([
       fmtCurrency(aging.current),
       fmtCurrency(aging['1_30']),
       fmtCurrency(aging['31_60']),
       fmtCurrency(aging['61_90']),
       fmtCurrency(aging['90_plus']),
       fmtCurrency(customer.total_balance),
-    ],
-    [],
-    ['Open Invoices'],
-    ['Invoice #', 'Date', 'Due Date', 'Description', 'Amount', 'Balance', 'Days Overdue', 'Aging'],
-  ];
+    ]);
+    rows.push([]);
+  }
+
+  const enabledCols = layout.columns.filter(c => c.enabled);
+  rows.push(['Open Invoices']);
+  rows.push(enabledCols.map(c => c.label));
 
   const sortedInvoices = [...customer.invoices]
     .filter(inv => inv.balance !== 0)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   sortedInvoices.forEach(inv => {
-    headerRows.push([
-      inv.reference_number,
-      fmtDate(inv.date),
-      fmtDate(inv.due_date),
-      inv.description || '',
-      fmtCurrency(inv.amount),
-      fmtCurrency(inv.balance),
-      inv.balance < 0 ? '' : inv.days_overdue,
-      inv.balance < 0 ? 'Credit' : getAgingBucket(inv.days_overdue),
-    ]);
+    rows.push(enabledCols.map(c => invoiceCellValue(inv, c.key)));
   });
 
-  const netBalance = sortedInvoices.reduce((s, inv) => s + inv.balance, 0);
-  headerRows.push([]);
-  headerRows.push(['', '', '', 'TOTAL:', '', fmtCurrency(netBalance), '', '']);
+  if (layout.show_total_row) {
+    const netBalance = sortedInvoices.reduce((s, inv) => s + inv.balance, 0);
+    rows.push([]);
+    const totalRow: any[] = new Array(enabledCols.length).fill('');
+    const balanceIdx = enabledCols.findIndex(c => c.key === 'balance');
+    const valueIdx = balanceIdx >= 0 ? balanceIdx : Math.max(enabledCols.length - 1, 1);
+    totalRow[valueIdx] = fmtCurrency(netBalance);
+    totalRow[Math.max(valueIdx - 1, 0)] = 'TOTAL:';
+    rows.push(totalRow);
+  }
 
-  const ws = XLSX.utils.aoa_to_sheet(headerRows);
-  ws['!cols'] = [
-    { wch: 18 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 35 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 10 },
-    { wch: 10 },
-  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = enabledCols.map(c => ({
+    wch: INVOICE_COLUMN_DEFS.find(d => d.key === c.key)?.width || 14,
+  }));
+  if (ws['!cols'].length < 2) ws['!cols'] = [{ wch: 22 }, { wch: 30 }];
 
-  XLSX.utils.book_append_sheet(wb, ws, 'Statement');
+  XLSX.utils.book_append_sheet(wb, ws, layout.sheet_name.trim().slice(0, 31) || 'Statement');
   return new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
 }
 

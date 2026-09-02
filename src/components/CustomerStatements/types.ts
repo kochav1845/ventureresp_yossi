@@ -38,5 +38,13 @@ export interface ReportTemplate {
   is_default: boolean;
 }
 
+// A saved Excel-statement layout (row in `statement_excel_templates`).
+export interface StatementExcelTemplate {
+  id: string;
+  name: string;
+  layout: import('../../lib/statementExport').StatementExcelLayout;
+  is_default: boolean;
+}
+
 export type SortField = 'name' | 'balance' | 'invoices' | 'overdue' | 'invoiced';
 export type SortOrder = 'asc' | 'desc';
