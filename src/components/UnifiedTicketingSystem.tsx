@@ -341,7 +341,7 @@ export default function UnifiedTicketingSystem({
   // Compute total balance for display
   const displayedTicketsBalance = useMemo(() => {
     const displayTickets = showOnlyAssigned
-      ? filteredTickets
+      ? (activeTab === 'overdue' ? overdueTickets : filteredTickets)
       : activeTab === 'overdue' ? overdueTickets
       : activeTab === 'closed' ? filteredClosedTickets
       : filteredTickets;
@@ -1557,6 +1557,30 @@ export default function UnifiedTicketingSystem({
               </button>
             </div>
           )}
+          {showOnlyAssigned && (overdueTickets.length > 0 || activeTab === 'overdue') && (
+            <button
+              onClick={() => { setActiveTab(activeTab === 'overdue' ? 'tickets' : 'overdue'); setSelectedTickets(new Set()); }}
+              title={activeTab === 'overdue' ? 'Show all my tickets' : 'Show only overdue tickets'}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-colors ${
+                activeTab === 'overdue'
+                  ? 'bg-red-600 text-white hover:bg-red-700'
+                  : 'bg-white text-red-600 border border-red-300 hover:bg-red-50'
+              }`}
+            >
+              <span className="relative inline-flex">
+                <AlertTriangle className="w-4 h-4" />
+                {activeTab !== 'overdue' && (
+                  <>
+                    <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
+                    <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full" />
+                  </>
+                )}
+              </span>
+              {activeTab === 'overdue'
+                ? `Showing overdue (${overdueTickets.length}) — view all`
+                : `Overdue Tickets (${overdueTickets.length})`}
+            </button>
+          )}
         </div>
       </div>
 
@@ -1847,7 +1871,7 @@ export default function UnifiedTicketingSystem({
               <div className="space-y-4" data-tour="ticket-list">
                 {(() => {
                   const displayTickets = showOnlyAssigned
-                    ? filteredTickets
+                    ? (activeTab === 'overdue' ? overdueTickets : filteredTickets)
                     : activeTab === 'overdue'
                       ? overdueTickets
                       : activeTab === 'closed'
