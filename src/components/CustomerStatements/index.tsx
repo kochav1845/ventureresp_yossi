@@ -50,6 +50,7 @@ export default function CustomerStatements() {
   const {
     customers, loading, loadingMore, totalLoaded, loadingInvoices, templates, selectedTemplateId, setSelectedTemplateId,
     excelTemplates, selectedExcelTemplateId, setSelectedExcelTemplateId, refreshExcelTemplates,
+    saveEmailOverride, clearEmailOverride,
     selectedIds, toggleCustomer, selectAll, deselectAll,
     search, setSearch, minBalance, setMinBalance,
     period, setPeriod, onlyInvoiced, setOnlyInvoiced, minInvoicedAmount, setMinInvoicedAmount, activityLoading,
@@ -298,6 +299,8 @@ export default function CustomerStatements() {
             loadingInvoices={loadingInvoices === customer.customer_id}
             onToggleSelect={() => toggleCustomer(customer.customer_id)}
             onToggleExpand={() => toggleExpand(customer.customer_id)}
+            onSaveEmailOverride={saveEmailOverride}
+            onClearEmailOverride={clearEmailOverride}
           />
         ))}
 

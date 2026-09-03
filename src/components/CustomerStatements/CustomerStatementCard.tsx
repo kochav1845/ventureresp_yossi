@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckSquare, Square, ChevronDown, ChevronUp, Mail, AlertTriangle, ListPlus } from 'lucide-react';
+import { CheckSquare, Square, ChevronDown, ChevronUp, Mail, AlertTriangle, ListPlus, Pencil, Loader2, RotateCcw, Check, X } from 'lucide-react';
 import type { StatementCustomer } from './types';
 
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   loadingInvoices: boolean;
   onToggleSelect: () => void;
   onToggleExpand: () => void;
+  onSaveEmailOverride: (customerId: string, email: string) => Promise<void>;
+  onClearEmailOverride: (customerId: string) => Promise<void>;
 }
 
 const fmtCurrency = (n: number) =>
@@ -37,9 +39,51 @@ function getAgingLabel(days: number): string {
 
 const INITIAL_INVOICE_COUNT = 5;
 
-export default function CustomerStatementCard({ customer, selected, expanded, loadingInvoices, onToggleSelect, onToggleExpand }: Props) {
+export default function CustomerStatementCard({ customer, selected, expanded, loadingInvoices, onToggleSelect, onToggleExpand, onSaveEmailOverride, onClearEmailOverride }: Props) {
   // Show only the first few invoices when a customer is opened; reveal the rest on demand.
   const [showAll, setShowAll] = useState(false);
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [emailDraft, setEmailDraft] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
+
+  const startEditEmail = () => {
+    setEmailDraft(customer.email || '');
+    setEditingEmail(true);
+  };
+
+  const commitEmail = async () => {
+    const email = emailDraft.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+    setSavingEmail(true);
+    try {
+      if (email === (customer.original_email || '')) {
+        // Typing the synced address back = removing the override.
+        if (customer.email_overridden) await onClearEmailOverride(customer.customer_id);
+      } else {
+        await onSaveEmailOverride(customer.customer_id, email);
+      }
+      setEditingEmail(false);
+    } catch (e: any) {
+      alert('Could not save the email:\n\n' + (e?.message || e));
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const revertEmail = async () => {
+    setSavingEmail(true);
+    try {
+      await onClearEmailOverride(customer.customer_id);
+      setEditingEmail(false);
+    } catch (e: any) {
+      alert('Could not remove the email override:\n\n' + (e?.message || e));
+    } finally {
+      setSavingEmail(false);
+    }
+  };
   const allInvoices = customer.invoices.filter(inv => inv.balance !== 0);
   const openInvoices = allInvoices.filter(inv => inv.balance > 0);
   const sortedInvoices = [...allInvoices].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -73,16 +117,62 @@ export default function CustomerStatementCard({ customer, selected, expanded, lo
             <h3 className="font-semibold text-gray-900 truncate">{customer.customer_name}</h3>
             <span className="text-xs text-gray-400 flex-shrink-0">{customer.customer_id}</span>
           </div>
-          <div className="flex items-center gap-3 mt-1">
-            {customer.email ? (
-              <span className="flex items-center gap-1 text-xs text-gray-500">
-                <Mail className="w-3 h-3" />
-                {customer.email}
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            {editingEmail ? (
+              <span className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                <input
+                  type="email"
+                  value={emailDraft}
+                  onChange={e => setEmailDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') commitEmail(); if (e.key === 'Escape') setEditingEmail(false); }}
+                  placeholder="email@example.com"
+                  autoFocus
+                  className="w-56 px-2 py-1 text-xs border border-blue-300 rounded focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-blue-50/40"
+                />
+                <button onClick={commitEmail} disabled={savingEmail} title="Save"
+                  className="p-1 text-emerald-600 hover:bg-emerald-50 rounded disabled:opacity-50">
+                  {savingEmail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                </button>
+                {customer.email_overridden && (
+                  <button onClick={revertEmail} disabled={savingEmail} title={`Revert to synced email${customer.original_email ? ` (${customer.original_email})` : ''}`}
+                    className="p-1 text-amber-600 hover:bg-amber-50 rounded disabled:opacity-50">
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button onClick={() => setEditingEmail(false)} disabled={savingEmail} title="Cancel"
+                  className="p-1 text-gray-400 hover:bg-gray-100 rounded disabled:opacity-50">
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-xs text-amber-500">
-                <AlertTriangle className="w-3 h-3" />
-                No email
+              <span className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                {customer.email ? (
+                  <span className="flex items-center gap-1 text-xs text-gray-500">
+                    <Mail className="w-3 h-3" />
+                    {customer.email}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-xs text-amber-500">
+                    <AlertTriangle className="w-3 h-3" />
+                    No email
+                  </span>
+                )}
+                {customer.email_overridden && (
+                  <span
+                    className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded px-1 py-px"
+                    title={`Manual email — statements go here instead of the synced address${customer.original_email ? ` (${customer.original_email})` : ''}`}
+                  >
+                    custom
+                  </span>
+                )}
+                <button
+                  onClick={startEditEmail}
+                  title={customer.email ? 'Change the email statements are sent to' : 'Add an email for statements'}
+                  className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
               </span>
             )}
             {customer.terms && (

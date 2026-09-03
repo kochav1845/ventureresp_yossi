@@ -47,6 +47,10 @@ Deno.serve(async (req: Request) => {
     const rules = (allRules || []).filter((r: any) => enabledOrgs.has(r.organization_id));
     if (rules.length === 0) return json({ ok: true, sent: 0, note: "no active rules" });
 
+    // Manual per-customer email overrides take precedence over synced emails.
+    const { data: ovRows } = await supabase.from("statement_email_overrides").select("customer_id, email");
+    const emailOverrides = new Map<string, string>((ovRows || []).map((o: any) => [o.customer_id, o.email]));
+
     const byOrg = new Map<string, any[]>();
     for (const r of rules) {
       if (!byOrg.has(r.organization_id)) byOrg.set(r.organization_id, []);
@@ -113,7 +117,7 @@ Deno.serve(async (req: Request) => {
             const { data: cust } = await supabase.from("acumatica_customers")
               .select("customer_id, customer_name, email_address, billing_email, general_email, terms")
               .eq("customer_id", cid).eq("organization_id", orgId).maybeSingle();
-            const email = cust?.email_address || cust?.billing_email || cust?.general_email || "";
+            const email = emailOverrides.get(cid) || cust?.email_address || cust?.billing_email || cust?.general_email || "";
             if (!email) { await finalize("failed", null, "no email on file"); failed++; continue; }
 
             const { data: invRows } = await supabase.from("acumatica_invoices")

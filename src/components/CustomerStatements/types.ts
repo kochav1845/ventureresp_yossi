@@ -20,6 +20,10 @@ export interface StatementCustomer {
   open_invoice_count: number;
   max_days_overdue: number;
   invoices: StatementInvoice[];
+  // Manual email override (from statement_email_overrides). When set, `email`
+  // holds the override and `original_email` keeps the Acumatica-synced value.
+  email_overridden?: boolean;
+  original_email?: string;
   // Invoice activity within the selected period (populated from the activity RPC).
   invoiced_count?: number;
   invoiced_amount?: number;

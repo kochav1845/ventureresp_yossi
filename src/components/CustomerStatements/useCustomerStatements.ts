@@ -28,6 +28,7 @@ export function useCustomerStatements() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [excelTemplates, setExcelTemplates] = useState<StatementExcelTemplate[]>([]);
   const [selectedExcelTemplateId, setSelectedExcelTemplateId] = useState<string | null>(null);
+  const [emailOverrides, setEmailOverrides] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [minBalance, setMinBalance] = useState(0);
@@ -235,11 +236,48 @@ export function useCustomerStatements() {
     }
   }, []);
 
+  // Manual per-customer email overrides for statement sends.
+  const loadEmailOverrides = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('statement_email_overrides')
+        .select('customer_id, email');
+      if (error) throw error;
+      const map: Record<string, string> = {};
+      (data || []).forEach((r: any) => { map[r.customer_id] = r.email; });
+      setEmailOverrides(map);
+    } catch (err) {
+      console.error('Error loading statement email overrides:', err);
+    }
+  }, []);
+
+  const saveEmailOverride = useCallback(async (customerId: string, email: string) => {
+    const { error } = await supabase
+      .from('statement_email_overrides')
+      .upsert({ customer_id: customerId, email }, { onConflict: 'customer_id' });
+    if (error) throw error;
+    setEmailOverrides(prev => ({ ...prev, [customerId]: email }));
+  }, []);
+
+  const clearEmailOverride = useCallback(async (customerId: string) => {
+    const { error } = await supabase
+      .from('statement_email_overrides')
+      .delete()
+      .eq('customer_id', customerId);
+    if (error) throw error;
+    setEmailOverrides(prev => {
+      const next = { ...prev };
+      delete next[customerId];
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     loadData(showTestCustomers);
     loadTemplates();
     loadExcelTemplates();
-  }, [loadData, loadTemplates, loadExcelTemplates, showTestCustomers]);
+    loadEmailOverrides();
+  }, [loadData, loadTemplates, loadExcelTemplates, loadEmailOverrides, showTestCustomers]);
 
   // ── Invoice-activity for the selected period ────────────────────────────
   const periodRange = (p: StatementPeriod): { from: string; to: string } | null => {
@@ -280,10 +318,19 @@ export function useCustomerStatements() {
   useEffect(() => { loadActivity(period); }, [period, loadActivity]);
 
   const filtered = (() => {
-    // Attach the period's invoice activity to each customer, then filter.
+    // Attach the period's invoice activity and any manual email override to
+    // each customer, then filter. Everything downstream (cards, previews,
+    // sends) sees the override as the customer's email.
     let list = customers.map(c => {
       const a = activityMap[c.customer_id];
-      return { ...c, invoiced_count: a?.count ?? 0, invoiced_amount: a?.amount ?? 0, last_invoice_date: a?.last ?? null };
+      const override = emailOverrides[c.customer_id];
+      return {
+        ...c,
+        email: override || c.email,
+        email_overridden: !!override,
+        original_email: c.email,
+        invoiced_count: a?.count ?? 0, invoiced_amount: a?.amount ?? 0, last_invoice_date: a?.last ?? null,
+      };
     }).filter(c => c.total_balance >= minBalance);
 
     if (onlyInvoiced) list = list.filter(c => (c.invoiced_count ?? 0) > 0);
@@ -352,6 +399,8 @@ export function useCustomerStatements() {
     selectedExcelTemplateId,
     setSelectedExcelTemplateId,
     refreshExcelTemplates: loadExcelTemplates,
+    saveEmailOverride,
+    clearEmailOverride,
     selectedIds,
     toggleCustomer,
     selectAll,
