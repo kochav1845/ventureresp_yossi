@@ -1,5 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+// Style-capable SheetJS build — same library the frontend uses, so automatic
+// statements get the same styled Excel attachment as manual sends.
+import * as XLSX from "npm:xlsx-js-style@1.2.0";
 
 // Scheduled statement sender. Runs off a cron every few minutes. It only does
 // anything for organizations that have explicitly switched automation ON
@@ -31,6 +34,147 @@ function effectiveDay(day: number, year: number, month1: number) {
   return Math.min(day || 1, lastDay);
 }
 
+// ── Excel statement attachment (mirrors src/lib/statementExport.ts) ────────
+const CUSTOMER_FIELD_LABELS: Record<string, string> = {
+  customer_name: "Customer", customer_id: "Customer ID", email: "Email",
+  terms: "Terms", statement_date: "Statement Date", total_balance: "Total Open Balance",
+};
+const COLUMN_WIDTHS: Record<string, number> = {
+  reference_number: 18, date: 14, due_date: 14, description: 35, amount: 14,
+  balance: 14, days_overdue: 10, aging: 10, type: 14, status: 12,
+};
+const DEFAULT_LAYOUT = {
+  title: "Account Statement",
+  sheet_name: "Statement",
+  customer_fields: ["customer_name", "customer_id", "email", "terms", "statement_date", "total_balance"],
+  show_aging_summary: true,
+  columns: [
+    { key: "reference_number", label: "Invoice #", enabled: true },
+    { key: "date", label: "Date", enabled: true },
+    { key: "due_date", label: "Due Date", enabled: true },
+    { key: "description", label: "Description", enabled: true },
+    { key: "amount", label: "Amount", enabled: true },
+    { key: "balance", label: "Balance", enabled: true },
+    { key: "days_overdue", label: "Days Overdue", enabled: true },
+    { key: "aging", label: "Aging", enabled: true },
+  ],
+  show_total_row: true,
+};
+
+const BORDER = { style: "thin", color: { rgb: "CBD5E1" } };
+const ST = {
+  title: { font: { bold: true, sz: 16, color: { rgb: "1E293B" } } },
+  section: { font: { bold: true, sz: 12, color: { rgb: "1E293B" } } },
+  label: { font: { bold: true, sz: 10, color: { rgb: "64748B" } } },
+  value: { font: { sz: 10, color: { rgb: "1E293B" } } },
+  thead: { font: { bold: true, sz: 10, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "334155" } }, border: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER } },
+  agingHead: { font: { bold: true, sz: 10, color: { rgb: "334155" } }, fill: { fgColor: { rgb: "E2E8F0" } }, border: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER } },
+  cell: { font: { sz: 10, color: { rgb: "1E293B" } }, border: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER } },
+  cellRight: { font: { sz: 10, color: { rgb: "1E293B" } }, border: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER }, alignment: { horizontal: "right" } },
+  total: { font: { bold: true, sz: 11, color: { rgb: "1E293B" } }, border: { top: { style: "medium", color: { rgb: "334155" } } }, alignment: { horizontal: "right" } },
+};
+const RIGHT_COLS = new Set(["amount", "balance", "days_overdue"]);
+const styled = (v: unknown, s: unknown) => ({ v: v ?? "", t: typeof v === "number" ? "n" : "s", s });
+const money = (n: number) => n < 0 ? `-$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`;
+const shortDate = (s: string) => s ? new Date(s).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }) : "";
+const bucket = (d: number) => d <= 0 ? "Current" : d <= 30 ? "1-30" : d <= 60 ? "31-60" : d <= 90 ? "61-90" : "90+";
+
+interface StatementInv {
+  reference_number: string; date: string; due_date: string; amount: number;
+  balance: number; description: string; days_overdue: number; type: string; status: string;
+}
+
+function buildStatementExcelBase64(
+  cust: { customer_id: string; customer_name: string; email: string; terms: string },
+  invoices: StatementInv[],
+  layout: any,
+): string {
+  const l = {
+    ...DEFAULT_LAYOUT, ...(layout || {}),
+    columns: Array.isArray(layout?.columns) && layout.columns.length ? layout.columns : DEFAULT_LAYOUT.columns,
+    customer_fields: Array.isArray(layout?.customer_fields) ? layout.customer_fields : DEFAULT_LAYOUT.customer_fields,
+  };
+  const today = new Date().toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
+  const sorted = [...invoices].filter(i => i.balance !== 0)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const total = sorted.reduce((s, i) => s + i.balance, 0);
+
+  const buckets = { current: 0, d30: 0, d60: 0, d90: 0, d90p: 0 };
+  sorted.forEach(i => {
+    if (i.balance <= 0) return;
+    const d = i.days_overdue;
+    if (d <= 0) buckets.current += i.balance;
+    else if (d <= 30) buckets.d30 += i.balance;
+    else if (d <= 60) buckets.d60 += i.balance;
+    else if (d <= 90) buckets.d90 += i.balance;
+    else buckets.d90p += i.balance;
+  });
+
+  const fieldVal = (key: string) => key === "customer_name" ? cust.customer_name
+    : key === "customer_id" ? cust.customer_id
+    : key === "email" ? (cust.email || "N/A")
+    : key === "terms" ? (cust.terms || "N/A")
+    : key === "statement_date" ? today
+    : key === "total_balance" ? money(total) : "";
+
+  const colVal = (inv: StatementInv, key: string): unknown => {
+    switch (key) {
+      case "reference_number": return inv.reference_number;
+      case "date": return shortDate(inv.date);
+      case "due_date": return shortDate(inv.due_date);
+      case "description": return inv.description || "";
+      case "amount": return money(inv.amount);
+      case "balance": return money(inv.balance);
+      case "days_overdue": return inv.balance < 0 ? "" : inv.days_overdue;
+      case "aging": return inv.balance < 0 ? "Credit" : bucket(inv.days_overdue);
+      case "type": return inv.type || "Invoice";
+      case "status": return inv.status || "";
+      default: return "";
+    }
+  };
+
+  const rows: unknown[][] = [];
+  const title = String(l.title || "").replace(/\{\{customer_name\}\}/g, cust.customer_name)
+    .replace(/\{\{customer_id\}\}/g, cust.customer_id).replace(/\{\{date\}\}/g, today);
+  if (title.trim()) { rows.push([styled(title, ST.title)]); rows.push([]); }
+  (l.customer_fields as string[]).forEach(key => {
+    const label = CUSTOMER_FIELD_LABELS[key];
+    if (label) rows.push([styled(`${label}:`, ST.label), styled(fieldVal(key), ST.value)]);
+  });
+  if ((l.customer_fields as string[]).length) rows.push([]);
+  if (l.show_aging_summary !== false) {
+    rows.push([styled("Aging Summary", ST.section)]);
+    rows.push(["Current", "1-30 Days", "31-60 Days", "61-90 Days", "90+ Days", "Total"].map(h => styled(h, ST.agingHead)));
+    rows.push([buckets.current, buckets.d30, buckets.d60, buckets.d90, buckets.d90p, total].map(v => styled(money(v), ST.cellRight)));
+    rows.push([]);
+  }
+  const cols = (l.columns as any[]).filter(c => c.enabled !== false);
+  rows.push([styled("Open Invoices", ST.section)]);
+  rows.push(cols.map(c => styled(c.label, ST.thead)));
+  sorted.forEach(inv => rows.push(cols.map(c => styled(colVal(inv, c.key), RIGHT_COLS.has(c.key) ? ST.cellRight : ST.cell))));
+  if (l.show_total_row !== false) {
+    rows.push([]);
+    const totalRow: unknown[] = new Array(cols.length).fill("");
+    const bIdx = cols.findIndex(c => c.key === "balance");
+    const vIdx = bIdx >= 0 ? bIdx : Math.max(cols.length - 1, 1);
+    totalRow[vIdx] = money(total);
+    totalRow[Math.max(vIdx - 1, 0)] = "TOTAL:";
+    rows.push(totalRow.map(v => styled(v, ST.total)));
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = cols.map(c => ({ wch: COLUMN_WIDTHS[c.key] || 14 }));
+  XLSX.utils.book_append_sheet(wb, ws, String(l.sheet_name || "Statement").slice(0, 31) || "Statement");
+  const bytes = new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   try {
@@ -50,6 +194,13 @@ Deno.serve(async (req: Request) => {
     // Manual per-customer email overrides take precedence over synced emails.
     const { data: ovRows } = await supabase.from("statement_email_overrides").select("customer_id, email");
     const emailOverrides = new Map<string, string>((ovRows || []).map((o: any) => [o.customer_id, o.email]));
+
+    // Default Excel statement layout (from the Statements settings drawer).
+    let excelLayout: any = null;
+    try {
+      const { data: xt } = await supabase.from("statement_excel_templates").select("layout").eq("is_default", true).maybeSingle();
+      excelLayout = xt?.layout || null;
+    } catch (_) { /* table may not exist yet — the built-in default is used */ }
 
     const byOrg = new Map<string, any[]>();
     for (const r of rules) {
@@ -127,20 +278,45 @@ Deno.serve(async (req: Request) => {
               .order("due_date", { ascending: true });
 
             const today = new Date();
-            const invoices = (invRows || []).map((inv: any) => {
+            const statementInvoices: StatementInv[] = (invRows || []).map((inv: any) => {
               const isCredit = inv.type === "Credit Memo" || inv.type === "Credit WO";
               const amt = Number(inv.amount) || Number(inv.dac_total) || 0;
               const bal = Number(inv.balance) || 0;
+              const due = inv.due_date ? new Date(inv.due_date) : today;
+              const overdue = Math.max(0, Math.floor((today.getTime() - due.getTime()) / 86400000));
               return {
                 reference_number: inv.reference_number,
-                invoice_date: inv.date,
+                date: inv.date,
                 due_date: inv.due_date,
                 amount: isCredit ? -Math.abs(amt) : amt,
                 balance: isCredit ? -Math.abs(bal) : bal,
                 description: inv.description || "",
+                days_overdue: isCredit ? 0 : overdue,
+                type: inv.type || "Invoice",
+                status: inv.status || "",
               };
             });
+            const invoices = statementInvoices.map((inv) => ({
+              reference_number: inv.reference_number,
+              invoice_date: inv.date,
+              due_date: inv.due_date,
+              amount: inv.amount,
+              balance: inv.balance,
+              description: inv.description,
+            }));
             if (invoices.length === 0) { await finalize("skipped", null, "no open invoices"); skipped++; continue; }
+
+            // Same styled Excel attachment manual sends produce.
+            let excelBase64: string | null = null;
+            try {
+              excelBase64 = buildStatementExcelBase64(
+                { customer_id: cid, customer_name: cust?.customer_name || cid, email, terms: cust?.terms || "" },
+                statementInvoices,
+                excelLayout,
+              );
+            } catch (e) {
+              console.error("excel generation failed for", cid, e);
+            }
 
             const balance = invoices.reduce((s, i) => s + i.balance, 0);
             const dueDates = (invRows || []).map((i: any) => i.due_date).filter(Boolean).sort();
@@ -164,6 +340,7 @@ Deno.serve(async (req: Request) => {
                   oldest_invoice_date: oldest,
                   days_overdue: daysOverdue,
                 },
+                excelBase64,
                 department: "ar",
                 organizationId: orgId,
               }),

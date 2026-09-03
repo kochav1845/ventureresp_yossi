@@ -8,8 +8,11 @@ import {
   downloadExcelFile,
   DEFAULT_EXCEL_LAYOUT,
 } from '../../lib/statementExport';
+import { generateCustomerStatementPdf, downloadCustomerStatementPdf } from '../../lib/statementPdf';
 import EmailPreviewModal from './EmailPreviewModal';
 import type { StatementCustomer, ReportTemplate, StatementExcelTemplate } from './types';
+
+export type AttachmentFormat = 'excel' | 'pdf' | 'both';
 
 interface Props {
   selectedCustomers: StatementCustomer[];
@@ -37,6 +40,8 @@ export default function StatementActions({ selectedCustomers, templates, selecte
   const [sending, setSending] = useState(false);
   const [emailProgress, setEmailProgress] = useState<EmailProgress[]>([]);
   const [downloadType, setDownloadType] = useState<'individual' | 'combined'>('combined');
+  const [downloadFormat, setDownloadFormat] = useState<'excel' | 'pdf'>('excel');
+  const [attachFormat, setAttachFormat] = useState<AttachmentFormat>('excel');
   const [useTestEmail, setUseTestEmail] = useState(false);
   const [testEmail, setTestEmail] = useState('');
 
@@ -69,6 +74,10 @@ export default function StatementActions({ selectedCustomers, templates, selecte
     if (downloadType === 'combined') {
       const data = generateBatchStatementExcel(customersWithInvoices);
       downloadExcelFile(data, `Customer_Statements_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } else if (downloadFormat === 'pdf') {
+      for (const customer of customersWithInvoices) {
+        await downloadCustomerStatementPdf(customer, excelLayout);
+      }
     } else {
       customersWithInvoices.forEach(customer => {
         const data = generateCustomerStatementExcel(customer, excelLayout);
@@ -127,8 +136,14 @@ export default function StatementActions({ selectedCustomers, templates, selecte
       setEmailProgress([...progress]);
 
       try {
-        const excelData = generateCustomerStatementExcel(customerWithInvoices, excelLayout);
-        const base64 = uint8ArrayToBase64(excelData);
+        const wantExcel = attachFormat === 'excel' || attachFormat === 'both';
+        const wantPdf = attachFormat === 'pdf' || attachFormat === 'both';
+        const base64 = wantExcel
+          ? uint8ArrayToBase64(generateCustomerStatementExcel(customerWithInvoices, excelLayout))
+          : undefined;
+        const pdfBase64 = wantPdf
+          ? await generateCustomerStatementPdf(customerWithInvoices, excelLayout)
+          : undefined;
 
         const positiveInvoices = customerInvoices.filter(inv => inv.balance > 0);
         const oldestInvoice = positiveInvoices.length > 0
@@ -182,6 +197,7 @@ export default function StatementActions({ selectedCustomers, templates, selecte
                 days_overdue: daysOverdue,
               },
               excelBase64: base64,
+              pdfBase64,
               sentByUserId: profile?.id,
               department: 'ar',
             }),
@@ -272,9 +288,22 @@ export default function StatementActions({ selectedCustomers, templates, selecte
                 <span className="text-sm text-gray-700">Separate file per customer</span>
               </label>
             </div>
+            {downloadType === 'individual' && (
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-700 font-medium whitespace-nowrap">File type:</label>
+                <select
+                  value={downloadFormat}
+                  onChange={e => setDownloadFormat(e.target.value as 'excel' | 'pdf')}
+                  className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:ring-2 focus:ring-emerald-400 focus:border-transparent"
+                >
+                  <option value="excel">Excel (.xlsx)</option>
+                  <option value="pdf">PDF</option>
+                </select>
+              </div>
+            )}
             {excelTemplates.length > 0 && downloadType === 'individual' && (
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-700 font-medium whitespace-nowrap">Excel template:</label>
+                <label className="text-sm text-gray-700 font-medium whitespace-nowrap">Template:</label>
                 <select
                   value={selectedExcelTemplateId || ''}
                   onChange={e => onExcelTemplateChange(e.target.value || null)}
@@ -308,6 +337,7 @@ export default function StatementActions({ selectedCustomers, templates, selecte
             invoices: freshInvoiceMap[c.customer_id] || c.invoices,
           }))}
           template={selectedTemplate}
+          attachFormat={attachFormat}
           useTestEmail={useTestEmail}
           testEmail={testEmail}
           onClose={() => setShowPreview(false)}
@@ -333,9 +363,19 @@ export default function StatementActions({ selectedCustomers, templates, selecte
                   </option>
                 ))}
               </select>
+              <label className="text-sm text-gray-700 font-medium whitespace-nowrap">Attachment:</label>
+              <select
+                value={attachFormat}
+                onChange={e => setAttachFormat(e.target.value as AttachmentFormat)}
+                className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              >
+                <option value="excel">Excel (.xlsx)</option>
+                <option value="pdf">PDF</option>
+                <option value="both">Excel + PDF</option>
+              </select>
               {excelTemplates.length > 0 && (
                 <>
-                  <label className="text-sm text-gray-700 font-medium whitespace-nowrap">Excel template:</label>
+                  <label className="text-sm text-gray-700 font-medium whitespace-nowrap">Statement template:</label>
                   <select
                     value={selectedExcelTemplateId || ''}
                     onChange={e => onExcelTemplateChange(e.target.value || null)}

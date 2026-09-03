@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useOrg } from '../../contexts/OrgContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import {
   Zap, X, Plus, Trash2, Search, Save, Users, UserMinus, CalendarClock, Loader2, Check, AlertTriangle,
 } from 'lucide-react';
@@ -50,6 +51,7 @@ interface Props {
 export default function AutoStatementsSidebar({ open, onClose, customers, templates, defaultTemplateId }: Props) {
   const { org } = useOrg();
   const { user } = useAuth();
+  const toast = useToast();
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -199,7 +201,7 @@ export default function AutoStatementsSidebar({ open, onClose, customers, templa
       setSavedAt(Date.now());
     } catch (e: any) {
       console.error('Error saving auto-statement rules:', e);
-      alert('Could not save automatic statement settings:\n\n' + (e?.message || e));
+      toast.error('Could not save automatic statement settings: ' + (e?.message || e));
     } finally {
       setSaving(false);
     }
@@ -216,7 +218,7 @@ export default function AutoStatementsSidebar({ open, onClose, customers, templa
       if (error) throw error;
       setEnabled(next);
     } catch (e: any) {
-      alert('Could not update automated sending:\n\n' + (e?.message || e));
+      toast.error('Could not update automated sending: ' + (e?.message || e));
     }
   };
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CheckSquare, Square, ChevronDown, ChevronUp, Mail, AlertTriangle, ListPlus, Pencil, Loader2, RotateCcw, Check, X } from 'lucide-react';
+import { useToast } from '../../contexts/ToastContext';
 import type { StatementCustomer } from './types';
 
 interface Props {
@@ -40,6 +41,7 @@ function getAgingLabel(days: number): string {
 const INITIAL_INVOICE_COUNT = 5;
 
 export default function CustomerStatementCard({ customer, selected, expanded, loadingInvoices, onToggleSelect, onToggleExpand, onSaveEmailOverride, onClearEmailOverride }: Props) {
+  const toast = useToast();
   // Show only the first few invoices when a customer is opened; reveal the rest on demand.
   const [showAll, setShowAll] = useState(false);
   const [editingEmail, setEditingEmail] = useState(false);
@@ -54,7 +56,7 @@ export default function CustomerStatementCard({ customer, selected, expanded, lo
   const commitEmail = async () => {
     const email = emailDraft.trim();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      alert('Please enter a valid email address.');
+      toast.warning('Please enter a valid email address.');
       return;
     }
     setSavingEmail(true);
@@ -67,7 +69,7 @@ export default function CustomerStatementCard({ customer, selected, expanded, lo
       }
       setEditingEmail(false);
     } catch (e: any) {
-      alert('Could not save the email:\n\n' + (e?.message || e));
+      toast.error('Could not save the email: ' + (e?.message || e));
     } finally {
       setSavingEmail(false);
     }
@@ -79,7 +81,7 @@ export default function CustomerStatementCard({ customer, selected, expanded, lo
       await onClearEmailOverride(customer.customer_id);
       setEditingEmail(false);
     } catch (e: any) {
-      alert('Could not remove the email override:\n\n' + (e?.message || e));
+      toast.error('Could not remove the email override: ' + (e?.message || e));
     } finally {
       setSavingEmail(false);
     }

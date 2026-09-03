@@ -69,11 +69,42 @@ export default function CustomerStatements() {
   const overdueCount = customers.filter(c => c.max_days_overdue > 30).length;
 
   if (loading && customers.length === 0) {
+    // Skeleton of the real page layout while the first batch loads.
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500 border-t-transparent mx-auto mb-3" />
-          <p className="text-sm text-gray-500">Loading customer data...</p>
+      <div className="max-w-7xl mx-auto space-y-6 animate-pulse">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="h-7 w-64 bg-gray-200 rounded" />
+            <div className="h-4 w-96 max-w-full bg-gray-100 rounded" />
+          </div>
+          <div className="h-10 w-64 bg-gray-100 rounded-xl hidden sm:block" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-gray-100" />
+              <div className="space-y-2">
+                <div className="h-5 w-20 bg-gray-200 rounded" />
+                <div className="h-3 w-28 bg-gray-100 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+          <div className="h-10 bg-gray-100 rounded-lg" />
+          <div className="h-4 w-56 bg-gray-100 rounded" />
+        </div>
+        <div className="space-y-3">
+          {[0, 1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="bg-white rounded-xl border border-gray-200 px-5 py-4 flex items-center gap-4">
+              <div className="w-5 h-5 bg-gray-100 rounded" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-48 bg-gray-200 rounded" />
+                <div className="h-3 w-64 max-w-full bg-gray-100 rounded" />
+              </div>
+              <div className="h-6 w-24 bg-gray-100 rounded hidden sm:block" />
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -92,7 +123,7 @@ export default function CustomerStatements() {
               : 'Select customers to download or email their open balance statements'}
           </p>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
           <PageHelp title="Statements" intro="Select customers and send them their account statement. Here's what each control means:" sections={STATEMENTS_HELP} />
           <button
             onClick={() => setShowExcelSettings(true)}

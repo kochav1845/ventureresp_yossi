@@ -1891,9 +1891,21 @@ export default function UnifiedTicketingSystem({
                         : 'No tickets match your filters';
 
                   return loading ? (
-                    <div className="text-center py-12">
-                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-3"></div>
-                      <p className="text-gray-500 text-sm">Loading tickets...</p>
+                    <div className="space-y-4 animate-pulse">
+                      {[0, 1, 2, 3].map(i => (
+                        <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-4 h-4 bg-gray-100 rounded" />
+                              <div className="h-4 w-28 bg-gray-200 rounded" />
+                              <div className="h-5 w-16 bg-gray-100 rounded-full" />
+                            </div>
+                            <div className="h-5 w-20 bg-gray-100 rounded" />
+                          </div>
+                          <div className="h-4 w-56 bg-gray-200 rounded mb-2" />
+                          <div className="h-3 w-80 max-w-full bg-gray-100 rounded" />
+                        </div>
+                      ))}
                     </div>
                   ) : displayTickets.length === 0 ? (
                     <div className="text-center py-12">

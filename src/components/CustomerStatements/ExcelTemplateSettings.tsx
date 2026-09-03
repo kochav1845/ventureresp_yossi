@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import {
   Settings, X, Plus, Trash2, Save, Loader2, Check, Star, Pencil, ArrowLeft,
   ChevronUp, ChevronDown, Download, FileSpreadsheet,
@@ -49,6 +50,7 @@ type EditorState = {
 
 export default function ExcelTemplateSettings({ open, onClose, templates, onTemplatesChanged }: Props) {
   const { user } = useAuth();
+  const toast = useToast();
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -84,8 +86,8 @@ export default function ExcelTemplateSettings({ open, onClose, templates, onTemp
 
   const handleSave = async () => {
     if (!editor) return;
-    if (!editor.name.trim()) { alert('Please give the template a name.'); return; }
-    if (!editor.layout.columns.some(c => c.enabled)) { alert('Enable at least one invoice column.'); return; }
+    if (!editor.name.trim()) { toast.warning('Please give the template a name.'); return; }
+    if (!editor.layout.columns.some(c => c.enabled)) { toast.warning('Enable at least one invoice column.'); return; }
     setSaving(true);
     try {
       const payload = {
@@ -107,7 +109,7 @@ export default function ExcelTemplateSettings({ open, onClose, templates, onTemp
       onTemplatesChanged();
     } catch (e: any) {
       console.error('Error saving excel template:', e);
-      alert('Could not save the Excel template:\n\n' + friendlyError(e));
+      toast.error('Could not save the Excel template: ' + friendlyError(e));
     } finally {
       setSaving(false);
     }
@@ -121,7 +123,7 @@ export default function ExcelTemplateSettings({ open, onClose, templates, onTemp
       if (error) throw error;
       onTemplatesChanged();
     } catch (e: any) {
-      alert('Could not delete the template:\n\n' + friendlyError(e));
+      toast.error('Could not delete the template: ' + friendlyError(e));
     } finally {
       setDeletingId(null);
     }
@@ -135,7 +137,7 @@ export default function ExcelTemplateSettings({ open, onClose, templates, onTemp
       if (error) throw error;
       onTemplatesChanged();
     } catch (e: any) {
-      alert('Could not set the default template:\n\n' + friendlyError(e));
+      toast.error('Could not set the default template: ' + friendlyError(e));
     }
   };
 

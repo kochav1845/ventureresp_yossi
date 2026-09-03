@@ -1,4 +1,6 @@
-import * as XLSX from 'xlsx';
+// xlsx-js-style is a drop-in SheetJS build that actually writes cell styles
+// (fonts, fills, borders) — the community 'xlsx' build silently drops them.
+import * as XLSX from 'xlsx-js-style';
 
 export interface StatementInvoice {
   reference_number: string;
@@ -142,6 +144,46 @@ function calculateAging(invoices: StatementInvoice[]) {
   return buckets;
 }
 
+// ── Cell styles for the statement sheet ───────────────────────────────────
+const BORDER = { style: 'thin', color: { rgb: 'CBD5E1' } };
+const CELL_STYLES = {
+  title: { font: { bold: true, sz: 16, color: { rgb: '1E293B' } } },
+  section: { font: { bold: true, sz: 12, color: { rgb: '1E293B' } } },
+  label: { font: { bold: true, sz: 10, color: { rgb: '64748B' } } },
+  value: { font: { sz: 10, color: { rgb: '1E293B' } } },
+  thead: {
+    font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } },
+    fill: { fgColor: { rgb: '334155' } },
+    border: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER },
+  },
+  agingHead: {
+    font: { bold: true, sz: 10, color: { rgb: '334155' } },
+    fill: { fgColor: { rgb: 'E2E8F0' } },
+    border: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER },
+  },
+  cell: {
+    font: { sz: 10, color: { rgb: '1E293B' } },
+    border: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER },
+  },
+  cellRight: {
+    font: { sz: 10, color: { rgb: '1E293B' } },
+    border: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER },
+    alignment: { horizontal: 'right' },
+  },
+  total: {
+    font: { bold: true, sz: 11, color: { rgb: '1E293B' } },
+    border: { top: { style: 'medium', color: { rgb: '334155' } } },
+    alignment: { horizontal: 'right' },
+  },
+} as const;
+
+const RIGHT_ALIGNED_COLUMNS = new Set(['amount', 'balance', 'days_overdue']);
+
+// Wrap a value as a styled SheetJS cell object.
+function styled(v: any, s: any) {
+  return { v: v ?? '', t: typeof v === 'number' ? 'n' : 's', s };
+}
+
 function invoiceCellValue(inv: StatementInvoice, key: string): any {
   switch (key) {
     case 'reference_number': return inv.reference_number;
@@ -187,21 +229,21 @@ export function generateCustomerStatementExcel(
 
   const rows: any[][] = [];
   if (layout.title.trim()) {
-    rows.push([substituteTitle(layout.title, customer, today)]);
+    rows.push([styled(substituteTitle(layout.title, customer, today), CELL_STYLES.title)]);
     rows.push([]);
   }
 
   if (layout.customer_fields.length > 0) {
     layout.customer_fields.forEach(key => {
       const def = CUSTOMER_FIELD_DEFS.find(d => d.key === key);
-      if (def) rows.push([`${def.label}:`, customerFieldValue(key)]);
+      if (def) rows.push([styled(`${def.label}:`, CELL_STYLES.label), styled(customerFieldValue(key), CELL_STYLES.value)]);
     });
     rows.push([]);
   }
 
   if (layout.show_aging_summary) {
-    rows.push(['Aging Summary']);
-    rows.push(['Current', '1-30 Days', '31-60 Days', '61-90 Days', '90+ Days', 'Total']);
+    rows.push([styled('Aging Summary', CELL_STYLES.section)]);
+    rows.push(['Current', '1-30 Days', '31-60 Days', '61-90 Days', '90+ Days', 'Total'].map(h => styled(h, CELL_STYLES.agingHead)));
     rows.push([
       fmtCurrency(aging.current),
       fmtCurrency(aging['1_30']),
@@ -209,20 +251,23 @@ export function generateCustomerStatementExcel(
       fmtCurrency(aging['61_90']),
       fmtCurrency(aging['90_plus']),
       fmtCurrency(customer.total_balance),
-    ]);
+    ].map(v => styled(v, CELL_STYLES.cellRight)));
     rows.push([]);
   }
 
   const enabledCols = layout.columns.filter(c => c.enabled);
-  rows.push(['Open Invoices']);
-  rows.push(enabledCols.map(c => c.label));
+  rows.push([styled('Open Invoices', CELL_STYLES.section)]);
+  rows.push(enabledCols.map(c => styled(c.label, CELL_STYLES.thead)));
 
   const sortedInvoices = [...customer.invoices]
     .filter(inv => inv.balance !== 0)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   sortedInvoices.forEach(inv => {
-    rows.push(enabledCols.map(c => invoiceCellValue(inv, c.key)));
+    rows.push(enabledCols.map(c => styled(
+      invoiceCellValue(inv, c.key),
+      RIGHT_ALIGNED_COLUMNS.has(c.key) ? CELL_STYLES.cellRight : CELL_STYLES.cell,
+    )));
   });
 
   if (layout.show_total_row) {
@@ -233,7 +278,7 @@ export function generateCustomerStatementExcel(
     const valueIdx = balanceIdx >= 0 ? balanceIdx : Math.max(enabledCols.length - 1, 1);
     totalRow[valueIdx] = fmtCurrency(netBalance);
     totalRow[Math.max(valueIdx - 1, 0)] = 'TOTAL:';
-    rows.push(totalRow);
+    rows.push(totalRow.map(v => styled(v, CELL_STYLES.total)));
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);

@@ -215,10 +215,11 @@ Deno.serve(async (req: Request) => {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         disposition: 'attachment',
       });
-    } else if (pdfBase64) {
+    }
+    if (pdfBase64) {
       attachments.push({
         content: pdfBase64,
-        filename: `Invoice_Statement_${new Date().toISOString().split('T')[0]}.pdf`,
+        filename: `Statement_${customerData.customer_name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`,
         type: 'application/pdf',
         disposition: 'attachment',
       });

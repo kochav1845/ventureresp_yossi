@@ -5,6 +5,7 @@ import type { StatementCustomer, ReportTemplate } from './types';
 interface Props {
   customers: StatementCustomer[];
   template: ReportTemplate;
+  attachFormat?: 'excel' | 'pdf' | 'both';
   useTestEmail: boolean;
   testEmail: string;
   onClose: () => void;
@@ -55,7 +56,7 @@ function replacePlaceholders(text: string, customer: StatementCustomer) {
   return result;
 }
 
-export default function EmailPreviewModal({ customers, template, useTestEmail, testEmail, onClose, onConfirmSend, sending }: Props) {
+export default function EmailPreviewModal({ customers, template, attachFormat = 'excel', useTestEmail, testEmail, onClose, onConfirmSend, sending }: Props) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [emailOverrides, setEmailOverrides] = useState<Record<string, string>>({});
   const [editingEmail, setEditingEmail] = useState(false);
@@ -163,12 +164,25 @@ export default function EmailPreviewModal({ customers, template, useTestEmail, t
             </div>
             <div className="flex items-start gap-3">
               <span className="text-xs font-medium text-gray-400 uppercase tracking-wide w-16 pt-0.5 flex-shrink-0">Attach</span>
-              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-emerald-50 rounded-lg border border-emerald-200">
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                <span className="text-xs text-emerald-800 font-medium">
-                  Statement_{customer.customer_name.replace(/[^a-zA-Z0-9]/g, '_')}_{new Date().toISOString().split('T')[0]}.xlsx
-                </span>
-                <Paperclip className="w-3 h-3 text-emerald-400" />
+              <div className="flex items-center gap-2 flex-wrap">
+                {(attachFormat === 'excel' || attachFormat === 'both') && (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 bg-emerald-50 rounded-lg border border-emerald-200">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                    <span className="text-xs text-emerald-800 font-medium">
+                      Statement_{customer.customer_name.replace(/[^a-zA-Z0-9]/g, '_')}_{new Date().toISOString().split('T')[0]}.xlsx
+                    </span>
+                    <Paperclip className="w-3 h-3 text-emerald-400" />
+                  </div>
+                )}
+                {(attachFormat === 'pdf' || attachFormat === 'both') && (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 bg-red-50 rounded-lg border border-red-200">
+                    <FileSpreadsheet className="w-4 h-4 text-red-500" />
+                    <span className="text-xs text-red-800 font-medium">
+                      Statement_{customer.customer_name.replace(/[^a-zA-Z0-9]/g, '_')}_{new Date().toISOString().split('T')[0]}.pdf
+                    </span>
+                    <Paperclip className="w-3 h-3 text-red-400" />
+                  </div>
+                )}
               </div>
             </div>
           </div>
