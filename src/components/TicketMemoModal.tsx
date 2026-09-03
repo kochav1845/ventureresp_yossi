@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Save, Mic, Image as ImageIcon, Trash2, FileText, ArrowLeft, StopCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { formatDateTime as formatDateTimeUtil } from '../lib/dateUtils';
 
 interface TicketMemoModalProps {
@@ -52,6 +53,7 @@ interface ActivityLog {
 
 export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProps) {
   const { user } = useAuth();
+  const toast = useToast();
   const [memos, setMemos] = useState<Memo[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [newMemo, setNewMemo] = useState('');
@@ -215,7 +217,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
       }, 1000);
     } catch (error) {
       console.error('Error starting recording:', error);
-      alert('Could not access microphone. Please check permissions.');
+      toast.error('Could not access microphone. Please check permissions.');
     }
   };
 
@@ -245,11 +247,11 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
     const file = e.target.files?.[0];
     if (file) {
       if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
+        toast.warning('Please select an image file');
         return;
       }
       if (file.size > 10 * 1024 * 1024) {
-        alert('Image must be less than 10MB');
+        toast.warning('Image must be less than 10MB');
         return;
       }
       setSelectedImage(file);
@@ -270,7 +272,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
     if (files.length > 0) {
       const validFiles = files.filter(file => {
         if (file.size > 25 * 1024 * 1024) {
-          alert(`File ${file.name} is too large. Maximum size is 25MB.`);
+          toast.warning(`File ${file.name} is too large. Maximum size is 25MB.`);
           return false;
         }
         return true;
@@ -300,7 +302,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
     if (files.length > 0) {
       const validFiles = files.filter(file => {
         if (file.size > 25 * 1024 * 1024) {
-          alert(`File ${file.name} is too large. Maximum size is 25MB.`);
+          toast.warning(`File ${file.name} is too large. Maximum size is 25MB.`);
           return false;
         }
         return true;
@@ -351,7 +353,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
 
   const handleSaveMemo = async () => {
     if (!newMemo.trim() && !audioBlob && !selectedImage && selectedDocuments.length === 0) {
-      alert('Please add some content to the memo');
+      toast.warning('Please add some content to the memo');
       return;
     }
 
@@ -447,7 +449,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
       await loadActivityLogs();
     } catch (error) {
       console.error('Error saving ticket memo:', error);
-      alert('Failed to save memo: ' + (error as Error).message);
+      toast.error('Failed to save memo: ' + (error as Error).message);
     } finally {
       setSaving(false);
     }
@@ -479,7 +481,7 @@ export default function TicketMemoModal({ ticket, onClose }: TicketMemoModalProp
       await loadMemos();
     } catch (error) {
       console.error('Error deleting memo:', error);
-      alert('Failed to delete memo');
+      toast.error('Failed to delete memo');
     }
   };
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Save, Mic, Image as ImageIcon, Trash2, Calendar, Clock, FileText, ArrowLeft, Play, Pause, StopCircle, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { formatDateTime as formatDateTimeUtil } from '../lib/dateUtils';
 
 interface InvoiceMemoModalProps {
@@ -57,6 +58,7 @@ interface Reminder {
 
 export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalProps) {
   const { user } = useAuth();
+  const toast = useToast();
   const [memos, setMemos] = useState<Memo[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -249,7 +251,7 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
       }, 1000);
     } catch (error) {
       console.error('Error starting recording:', error);
-      alert('Could not access microphone. Please check permissions.');
+      toast.error('Could not access microphone. Please check permissions.');
     }
   };
 
@@ -279,11 +281,11 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
     const file = e.target.files?.[0];
     if (file) {
       if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
+        toast.warning('Please select an image file');
         return;
       }
       if (file.size > 10 * 1024 * 1024) {
-        alert('Image must be less than 10MB');
+        toast.warning('Image must be less than 10MB');
         return;
       }
       setSelectedImage(file);
@@ -304,7 +306,7 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
     if (files.length > 0) {
       const validFiles = files.filter(file => {
         if (file.size > 25 * 1024 * 1024) {
-          alert(`File ${file.name} is too large. Maximum size is 25MB.`);
+          toast.warning(`File ${file.name} is too large. Maximum size is 25MB.`);
           return false;
         }
         return true;
@@ -334,7 +336,7 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
     if (files.length > 0) {
       const validFiles = files.filter(file => {
         if (file.size > 25 * 1024 * 1024) {
-          alert(`File ${file.name} is too large. Maximum size is 25MB.`);
+          toast.warning(`File ${file.name} is too large. Maximum size is 25MB.`);
           return false;
         }
         return true;
@@ -391,7 +393,7 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
 
   const handleSaveMemo = async () => {
     if (!newMemo.trim() && !audioBlob && !selectedImage && selectedDocuments.length === 0) {
-      alert('Please add some content to the memo');
+      toast.warning('Please add some content to the memo');
       return;
     }
 
@@ -525,7 +527,7 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
       await loadActivityLogs();
     } catch (error) {
       console.error('Error saving memo:', error);
-      alert('Failed to save memo: ' + (error as Error).message);
+      toast.error('Failed to save memo: ' + (error as Error).message);
     } finally {
       setSaving(false);
     }
@@ -558,13 +560,13 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
       await loadMemos();
     } catch (error) {
       console.error('Error deleting memo:', error);
-      alert('Failed to delete memo');
+      toast.error('Failed to delete memo');
     }
   };
 
   const handleSaveReminder = async () => {
     if (!reminderDate || !reminderMessage.trim()) {
-      alert('Please fill in all reminder fields');
+      toast.warning('Please fill in all reminder fields');
       return;
     }
 
@@ -584,7 +586,7 @@ export default function InvoiceMemoModal({ invoice, onClose }: InvoiceMemoModalP
 
     if (error) {
       console.error('Error saving reminder:', error);
-      alert('Failed to save reminder');
+      toast.error('Failed to save reminder');
       return;
     }
 

@@ -147,7 +147,7 @@ export default function CollectorCard({ collector, isExpanded, onToggleExpand, o
           </div>
         </div>
 
-        <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-10 gap-2 pt-4 border-t border-gray-100">
+        <div className="grid grid-cols-3 sm:grid-cols-5 xl:grid-cols-10 gap-2 pt-4 border-t border-gray-100">
           <div className="text-center">
             <p className="text-[10px] text-gray-500 mb-0.5 leading-tight">Total Actions</p>
             <p className="text-lg font-bold text-gray-800">{collector.total_actions}</p>

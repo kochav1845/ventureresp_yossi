@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, FileText, Mail, Download, Filter, DollarSign, Calendar, CheckSquare, Square, CreditCard, Search, X, ArrowUpDown, FileSpreadsheet, Edit, ChevronDown, ChevronRight, RefreshCw, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { generateCustomerInvoicePDF } from '../lib/pdfGenerator';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { exportToExcel as exportExcel, formatDate, formatCurrency as excelFormatCurrency } from '../lib/excelExport';
@@ -57,6 +58,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
     }
   };
   const { profile } = useAuth();
+  const toast = useToast();
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set());
@@ -321,7 +323,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
 
   const downloadAll = () => {
     if (generatedPDFs.size === 0) {
-      alert('Please generate PDFs first');
+      toast.warning('Please generate PDFs first');
       return;
     }
 
@@ -342,7 +344,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
 
   const handleExportToExcel = async () => {
     if (customers.length === 0) {
-      alert('No customers to export');
+      toast.warning('No customers to export');
       return;
     }
 
@@ -387,7 +389,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
       });
     } catch (error) {
       console.error('Error exporting to Excel:', error);
-      alert('Error exporting data');
+      toast.error('Error exporting data');
     } finally {
       setExportingExcel(false);
     }
@@ -395,18 +397,18 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
 
   const sendEmails = async () => {
     if (!selectedTemplateId) {
-      alert('Please select a template');
+      toast.warning('Please select a template');
       return;
     }
 
     const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
     if (!selectedTemplate) {
-      alert('Selected template not found');
+      toast.error('Selected template not found');
       return;
     }
 
     if (selectedTemplate.include_pdf_attachment && generatedPDFs.size === 0) {
-      alert('Please generate PDFs first or disable PDF attachment in template');
+      toast.warning('Please generate PDFs first or disable PDF attachment in template');
       return;
     }
 
@@ -415,7 +417,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
     );
 
     if (toSend.length === 0) {
-      alert('No customers with valid email addresses');
+      toast.warning('No customers with valid email addresses');
       return;
     }
 

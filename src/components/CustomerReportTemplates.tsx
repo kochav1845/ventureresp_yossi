@@ -242,8 +242,8 @@ export default function CustomerReportTemplates({ onBack }: CustomerReportTempla
   if (editing) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-y-3">
+          <div className="flex items-center gap-4 min-w-0">
             <button
               onClick={() => setEditing(false)}
               className="p-2 hover:bg-slate-100 rounded-lg transition-colors"

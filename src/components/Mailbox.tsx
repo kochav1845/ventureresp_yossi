@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useOrg } from '../contexts/OrgContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { Mail, Settings, X, Save, Loader2, AlertTriangle, ExternalLink, Lock, Globe, RefreshCw } from 'lucide-react';
 
 type OrgSettings = { domain: string; embed_url: string; auth_url: string; service_secret: string };
@@ -15,6 +16,7 @@ type Cred = { inbox_email: string; inbox_password: string };
 export default function Mailbox() {
   const { org } = useOrg();
   const { user } = useAuth();
+  const toast = useToast();
 
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<OrgSettings>({ domain: '', embed_url: '', auth_url: '', service_secret: '' });
@@ -98,7 +100,7 @@ export default function Mailbox() {
         updated_at: new Date().toISOString(), updated_by: user?.id ?? null,
       }, { onConflict: 'organization_id' });
       if (error) throw error;
-    } catch (e: any) { alert('Could not save mailbox settings:\n\n' + (e?.message || e)); }
+    } catch (e: any) { toast.error('Could not save mailbox settings: ' + (e?.message || e)); }
     finally { setSavingOrg(false); }
   };
 
@@ -113,7 +115,7 @@ export default function Mailbox() {
       setHasCred(!!cred.inbox_password);
       setToken(null); setAuthState('idle');
       authenticate();
-    } catch (e: any) { alert('Could not save your inbox password:\n\n' + (e?.message || e)); }
+    } catch (e: any) { toast.error('Could not save your inbox password: ' + (e?.message || e)); }
     finally { setSavingCred(false); }
   };
 

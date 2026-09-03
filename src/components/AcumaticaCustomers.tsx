@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, PieChart, Edit2, Check, ArrowUp, ArrowDown, ArrowUpDown, Sliders, Users, FileText, TrendingUp, AlertTriangle, Save, FolderOpen, Eye, EyeOff, Trash2, Zap, Clock, Target, MessageSquare, Download, UserPlus, Settings, Info, HelpCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import AcumaticaInvoiceTest from './AcumaticaInvoiceTest';
 import CustomerDetailView from './CustomerDetailView';
 import AssignCustomerModal from './AssignCustomerModal';
@@ -49,6 +50,7 @@ function InfoTooltip({ content, title, children }: TooltipProps) {
 
 export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) {
   const { profile } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedCustomer = searchParams.get('customer');
@@ -287,7 +289,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
 
   const handleExcludeCustomer = async (customerId: string, reason?: string) => {
     if (!profile?.id) {
-      alert('User not authenticated');
+      toast.warning('User not authenticated');
       return;
     }
 
@@ -310,13 +312,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       setExcludeReason('');
     } catch (error) {
       console.error('Error excluding customer:', error);
-      alert('Failed to exclude customer');
+      toast.error('Failed to exclude customer');
     }
   };
 
   const handleIncludeCustomer = async (customerId: string) => {
     if (!profile?.id) {
-      alert('User not authenticated');
+      toast.warning('User not authenticated');
       return;
     }
 
@@ -341,13 +343,13 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       });
     } catch (error) {
       console.error('Error including customer:', error);
-      alert('Failed to include customer');
+      toast.error('Failed to include customer');
     }
   };
 
   const handleBulkIncludeCustomers = async () => {
     if (!profile?.id) {
-      alert('User not authenticated');
+      toast.warning('User not authenticated');
       return;
     }
 
@@ -367,18 +369,18 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       setExcludedCustomersWithReasons(new Map());
     } catch (error) {
       console.error('Error including customers:', error);
-      alert('Failed to include customers');
+      toast.error('Failed to include customers');
     }
   };
 
   const handleSaveFilter = async () => {
     if (!newFilterName.trim()) {
-      alert('Please enter a filter name');
+      toast.warning('Please enter a filter name');
       return;
     }
 
     if (!profile?.id) {
-      alert('User not authenticated');
+      toast.warning('User not authenticated');
       return;
     }
 
@@ -416,10 +418,10 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       await loadSavedFilters();
       setShowSaveFilterModal(false);
       setNewFilterName('');
-      alert('Filter saved successfully!');
+      toast.success('Filter saved successfully!');
     } catch (error) {
       console.error('Error saving filter:', error);
-      alert('Failed to save filter');
+      toast.error('Failed to save filter');
     } finally {
       setSavingFilter(false);
     }
@@ -471,7 +473,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       await loadSavedFilters();
     } catch (error) {
       console.error('Error deleting filter:', error);
-      alert('Failed to delete filter');
+      toast.error('Failed to delete filter');
     }
   };
 
@@ -843,7 +845,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       });
     } catch (error) {
       console.error('Error exporting customers:', error);
-      alert('Failed to export customers. Please try again.');
+      toast.error('Failed to export customers. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -887,7 +889,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
       setEditingThreshold(null);
     } catch (error) {
       console.error('Error updating threshold:', error);
-      alert('Failed to update threshold');
+      toast.error('Failed to update threshold');
     }
   };
 
@@ -1038,7 +1040,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
             </button>
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-y-2 items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">
                 {showTestCustomers ? 'Test Customers' : 'Acumatica Customers'}
@@ -1051,7 +1053,7 @@ export default function AcumaticaCustomers({ onBack }: AcumaticaCustomersProps) 
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 onClick={() => setShowAnalytics(!showAnalytics)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${

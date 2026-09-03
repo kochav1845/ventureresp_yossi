@@ -6,6 +6,7 @@ import { batchedInQuery } from '../lib/batchedQuery';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { usePageCache } from '../contexts/PageCacheContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import * as XLSX from 'xlsx';
 import { parseISO, format } from 'date-fns';
 
@@ -76,6 +77,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     }
   };
   const { user, profile } = useAuth();
+  const toast = useToast();
   const orgId = (profile as any)?.organization_id ?? null;
   const { getCachedState, setCachedState } = usePageCache('payment-analytics');
   const cachedState = useRef(getCachedState());
@@ -355,11 +357,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         }
       } else {
         console.error('Analytics refresh failed:', result);
-        alert('Failed to refresh analytics: ' + (result.error || 'Unknown error'));
+        toast.error('Failed to refresh analytics: ' + (result.error || 'Unknown error'));
       }
     } catch (error: any) {
       console.error('Error refreshing analytics:', error);
-      alert('Error refreshing analytics: ' + error.message);
+      toast.error('Error refreshing analytics: ' + error.message);
     } finally {
       setRefreshingAnalytics(false);
     }
@@ -1039,7 +1041,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     } catch (error) {
       console.error('Error loading monthly aggregates:', error);
       setLoadingBatchInfo('');
-      alert('Error loading monthly data. Please try refreshing the page.');
+      toast.error('Error loading monthly data. Please try refreshing the page.');
     } finally {
       setLoading(false);
       setLoadingBatchInfo('');
@@ -1191,7 +1193,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
     } catch (error) {
       console.error('Error loading yearly aggregates:', error);
       setLoadingBatchInfo('');
-      alert('Error loading yearly data. Please try refreshing the page.');
+      toast.error('Error loading yearly data. Please try refreshing the page.');
     } finally {
       setLoading(false);
       setLoadingBatchInfo('');
@@ -2433,7 +2435,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
       {showAnalyticsDashboard && (
         <div className="bg-gray-50 border-b border-gray-200 p-6">
           <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-wrap gap-y-2 items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
                   <TrendingUp className="w-6 h-6 text-blue-600" />
@@ -2460,7 +2462,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
                   </p>
                 )}
               </div>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 {/* Mode Toggle */}
                 <div className="flex bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden">
                   <button
@@ -3802,7 +3804,7 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
               </div>
             ) : (
               /* Yearly View */
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 w-full">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-4 w-full">
                 {getYearlyData().map((yearData) => {
                   const isCurrentYear = yearData.year === new Date().getFullYear();
                   return (

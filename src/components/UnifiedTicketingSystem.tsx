@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import {
   Ticket as TicketIcon,
   FileText,
@@ -94,6 +95,7 @@ export default function UnifiedTicketingSystem({
   showCalendar = false
 }: UnifiedTicketingSystemProps) {
   const { user, profile } = useAuth();
+  const toast = useToast();
   const rawNavigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const navigate = (path: string, options?: any) => {
@@ -815,12 +817,12 @@ export default function UnifiedTicketingSystem({
 
   const handleCreateTicket = async () => {
     if (!selectedCustomer || !selectedCollector || selectedInvoicesForTicket.length === 0) {
-      alert('Please select a customer, collector, and at least one invoice');
+      toast.warning('Please select a customer, collector, and at least one invoice');
       return;
     }
 
     if (!profile) {
-      alert('You must be logged in to create tickets');
+      toast.warning('You must be logged in to create tickets');
       return;
     }
 
@@ -860,7 +862,7 @@ export default function UnifiedTicketingSystem({
             description: `Added ${selectedInvoicesForTicket.length} invoice(s) to ticket`
           });
 
-          alert(`Successfully added ${selectedInvoicesForTicket.length} invoice(s) to ticket ${existingTickets[0].ticket_number}`);
+          toast.success(`Successfully added ${selectedInvoicesForTicket.length} invoice(s) to ticket ${existingTickets[0].ticket_number}`);
           resetCreateForm();
           await loadTickets();
           setActiveTab('tickets');
@@ -917,13 +919,13 @@ export default function UnifiedTicketingSystem({
         });
       }
 
-      alert(`Ticket ${newTicket.ticket_number} created successfully!`);
+      toast.success(`Ticket ${newTicket.ticket_number} created successfully!`);
       resetCreateForm();
       await loadTickets();
       setActiveTab('tickets');
     } catch (error: any) {
       console.error('Error creating ticket:', error);
-      alert('Failed to create ticket: ' + error.message);
+      toast.error('Failed to create ticket: ' + error.message);
     } finally {
       setCreating(false);
     }
@@ -978,7 +980,7 @@ export default function UnifiedTicketingSystem({
       await loadTickets();
     } catch (error: any) {
       console.error('Error changing color:', error);
-      alert('Failed to change color: ' + error.message);
+      toast.error('Failed to change color: ' + error.message);
     }
   };
 
@@ -1032,7 +1034,7 @@ export default function UnifiedTicketingSystem({
       }
     } catch (error: any) {
       console.error('Error setting promise date:', error);
-      alert('Failed to set promise date: ' + error.message);
+      toast.error('Failed to set promise date: ' + error.message);
       setPromiseDateModalInvoice(null);
     }
   };
@@ -1090,10 +1092,10 @@ export default function UnifiedTicketingSystem({
       setShowBatchColorMenu(false);
       setSelectedInvoices(new Set());
       await loadTickets();
-      alert(`Successfully updated ${selectedInvoices.size} invoice(s)`);
+      toast.success(`Successfully updated ${selectedInvoices.size} invoice(s)`);
     } catch (error: any) {
       console.error('Error changing colors:', error);
-      alert('Failed to change colors: ' + error.message);
+      toast.error('Failed to change colors: ' + error.message);
     } finally {
       setProcessingBatch(false);
     }
@@ -1105,7 +1107,7 @@ export default function UnifiedTicketingSystem({
     // Find the ticket to get its current status and ticket number
     const ticket = tickets.find(t => t.ticket_id === ticketId);
     if (!ticket) {
-      alert('Ticket not found');
+      toast.error('Ticket not found');
       return;
     }
 
@@ -1180,10 +1182,10 @@ export default function UnifiedTicketingSystem({
 
       setStatusChangeModal(null);
       await loadTickets();
-      alert('Ticket status updated successfully');
+      toast.success('Ticket status updated successfully');
     } catch (error: any) {
       console.error('Error changing ticket status:', error);
-      alert('Failed to change ticket status: ' + error.message);
+      toast.error('Failed to change ticket status: ' + error.message);
     } finally {
       setChangingTicketStatus(null);
     }
@@ -1201,10 +1203,10 @@ export default function UnifiedTicketingSystem({
       });
 
       await loadTickets();
-      alert('Ticket priority updated successfully');
+      toast.success('Ticket priority updated successfully');
     } catch (error: any) {
       console.error('Error changing ticket priority:', error);
-      alert('Failed to change ticket priority: ' + error.message);
+      toast.error('Failed to change ticket priority: ' + error.message);
     } finally {
       setChangingTicketPriority(null);
     }
@@ -1276,10 +1278,10 @@ export default function UnifiedTicketingSystem({
 
       setSelectedTickets(new Set());
       await loadTickets();
-      alert(`${selectedTickets.size} ticket(s) updated to ${newStatus}`);
+      toast.success(`${selectedTickets.size} ticket(s) updated to ${newStatus}`);
     } catch (error: any) {
       console.error('Bulk ticket status change error:', error);
-      alert('Failed to update some tickets: ' + error.message);
+      toast.error('Failed to update some tickets: ' + error.message);
     } finally {
       setProcessingBulkTickets(false);
     }
@@ -1300,10 +1302,10 @@ export default function UnifiedTicketingSystem({
 
       setSelectedTickets(new Set());
       await loadTickets();
-      alert(`${selectedTickets.size} ticket(s) priority updated to ${newPriority}`);
+      toast.success(`${selectedTickets.size} ticket(s) priority updated to ${newPriority}`);
     } catch (error: any) {
       console.error('Bulk ticket priority change error:', error);
-      alert('Failed to update some tickets: ' + error.message);
+      toast.error('Failed to update some tickets: ' + error.message);
     } finally {
       setProcessingBulkTickets(false);
     }
@@ -1358,10 +1360,10 @@ export default function UnifiedTicketingSystem({
 
       await loadTickets();
 
-      alert(`Successfully added note to ${selectedInvoices.size} invoice(s)${createReminder ? ' with reminders' : ''}`);
+      toast.success(`Successfully added note to ${selectedInvoices.size} invoice(s)${createReminder ? ' with reminders' : ''}`);
     } catch (error: any) {
       console.error('Error adding notes:', error);
-      alert('Failed to add notes: ' + error.message);
+      toast.error('Failed to add notes: ' + error.message);
     } finally {
       setProcessingBatch(false);
     }
@@ -1377,14 +1379,14 @@ export default function UnifiedTicketingSystem({
         .maybeSingle();
 
       if (error || !invoiceData) {
-        alert('Failed to load invoice details');
+        toast.error('Failed to load invoice details');
         return;
       }
 
       setMemoModalInvoice(invoiceData);
     } catch (err) {
       console.error('Error in handleOpenMemo:', err);
-      alert('Failed to open memo');
+      toast.error('Failed to open memo');
     }
   };
 
@@ -1594,7 +1596,7 @@ export default function UnifiedTicketingSystem({
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar - Filter Panel */}
         {showSidebar && (
-          <div className="w-[300px] flex-shrink-0 border-r border-gray-200 overflow-y-auto bg-white">
+          <div className="w-64 xl:w-[300px] flex-shrink-0 border-r border-gray-200 overflow-y-auto bg-white">
             <TicketFilterSidebar
               filters={advancedFilters}
               onFiltersChange={setAdvancedFilters}

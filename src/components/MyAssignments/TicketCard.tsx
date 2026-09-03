@@ -8,6 +8,7 @@ import type { InvoiceSortField, SortDirection } from './utils';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../../lib/acumaticaLinks';
 import { supabase } from '../../lib/supabase';
 import { formatDate, isDatePast } from '../../lib/dateUtils';
+import { useToast } from '../../contexts/ToastContext';
 import TicketPromiseDateModal from './TicketPromiseDateModal';
 import TicketHistory from './TicketHistory';
 import ColorStatusPicker from './ColorStatusPicker';
@@ -69,6 +70,7 @@ export default function TicketCard({
   isTicketSelected = false,
   onToggleTicketSelection
 }: TicketCardProps) {
+  const toast = useToast();
   const rawNavigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const navigate = (path: string, options?: any) => {
@@ -193,7 +195,7 @@ export default function TicketCard({
       setShowAddInvoices(false);
       setSelectedNewInvoices(new Set());
     } catch (error: any) {
-      alert('Failed to add invoices: ' + error.message);
+      toast.error('Failed to add invoices: ' + error.message);
     } finally {
       setAddingInvoices(false);
     }
@@ -207,7 +209,7 @@ export default function TicketCard({
     try {
       await onRemoveInvoice(ticket.ticket_id, invoiceRef);
     } catch (error: any) {
-      alert('Failed to remove invoice: ' + error.message);
+      toast.error('Failed to remove invoice: ' + error.message);
     } finally {
       setRemovingInvoice(null);
     }

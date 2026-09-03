@@ -91,7 +91,7 @@ export default function CollectorCollectedInvoices({ collectorId }: Props) {
       </div>
 
       <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-        <div className="hidden sm:grid grid-cols-12 gap-2 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-200">
+        <div className="hidden xl:grid grid-cols-12 gap-2 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-200">
           <div className="col-span-2">Reference</div>
           <div className="col-span-3">Customer</div>
           <div className="col-span-2">Invoice Date</div>
@@ -105,7 +105,7 @@ export default function CollectorCollectedInvoices({ collectorId }: Props) {
             key={inv.invoice_reference_number}
             className="bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
           >
-            <div className="hidden sm:grid grid-cols-12 gap-2 items-center px-4 py-3">
+            <div className="hidden xl:grid grid-cols-12 gap-2 items-center px-4 py-3">
               <div className="col-span-2">
                 <span className="font-mono text-sm font-medium text-gray-900">{inv.invoice_reference_number}</span>
               </div>
@@ -142,7 +142,7 @@ export default function CollectorCollectedInvoices({ collectorId }: Props) {
               </div>
             </div>
 
-            <div className="sm:hidden px-4 py-3 space-y-2">
+            <div className="xl:hidden px-4 py-3 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-sm font-medium text-gray-900">{inv.invoice_reference_number}</span>
                 <span className="text-sm font-semibold text-emerald-700">

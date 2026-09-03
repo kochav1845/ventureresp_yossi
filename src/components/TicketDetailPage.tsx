@@ -12,6 +12,7 @@ import { formatDistanceToNow, format as dateFnsFormat } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useOrg } from '../contexts/OrgContext';
+import { useToast } from '../contexts/ToastContext';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { formatDate, isDatePast } from '../lib/dateUtils';
 import InvoiceMemoModal from './InvoiceMemoModal';
@@ -43,6 +44,7 @@ export default function TicketDetailPage() {
     }
   };
   const { user, profile } = useAuth();
+  const toast = useToast();
 
   const [ticket, setTicket] = useState<TicketGroup | null>(null);
   const [loading, setLoading] = useState(true);
@@ -515,7 +517,7 @@ export default function TicketDetailPage() {
       setSelectedNewInvoices(new Set());
       await loadTicketData();
     } catch (err: any) {
-      alert('Failed to add invoices: ' + err.message);
+      toast.error('Failed to add invoices: ' + err.message);
     }
   };
 
@@ -531,7 +533,7 @@ export default function TicketDetailPage() {
       if (error) throw error;
       await loadTicketData();
     } catch (err: any) {
-      alert('Failed to remove invoice: ' + err.message);
+      toast.error('Failed to remove invoice: ' + err.message);
     } finally {
       setRemovingInvoice(null);
     }
@@ -569,7 +571,7 @@ export default function TicketDetailPage() {
         .maybeSingle();
 
       if (!invoiceData) {
-        alert('Invoice not found');
+        toast.error('Invoice not found');
         return;
       }
       setMemoModal(invoiceData);
@@ -750,7 +752,7 @@ export default function TicketDetailPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+      <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
         <DashboardCard icon={DollarSign} label="Ticket Bal" value={`$${totalOpen.toLocaleString('en-US', { minimumFractionDigits: 2 })}`} color="text-red-600" bg="bg-red-50 border-red-100" />
         <DashboardCard icon={FileText} label="Open Inv" value={String(openInvoices.length)} color="text-blue-600" bg="bg-blue-50 border-blue-100" />
         <DashboardCard icon={TrendingUp} label="Cust Bal" value={`$${(ticket.customer_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`} color="text-emerald-600" bg="bg-emerald-50 border-emerald-100" />
@@ -759,9 +761,9 @@ export default function TicketDetailPage() {
         <DashboardCard icon={CalendarDays} label="Oldest Inv" value={ticket.oldest_invoice_date ? formatDate(ticket.oldest_invoice_date) : 'N/A'} color="text-amber-600" bg="bg-amber-50 border-amber-100" />
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex flex-col lg:flex-row gap-3">
         {!sidebarCollapsed && (
-          <div className="w-72 flex-shrink-0 space-y-3">
+          <div className="w-full lg:w-72 flex-shrink-0 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Ticket Info</span>
               <button onClick={() => setSidebarCollapsed(true)} className="p-1 rounded hover:bg-gray-100 transition-colors" title="Collapse sidebar">

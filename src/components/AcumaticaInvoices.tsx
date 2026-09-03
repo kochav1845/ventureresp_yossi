@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, FileText, User, ChevronLeft, ChevronRight, MessageSquare, ArrowUpDown, ArrowUp, ArrowDown, Download, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 
 import AcumaticaInvoiceFetch from './AcumaticaInvoiceFetch';
 import InvoiceMemoModal from './InvoiceMemoModal';
@@ -20,6 +21,7 @@ interface AcumaticaInvoicesProps {
 
 export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
   const { profile, user } = useAuth();
+  const toast = useToast();
 
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -312,7 +314,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
       setSelectedInvoice(data);
     } catch (error) {
       console.error('Error fetching invoice details:', error);
-      alert('Failed to load invoice details');
+      toast.error('Failed to load invoice details');
     } finally {
       setLoadingInvoiceDetails(false);
     }
@@ -357,7 +359,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
       );
     } catch (error) {
       console.error('Error updating color status:', error);
-      alert('Failed to update status');
+      toast.error('Failed to update status');
     }
   };
 
@@ -570,7 +572,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
     } catch (error: any) {
       console.error('Search error:', error);
       if (error?.code === '57014') {
-        alert('Search timed out. Please add more specific filters or search terms.');
+        toast.warning('Search timed out. Please add more specific filters or search terms.');
       }
     } finally {
       setLoading(false);
@@ -645,7 +647,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
 
   const handleExportToExcel = () => {
     if (displayedInvoices.length === 0) {
-      alert('No invoices to export');
+      toast.warning('No invoices to export');
       return;
     }
 
@@ -687,7 +689,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
       });
     } catch (error) {
       console.error('Error exporting to Excel:', error);
-      alert('Error exporting data');
+      toast.error('Error exporting data');
     } finally {
       setExporting(false);
     }
@@ -775,7 +777,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
             Back to Main Menu
           </button>
 
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-y-2 items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Acumatica Invoices</h1>
               <p className="text-gray-600">
@@ -783,7 +785,7 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {canPerformFetch && (
                 <button
                   onClick={() => setShowFetchPage(true)}

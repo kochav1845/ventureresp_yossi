@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import CustomerDetailView from './CustomerDetailView';
 import { ArrowLeft, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSquare, Square, FileText, Clock, Calendar, PauseCircle, Play, ChevronLeft, ChevronRight, Search, Download, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, Filter, X, Eye, EyeOff, Ticket, ChevronDown, Zap, SlidersHorizontal, BarChart3, Plus, Settings, Check } from 'lucide-react';
 import { usePageCache } from '../contexts/PageCacheContext';
+import { useToast } from '../contexts/ToastContext';
 import CustomerFiles from './CustomerFiles';
 import PageHelp, { HelpSection } from './PageHelp';
 import * as XLSX from 'xlsx';
@@ -184,6 +185,7 @@ type CustomersProps = {
 };
 
 export default function Customers({ onBack }: CustomersProps) {
+  const toast = useToast();
   const rawNavigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const navigate = (path: string, options?: any) => {
@@ -845,7 +847,7 @@ export default function Customers({ onBack }: CustomersProps) {
       await loadCustomersBatched();
     } catch (error) {
       console.error('Error deleting customer:', error);
-      alert('Error deleting customer');
+      toast.error('Error deleting customer');
     }
   };
 
@@ -933,7 +935,7 @@ export default function Customers({ onBack }: CustomersProps) {
       await loadCustomersBatched();
     } catch (error: any) {
       console.error('Error saving customer:', error);
-      alert('Error saving customer');
+      toast.error('Error saving customer');
     }
   };
 
@@ -1145,7 +1147,7 @@ export default function Customers({ onBack }: CustomersProps) {
     <>
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-slate-50 via-white to-blue-50">
         {/* Top bar */}
-        <header className="flex-shrink-0 flex items-center gap-2.5 px-5 py-2.5 bg-white/80 backdrop-blur border-b border-gray-200">
+        <header className="flex-shrink-0 flex flex-wrap gap-y-2 items-center gap-2.5 px-5 py-2.5 bg-white/80 backdrop-blur border-b border-gray-200">
           <button onClick={handleBack} className="p-2 hover:bg-gray-100 rounded-lg transition-colors border border-transparent hover:border-gray-200 flex-shrink-0">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
@@ -1156,7 +1158,7 @@ export default function Customers({ onBack }: CustomersProps) {
               {excludedCustomers.length > 0 && <span className="text-amber-600"> · {excludedCustomers.length} excluded</span>}
             </p>
           </div>
-          <div className="flex-1 relative max-w-xl mx-1">
+          <div className="flex-1 relative max-w-xl min-w-[180px] mx-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input type="text" value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -1435,7 +1437,7 @@ export default function Customers({ onBack }: CustomersProps) {
                                     <div className="text-xs text-gray-400 py-2">No open invoices — switch to “All” to see paid/closed ones.</div>
                                   ) : (
                                     <>
-                                      <div className={showAllInvRows ? 'max-h-72 overflow-y-auto rounded border border-gray-100' : ''}>
+                                      <div className={`overflow-x-auto ${showAllInvRows ? 'max-h-72 overflow-y-auto rounded border border-gray-100' : ''}`}>
                                         <table className="w-full text-xs">
                                           <thead className="sticky top-0 bg-gray-100">
                                             <tr className="text-gray-500 text-left">
@@ -1943,7 +1945,7 @@ export default function Customers({ onBack }: CustomersProps) {
                 setSavingQuick(true);
                 const err = await saveQuickFilters(quickFilters);
                 setSavingQuick(false);
-                if (err) { alert('Could not save quick filters to the database:\n\n' + err); return; }
+                if (err) { toast.error('Could not save quick filters to the database: ' + err); return; }
                 setShowQuickEditor(false);
               }}
               className="flex items-center gap-1.5 px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-medium disabled:opacity-60"><Check size={15} /> {savingQuick ? 'Saving…' : 'Save'}</button>

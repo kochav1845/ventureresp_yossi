@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { usePageCache } from '../contexts/PageCacheContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import * as XLSX from 'xlsx';
 
 interface InvoiceRow {
@@ -68,6 +69,7 @@ export default function InvoiceAnalyticsPage() {
     }
   };
   const { user } = useAuth();
+  const toast = useToast();
   const { getCachedState, setCachedState } = usePageCache('invoice-analytics');
   const cachedState = useRef(getCachedState());
   const c = cachedState.current;
@@ -1004,7 +1006,7 @@ export default function InvoiceAnalyticsPage() {
       }
     } catch (error: any) {
       console.error('Error refreshing analytics:', error);
-      alert('Error refreshing analytics: ' + error.message);
+      toast.error('Error refreshing analytics: ' + error.message);
     } finally {
       setRefreshingAnalytics(false);
     }
@@ -1920,7 +1922,7 @@ export default function InvoiceAnalyticsPage() {
                 })}
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 w-full">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-4 w-full">
                 {getYearlyData().map((yearData) => {
                   const isCurrentYear = yearData.year === new Date().getFullYear();
                   return (

@@ -383,9 +383,9 @@ export default function CollectorCalendar() {
         </div>
       </div>
 
-      <div className="flex">
+      <div className="flex flex-col lg:flex-row">
         {/* Calendar Grid */}
-        <div className="flex-1 p-4">
+        <div className="flex-1 min-w-0 p-4">
           {view === 'monthly' && <MonthlyView
             currentDate={currentDate}
             selectedDate={selectedDate}
@@ -753,7 +753,7 @@ function DayDetailPanel({
   const isPast = date < new Date() && !isToday(date);
 
   return (
-    <div className="w-80 border-l border-gray-200 bg-gray-50/50 p-4 overflow-y-auto max-h-[480px]">
+    <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-gray-200 bg-gray-50/50 p-4 overflow-y-auto max-h-[480px]">
       <div className="flex items-center justify-between mb-4">
         <div>
           <div className="text-sm font-semibold text-gray-900">

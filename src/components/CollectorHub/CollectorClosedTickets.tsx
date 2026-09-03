@@ -182,7 +182,7 @@ export default function CollectorClosedTickets({ collectorId }: Props) {
                   {ticket.invoices.length > 0 ? (
                     <div className="space-y-1.5">
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Invoice Details</p>
-                      <div className="hidden sm:grid grid-cols-12 gap-2 px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                      <div className="hidden xl:grid grid-cols-12 gap-2 px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
                         <div className="col-span-3">Reference</div>
                         <div className="col-span-2">Invoice Date</div>
                         <div className="col-span-2">Due Date</div>
@@ -195,7 +195,7 @@ export default function CollectorClosedTickets({ collectorId }: Props) {
                           key={idx}
                           className="bg-white rounded-lg border border-gray-200 px-3 py-2.5"
                         >
-                          <div className="hidden sm:grid grid-cols-12 gap-2 items-center">
+                          <div className="hidden xl:grid grid-cols-12 gap-2 items-center">
                             <div className="col-span-3">
                               <span className="font-mono text-sm font-medium text-gray-900">{inv.reference_number}</span>
                             </div>
@@ -230,7 +230,7 @@ export default function CollectorClosedTickets({ collectorId }: Props) {
                             </div>
                           </div>
 
-                          <div className="sm:hidden space-y-1.5">
+                          <div className="xl:hidden space-y-1.5">
                             <div className="flex items-center justify-between">
                               <span className="font-mono text-sm font-medium text-gray-900">{inv.reference_number}</span>
                               <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${

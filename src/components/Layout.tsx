@@ -639,7 +639,9 @@ export default function Layout() {
       <ImpersonationBanner />
 
       {/* Main Content */}
-      <main className={`min-h-screen transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} ${showReminders ? 'mr-96' : 'mr-0'} ${isImpersonating ? 'pt-16' : ''}`}>
+      {/* Below xl the reminders panel overlays the content (it's a fixed drawer)
+          instead of squeezing the page into an unusable width. */}
+      <main className={`min-h-screen transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} ${showReminders ? 'xl:mr-96' : ''} ${isImpersonating ? 'pt-16' : ''}`}>
         {/* Header with Global Search + Reminder Toggle */}
         <div className={`sticky z-40 bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-4 ${isImpersonating ? 'top-16' : 'top-0'}`}>
           <div data-tour="global-search" className="flex-1">
@@ -666,7 +668,7 @@ export default function Layout() {
           </button>
         </div>
 
-        <div className="p-8">
+        <div className="p-4 lg:p-6 xl:p-8">
           <Outlet />
         </div>
       </main>

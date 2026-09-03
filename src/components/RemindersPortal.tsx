@@ -3,6 +3,7 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { ArrowLeft, Plus, Calendar, Clock, AlertCircle, CheckCircle, Edit2, Trash2, Mail, Phone, Video, DollarSign, MessageSquare, FileText, Filter, X, Save, Ticket, Users, Send, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { formatDate as formatDateUtil, formatDateTime as formatDateTimeUtil } from '../lib/dateUtils';
 import ProposedRemindersSection from './ProposedRemindersSection';
 
@@ -32,6 +33,7 @@ type FilterType = 'all' | 'today' | 'tomorrow' | 'week' | 'overdue' | 'completed
 
 export default function RemindersPortal({ onBack }: RemindersPortalProps) {
   const { user } = useAuth();
+  const toast = useToast();
   const rawNavigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const navigate = (path: string, options?: any) => {
@@ -193,7 +195,7 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
 
     if (error) {
       console.error('Error completing reminder:', error);
-      alert('Failed to mark reminder as complete');
+      toast.error('Failed to mark reminder as complete');
       return;
     }
 
@@ -264,7 +266,7 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        alert('Not authenticated');
+        toast.error('Not authenticated');
         return;
       }
 
@@ -284,14 +286,14 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
 
       if (response.ok) {
         const sentCount = result.results?.filter((r: any) => r.status === 'sent').length || 0;
-        alert(`Email reminders processed.\n\nTotal processed: ${result.total || 0}\nEmails sent: ${sentCount}`);
+        toast.success(`Email reminders processed — ${sentCount} sent`);
         loadReminders();
       } else {
-        alert(`Error: ${result.error || 'Failed to send emails'}`);
+        toast.error(`Error: ${result.error || 'Failed to send emails'}`);
       }
     } catch (error) {
       console.error('Error triggering emails:', error);
-      alert('Failed to trigger reminder emails');
+      toast.error('Failed to trigger reminder emails');
     } finally {
       setSendingEmails(false);
       setShowCollectorModal(false);
@@ -301,7 +303,7 @@ export default function RemindersPortal({ onBack }: RemindersPortalProps) {
   return (
     <div className="min-h-screen bg-slate-900 p-6">
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-wrap gap-y-2 items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <button
               onClick={handleBack}
@@ -815,6 +817,7 @@ interface ReminderModalProps {
 
 function ReminderModal({ reminder, prefilledData, onClose, onSave }: ReminderModalProps) {
   const { user } = useAuth();
+  const toast = useToast();
   const defaultMessage = prefilledData
     ? prefilledData.promiseDate
       ? prefilledData.ticketId
@@ -838,7 +841,7 @@ function ReminderModal({ reminder, prefilledData, onClose, onSave }: ReminderMod
 
   const handleSave = async () => {
     if (!message.trim() || !date) {
-      alert('Please fill in all required fields');
+      toast.warning('Please fill in all required fields');
       return;
     }
 
@@ -882,7 +885,7 @@ function ReminderModal({ reminder, prefilledData, onClose, onSave }: ReminderMod
       onSave();
     } catch (error) {
       console.error('Error saving reminder:', error);
-      alert('Failed to save reminder');
+      toast.error('Failed to save reminder');
     } finally {
       setSaving(false);
     }

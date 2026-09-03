@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Ticket, ChevronRight, ChevronDown, PauseCircle, Mail, MapPin, Phone, Building2, Hash } from 'lucide-react';
 import { supabase, logActivity } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { usePageCache } from '../contexts/PageCacheContext';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl, getAcumaticaCustomerUrl } from '../lib/acumaticaLinks';
@@ -104,6 +105,7 @@ interface TicketData {
 
 export default function CustomerDetailView({ customerId, onBack }: CustomerDetailViewProps) {
   const { profile } = useAuth();
+  const toast = useToast();
   const rawNavigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const navigate = (path: string, options?: any) => {
@@ -612,7 +614,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       await loadCustomerBasicInfo();
     } catch (error) {
       console.error('Error saving note:', error);
-      alert('Failed to save note');
+      toast.error('Failed to save note');
     } finally {
       setSavingNote(false);
     }
@@ -801,8 +803,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     <div className="min-h-screen bg-gray-50">
       {/* Slim Header Bar */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
-        <div className="max-w-[1440px] mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="max-w-[1440px] mx-auto px-6 min-h-14 py-1 flex flex-wrap gap-y-1 items-center justify-between">
+          <div className="flex items-center gap-4 min-w-0">
             <button
               onClick={handleBack}
               className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors"

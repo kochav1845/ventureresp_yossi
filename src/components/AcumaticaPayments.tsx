@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Search, DollarSign, Filter, X, CreditCard, User, FileText, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { exportToExcel as exportExcel, formatDate, formatCurrency } from '../lib/excelExport';
@@ -14,6 +15,7 @@ interface AcumaticaPaymentsProps {
 
 export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPaymentsProps) {
   const { profile } = useAuth();
+  const toast = useToast();
 
   const navigate = useNavigate();
   const handleBack = onBack || (() => navigate(-1));
@@ -363,7 +365,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
       fetchStatus = 'error';
       errorMessage = (error as Error).message;
       console.error(`[${new Date().toISOString()}] Error fetching payment applications:`, error);
-      alert('Failed to fetch payment applications: ' + (error as Error).message);
+      toast.error('Failed to fetch payment applications: ' + (error as Error).message);
     } finally {
       await supabase
         .from('payment_application_fetch_logs')
@@ -402,7 +404,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
       });
     } catch (error) {
       console.error('Error fetching payment details:', error);
-      alert('Failed to load payment details');
+      toast.error('Failed to load payment details');
     } finally {
       setLoadingPaymentDetails(false);
     }
@@ -492,7 +494,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
 
   const handleExportToExcel = () => {
     if (displayedPayments.length === 0) {
-      alert('No payments to export');
+      toast.warning('No payments to export');
       return;
     }
 
@@ -549,7 +551,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
       });
     } catch (error) {
       console.error('Error exporting to Excel:', error);
-      alert('Error exporting data');
+      toast.error('Error exporting data');
     } finally {
       setExporting(false);
     }
@@ -675,7 +677,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
             Back to Main Menu
           </button>
 
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-y-2 items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Acumatica Payments</h1>
               <p className="text-gray-600">
@@ -686,7 +688,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 onClick={() => loadPayments(0)}
                 disabled={loading}
@@ -1014,7 +1016,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
                                         }
                                       } catch (error) {
                                         console.error('Error opening attachment:', error);
-                                        alert('Failed to open attachment: ' + (error as Error).message);
+                                        toast.error('Failed to open attachment: ' + (error as Error).message);
                                       }
                                     }}
                                     className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded text-xs font-medium transition-colors"
@@ -1072,7 +1074,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
                                         key={idx}
                                         className="bg-white border border-blue-200 rounded-lg p-3 text-sm"
                                       >
-                                        <div className="grid grid-cols-6 gap-3 mb-2">
+                                        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-2">
                                           <div>
                                             <span className="text-gray-600 text-xs">Doc Type:</span>
                                             <p className="font-medium text-gray-900">{app.doc_type || 'N/A'}</p>
