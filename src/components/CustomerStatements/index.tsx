@@ -1,10 +1,10 @@
 import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Search, X, ArrowUpDown, DollarSign, FileText, Users, Clock, CheckSquare, Square, FlaskConical, Loader2, Zap, Calendar, Settings } from 'lucide-react';
 import { useCustomerStatements } from './useCustomerStatements';
 import CustomerStatementCard from './CustomerStatementCard';
 import StatementActions from './StatementActions';
 import AutoStatementsSidebar from './AutoStatementsSidebar';
-import ExcelTemplateSettings from './ExcelTemplateSettings';
 import PageHelp, { HelpSection } from '../PageHelp';
 import type { SortField, StatementPeriod } from './types';
 
@@ -48,8 +48,8 @@ const fmtCurrency = (n: number) =>
 
 export default function CustomerStatements() {
   const {
-    customers, loading, loadingMore, totalLoaded, loadingInvoices, templates, selectedTemplateId, setSelectedTemplateId,
-    excelTemplates, selectedExcelTemplateId, setSelectedExcelTemplateId, refreshExcelTemplates,
+    customers, loading, loadingMore, totalLoaded, summary, loadingInvoices, templates, selectedTemplateId, setSelectedTemplateId,
+    excelTemplates, selectedExcelTemplateId, setSelectedExcelTemplateId,
     saveEmailOverride, clearEmailOverride,
     selectedIds, toggleCustomer, selectAll, deselectAll,
     search, setSearch, minBalance, setMinBalance,
@@ -61,12 +61,10 @@ export default function CustomerStatements() {
   } = useCustomerStatements();
 
   const [showAuto, setShowAuto] = useState(false);
-  const [showExcelSettings, setShowExcelSettings] = useState(false);
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
 
   const selectedCustomers = customers.filter(c => selectedIds.has(c.customer_id));
-  const totalBalance = customers.reduce((s, c) => s + c.total_balance, 0);
-  const totalInvoices = customers.reduce((s, c) => s + c.open_invoice_count, 0);
-  const overdueCount = customers.filter(c => c.max_days_overdue > 30).length;
 
   if (loading && customers.length === 0) {
     // Skeleton of the real page layout while the first batch loads.
@@ -126,8 +124,8 @@ export default function CustomerStatements() {
         <div className="flex flex-wrap items-center gap-3 shrink-0">
           <PageHelp title="Statements" intro="Select customers and send them their account statement. Here's what each control means:" sections={STATEMENTS_HELP} />
           <button
-            onClick={() => setShowExcelSettings(true)}
-            title="Excel statement templates"
+            onClick={() => navigate(`/${orgSlug}/statement-settings`)}
+            title="Statement settings — email, Excel & PDF"
             className="flex items-center gap-1.5 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors"
           >
             <Settings className="w-4 h-4" /> Settings
@@ -168,25 +166,25 @@ export default function CustomerStatements() {
         <StatCard
           icon={<Users className="w-5 h-5 text-blue-600" />}
           iconBg="bg-blue-50"
-          value={customers.length.toString()}
+          value={summary ? summary.customers.toLocaleString() : null}
           label="Customers with balance"
         />
         <StatCard
           icon={<DollarSign className="w-5 h-5 text-red-600" />}
           iconBg="bg-red-50"
-          value={fmtCurrency(totalBalance)}
+          value={summary ? fmtCurrency(summary.balance) : null}
           label="Total open balance"
         />
         <StatCard
           icon={<FileText className="w-5 h-5 text-emerald-600" />}
           iconBg="bg-emerald-50"
-          value={totalInvoices.toLocaleString()}
+          value={summary ? summary.invoices.toLocaleString() : null}
           label="Open invoices"
         />
         <StatCard
           icon={<Clock className="w-5 h-5 text-amber-600" />}
           iconBg="bg-amber-50"
-          value={overdueCount.toString()}
+          value={summary ? summary.overdue.toLocaleString() : null}
           label="Overdue 30+ days"
         />
       </div>
@@ -364,25 +362,20 @@ export default function CustomerStatements() {
         templates={templates}
         defaultTemplateId={selectedTemplateId}
       />
-
-      <ExcelTemplateSettings
-        open={showExcelSettings}
-        onClose={() => setShowExcelSettings(false)}
-        templates={excelTemplates}
-        onTemplatesChanged={refreshExcelTemplates}
-      />
     </div>
   );
 }
 
-function StatCard({ icon, iconBg, value, label }: { icon: React.ReactNode; iconBg: string; value: string; label: string }) {
+function StatCard({ icon, iconBg, value, label }: { icon: React.ReactNode; iconBg: string; value: string | null; label: string }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4">
       <div className="flex items-center gap-3">
         <div className={`p-2 rounded-lg ${iconBg}`}>{icon}</div>
-        <div>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
-          <p className="text-xs text-gray-500">{label}</p>
+        <div className="min-w-0">
+          {value === null
+            ? <div className="h-7 w-24 max-w-full bg-gray-200 rounded animate-pulse" />
+            : <p className="text-2xl font-bold text-gray-900">{value}</p>}
+          <p className="text-xs text-gray-500 mt-0.5">{label}</p>
         </div>
       </div>
     </div>

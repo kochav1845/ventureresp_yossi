@@ -5,6 +5,10 @@ import { normalizeExcelLayout } from '../../lib/statementExport';
 
 const BATCH_SIZE = 200;
 
+// Headline totals for the stat cards, computed once server-side so they show a
+// final figure instead of counting up as row batches stream in.
+export type StatementSummary = { customers: number; balance: number; invoices: number; overdue: number };
+
 function mapRow(row: any): StatementCustomer {
   return {
     customer_id: row.customer_id,
@@ -24,6 +28,7 @@ export function useCustomerStatements() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [totalLoaded, setTotalLoaded] = useState(0);
+  const [summary, setSummary] = useState<StatementSummary | null>(null);
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [excelTemplates, setExcelTemplates] = useState<StatementExcelTemplate[]>([]);
@@ -52,6 +57,22 @@ export function useCustomerStatements() {
     setLoadingMore(false);
     setCustomers([]);
     setTotalLoaded(0);
+    setSummary(null);
+
+    // Compute the headline totals once, server-side, in parallel with the row
+    // batches. The cards read this so they show a final number instead of
+    // ticking up as each 200-row page arrives.
+    supabase.rpc('get_customer_statements_summary', { p_test_mode: testMode }).then(({ data, error }) => {
+      if (abortRef.current !== loadId) return;
+      if (error) { console.error('Error loading statements summary:', error); return; }
+      const row: any = Array.isArray(data) ? data[0] : data;
+      if (row) setSummary({
+        customers: Number(row.customers_with_balance) || 0,
+        balance: Number(row.total_open_balance) || 0,
+        invoices: Number(row.open_invoices) || 0,
+        overdue: Number(row.overdue_30_count) || 0,
+      });
+    });
 
     try {
       let from = 0;
@@ -391,6 +412,7 @@ export function useCustomerStatements() {
     loading,
     loadingMore,
     totalLoaded,
+    summary,
     loadingInvoices,
     templates,
     selectedTemplateId,

@@ -87,6 +87,7 @@ const InvoiceBreakdown = lazy(() => import('./components/InvoiceBreakdown'));
 const EmailSettings = lazy(() => import('./components/EmailSettings'));
 const TicketDetailPage = lazy(() => import('./components/TicketDetailPage'));
 const CustomerStatements = lazy(() => import('./components/CustomerStatements'));
+const StatementSettings = lazy(() => import('./components/StatementSettings'));
 const Mailbox = lazy(() => import('./components/Mailbox'));
 const ApiKeyManagement = lazy(() => import('./components/ApiKeyManagement'));
 const CronJobsMonitor = lazy(() => import('./components/CronJobsMonitor'));
@@ -192,6 +193,7 @@ function OrgAppContent() {
           <Route path="invoice-status-analytics" element={<InvoiceStatusAnalytics />} />
           <Route path="customer-reports" element={<CustomerReportsMonthly />} />
           <Route path="customer-statements" element={<CustomerStatements />} />
+          <Route path="statement-settings" element={<StatementSettings />} />
           <Route path="mailbox" element={<Mailbox />} />
           <Route path="customer-report-templates" element={<CustomerReportTemplates />} />
           <Route path="system-documentation" element={<SystemDocumentation />} />

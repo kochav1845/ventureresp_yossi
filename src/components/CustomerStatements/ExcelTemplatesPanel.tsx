@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import {
-  Settings, X, Plus, Trash2, Save, Loader2, Check, Star, Pencil, ArrowLeft,
+  Plus, Trash2, Save, Loader2, Star, Pencil, ArrowLeft,
   ChevronUp, ChevronDown, Download, FileSpreadsheet,
 } from 'lucide-react';
 import {
@@ -18,7 +18,7 @@ import {
 import type { StatementExcelTemplate } from './types';
 
 // Sample data used for the live preview and the sample download.
-const SAMPLE_CUSTOMER: StatementCustomerData = {
+export const SAMPLE_CUSTOMER: StatementCustomerData = {
   customer_id: 'CUST-001',
   customer_name: 'Sample Customer Inc.',
   email: 'billing@samplecustomer.com',
@@ -34,13 +34,6 @@ const SAMPLE_CUSTOMER: StatementCustomerData = {
   ],
 };
 
-interface Props {
-  open: boolean;
-  onClose: () => void;
-  templates: StatementExcelTemplate[];
-  onTemplatesChanged: () => void;
-}
-
 type EditorState = {
   id: string | null; // null = new template
   name: string;
@@ -48,19 +41,38 @@ type EditorState = {
   layout: StatementExcelLayout;
 };
 
-export default function ExcelTemplateSettings({ open, onClose, templates, onTemplatesChanged }: Props) {
+export default function ExcelTemplatesPanel() {
   const { user } = useAuth();
   const toast = useToast();
+  const [templates, setTemplates] = useState<StatementExcelTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) { setEditor(null); setSavedAt(null); }
-  }, [open]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('statement_excel_templates')
+        .select('id, name, layout, is_default')
+        .order('is_default', { ascending: false })
+        .order('name');
+      if (error) throw error;
+      setTemplates((data || []).map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        layout: normalizeExcelLayout(t.layout),
+        is_default: !!t.is_default,
+      })));
+    } catch (e: any) {
+      console.error('Error loading excel templates:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  if (!open) return null;
+  useEffect(() => { load(); }, [load]);
 
   const openNew = () => setEditor({
     id: null,
@@ -79,7 +91,7 @@ export default function ExcelTemplateSettings({ open, onClose, templates, onTemp
   const friendlyError = (e: any) => {
     const msg = e?.message || String(e);
     if (msg.includes('statement_excel_templates') || e?.code === '42P01') {
-      return 'The statement_excel_templates table does not exist yet.\n\nRun the migration SQL (supabase/migrations/..._create_statement_excel_templates.sql) in the Supabase SQL editor, then try again.';
+      return 'The statement_excel_templates table does not exist yet. Run the migration, then try again.';
     }
     return msg;
   };
@@ -104,9 +116,9 @@ export default function ExcelTemplateSettings({ open, onClose, templates, onTemp
           .insert({ ...payload, created_by: user?.id ?? null });
         if (error) throw error;
       }
-      setSavedAt(Date.now());
+      toast.success('Excel template saved.');
       setEditor(null);
-      onTemplatesChanged();
+      await load();
     } catch (e: any) {
       console.error('Error saving excel template:', e);
       toast.error('Could not save the Excel template: ' + friendlyError(e));
@@ -121,7 +133,7 @@ export default function ExcelTemplateSettings({ open, onClose, templates, onTemp
     try {
       const { error } = await supabase.from('statement_excel_templates').delete().eq('id', t.id);
       if (error) throw error;
-      onTemplatesChanged();
+      await load();
     } catch (e: any) {
       toast.error('Could not delete the template: ' + friendlyError(e));
     } finally {
@@ -135,7 +147,7 @@ export default function ExcelTemplateSettings({ open, onClose, templates, onTemp
         .update({ is_default: true, updated_at: new Date().toISOString() })
         .eq('id', t.id);
       if (error) throw error;
-      onTemplatesChanged();
+      await load();
     } catch (e: any) {
       toast.error('Could not set the default template: ' + friendlyError(e));
     }
@@ -150,7 +162,6 @@ export default function ExcelTemplateSettings({ open, onClose, templates, onTemp
     patchLayout({
       customer_fields: fields.includes(key)
         ? fields.filter(f => f !== key)
-        // Keep the block in its canonical order when re-enabling a field.
         : CUSTOMER_FIELD_DEFS.map(d => d.key).filter(k => k === key || fields.includes(k)),
     });
   };
@@ -175,58 +186,39 @@ export default function ExcelTemplateSettings({ open, onClose, templates, onTemp
     downloadExcelFile(data, 'Statement_Template_Sample.xlsx');
   };
 
-  return (
-    <div className="fixed inset-0 z-[60] flex justify-end">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-xl bg-white h-full shadow-2xl flex flex-col">
-        {/* Header */}
-        <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <div className="flex items-center gap-2">
-            {editor ? (
-              <button onClick={() => setEditor(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
-                <ArrowLeft size={16} className="text-gray-500" />
-              </button>
-            ) : (
-              <div className="p-1.5 rounded-lg bg-slate-100"><Settings size={16} className="text-slate-600" /></div>
-            )}
-            <div>
-              <h2 className="text-base font-bold text-gray-900">
-                {editor ? (editor.id ? 'Edit Excel Template' : 'New Excel Template') : 'Statement Excel Templates'}
-              </h2>
-              <p className="text-[11px] text-gray-500">
-                {editor
-                  ? 'Design how the attached Excel statement looks.'
-                  : 'Templates control the Excel sheet attached to each statement.'}
-              </p>
-            </div>
+  // ── List view ─────────────────────────────────────────────────────────
+  if (!editor) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Excel statement templates</h2>
+            <p className="text-sm text-gray-500">Design the Excel sheet attached to each statement (columns, sections, title).</p>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} className="text-gray-500" /></button>
+          <button
+            onClick={openNew}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-semibold"
+          >
+            <Plus size={16} /> New template
+          </button>
         </div>
 
-        {/* Body */}
-        {!editor ? (
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-            <button
-              onClick={openNew}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-xl text-sm font-medium text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-colors"
-            >
-              <Plus size={16} /> New Excel Template
-            </button>
-
-            {templates.length === 0 && (
-              <div className="text-center py-10">
-                <FileSpreadsheet className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">No Excel templates yet.</p>
-                <p className="text-[11px] text-gray-400 mt-1">
-                  Statements currently use the built-in default layout. Create a template to customize it.
-                </p>
-              </div>
-            )}
-
+        {loading ? (
+          <div className="flex items-center justify-center py-12 text-gray-400">
+            <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading templates…
+          </div>
+        ) : templates.length === 0 ? (
+          <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+            <FileSpreadsheet className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-500">No Excel templates yet.</p>
+            <p className="text-xs text-gray-400 mt-1">Statements use the built-in default layout until you create one.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {templates.map(t => {
               const enabledCols = t.layout.columns.filter(c => c.enabled);
               return (
-                <div key={t.id} className="rounded-xl border border-gray-200 p-4">
+                <div key={t.id} className="rounded-xl border border-gray-200 p-4 bg-white">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-sm font-semibold text-gray-900 truncate">{t.name}</span>
@@ -262,133 +254,133 @@ export default function ExcelTemplateSettings({ open, onClose, templates, onTemp
               );
             })}
           </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-            {/* Name + default */}
-            <div className="space-y-3">
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Template name
-                <input value={editor.name} onChange={e => setEditor({ ...editor, name: e.target.value })}
-                  placeholder="e.g. Standard Statement"
-                  className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
-              </label>
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" checked={editor.is_default}
-                  onChange={e => setEditor({ ...editor, is_default: e.target.checked })}
-                  className="rounded accent-amber-500" />
-                Use as the default template for statements
-              </label>
-            </div>
-
-            {/* Sheet basics */}
-            <div className="rounded-xl border border-gray-200 p-4 space-y-3">
-              <span className="text-sm font-semibold text-gray-900">Sheet</span>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Title
-                <input value={editor.layout.title} onChange={e => patchLayout({ title: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
-                <span className="block mt-1 text-[10px] font-normal normal-case text-gray-400">
-                  Placeholders: {'{{customer_name}}'}, {'{{customer_id}}'}, {'{{date}}'}
-                </span>
-              </label>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Sheet tab name
-                <input value={editor.layout.sheet_name} maxLength={31}
-                  onChange={e => patchLayout({ sheet_name: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
-              </label>
-            </div>
-
-            {/* Customer info block */}
-            <div className="rounded-xl border border-gray-200 p-4">
-              <span className="text-sm font-semibold text-gray-900">Customer info block</span>
-              <p className="text-[11px] text-gray-500 mb-2">Lines shown at the top of the sheet.</p>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                {CUSTOMER_FIELD_DEFS.map(f => (
-                  <label key={f.key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                    <input type="checkbox" checked={editor.layout.customer_fields.includes(f.key)}
-                      onChange={() => toggleCustomerField(f.key)} className="rounded accent-blue-600" />
-                    {f.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Sections */}
-            <div className="rounded-xl border border-gray-200 p-4 space-y-2">
-              <span className="text-sm font-semibold text-gray-900">Sections</span>
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" checked={editor.layout.show_aging_summary}
-                  onChange={e => patchLayout({ show_aging_summary: e.target.checked })} className="rounded accent-blue-600" />
-                Aging summary (Current / 1-30 / 31-60 / 61-90 / 90+)
-              </label>
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" checked={editor.layout.show_total_row}
-                  onChange={e => patchLayout({ show_total_row: e.target.checked })} className="rounded accent-blue-600" />
-                TOTAL row under the invoice list
-              </label>
-            </div>
-
-            {/* Invoice columns */}
-            <div className="rounded-xl border border-gray-200 p-4">
-              <span className="text-sm font-semibold text-gray-900">Invoice columns</span>
-              <p className="text-[11px] text-gray-500 mb-2">Check the columns to include, rename them, and reorder with the arrows.</p>
-              <div className="space-y-1.5">
-                {editor.layout.columns.map((c, idx) => (
-                  <div key={c.key} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${c.enabled ? 'border-gray-200' : 'border-gray-100 bg-gray-50'}`}>
-                    <input type="checkbox" checked={c.enabled}
-                      onChange={e => patchColumn(idx, { enabled: e.target.checked })}
-                      className="rounded accent-blue-600 flex-shrink-0" />
-                    <input value={c.label} disabled={!c.enabled}
-                      onChange={e => patchColumn(idx, { label: e.target.value })}
-                      className="flex-1 min-w-0 px-2 py-1 border border-transparent hover:border-gray-200 focus:border-gray-200 rounded text-sm bg-transparent disabled:text-gray-400 focus:ring-1 focus:ring-blue-300" />
-                    <span className="text-[10px] text-gray-400 uppercase tracking-wide flex-shrink-0 hidden sm:inline">{c.key.replace(/_/g, ' ')}</span>
-                    <button onClick={() => moveColumn(idx, -1)} disabled={idx === 0}
-                      className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30 flex-shrink-0"><ChevronUp size={14} /></button>
-                    <button onClick={() => moveColumn(idx, 1)} disabled={idx === editor.layout.columns.length - 1}
-                      className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30 flex-shrink-0"><ChevronDown size={14} /></button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Live preview */}
-            <div className="rounded-xl border border-gray-200 p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-gray-900">Preview</span>
-                <button onClick={downloadSample}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium">
-                  <Download size={13} /> Download sample .xlsx
-                </button>
-              </div>
-              <SheetPreview layout={editor.layout} />
-            </div>
-          </div>
         )}
+      </div>
+    );
+  }
 
-        {/* Footer */}
-        <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 border-t border-gray-100">
-          <span className="text-[11px] text-emerald-600 font-medium">
-            {savedAt && !editor ? <span className="inline-flex items-center gap-1"><Check size={12} /> Saved</span> : ''}
+  // ── Editor view ───────────────────────────────────────────────────────
+  return (
+    <div className="space-y-5 max-w-3xl">
+      <div className="flex items-center gap-2">
+        <button onClick={() => setEditor(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+          <ArrowLeft size={16} className="text-gray-500" />
+        </button>
+        <h2 className="text-lg font-bold text-gray-900">{editor.id ? 'Edit Excel template' : 'New Excel template'}</h2>
+      </div>
+
+      {/* Name + default */}
+      <div className="space-y-3">
+        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Template name
+          <input value={editor.name} onChange={e => setEditor({ ...editor, name: e.target.value })}
+            placeholder="e.g. Standard Statement"
+            className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input type="checkbox" checked={editor.is_default}
+            onChange={e => setEditor({ ...editor, is_default: e.target.checked })}
+            className="rounded accent-amber-500" />
+          Use as the default template for statements
+        </label>
+      </div>
+
+      {/* Sheet basics */}
+      <div className="rounded-xl border border-gray-200 p-4 space-y-3 bg-white">
+        <span className="text-sm font-semibold text-gray-900">Sheet</span>
+        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Title
+          <input value={editor.layout.title} onChange={e => patchLayout({ title: e.target.value })}
+            className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+          <span className="block mt-1 text-[10px] font-normal normal-case text-gray-400">
+            Placeholders: {'{{customer_name}}'}, {'{{customer_id}}'}, {'{{date}}'}
           </span>
-          {editor ? (
-            <div className="flex items-center gap-2">
-              <button onClick={() => setEditor(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-              <button onClick={handleSave} disabled={saving}
-                className="flex items-center gap-1.5 px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-medium disabled:opacity-60">
-                {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} {saving ? 'Saving…' : 'Save template'}
-              </button>
-            </div>
-          ) : (
-            <button onClick={onClose}
-              className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-medium">Done</button>
-          )}
+        </label>
+        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Sheet tab name
+          <input value={editor.layout.sheet_name} maxLength={31}
+            onChange={e => patchLayout({ sheet_name: e.target.value })}
+            className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+        </label>
+      </div>
+
+      {/* Customer info block */}
+      <div className="rounded-xl border border-gray-200 p-4 bg-white">
+        <span className="text-sm font-semibold text-gray-900">Customer info block</span>
+        <p className="text-[11px] text-gray-500 mb-2">Lines shown at the top of the sheet.</p>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+          {CUSTOMER_FIELD_DEFS.map(f => (
+            <label key={f.key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" checked={editor.layout.customer_fields.includes(f.key)}
+                onChange={() => toggleCustomerField(f.key)} className="rounded accent-blue-600" />
+              {f.label}
+            </label>
+          ))}
         </div>
+      </div>
+
+      {/* Sections */}
+      <div className="rounded-xl border border-gray-200 p-4 space-y-2 bg-white">
+        <span className="text-sm font-semibold text-gray-900">Sections</span>
+        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input type="checkbox" checked={editor.layout.show_aging_summary}
+            onChange={e => patchLayout({ show_aging_summary: e.target.checked })} className="rounded accent-blue-600" />
+          Aging summary (Current / 1-30 / 31-60 / 61-90 / 90+)
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input type="checkbox" checked={editor.layout.show_total_row}
+            onChange={e => patchLayout({ show_total_row: e.target.checked })} className="rounded accent-blue-600" />
+          TOTAL row under the invoice list
+        </label>
+      </div>
+
+      {/* Invoice columns */}
+      <div className="rounded-xl border border-gray-200 p-4 bg-white">
+        <span className="text-sm font-semibold text-gray-900">Invoice columns</span>
+        <p className="text-[11px] text-gray-500 mb-2">Check the columns to include, rename them, and reorder with the arrows.</p>
+        <div className="space-y-1.5">
+          {editor.layout.columns.map((c, idx) => (
+            <div key={c.key} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${c.enabled ? 'border-gray-200' : 'border-gray-100 bg-gray-50'}`}>
+              <input type="checkbox" checked={c.enabled}
+                onChange={e => patchColumn(idx, { enabled: e.target.checked })}
+                className="rounded accent-blue-600 flex-shrink-0" />
+              <input value={c.label} disabled={!c.enabled}
+                onChange={e => patchColumn(idx, { label: e.target.value })}
+                className="flex-1 min-w-0 px-2 py-1 border border-transparent hover:border-gray-200 focus:border-gray-200 rounded text-sm bg-transparent disabled:text-gray-400 focus:ring-1 focus:ring-blue-300" />
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide flex-shrink-0 hidden sm:inline">{c.key.replace(/_/g, ' ')}</span>
+              <button onClick={() => moveColumn(idx, -1)} disabled={idx === 0}
+                className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30 flex-shrink-0"><ChevronUp size={14} /></button>
+              <button onClick={() => moveColumn(idx, 1)} disabled={idx === editor.layout.columns.length - 1}
+                className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30 flex-shrink-0"><ChevronDown size={14} /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Live preview */}
+      <div className="rounded-xl border border-gray-200 p-4 bg-white">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-semibold text-gray-900">Preview</span>
+          <button onClick={downloadSample}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium">
+            <Download size={13} /> Download sample .xlsx
+          </button>
+        </div>
+        <SheetPreview layout={editor.layout} />
+      </div>
+
+      {/* Save / cancel */}
+      <div className="flex items-center justify-end gap-2 pb-2">
+        <button onClick={() => setEditor(null)}
+          className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+        <button onClick={handleSave} disabled={saving}
+          className="flex items-center gap-1.5 px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-medium disabled:opacity-60">
+          {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} {saving ? 'Saving…' : 'Save template'}
+        </button>
       </div>
     </div>
   );
 }
 
 // A lightweight spreadsheet-style rendering of the layout with sample data.
-function SheetPreview({ layout }: { layout: StatementExcelLayout }) {
+export function SheetPreview({ layout }: { layout: StatementExcelLayout }) {
   const c = SAMPLE_CUSTOMER;
   const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   const money = (n: number) => n < 0 ? `-$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`;
