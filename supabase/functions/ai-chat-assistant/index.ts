@@ -303,6 +303,21 @@ const tools = [
   {
     type: "function",
     function: {
+      name: "get_customer_payment_timeliness",
+      description:
+        "How promptly a specific customer pays RELATIVE TO THE DUE DATE. Returns, across their paid invoices: average and median days paid after the due date (negative = paid early), the % of invoices paid late, and the earliest/latest extremes. Use for questions like 'how many days after the due date do they pay', 'do they pay on time', 'how late does this customer pay'. Resolve the customer with find_customer first to get the customer_id.",
+      parameters: {
+        type: "object",
+        properties: {
+          customer_id: { type: "string", description: "Acumatica customer_id (from find_customer)" },
+        },
+        required: ["customer_id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "get_invoice_counts_by_type",
       description: "Count of invoices grouped by type (Invoice, Credit Memo, Debit Memo, etc.) within a date range.",
       parameters: {
@@ -462,6 +477,26 @@ async function executeTool(
       });
       if (error) return { error: error.message };
       return { timeline: data || [] };
+    }
+
+    case "get_customer_payment_timeliness": {
+      const { data, error } = await sb.rpc("get_customer_payment_timeliness", {
+        p_customer_id: args.customer_id,
+      });
+      if (error) return { error: error.message };
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || Number(row.paid_invoice_count) === 0) {
+        return { note: "No matching paid invoices with due dates found for this customer, so payment timeliness cannot be computed." };
+      }
+      return {
+        paid_invoice_count: Number(row.paid_invoice_count),
+        avg_days_after_due: Number(row.avg_days_after_due),
+        median_days_after_due: Number(row.median_days_after_due),
+        pct_paid_late: Number(row.pct_paid_late),
+        earliest_days: Number(row.earliest_days),
+        latest_days: Number(row.latest_days),
+        note: "Positive days = paid after the due date (late); negative = paid early. Based on payments applied to their invoices.",
+      };
     }
 
     case "search_invoices": {
@@ -1070,8 +1105,10 @@ RULES:
 - For broad searches use global_search.
 - To look up a customer by name, ALWAYS use find_customer first (fuzzy) to get the customer_id — it handles misspellings and partial names. Never tell the user a customer isn't found without trying find_customer; if there's no exact match, present the closest matches it returns and ask which they meant.
 - For deep customer analysis use find_customer to get the customer_id, then get_customer_detail, then get_customer_timeline.
+- For "how late/how soon does a customer pay", "days after the due date", or payment timeliness/promptness, use get_customer_payment_timeliness (after find_customer). The timeline does NOT contain this — do not use it for lateness.
 - For customer comparisons use get_customer_level_analytics.
-- For complex queries not covered by other tools, use run_sql_query.
+- For complex queries not covered by other tools, use run_sql_query. To compute payment lateness manually: join payment_invoice_applications to acumatica_invoices (due_date, type='Invoice') and acumatica_payments (application_date, type='Payment'), then average (application_date - due_date).
+- NEVER tell the user data is unavailable/not tracked until you have tried get_customer_payment_timeliness and/or run_sql_query. Most metrics are derivable from the raw tables.
 - When asked to export/download/generate a report, use generate_report.
 
 TICKETS — you can fully manage collection tickets:
