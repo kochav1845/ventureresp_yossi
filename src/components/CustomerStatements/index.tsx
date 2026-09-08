@@ -6,6 +6,7 @@ import CustomerStatementCard from './CustomerStatementCard';
 import StatementActions from './StatementActions';
 import AutoStatementsSidebar from './AutoStatementsSidebar';
 import PageHelp, { HelpSection } from '../PageHelp';
+import CountUp from '../CountUp';
 import type { SortField, StatementPeriod } from './types';
 
 const STATEMENTS_HELP: HelpSection[] = [
@@ -166,25 +167,29 @@ export default function CustomerStatements() {
         <StatCard
           icon={<Users className="w-5 h-5 text-blue-600" />}
           iconBg="bg-blue-50"
-          value={summary ? summary.customers.toLocaleString() : null}
+          num={summary ? summary.customers : null}
+          format={(n) => Math.round(n).toLocaleString()}
           label="Customers with balance"
         />
         <StatCard
           icon={<DollarSign className="w-5 h-5 text-red-600" />}
           iconBg="bg-red-50"
-          value={summary ? fmtCurrency(summary.balance) : null}
+          num={summary ? summary.balance : null}
+          format={fmtCurrency}
           label="Total open balance"
         />
         <StatCard
           icon={<FileText className="w-5 h-5 text-emerald-600" />}
           iconBg="bg-emerald-50"
-          value={summary ? summary.invoices.toLocaleString() : null}
+          num={summary ? summary.invoices : null}
+          format={(n) => Math.round(n).toLocaleString()}
           label="Open invoices"
         />
         <StatCard
           icon={<Clock className="w-5 h-5 text-amber-600" />}
           iconBg="bg-amber-50"
-          value={summary ? summary.overdue.toLocaleString() : null}
+          num={summary ? summary.overdue : null}
+          format={(n) => Math.round(n).toLocaleString()}
           label="Overdue 30+ days"
         />
       </div>
@@ -366,15 +371,15 @@ export default function CustomerStatements() {
   );
 }
 
-function StatCard({ icon, iconBg, value, label }: { icon: React.ReactNode; iconBg: string; value: string | null; label: string }) {
+function StatCard({ icon, iconBg, num, format, label }: { icon: React.ReactNode; iconBg: string; num: number | null; format: (n: number) => string; label: string }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4">
       <div className="flex items-center gap-3">
         <div className={`p-2 rounded-lg ${iconBg}`}>{icon}</div>
         <div className="min-w-0">
-          {value === null
+          {num === null
             ? <div className="h-7 w-24 max-w-full bg-gray-200 rounded animate-pulse" />
-            : <p className="text-2xl font-bold text-gray-900">{value}</p>}
+            : <p className="text-2xl font-bold text-gray-900 tabular-nums"><CountUp value={num} format={format} /></p>}
           <p className="text-xs text-gray-500 mt-0.5">{label}</p>
         </div>
       </div>
