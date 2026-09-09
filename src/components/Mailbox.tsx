@@ -33,6 +33,10 @@ export default function Mailbox() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Auto-provision this user's inbox account if they don't have one yet, so
+      // every org user lands in the inbox with no manual setup. Best-effort —
+      // if it fails we still fall back to any existing stored credentials.
+      try { await supabase.functions.invoke('ensure-inbox'); } catch (e) { console.warn('ensure-inbox:', e); }
       const [{ data: os }, { data: uc }] = await Promise.all([
         supabase.from('org_email_settings').select('*').maybeSingle(),
         supabase.from('user_inbox_credentials').select('*').maybeSingle(),
