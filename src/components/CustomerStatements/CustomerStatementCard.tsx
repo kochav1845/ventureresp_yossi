@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CheckSquare, Square, ChevronDown, ChevronUp, Mail, AlertTriangle, ListPlus, Pencil, Loader2, RotateCcw, Check, X } from 'lucide-react';
 import { useToast } from '../../contexts/ToastContext';
 import type { StatementCustomer } from './types';
@@ -47,6 +47,19 @@ export default function CustomerStatementCard({ customer, selected, expanded, lo
   const [editingEmail, setEditingEmail] = useState(false);
   const [emailDraft, setEmailDraft] = useState('');
   const [savingEmail, setSavingEmail] = useState(false);
+  const emailEditRef = useRef<HTMLSpanElement>(null);
+
+  // Clicking outside the email editor returns it to normal (view) mode.
+  useEffect(() => {
+    if (!editingEmail) return;
+    const onDown = (e: MouseEvent) => {
+      if (emailEditRef.current && !emailEditRef.current.contains(e.target as Node)) {
+        setEditingEmail(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [editingEmail]);
 
   const startEditEmail = () => {
     setEmailDraft(customer.email || '');
@@ -102,8 +115,8 @@ export default function CustomerStatementCard({ customer, selected, expanded, lo
   });
 
   return (
-    <div className={`bg-white rounded-xl border transition-all duration-200 ${selected ? 'border-blue-400 ring-1 ring-blue-100 shadow-md' : 'border-gray-200 shadow-sm hover:shadow-md'}`}>
-      <div className="px-5 py-4 flex items-center gap-4 cursor-pointer" onClick={onToggleExpand}>
+    <div className={`transition-colors ${selected ? 'bg-blue-50/60' : 'bg-white hover:bg-gray-50'}`}>
+      <div className="px-4 py-3 flex items-center gap-4 cursor-pointer" onClick={onToggleExpand}>
         <button
           onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
           className="flex-shrink-0 p-0.5"
@@ -121,7 +134,7 @@ export default function CustomerStatementCard({ customer, selected, expanded, lo
           </div>
           <div className="flex items-center gap-3 mt-1 flex-wrap">
             {editingEmail ? (
-              <span className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+              <span className="flex items-center gap-1.5" ref={emailEditRef} onClick={e => e.stopPropagation()}>
                 <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" />
                 <input
                   type="email"
