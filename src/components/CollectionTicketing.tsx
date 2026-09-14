@@ -13,8 +13,13 @@ export default function CollectionTicketing() {
   };
 
   const handleBack = () => {
-    // /admin-dashboard is not a real route — go to the previous page instead.
-    rawNavigate(-1);
+    // Prefer the browser's previous page, but fall back to a real route when the
+    // ticketing screen was opened directly (no history) -- otherwise Back does nothing.
+    if (window.history.length > 1) {
+      rawNavigate(-1);
+    } else {
+      navigate('/customers');
+    }
   };
 
   return (

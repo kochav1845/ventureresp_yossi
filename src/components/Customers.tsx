@@ -867,11 +867,24 @@ export default function Customers({ onBack }: CustomersProps) {
   const handleToggleResponded = async (id: string, currentValue: boolean) => {
     setUpdating(id);
     try {
-      const { error } = await supabase.from('acumatica_customers').update({ responded_this_month: !currentValue }).eq('customer_id', id);
+      // .select() so we can tell whether a row actually changed. Without it the
+      // update silently affects 0 rows (e.g. RLS/id mismatch) yet the checkbox
+      // would flip anyway and then revert on reload -- looking like it "doesn't work".
+      const { data, error } = await supabase
+        .from('acumatica_customers')
+        .update({ responded_this_month: !currentValue })
+        .eq('customer_id', id)
+        .select('customer_id');
       if (error) throw error;
+      if (!data || data.length === 0) {
+        console.error('Responded toggle changed no rows for customer_id', id);
+        alert('Could not save — this customer could not be updated. Please refresh and try again.');
+        return;
+      }
       setAllCustomers(allCustomers.map(c => c.id === id ? { ...c, responded_this_month: !currentValue } : c));
     } catch (error) {
       console.error('Error updating response status:', error);
+      alert('Could not save the response status. Please try again.');
     } finally {
       setUpdating(null);
     }

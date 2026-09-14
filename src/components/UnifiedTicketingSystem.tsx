@@ -121,6 +121,8 @@ export default function UnifiedTicketingSystem({
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [customerInvoices, setCustomerInvoices] = useState<Invoice[]>([]);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
+  const fmtMoney = (n: number) => `$${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const [selectedInvoicesForTicket, setSelectedInvoicesForTicket] = useState<string[]>([]);
   const [selectedCollector, setSelectedCollector] = useState<string>('');
   const [priority, setPriority] = useState<string>('medium');
@@ -776,6 +778,8 @@ export default function UnifiedTicketingSystem({
   };
 
   const loadCustomerInvoices = async (customerId: string) => {
+    setLoadingInvoices(true);
+    setCustomerInvoices([]);
     try {
       const { data, error } = await supabase
         .rpc('get_unpaid_invoices_for_customer', { p_customer_id: customerId });
@@ -788,6 +792,8 @@ export default function UnifiedTicketingSystem({
       setCustomerInvoices(mapped);
     } catch (error) {
       console.error('Error loading customer invoices:', error);
+    } finally {
+      setLoadingInvoices(false);
     }
   };
 
@@ -1659,7 +1665,7 @@ export default function UnifiedTicketingSystem({
                                 <div className="font-medium text-gray-900">{customer.customer_name}</div>
                                 <div className="text-sm text-gray-500">ID: {customer.customer_id}</div>
                                 <div className="text-sm text-red-600 font-semibold">
-                                  Balance: ${customer.balance.toFixed(2)}
+                                  Balance: {fmtMoney(customer.balance)}
                                 </div>
                               </button>
                             ))}
@@ -1681,11 +1687,20 @@ export default function UnifiedTicketingSystem({
                   {selectedCustomer && selectedCustomerData && (
                     <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
                       <p className="font-semibold text-blue-900">{selectedCustomerData.customer_name}</p>
-                      <p className="text-sm text-blue-700">Balance: ${selectedCustomerData.balance.toFixed(2)}</p>
+                      <p className="text-sm text-blue-700">Balance: {fmtMoney(selectedCustomerData.balance)}</p>
                     </div>
                   )}
                 </div>
 
+                {selectedCustomer && loadingInvoices && (
+                  <div className="flex items-center gap-2 text-sm text-gray-500 py-3">
+                    <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+                    Loading invoices…
+                  </div>
+                )}
+                {selectedCustomer && !loadingInvoices && customerInvoices.length === 0 && (
+                  <div className="text-sm text-gray-500 py-3">No open invoices found for this customer.</div>
+                )}
                 {customerInvoices.length > 0 && (
                   <div>
                     <div className="flex items-center justify-between mb-2">
@@ -1734,8 +1749,8 @@ export default function UnifiedTicketingSystem({
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-sm text-gray-500">Amount: ${invoice.amount.toFixed(2)}</div>
-                            <div className="font-semibold text-red-600">Balance: ${invoice.balance.toFixed(2)}</div>
+                            <div className="text-sm text-gray-500">Amount: {fmtMoney(invoice.amount)}</div>
+                            <div className="font-semibold text-red-600">Balance: {fmtMoney(invoice.balance)}</div>
                           </div>
                         </label>
                       ))}
