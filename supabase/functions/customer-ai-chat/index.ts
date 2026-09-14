@@ -23,8 +23,14 @@ const tools = [
     type: "function",
     function: {
       name: "get_customer_overview",
-      description: "Get the customer's full profile: balance breakdown, invoice stats, aging, credit info, and contact details.",
-      parameters: { type: "object", properties: {} },
+      description: "EXACT aggregated figures for this customer with NO row cap: open/balanced/closed invoice counts, open invoice balance, open DEBIT MEMO count+balance, open credit-memo total, total_open_owed (invoices+debit memos), aging. Use this for ANY count/total/balance/'how much do they owe' question. Pass date_from/date_to to scope the aggregates to a date range such as a single year.",
+      parameters: {
+        type: "object",
+        properties: {
+          date_from: { type: "string", description: "YYYY-MM-DD; optional lower bound on document date" },
+          date_to: { type: "string", description: "YYYY-MM-DD; optional upper bound on document date" },
+        },
+      },
     },
   },
   {
@@ -172,6 +178,12 @@ async function executeTool(sb: any, name: string, args: any, customerId: string,
         .eq("customer_id", customerId)
         .maybeSingle();
 
+      // Optional date scoping. Validate to YYYY-MM-DD so nothing unsafe reaches SQL.
+      const dre = /^\d{4}-\d{2}-\d{2}$/;
+      let dateClause = "";
+      if (dre.test(args?.date_from || "")) dateClause += ` AND date >= '${args.date_from}'`;
+      if (dre.test(args?.date_to || "")) dateClause += ` AND date <= '${args.date_to}'`;
+
       const { data: invoiceStats } = await sb.rpc("execute_readonly_sql", {
         sql_query: `SELECT
           COUNT(*) FILTER (WHERE status = 'Open' AND type = 'Invoice') AS open_invoices,
@@ -179,12 +191,15 @@ async function executeTool(sb: any, name: string, args: any, customerId: string,
           COUNT(*) FILTER (WHERE status = 'Closed' AND type = 'Invoice') AS closed_invoices,
           COALESCE(SUM(balance) FILTER (WHERE status = 'Open' AND type = 'Invoice'), 0) AS open_balance,
           COALESCE(SUM(balance) FILTER (WHERE status = 'Balanced' AND type = 'Invoice'), 0) AS balanced_balance,
+          COUNT(*) FILTER (WHERE status = 'Open' AND type = 'Debit Memo') AS open_debit_memos,
+          COALESCE(SUM(balance) FILTER (WHERE status = 'Open' AND type = 'Debit Memo'), 0) AS open_debit_memo_total,
           COALESCE(SUM(amount) FILTER (WHERE status = 'Open' AND type = 'Credit Memo'), 0) AS credit_memo_total,
           COUNT(*) FILTER (WHERE status = 'Open' AND type = 'Credit Memo') AS open_credit_memos,
+          COALESCE(SUM(balance) FILTER (WHERE status = 'Open' AND type IN ('Invoice','Debit Memo')), 0) AS total_open_owed,
           COALESCE(MAX(CURRENT_DATE - date::date) FILTER (WHERE status = 'Open' AND type = 'Invoice'), 0) AS max_days_overdue,
           COALESCE(AVG(amount) FILTER (WHERE type = 'Invoice'), 0) AS avg_invoice_amount,
           COALESCE(MAX(amount) FILTER (WHERE type = 'Invoice'), 0) AS max_invoice_amount
-        FROM acumatica_invoices WHERE customer = '${customerId}' AND status != 'On Hold'`
+        FROM acumatica_invoices WHERE customer = '${customerId}' AND status != 'On Hold'${dateClause}`
       });
 
       const { data: paymentStats } = await sb.rpc("execute_readonly_sql", {
@@ -475,11 +490,20 @@ Deno.serve(async (req: Request) => {
     if (!message) return errorResponse("Message is required");
     if (!customer_id) return errorResponse("customer_id is required");
 
-    const { data: customerInfo } = await supabase
+    // NOTE: acumatica_customers has no "email" column (it's email_address /
+    // general_email / billing_email). Selecting a non-existent column makes
+    // PostgREST error and returns null data — which previously made EVERY
+    // request look like "customer not found". Only select columns actually used.
+    const { data: customerInfo, error: customerLookupError } = await supabase
       .from("acumatica_customers")
-      .select("customer_id, customer_name, customer_class, terms, credit_limit, email, organization_id")
+      .select("customer_id, customer_name, customer_class, terms, credit_limit, organization_id")
       .eq("customer_id", customer_id)
       .maybeSingle();
+
+    if (customerLookupError) {
+      console.error("customer-ai-chat: customer lookup failed:", customerLookupError);
+      return errorResponse("Failed to look up customer", 500);
+    }
 
     // AuthZ: the requested customer must belong to the caller's organization.
     if (!customerInfo || (callerOrg && customerInfo.organization_id !== callerOrg)) {
@@ -503,9 +527,11 @@ RULES:
 - ALWAYS use tools to query data. Never guess or make up numbers.
 - All tools are automatically scoped to this customer — no need to specify customer_id.
 - For payment behavior (avg days to pay, payment patterns), use get_payment_behavior_stats.
-- For invoice queries (open, overdue, by amount), use get_customer_invoices.
+- For ANY count, total, or balance question (how many invoices, total balance, how much they owe), use get_customer_overview — EXACT aggregates, NO row cap.
+- Date scope: pass date_from/date_to to get_customer_overview. Interpret "only 2023" / "in 2023" / "for 2023" as the SINGLE calendar year date_from=2023-01-01, date_to=2023-12-31 (NOT 2023 through today). "Since 2023" means 2023-01-01 to today.
+- "Amount owed" / "how much do they owe" = total_open_owed (open invoices + open debit memos). Always state the open invoice count and open_balance; if open_debit_memos > 0, state the debit-memo balance separately (it is still owed). Open credit memos (credit_memo_total) reduce the total only when present.
+- get_customer_invoices only LISTS individual invoices and is capped at ~50-200 rows; NEVER sum or count its results to report a total. Use it only to inspect or list specific invoices.
 - For payment history, use get_customer_payments.
-- For balance overview, use get_customer_overview.
 - For historical trends, use get_customer_timeline.
 - For tickets, use get_customer_tickets.
 - To create a collection ticket, use create_ticket. Include invoice references if discussed.
