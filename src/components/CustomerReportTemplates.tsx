@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Plus, Edit2, Trash2, Copy, Check, FileText, Mail, Table, Paperclip, Eye, X, Send } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,6 +6,7 @@ import TestTemplateEmailModal from './TestTemplateEmailModal';
 
 interface CustomerReportTemplatesProps {
   onBack?: () => void;
+  editTemplateId?: string;
 }
 
 interface Template {
@@ -36,7 +37,7 @@ const AVAILABLE_FIELDS = [
   { key: '{{payment_url}}', label: 'Payment URL', description: 'Link for customer to make payment' },
 ];
 
-export default function CustomerReportTemplates({ onBack }: CustomerReportTemplatesProps) {
+export default function CustomerReportTemplates({ onBack, editTemplateId }: CustomerReportTemplatesProps) {
   const { profile } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +60,14 @@ export default function CustomerReportTemplates({ onBack }: CustomerReportTempla
   useEffect(() => {
     loadTemplates();
   }, []);
+
+  // Deep-link: if we arrived with ?templateId=, open that template's editor once.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current || !editTemplateId || templates.length === 0) return;
+    const t = templates.find(tp => tp.id === editTemplateId);
+    if (t) { setCurrentTemplate(t); setEditing(true); autoOpenedRef.current = true; }
+  }, [editTemplateId, templates]);
 
   const loadTemplates = async () => {
     try {

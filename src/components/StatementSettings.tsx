@@ -20,6 +20,8 @@ export default function StatementSettings() {
 
   const initial = (searchParams.get('tab') as Tab) || 'email';
   const [tab, setTab] = useState<Tab>(['email', 'excel', 'pdf'].includes(initial) ? initial : 'email');
+  // When arriving from an "edit template" button, open this template straight away.
+  const editTemplateId = searchParams.get('templateId') || undefined;
 
   const selectTab = (t: Tab) => {
     setTab(t);
@@ -74,8 +76,8 @@ export default function StatementSettings() {
 
       {/* Panel */}
       <div>
-        {tab === 'email' && <CustomerReportTemplates />}
-        {tab === 'excel' && <ExcelTemplatesPanel />}
+        {tab === 'email' && <CustomerReportTemplates editTemplateId={editTemplateId} />}
+        {tab === 'excel' && <ExcelTemplatesPanel editTemplateId={editTemplateId} />}
         {tab === 'pdf' && <PdfStatementPanel />}
       </div>
     </div>

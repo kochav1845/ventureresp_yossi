@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -41,7 +41,7 @@ type EditorState = {
   layout: StatementExcelLayout;
 };
 
-export default function ExcelTemplatesPanel() {
+export default function ExcelTemplatesPanel({ editTemplateId }: { editTemplateId?: string } = {}) {
   const { user } = useAuth();
   const toast = useToast();
   const [templates, setTemplates] = useState<StatementExcelTemplate[]>([]);
@@ -87,6 +87,14 @@ export default function ExcelTemplatesPanel() {
     is_default: t.is_default,
     layout: normalizeExcelLayout(JSON.parse(JSON.stringify(t.layout))),
   });
+
+  // Deep-link: open the requested template's editor once after templates load.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current || !editTemplateId || templates.length === 0) return;
+    const t = templates.find(tp => tp.id === editTemplateId);
+    if (t) { openEdit(t); autoOpenedRef.current = true; }
+  }, [editTemplateId, templates]);
 
   const friendlyError = (e: any) => {
     const msg = e?.message || String(e);

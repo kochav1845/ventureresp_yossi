@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { FileSpreadsheet, Mail, Download, Send, X, AlertTriangle, CheckCircle, Loader2, FlaskConical, Eye } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { FileSpreadsheet, Mail, Download, Send, X, AlertTriangle, CheckCircle, Loader2, FlaskConical, Eye, Pencil } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   generateCustomerStatementExcel,
@@ -36,6 +37,11 @@ interface EmailProgress {
 
 export default function StatementActions({ selectedCustomers, templates, selectedTemplateId, onTemplateChange, excelTemplates, selectedExcelTemplateId, onExcelTemplateChange, ensureInvoicesLoaded }: Props) {
   const { profile } = useAuth();
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  // Jump straight into editing the chosen template (deep-links past Settings).
+  const editEmailTemplate = () => { if (selectedTemplateId) navigate(`/${orgSlug}/statement-settings?tab=email&templateId=${selectedTemplateId}`); };
+  const editExcelTemplate = () => { if (selectedExcelTemplateId) navigate(`/${orgSlug}/statement-settings?tab=excel&templateId=${selectedExcelTemplateId}`); };
   const [actionMode, setActionMode] = useState<ActionMode>(null);
   const [sending, setSending] = useState(false);
   const [emailProgress, setEmailProgress] = useState<EmailProgress[]>([]);
@@ -363,6 +369,15 @@ export default function StatementActions({ selectedCustomers, templates, selecte
                   </option>
                 ))}
               </select>
+              <button
+                type="button"
+                onClick={editEmailTemplate}
+                disabled={!selectedTemplateId}
+                title="Edit this email template"
+                className="p-2 rounded-lg text-gray-500 hover:text-blue-700 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
               <label className="text-sm text-gray-700 font-medium whitespace-nowrap">Attachment:</label>
               <select
                 value={attachFormat}
@@ -385,6 +400,15 @@ export default function StatementActions({ selectedCustomers, templates, selecte
                       <option key={t.id} value={t.id}>{t.name}{t.is_default ? ' (Default)' : ''}</option>
                     ))}
                   </select>
+                  <button
+                    type="button"
+                    onClick={editExcelTemplate}
+                    disabled={!selectedExcelTemplateId}
+                    title="Edit this statement template"
+                    className="p-2 rounded-lg text-gray-500 hover:text-blue-700 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
                 </>
               )}
             </div>
