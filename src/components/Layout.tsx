@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { useOrgNavigation } from '../hooks/useOrgNavigation';
 import { useScrollRestoration } from '../hooks/useScrollRestoration';
 import {
+  LayoutDashboard,
   LogOut,
   BarChart3,
   Database,
@@ -164,6 +165,12 @@ export default function Layout() {
   const settingsLocked = isComponentLocked(LOCKABLE_COMPONENTS.SETTINGS);
 
   const allMenuSections = [
+    {
+      title: 'Overview',
+      items: [
+        { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
+      ]
+    },
     {
       title: 'Customer Management',
       items: [

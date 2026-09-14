@@ -14,6 +14,7 @@ import TourOverlay from './components/GuidedTour/TourOverlay';
 
 // Every page is code-split so users only download the page they open,
 // instead of the whole app in one bundle.
+const Dashboard = lazy(() => import('./components/Dashboard'));
 const Customers = lazy(() => import('./components/Customers'));
 const CronMonitor = lazy(() => import('./components/CronMonitor'));
 const SchedulerLogs = lazy(() => import('./components/SchedulerLogs'));
@@ -115,13 +116,12 @@ function PageLoading() {
 }
 
 function getDefaultRouteForRole(role: string, orgSlug: string): string {
+  // Everyone lands on the dashboard overview.
   switch (role) {
     case 'admin':
-      return `/${orgSlug}/payment-analytics`;
     case 'collector':
-      return `/${orgSlug}/my-assignments`;
     default:
-      return `/${orgSlug}/customers`;
+      return `/${orgSlug}/dashboard`;
   }
 }
 
@@ -171,6 +171,7 @@ function OrgAppContent() {
 
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to={defaultRoute} replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
           {/* The Inbox is the embedded webmail (old email system removed). */}
           <Route path="inbox" element={<Mailbox />} />
           <Route path="customers" element={<Customers />} />
