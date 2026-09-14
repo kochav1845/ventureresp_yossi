@@ -4,6 +4,7 @@ import { Search, X, ArrowUpDown, DollarSign, FileText, Users, Clock, CheckSquare
 import { useCustomerStatements } from './useCustomerStatements';
 import CustomerStatementCard from './CustomerStatementCard';
 import StatementActions from './StatementActions';
+import StatementCalendar from './StatementCalendar';
 import AutoStatementsSidebar from './AutoStatementsSidebar';
 import PageHelp, { HelpSection } from '../PageHelp';
 import CountUp from '../CountUp';
@@ -194,6 +195,9 @@ export default function CustomerStatements() {
         />
       </div>
 
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+        <div className="xl:col-span-2 space-y-6 min-w-0">
+
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
@@ -358,6 +362,14 @@ export default function CustomerStatements() {
             </p>
           </div>
         )}
+      </div>
+        </div>
+
+        <div className="xl:col-span-1 min-w-0">
+          <div className="xl:sticky xl:top-4">
+            <StatementCalendar testMode={showTestCustomers} />
+          </div>
+        </div>
       </div>
 
       <AutoStatementsSidebar
