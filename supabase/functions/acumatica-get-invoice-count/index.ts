@@ -78,7 +78,7 @@ Deno.serve(async (req: Request) => {
     for (const item of items) {
       const t = item.Type?.value || 'Unknown';
       const refNbr = (item.ReferenceNbr?.value || '').trim();
-      if (refNbr.length < 6) {
+      if (!refNbr) {
         skipped5Digit++;
         continue;
       }

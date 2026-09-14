@@ -257,13 +257,13 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        // Only process invoices with full 6-digit reference numbers
+        // Store Acumatica's native reference number verbatim. Do NOT zero-pad:
+        // padding a 5-digit ref to 6 (e.g. 96452 -> 096452) collides with a
+        // different customer's real 6-digit invoice under the
+        // (reference_number, type) unique key. That collision is why these were
+        // skipped and silently dropped, understating customer balances.
         const trimmedRef = refNbr.trim();
-        if (/^[0-9]+$/.test(trimmedRef) && trimmedRef.length < 6) {
-          console.log(`Skipping invoice with ${trimmedRef.length}-digit ref: ${trimmedRef}`);
-          continue;
-        }
-        transformedInvoice.reference_number = trimmedRef.padStart(6, '0');
+        transformedInvoice.reference_number = trimmedRef;
         const paddedRefNbr = transformedInvoice.reference_number;
 
         const invoiceType = transformedInvoice.type || 'Invoice';

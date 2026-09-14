@@ -9,12 +9,11 @@ const corsHeaders = {
 };
 
 function padRefNbr(refNbr: string): string {
-  const trimmed = refNbr.trim();
-  // Skip invoices with less than 6-digit reference numbers (old pre-2022 data)
-  if (/^[0-9]+$/.test(trimmed) && trimmed.length < 6) {
-    return '';
-  }
-  return trimmed.padStart(6, '0');
+  // Store Acumatica's native reference verbatim. Zero-padding a 5-digit ref to 6
+  // (96452 -> 096452) collided it with another customer's real 6-digit invoice
+  // under the (reference_number, type) unique key, so such refs used to be
+  // dropped entirely and balances came out short. Keep the native value.
+  return refNbr.trim();
 }
 
 async function updateProgress(supabase: any, jobId: string, progress: any) {

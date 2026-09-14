@@ -234,12 +234,10 @@ Deno.serve(async (req: Request) => {
           }
 
           const originalRef = mappedInvoice.reference_number.trim();
-          // Only process invoices with full 6-digit reference numbers
-          if (/^[0-9]+$/.test(originalRef) && originalRef.length < 6) {
-            console.log(`Skipping invoice with ${originalRef.length}-digit ref: ${originalRef}`);
-            continue;
-          }
-          mappedInvoice.reference_number = originalRef.padStart(6, '0');
+          // Store Acumatica's native reference verbatim. Zero-padding 5-digit
+          // refs to 6 collided them with other customers' real 6-digit refs
+          // (unique on reference_number,type), so they used to be dropped.
+          mappedInvoice.reference_number = originalRef;
 
           const { data: existing } = await supabase
             .from('acumatica_invoices')
