@@ -3,8 +3,9 @@ import { supabase } from '../../lib/supabase';
 import { useOrg } from '../../contexts/OrgContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Zap, X, Plus, Trash2, Search, Save, Users, UserMinus, CalendarClock, Loader2, Check, AlertTriangle,
+  Zap, X, Plus, Trash2, Search, Save, Users, UserMinus, CalendarClock, Loader2, Check, AlertTriangle, Pencil,
 } from 'lucide-react';
 import type { StatementCustomer, ReportTemplate } from './types';
 
@@ -52,6 +53,9 @@ export default function AutoStatementsSidebar({ open, onClose, customers, templa
   const { org } = useOrg();
   const { user } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const editTemplate = (id: string | null) => { if (id) navigate(`/${orgSlug}/statement-settings?tab=email&templateId=${id}`); };
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -304,10 +308,17 @@ export default function AutoStatementsSidebar({ open, onClose, customers, templa
                   </label>
                 </div>
                 <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Template
-                  <select value={allRule.template_id || ''} onChange={e => setAllRule(r => ({ ...r, template_id: e.target.value || null }))}
-                    className="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-sm bg-white">
-                    {templates.map(t => <option key={t.id} value={t.id}>{t.name}{t.is_default ? ' (default)' : ''}</option>)}
-                  </select>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <select value={allRule.template_id || ''} onChange={e => setAllRule(r => ({ ...r, template_id: e.target.value || null }))}
+                      className="flex-1 px-2.5 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+                      {templates.map(t => <option key={t.id} value={t.id}>{t.name}{t.is_default ? ' (default)' : ''}</option>)}
+                    </select>
+                    <button type="button" onClick={() => editTemplate(allRule.template_id)} disabled={!allRule.template_id}
+                      title="Edit this template"
+                      className="p-2 rounded-lg text-gray-500 hover:text-blue-700 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  </div>
                 </label>
                 <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Only if balance is at least
                   <div className="relative mt-1">
