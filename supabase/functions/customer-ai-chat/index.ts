@@ -22,6 +22,27 @@ const tools = [
   {
     type: "function",
     function: {
+      name: "render_chart",
+      description: "Display a visual chart to the user. Call this IN ADDITION to your text reply whenever the answer is a time series or breakdown that is clearer as a chart (payments by month, invoice aging buckets, monthly invoice/payment totals, year-over-year comparisons). Pass the actual data points you retrieved, in order. ALWAYS also summarize the key numbers in your text reply.",
+      parameters: {
+        type: "object",
+        properties: {
+          chart_type: { type: "string", enum: ["bar", "line", "pie"], description: "bar/line for trends over time; pie for parts of a whole" },
+          title: { type: "string", description: "Short chart title" },
+          data: {
+            type: "array",
+            description: "Ordered data points, e.g. [{label:'Jan 2026', value:1234.56}, ...]",
+            items: { type: "object", properties: { label: { type: "string" }, value: { type: "number" } }, required: ["label", "value"] },
+          },
+          value_prefix: { type: "string", description: "Optional unit prefix for values, e.g. '$'" },
+        },
+        required: ["chart_type", "title", "data"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "get_customer_overview",
       description: "EXACT aggregated figures for this customer with NO row cap: open/balanced/closed invoice counts, open invoice balance, open DEBIT MEMO count+balance, open credit-memo total, total_open_owed (invoices+debit memos), aging. Use this for ANY count/total/balance/'how much do they owe' question. Pass date_from/date_to to scope the aggregates to a date range such as a single year.",
       parameters: {
@@ -533,6 +554,7 @@ RULES:
 - get_customer_invoices only LISTS individual invoices and is capped at ~50-200 rows; NEVER sum or count its results to report a total. Use it only to inspect or list specific invoices.
 - For payment history, use get_customer_payments.
 - For historical trends, use get_customer_timeline.
+- CHARTS: when the answer is a trend or breakdown (payments/invoices by month, aging buckets, monthly totals, year-over-year), ALSO call render_chart with the data points so the user sees a chart — bar/line for time series, pie for parts of a whole. Still give the key numbers in your text reply so it stands alone.
 - For tickets, use get_customer_tickets.
 - To create a collection ticket, use create_ticket. Include invoice references if discussed.
 - To set a reminder, use create_reminder.
@@ -562,6 +584,7 @@ RULES:
 
     let assistantMessage = result.choices?.[0]?.message;
     let rounds = 0;
+    const charts: any[] = [];
 
     while (assistantMessage?.tool_calls?.length > 0 && rounds < 6) {
       rounds++;
@@ -570,6 +593,12 @@ RULES:
       const toolResults = await Promise.all(
         assistantMessage.tool_calls.map(async (tc: any) => {
           const args = JSON.parse(tc.function.arguments || "{}");
+          // render_chart is a client-side display directive, not a data query:
+          // capture the spec to return to the UI and ack it to the model.
+          if (tc.function.name === "render_chart") {
+            if (Array.isArray(args?.data) && args.data.length > 0) charts.push(args);
+            return { role: "tool", tool_call_id: tc.id, content: JSON.stringify({ ok: true, note: "Chart displayed to the user." }) };
+          }
           const toolResult = await executeTool(supabase, tc.function.name, args, customer_id, user.id);
           return { role: "tool", tool_call_id: tc.id, content: JSON.stringify(toolResult) };
         })
@@ -591,6 +620,7 @@ RULES:
     return jsonResponse({
       reply: assistantMessage?.content || "I could not generate a response.",
       tools_used: rounds > 0,
+      charts,
     });
   } catch (error: any) {
     console.error("Customer AI Chat error:", error);

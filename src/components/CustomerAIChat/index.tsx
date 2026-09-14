@@ -14,8 +14,12 @@ import {
   Bell,
   Bot,
   ChevronDown,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { customerChatSignal } from '../../lib/customerChatSignal';
+import ChatChart, { ChartSpec } from './ChatChart';
 
 interface ChatMessage {
   id: string;
@@ -23,6 +27,7 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   isLoading?: boolean;
+  charts?: ChartSpec[];
 }
 
 interface CustomerAIChatProps {
@@ -61,6 +66,7 @@ function formatMessage(content: string): string {
 
 export default function CustomerAIChat({ customerId, customerName }: CustomerAIChatProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -73,6 +79,13 @@ export default function CustomerAIChat({ customerId, customerName }: CustomerAIC
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // While this per-customer chat is on screen, hide the global admin ChatWidget
+  // so the customer page shows only the blue "Ask AI about <customer>" assistant.
+  useEffect(() => {
+    customerChatSignal.enter();
+    return () => customerChatSignal.leave();
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -214,7 +227,7 @@ export default function CustomerAIChat({ customerId, customerName }: CustomerAIC
       setMessages(prev =>
         prev.map(m =>
           m.id === loadingMsg.id
-            ? { ...m, content: data.reply, isLoading: false }
+            ? { ...m, content: data.reply, charts: Array.isArray(data.charts) ? data.charts : undefined, isLoading: false }
             : m
         )
       );
@@ -309,7 +322,13 @@ export default function CustomerAIChat({ customerId, customerName }: CustomerAIC
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-[420px] h-[600px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
+    <div
+      className={`fixed z-50 bg-white shadow-2xl border border-gray-200 flex flex-col overflow-hidden ${
+        fullscreen
+          ? 'inset-0 sm:inset-4 rounded-none sm:rounded-2xl'
+          : 'bottom-6 right-6 w-[420px] h-[600px] rounded-2xl'
+      }`}
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white shrink-0">
         <div className="flex items-center gap-2">
@@ -331,6 +350,13 @@ export default function CustomerAIChat({ customerId, customerName }: CustomerAIC
             title={voiceEnabled ? 'Disable voice responses' : 'Enable voice responses'}
           >
             {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={() => setFullscreen(f => !f)}
+            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+            title={fullscreen ? 'Exit full window' : 'Open in full window'}
+          >
+            {fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
           <button
             onClick={clearChat}
@@ -396,10 +422,12 @@ export default function CustomerAIChat({ customerId, customerName }: CustomerAIC
           </div>
         )}
 
-        {messages.map((msg) => (
+        {messages.map((msg) => {
+          const hasCharts = msg.role === 'assistant' && !!msg.charts && msg.charts.length > 0;
+          return (
           <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
-              className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
+              className={`${hasCharts ? 'w-full max-w-full' : 'max-w-[85%]'} rounded-xl px-3 py-2 text-sm ${
                 msg.role === 'user'
                   ? 'bg-blue-600 text-white rounded-br-sm'
                   : 'bg-gray-100 text-gray-800 rounded-bl-sm'
@@ -411,14 +439,20 @@ export default function CustomerAIChat({ customerId, customerName }: CustomerAIC
                   <span className="text-xs text-gray-500">Analyzing...</span>
                 </div>
               ) : (
-                <div
-                  className="text-[13px] leading-relaxed [&_strong]:font-semibold"
-                  dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}
-                />
+                <>
+                  <div
+                    className="text-[13px] leading-relaxed [&_strong]:font-semibold"
+                    dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}
+                  />
+                  {hasCharts && msg.charts!.map((c, i) => (
+                    <ChatChart key={i} spec={c} height={fullscreen ? 300 : 200} />
+                  ))}
+                </>
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 

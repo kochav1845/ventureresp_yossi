@@ -17,6 +17,7 @@ import {
   ArrowUp,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { customerChatSignal } from '../../lib/customerChatSignal';
 
 interface ReportData {
   __report: boolean;
@@ -152,6 +153,10 @@ export default function ChatWidget() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const [pulseAnimation, setPulseAnimation] = useState(true);
+  // Hide this global assistant while a per-customer AI chat is on screen, so the
+  // customer page shows only the blue "Ask AI about <customer>" assistant.
+  const [customerChatActive, setCustomerChatActive] = useState(() => customerChatSignal.isActive());
+  useEffect(() => customerChatSignal.subscribe(() => setCustomerChatActive(customerChatSignal.isActive())), []);
 
   useEffect(() => {
     const timer = setTimeout(() => setPulseAnimation(false), 10000);
@@ -323,6 +328,8 @@ export default function ChatWidget() {
     speechSynthesis.cancel();
     setIsSpeaking(false);
   };
+
+  if (customerChatActive) return null;
 
   if (!isOpen) {
     return (
