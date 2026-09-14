@@ -5,6 +5,7 @@ import { useCustomerStatements } from './useCustomerStatements';
 import CustomerStatementCard from './CustomerStatementCard';
 import StatementActions from './StatementActions';
 import StatementCalendar from './StatementCalendar';
+import CustomerStatementSchedule from './CustomerStatementSchedule';
 import AutoStatementsSidebar from './AutoStatementsSidebar';
 import PageHelp, { HelpSection } from '../PageHelp';
 import CountUp from '../CountUp';
@@ -63,6 +64,7 @@ export default function CustomerStatements() {
   } = useCustomerStatements();
 
   const [showAuto, setShowAuto] = useState(false);
+  const [scheduleFor, setScheduleFor] = useState<{ id: string; name: string } | null>(null);
   const navigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
 
@@ -215,6 +217,7 @@ export default function CustomerStatements() {
             onToggleExpand={() => toggleExpand(customer.customer_id)}
             onSaveEmailOverride={saveEmailOverride}
             onClearEmailOverride={clearEmailOverride}
+            onOpenSchedule={() => setScheduleFor({ id: customer.customer_id, name: customer.customer_name })}
           />
         ))}
 
@@ -340,6 +343,14 @@ export default function CustomerStatements() {
         templates={templates}
         defaultTemplateId={selectedTemplateId}
       />
+
+      {scheduleFor && (
+        <CustomerStatementSchedule
+          customerId={scheduleFor.id}
+          customerName={scheduleFor.name}
+          onClose={() => setScheduleFor(null)}
+        />
+      )}
     </div>
   );
 }

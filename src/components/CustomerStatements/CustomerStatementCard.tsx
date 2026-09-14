@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { CheckSquare, Square, ChevronDown, ChevronUp, Mail, AlertTriangle, ListPlus, Pencil, Loader2, RotateCcw, Check, X } from 'lucide-react';
+import { CheckSquare, Square, ChevronDown, ChevronUp, Mail, AlertTriangle, ListPlus, Pencil, Loader2, RotateCcw, Check, X, CalendarClock } from 'lucide-react';
 import { useToast } from '../../contexts/ToastContext';
 import type { StatementCustomer } from './types';
 
@@ -12,6 +12,7 @@ interface Props {
   onToggleExpand: () => void;
   onSaveEmailOverride: (customerId: string, email: string) => Promise<void>;
   onClearEmailOverride: (customerId: string) => Promise<void>;
+  onOpenSchedule?: () => void;
 }
 
 const fmtCurrency = (n: number) =>
@@ -40,7 +41,7 @@ function getAgingLabel(days: number): string {
 
 const INITIAL_INVOICE_COUNT = 5;
 
-export default function CustomerStatementCard({ customer, selected, expanded, loadingInvoices, onToggleSelect, onToggleExpand, onSaveEmailOverride, onClearEmailOverride }: Props) {
+export default function CustomerStatementCard({ customer, selected, expanded, loadingInvoices, onToggleSelect, onToggleExpand, onSaveEmailOverride, onClearEmailOverride, onOpenSchedule }: Props) {
   const toast = useToast();
   // Show only the first few invoices when a customer is opened; reveal the rest on demand.
   const [showAll, setShowAll] = useState(false);
@@ -218,6 +219,14 @@ export default function CustomerStatementCard({ customer, selected, expanded, lo
             <p className="text-lg font-bold text-gray-900">{fmtCurrency(customer.total_balance)}</p>
           </div>
         </div>
+
+        <button
+          onClick={(e) => { e.stopPropagation(); onOpenSchedule?.(); }}
+          title="Statement schedule & history"
+          className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+        >
+          <CalendarClock className="w-4.5 h-4.5" />
+        </button>
 
         <div className="flex-shrink-0 text-gray-400">
           {expanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
