@@ -14,86 +14,108 @@ import TourOverlay from './components/GuidedTour/TourOverlay';
 
 // Every page is code-split so users only download the page they open,
 // instead of the whole app in one bundle.
-const Dashboard = lazy(() => import('./components/Dashboard'));
-const Customers = lazy(() => import('./components/Customers'));
-const CronMonitor = lazy(() => import('./components/CronMonitor'));
-const SchedulerLogs = lazy(() => import('./components/SchedulerLogs'));
-const AcumaticaInvoiceTest = lazy(() => import('./components/AcumaticaInvoiceTest'));
-const AcumaticaCustomers = lazy(() => import('./components/AcumaticaCustomers'));
-const AcumaticaInvoices = lazy(() => import('./components/AcumaticaInvoices'));
-const AcumaticaPayments = lazy(() => import('./components/AcumaticaPayments'));
-const InvoiceStatusAnalytics = lazy(() => import('./components/InvoiceStatusAnalytics'));
-const PaymentAnalytics = lazy(() => import('./components/PaymentAnalytics'));
-const CustomerReportsMonthly = lazy(() => import('./components/CustomerReportsMonthly'));
-const CustomerReportTemplates = lazy(() => import('./components/CustomerReportTemplates'));
-const SystemDocumentation = lazy(() => import('./components/SystemDocumentation'));
-const WebhookConfiguration = lazy(() => import('./components/WebhookConfiguration'));
-const SyncStatusDashboard = lazy(() => import('./components/SyncStatusDashboard'));
-const SyncConfiguration = lazy(() => import('./components/SyncConfiguration'));
-const InvoiceStatusAdminPanel = lazy(() => import('./components/InvoiceStatusAdminPanel'));
-const AcumaticaFilesTest = lazy(() => import('./components/AcumaticaFilesTest'));
-const RemindersPortal = lazy(() => import('./components/RemindersPortal'));
-const ProposedReminderRulesSettings = lazy(() => import('./components/ProposedReminderRulesSettings'));
-const AcumaticaCredentialTester = lazy(() => import('./components/AcumaticaCredentialTester'));
-const BatchApplicationFetcher = lazy(() => import('./components/BatchApplicationFetcher'));
-const BulkApplicationFetcher = lazy(() => import('./components/BulkApplicationFetcher'));
-const SyncChangeLogsViewer = lazy(() => import('./components/SyncChangeLogsViewer'));
-const SyncDiagnostic = lazy(() => import('./components/SyncDiagnostic'));
-const PaymentStructureDiagnostic = lazy(() => import('./components/PaymentStructureDiagnostic'));
-const PaymentAttachmentTest = lazy(() => import('./components/PaymentAttachmentTest'));
-const RecentSyncApplicationCheck = lazy(() => import('./components/RecentSyncApplicationCheck'));
-const PaymentCountComparison = lazy(() => import('./components/PaymentCountComparison'));
-const PaymentApplicationStatus = lazy(() => import('./components/PaymentApplicationStatus'));
-const PaymentApplicationResync = lazy(() => import('./components/PaymentApplicationResync'));
-const OrphanedInvoiceFixer = lazy(() => import('./components/OrphanedInvoiceFixer'));
-const ApplicationDateDiagnostic = lazy(() => import('./components/ApplicationDateDiagnostic'));
-const InvoiceFormatChecker = lazy(() => import('./components/InvoiceFormatChecker'));
-const AcumaticaInvoiceVariationChecker = lazy(() => import('./components/AcumaticaInvoiceVariationChecker'));
-const OrphanedApplicationDiagnostic = lazy(() => import('./components/OrphanedApplicationDiagnostic'));
-const InvoiceDateComparison = lazy(() => import('./components/InvoiceDateComparison'));
-const CollectionTicketing = lazy(() => import('./components/CollectionTicketing'));
-const MyAssignments = lazy(() => import('./components/MyAssignments'));
-const CollectorHub = lazy(() => import('./components/CollectorHub'));
-const RevenueAnalytics = lazy(() => import('./components/RevenueAnalytics'));
-const CustomerAnalyticsPage = lazy(() => import('./components/CustomerAnalyticsPage'));
-const UserActivityAnalytics = lazy(() => import('./components/UserActivityAnalytics'));
-const CollectorControlPanel = lazy(() => import('./components/CollectorControlPanel'));
-const UserApprovalPanel = lazy(() => import('./components/UserApprovalPanel'));
-const PaymentApplicationDiagnostic = lazy(() => import('./components/PaymentApplicationDiagnostic'));
-const PasswordResetTester = lazy(() => import('./components/PasswordResetTester'));
-const TestPaymentAppAndAttachmentSync = lazy(() => import('./components/TestPaymentAppAndAttachmentSync'));
-const AutoBackfillMonitor = lazy(() => import('./components/AutoBackfillMonitor'));
-const PaymentStatusDiagnostic = lazy(() => import('./components/PaymentStatusDiagnostic'));
-const PaymentDateRangeResync = lazy(() => import('./components/PaymentDateRangeResync'));
-const LiveSyncMonitor = lazy(() => import('./components/LiveSyncMonitor'));
-const PaymentSyncHealthCheck = lazy(() => import('./components/PaymentSyncHealthCheck'));
-const PaymentSyncDiagnostic = lazy(() => import('./components/PaymentSyncDiagnostic'));
-const DeveloperTools = lazy(() => import('./components/DeveloperTools').then(m => ({ default: m.DeveloperTools })));
-const Refetch2024Payments = lazy(() => import('./components/Refetch2024Payments'));
-const BackfillDocDates = lazy(() => import('./components/BackfillDocDates'));
-const AcumaticaPaymentFetch = lazy(() => import('./components/AcumaticaPaymentFetch'));
-const AdminCreateUser = lazy(() => import('./components/AdminCreateUser'));
-const ResendTemporaryPassword = lazy(() => import('./components/ResendTemporaryPassword'));
-const ForceDeleteUser = lazy(() => import('./components/ForceDeleteUser'));
-const TicketStatusManagement = lazy(() => import('./components/TicketStatusManagement'));
-const InvoiceColorStatusManagement = lazy(() => import('./components/InvoiceColorStatusManagement'));
-const SyncHealthDashboard = lazy(() => import('./components/SyncHealthDashboard'));
-const AutoTicketRules = lazy(() => import('./components/AutoTicketRules'));
-const VoidedPaymentAnalysis = lazy(() => import('./components/VoidedPaymentAnalysis'));
-const VoidedPaymentsByDate = lazy(() => import('./components/VoidedPaymentsByDate'));
-const Last15DaysPaymentFetch = lazy(() => import('./components/Last15DaysPaymentFetch'));
-const ConnectionDiagnostic = lazy(() => import('./components/ConnectionDiagnostic'));
-const PaymentBreakdown = lazy(() => import('./components/PaymentBreakdown'));
-const InvoiceBreakdown = lazy(() => import('./components/InvoiceBreakdown'));
-const EmailSettings = lazy(() => import('./components/EmailSettings'));
-const TicketDetailPage = lazy(() => import('./components/TicketDetailPage'));
-const CustomerStatements = lazy(() => import('./components/CustomerStatements'));
-const StatementSettings = lazy(() => import('./components/StatementSettings'));
-const Mailbox = lazy(() => import('./components/Mailbox'));
-const ApiKeyManagement = lazy(() => import('./components/ApiKeyManagement'));
-const CronJobsMonitor = lazy(() => import('./components/CronJobsMonitor'));
-const InvoiceAnalyticsPage = lazy(() => import('./components/InvoiceAnalyticsPage'));
-const SuperAdminDashboard = lazy(() => import('./components/SuperAdminDashboard'));
+// Lazy import that survives a stale deploy: if a route's code chunk 404s
+// (its hashed filename changed after a new build) the SPA fallback returns
+// index.html, which used to crash with "Unexpected token <". Reload once to
+// pull the fresh index instead; the 10s guard prevents a reload loop if a
+// chunk is genuinely broken.
+function lazyRetry(factory: () => Promise<{ default: any }>) {
+  return lazy(async () => {
+    try {
+      return await factory();
+    } catch (err) {
+      const key = 'vr:lastChunkReload';
+      const last = Number(sessionStorage.getItem(key) || 0);
+      if (Date.now() - last > 10000) {
+        sessionStorage.setItem(key, String(Date.now()));
+        window.location.reload();
+        return new Promise<{ default: any }>(() => {});
+      }
+      throw err;
+    }
+  });
+}
+
+const Dashboard = lazyRetry(() => import('./components/Dashboard'));
+const Customers = lazyRetry(() => import('./components/Customers'));
+const CronMonitor = lazyRetry(() => import('./components/CronMonitor'));
+const SchedulerLogs = lazyRetry(() => import('./components/SchedulerLogs'));
+const AcumaticaInvoiceTest = lazyRetry(() => import('./components/AcumaticaInvoiceTest'));
+const AcumaticaCustomers = lazyRetry(() => import('./components/AcumaticaCustomers'));
+const AcumaticaInvoices = lazyRetry(() => import('./components/AcumaticaInvoices'));
+const AcumaticaPayments = lazyRetry(() => import('./components/AcumaticaPayments'));
+const InvoiceStatusAnalytics = lazyRetry(() => import('./components/InvoiceStatusAnalytics'));
+const PaymentAnalytics = lazyRetry(() => import('./components/PaymentAnalytics'));
+const CustomerReportsMonthly = lazyRetry(() => import('./components/CustomerReportsMonthly'));
+const CustomerReportTemplates = lazyRetry(() => import('./components/CustomerReportTemplates'));
+const SystemDocumentation = lazyRetry(() => import('./components/SystemDocumentation'));
+const WebhookConfiguration = lazyRetry(() => import('./components/WebhookConfiguration'));
+const SyncStatusDashboard = lazyRetry(() => import('./components/SyncStatusDashboard'));
+const SyncConfiguration = lazyRetry(() => import('./components/SyncConfiguration'));
+const InvoiceStatusAdminPanel = lazyRetry(() => import('./components/InvoiceStatusAdminPanel'));
+const AcumaticaFilesTest = lazyRetry(() => import('./components/AcumaticaFilesTest'));
+const RemindersPortal = lazyRetry(() => import('./components/RemindersPortal'));
+const ProposedReminderRulesSettings = lazyRetry(() => import('./components/ProposedReminderRulesSettings'));
+const AcumaticaCredentialTester = lazyRetry(() => import('./components/AcumaticaCredentialTester'));
+const BatchApplicationFetcher = lazyRetry(() => import('./components/BatchApplicationFetcher'));
+const BulkApplicationFetcher = lazyRetry(() => import('./components/BulkApplicationFetcher'));
+const SyncChangeLogsViewer = lazyRetry(() => import('./components/SyncChangeLogsViewer'));
+const SyncDiagnostic = lazyRetry(() => import('./components/SyncDiagnostic'));
+const PaymentStructureDiagnostic = lazyRetry(() => import('./components/PaymentStructureDiagnostic'));
+const PaymentAttachmentTest = lazyRetry(() => import('./components/PaymentAttachmentTest'));
+const RecentSyncApplicationCheck = lazyRetry(() => import('./components/RecentSyncApplicationCheck'));
+const PaymentCountComparison = lazyRetry(() => import('./components/PaymentCountComparison'));
+const PaymentApplicationStatus = lazyRetry(() => import('./components/PaymentApplicationStatus'));
+const PaymentApplicationResync = lazyRetry(() => import('./components/PaymentApplicationResync'));
+const OrphanedInvoiceFixer = lazyRetry(() => import('./components/OrphanedInvoiceFixer'));
+const ApplicationDateDiagnostic = lazyRetry(() => import('./components/ApplicationDateDiagnostic'));
+const InvoiceFormatChecker = lazyRetry(() => import('./components/InvoiceFormatChecker'));
+const AcumaticaInvoiceVariationChecker = lazyRetry(() => import('./components/AcumaticaInvoiceVariationChecker'));
+const OrphanedApplicationDiagnostic = lazyRetry(() => import('./components/OrphanedApplicationDiagnostic'));
+const InvoiceDateComparison = lazyRetry(() => import('./components/InvoiceDateComparison'));
+const CollectionTicketing = lazyRetry(() => import('./components/CollectionTicketing'));
+const MyAssignments = lazyRetry(() => import('./components/MyAssignments'));
+const CollectorHub = lazyRetry(() => import('./components/CollectorHub'));
+const RevenueAnalytics = lazyRetry(() => import('./components/RevenueAnalytics'));
+const CustomerAnalyticsPage = lazyRetry(() => import('./components/CustomerAnalyticsPage'));
+const UserActivityAnalytics = lazyRetry(() => import('./components/UserActivityAnalytics'));
+const CollectorControlPanel = lazyRetry(() => import('./components/CollectorControlPanel'));
+const UserApprovalPanel = lazyRetry(() => import('./components/UserApprovalPanel'));
+const PaymentApplicationDiagnostic = lazyRetry(() => import('./components/PaymentApplicationDiagnostic'));
+const PasswordResetTester = lazyRetry(() => import('./components/PasswordResetTester'));
+const TestPaymentAppAndAttachmentSync = lazyRetry(() => import('./components/TestPaymentAppAndAttachmentSync'));
+const AutoBackfillMonitor = lazyRetry(() => import('./components/AutoBackfillMonitor'));
+const PaymentStatusDiagnostic = lazyRetry(() => import('./components/PaymentStatusDiagnostic'));
+const PaymentDateRangeResync = lazyRetry(() => import('./components/PaymentDateRangeResync'));
+const LiveSyncMonitor = lazyRetry(() => import('./components/LiveSyncMonitor'));
+const PaymentSyncHealthCheck = lazyRetry(() => import('./components/PaymentSyncHealthCheck'));
+const PaymentSyncDiagnostic = lazyRetry(() => import('./components/PaymentSyncDiagnostic'));
+const DeveloperTools = lazyRetry(() => import('./components/DeveloperTools').then(m => ({ default: m.DeveloperTools })));
+const Refetch2024Payments = lazyRetry(() => import('./components/Refetch2024Payments'));
+const BackfillDocDates = lazyRetry(() => import('./components/BackfillDocDates'));
+const AcumaticaPaymentFetch = lazyRetry(() => import('./components/AcumaticaPaymentFetch'));
+const AdminCreateUser = lazyRetry(() => import('./components/AdminCreateUser'));
+const ResendTemporaryPassword = lazyRetry(() => import('./components/ResendTemporaryPassword'));
+const ForceDeleteUser = lazyRetry(() => import('./components/ForceDeleteUser'));
+const TicketStatusManagement = lazyRetry(() => import('./components/TicketStatusManagement'));
+const InvoiceColorStatusManagement = lazyRetry(() => import('./components/InvoiceColorStatusManagement'));
+const SyncHealthDashboard = lazyRetry(() => import('./components/SyncHealthDashboard'));
+const AutoTicketRules = lazyRetry(() => import('./components/AutoTicketRules'));
+const VoidedPaymentAnalysis = lazyRetry(() => import('./components/VoidedPaymentAnalysis'));
+const VoidedPaymentsByDate = lazyRetry(() => import('./components/VoidedPaymentsByDate'));
+const Last15DaysPaymentFetch = lazyRetry(() => import('./components/Last15DaysPaymentFetch'));
+const ConnectionDiagnostic = lazyRetry(() => import('./components/ConnectionDiagnostic'));
+const PaymentBreakdown = lazyRetry(() => import('./components/PaymentBreakdown'));
+const InvoiceBreakdown = lazyRetry(() => import('./components/InvoiceBreakdown'));
+const EmailSettings = lazyRetry(() => import('./components/EmailSettings'));
+const TicketDetailPage = lazyRetry(() => import('./components/TicketDetailPage'));
+const CustomerStatements = lazyRetry(() => import('./components/CustomerStatements'));
+const StatementSettings = lazyRetry(() => import('./components/StatementSettings'));
+const Mailbox = lazyRetry(() => import('./components/Mailbox'));
+const ApiKeyManagement = lazyRetry(() => import('./components/ApiKeyManagement'));
+const CronJobsMonitor = lazyRetry(() => import('./components/CronJobsMonitor'));
+const InvoiceAnalyticsPage = lazyRetry(() => import('./components/InvoiceAnalyticsPage'));
+const SuperAdminDashboard = lazyRetry(() => import('./components/SuperAdminDashboard'));
 
 function LoadingScreen() {
   return (
