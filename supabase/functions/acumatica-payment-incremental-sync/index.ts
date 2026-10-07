@@ -79,6 +79,8 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
+  const fnStart = Date.now();
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -230,53 +232,167 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Processing ${payments.length} payments...`);
 
-    if (payments && payments.length > 0) {
-      for (const payment of payments) {
+    // --- Map + de-duplicate --------------------------------------------------
+    // The 24h window returns ~100-300 payments per run, but only a handful
+    // actually changed since the previous 5-min run. The old loop processed
+    // EVERY one sequentially, including a ~2s Acumatica ApplicationHistory GET
+    // per payment, so a busy window ran past the 150s wall clock (504
+    // IDLE_TIMEOUT) and took acumatica-master-sync down with it.
+    // Now: map once, bulk-load stored rows + attachment keys, skip payments
+    // whose LastModifiedDateTime/status/amount/balance are unchanged (and that
+    // have no missing attachment / Voided Payment record), and process the rest
+    // with bounded concurrency under a per-run cap + time budget.
+    const syncStamp = new Date().toISOString();
+    const keyOf = (ref: string, type: string) => `${ref}\u0001${type}`;
+    const toMs = (v: unknown) => {
+      if (v === null || v === undefined || v === '') return NaN;
+      return new Date(v as string).getTime();
+    };
+    const sameNum = (a: unknown, b: unknown) =>
+      (a === null || a === undefined) && (b === null || b === undefined)
+        ? true
+        : Number(a) === Number(b);
+
+    const mappedByKey = new Map<string, { payment: any; refNbr: string; type: string; paymentData: any }>();
+
+    for (const payment of payments) {
+      let refNbr = payment.ReferenceNbr?.value;
+      const type = payment.Type?.value;
+
+      if (!refNbr || !type) {
+        continue;
+      }
+
+      if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) {
+        refNbr = refNbr.padStart(6, '0');
+      }
+
+      const customDoc = payment.custom?.Document;
+      const paymentData: any = {
+        reference_number: refNbr,
+        type: type,
+        status: payment.Status?.value || null,
+        hold: payment.Hold?.value || false,
+        application_date: payment.ApplicationDate?.value || payment.PaymentDate?.value || null,
+        doc_date: customDoc?.DocDate?.value || null,
+        financial_period: customDoc?.FinPeriodID?.value || null,
+        payment_amount: payment.PaymentAmount?.value || 0,
+        available_balance: payment.UnappliedBalance?.value || 0,
+        customer_id: payment.CustomerID?.value || null,
+        customer_name: payment.CustomerName?.value || null,
+        payment_method: payment.PaymentMethod?.value || null,
+        cash_account: payment.CashAccount?.value || null,
+        payment_ref: payment.PaymentRef?.value || null,
+        description: payment.Description?.value || null,
+        currency_id: payment.CurrencyID?.value || null,
+        last_modified_datetime: payment.LastModifiedDateTime?.value || null,
+        raw_data: payment,
+        last_sync_timestamp: syncStamp
+      };
+
+      // $skip paging over a live result set can return the same payment twice;
+      // keep the most recently modified copy.
+      const k = keyOf(refNbr, type);
+      const prev = mappedByKey.get(k);
+      if (!prev || !(toMs(prev.paymentData.last_modified_datetime) > toMs(paymentData.last_modified_datetime))) {
+        mappedByKey.set(k, { payment, refNbr, type, paymentData });
+      }
+    }
+
+    // --- Bulk-load what we already have --------------------------------------
+    const allRefs = [...new Set([...mappedByKey.values()].map((m) => m.refNbr))];
+    const LOOKUP_CHUNK = 150;
+    const existingByKey = new Map<string, any>();
+    for (let i = 0; i < allRefs.length; i += LOOKUP_CHUNK) {
+      const chunk = allRefs.slice(i, i + LOOKUP_CHUNK);
+      const { data: rows, error: lookupError } = await supabase
+        .from('acumatica_payments')
+        .select('id, reference_number, type, status, payment_amount, available_balance, last_modified_datetime')
+        .in('reference_number', chunk);
+      if (lookupError) {
+        throw new Error(`Failed to load existing payments: ${lookupError.message}`);
+      }
+      for (const row of rows || []) existingByKey.set(keyOf(row.reference_number, row.type), row);
+    }
+
+    // Attachments we already stored (payment_reference_number + file_id). A file
+    // with a payment_attachments row is NEVER downloaded/uploaded again.
+    const fileKey = (ref: string, fileId: string) => `${ref}\u0001${fileId}`;
+    const existingFiles = new Set<string>();
+    const refsWithFiles = [...new Set([...mappedByKey.values()]
+      .filter((m) => Array.isArray(m.payment.files) && m.payment.files.length > 0)
+      .map((m) => m.refNbr))];
+    const FILE_LOOKUP_CHUNK = 50;
+    for (let i = 0; i < refsWithFiles.length; i += FILE_LOOKUP_CHUNK) {
+      const chunk = refsWithFiles.slice(i, i + FILE_LOOKUP_CHUNK);
+      const { data: rows, error: attError } = await supabase
+        .from('payment_attachments')
+        .select('payment_reference_number, file_id')
+        .in('payment_reference_number', chunk)
+        .limit(5000);
+      if (attError) {
+        throw new Error(`Failed to load existing payment attachments: ${attError.message}`);
+      }
+      for (const row of rows || []) existingFiles.add(fileKey(row.payment_reference_number, row.file_id));
+    }
+
+    const fileInfo = (file: any) => ({
+      fileId: file.id?.value || file.id,
+      fileName: file.filename?.value || file.filename || file.name?.value || file.name,
+    });
+    const hasMissingFile = (m: { payment: any; refNbr: string }) =>
+      Array.isArray(m.payment.files) && m.payment.files.some((f: any) => {
+        const { fileId, fileName } = fileInfo(f);
+        return fileId && fileName && !existingFiles.has(fileKey(m.refNbr, fileId));
+      });
+    const voidedRecordKnown = (refNbr: string) =>
+      existingByKey.has(keyOf(refNbr, 'Voided Payment')) || mappedByKey.has(keyOf(refNbr, 'Voided Payment'));
+
+    type WorkItem = { payment: any; refNbr: string; type: string; paymentData: any; existing: any; changed: boolean };
+    const work: WorkItem[] = [];
+    let unchanged = 0;
+    for (const [k, m] of mappedByKey) {
+      const existing = existingByKey.get(k) || null;
+      const changed = !(
+        existing &&
+        m.paymentData.last_modified_datetime !== null &&
+        toMs(existing.last_modified_datetime) === toMs(m.paymentData.last_modified_datetime) &&
+        existing.status === m.paymentData.status &&
+        sameNum(existing.payment_amount, m.paymentData.payment_amount) &&
+        sameNum(existing.available_balance, m.paymentData.available_balance)
+      );
+      const needsVoided = m.paymentData.status === 'Voided' && m.type === 'Payment' && !voidedRecordKnown(m.refNbr);
+      if (!changed && !needsVoided && !hasMissingFile(m)) {
+        unchanged++;
+        continue;
+      }
+      work.push({ ...m, existing, changed });
+    }
+
+    // Oldest modification first, so a capped run makes ordered progress.
+    work.sort((a, b) =>
+      (toMs(a.paymentData.last_modified_datetime) || 0) - (toMs(b.paymentData.last_modified_datetime) || 0));
+
+    // Per-run cap + time budget (wall-clock safety: each changed payment costs an
+    // Acumatica round-trip of ~2s, and acumatica-master-sync must get its answer
+    // well inside its own 150s limit). Anything left over is picked up by the next
+    // cron run: we report success:false so the master does NOT advance
+    // last_successful_sync, the window still covers the remainder, and payments
+    // already written are skipped by the unchanged-check above.
+    const MAX_ITEMS_PER_RUN = 150;
+    const WORK_CONCURRENCY = 4;
+    const START_BUDGET_MS = 70_000;
+    const toProcess = work.slice(0, MAX_ITEMS_PER_RUN);
+    console.log(`Diff: ${mappedByKey.size} unique fetched, ${unchanged} unchanged, ${work.length} to process (${work.filter((w) => w.changed).length} changed)`);
+
+    const processOne = async ({ payment, refNbr, type, paymentData, existing, changed }: WorkItem) => {
         try {
-          let refNbr = payment.ReferenceNbr?.value;
-          const type = payment.Type?.value;
-
-          if (!refNbr || !type) {
-            continue;
-          }
-
-          if (/^[0-9]+$/.test(refNbr) && refNbr.length < 6) {
-            refNbr = refNbr.padStart(6, '0');
-          }
-
-          const customDoc = payment.custom?.Document;
-          const paymentData: any = {
-            reference_number: refNbr,
-            type: type,
-            status: payment.Status?.value || null,
-            hold: payment.Hold?.value || false,
-            application_date: payment.ApplicationDate?.value || payment.PaymentDate?.value || null,
-            doc_date: customDoc?.DocDate?.value || null,
-            financial_period: customDoc?.FinPeriodID?.value || null,
-            payment_amount: payment.PaymentAmount?.value || 0,
-            available_balance: payment.UnappliedBalance?.value || 0,
-            customer_id: payment.CustomerID?.value || null,
-            customer_name: payment.CustomerName?.value || null,
-            payment_method: payment.PaymentMethod?.value || null,
-            cash_account: payment.CashAccount?.value || null,
-            payment_ref: payment.PaymentRef?.value || null,
-            description: payment.Description?.value || null,
-            currency_id: payment.CurrencyID?.value || null,
-            last_modified_datetime: payment.LastModifiedDateTime?.value || null,
-            raw_data: payment,
-            last_sync_timestamp: new Date().toISOString()
-          };
-
-          const { data: existing } = await supabase
-            .from('acumatica_payments')
-            .select('id, status')
-            .eq('reference_number', refNbr)
-            .eq('type', type)
-            .maybeSingle();
-
           let paymentDbId: number | null = null;
 
-          if (existing) {
+          if (!changed) {
+            // Unchanged payment: only here for a missing attachment and/or a
+            // missing "Voided Payment" record (handled below).
+          } else if (existing) {
             const oldStatus = existing.status;
             const { error } = await supabase
               .from('acumatica_payments')
@@ -348,12 +464,9 @@ Deno.serve(async (req: Request) => {
           if (paymentData.status === 'Voided' && type === 'Payment') {
             console.log(`[VOIDED-PAYMENT] Payment ${refNbr} is voided, checking for "Voided Payment" record...`);
 
-            const { data: voidedExists } = await supabase
-              .from('acumatica_payments')
-              .select('id')
-              .eq('reference_number', refNbr)
-              .eq('type', 'Voided Payment')
-              .maybeSingle();
+            // Bulk-loaded above; also true when this run's batch itself carries the
+            // "Voided Payment" document (it is written by its own work item).
+            const voidedExists = voidedRecordKnown(refNbr);
 
             if (!voidedExists) {
               console.log(`[VOIDED-PAYMENT] "Voided Payment" record not found for ${refNbr}, fetching from Acumatica...`);
@@ -614,10 +727,21 @@ Deno.serve(async (req: Request) => {
             console.log(`Processing ${payment.files.length} files for payment ${refNbr}`);
 
             for (const file of payment.files) {
-              const fileId = file.id?.value || file.id;
-              const fileName = file.filename?.value || file.filename || file.name?.value || file.name;
+              const { fileId, fileName } = fileInfo(file);
 
               if (!fileId || !fileName) continue;
+
+              // Skip files we already have. Without this, every 5-min run re-downloaded
+              // and re-uploaded every attachment in the 24h lookback under a NEW timestamped
+              // path (~6k duplicate objects/day, 742k objects / 174 GB in the bucket) and
+              // pushed the run past the 150s gateway limit. existingFiles was bulk-loaded
+              // from payment_attachments; claim the key before downloading so two
+              // concurrent work items (e.g. Payment + Voided Payment sharing a ref and a
+              // file) can never both upload it.
+              const fk = fileKey(refNbr, fileId);
+              if (existingFiles.has(fk)) continue;
+              existingFiles.add(fk);
+              let fileStored = false;
 
               try {
                 const fileUrl = `${acumaticaUrl}/(W(2))/Frames/GetFile.ashx?fileID=${fileId}`;
@@ -636,6 +760,7 @@ Deno.serve(async (req: Request) => {
                     });
 
                   if (!uploadError) {
+                    fileStored = true;
                     const isCheckImage = cleanFileName.toLowerCase().includes('check') ||
                                         cleanFileName.toLowerCase().includes('.jpg') ||
                                         cleanFileName.toLowerCase().includes('.jpeg') ||
@@ -662,7 +787,7 @@ Deno.serve(async (req: Request) => {
                     await supabase.rpc('log_sync_change', {
                       p_sync_type: 'payment_attachment',
                       p_action_type: 'attachment_fetched',
-                      p_entity_id: paymentDbId,
+                      p_entity_id: paymentDbId || (changed ? null : existing?.id ?? null),
                       p_entity_reference: refNbr,
                       p_entity_name: `Attachment: ${cleanFileName}`,
                       p_change_summary: `Fetched and synced attachment ${cleanFileName} for payment ${refNbr}`,
@@ -683,12 +808,51 @@ Deno.serve(async (req: Request) => {
                 console.error(`Failed to sync file ${fileName} for payment ${refNbr}:`, fileError.message);
                 errors.push(`File sync error for ${refNbr} - ${fileName}: ${fileError.message}`);
               }
+              // Not stored (download/upload failed): release the claim so it is retried.
+              if (!fileStored) existingFiles.delete(fk);
             }
           }
         } catch (error: any) {
           errors.push(`Error processing payment: ${error.message}`);
         }
+    };
+
+    let cursor = 0;
+    let started = 0;
+    const runWorker = async () => {
+      while (cursor < toProcess.length) {
+        if (Date.now() - fnStart > START_BUDGET_MS) break;
+        const item = toProcess[cursor++];
+        started++;
+        await processOne(item);
       }
+    };
+    await Promise.all(Array.from({ length: Math.min(WORK_CONCURRENCY, toProcess.length) }, runWorker));
+
+    const deferred = work.length - started;
+    if (deferred > 0) {
+      // Partial run: leave sync_status / last_successful_sync alone so the next
+      // run's window still covers the remainder.
+      const msg = `Partial payment sync: processed ${started} of ${work.length} payments needing work; ${deferred} deferred to the next run`;
+      console.log(msg);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          partial: true,
+          error: msg,
+          totalFetched: payments.length,
+          unchanged,
+          processed: started,
+          created,
+          updated,
+          applicationsSynced,
+          filesSynced,
+          deferred,
+          errors: errors.slice(0, 10),
+          totalErrors: errors.length
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Session is automatically managed, no need to manually logout
@@ -716,6 +880,7 @@ Deno.serve(async (req: Request) => {
         message: `Payment sync completed. Found ${payments.length} payments, created ${created}, updated ${updated}, synced ${applicationsSynced} applications, synced ${filesSynced} files`,
         created,
         updated,
+        unchanged,
         applicationsSynced,
         filesSynced,
         totalFetched: payments.length,
