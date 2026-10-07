@@ -214,38 +214,108 @@ Deno.serve(async (req: Request) => {
 
     let created = 0;
     let updated = 0;
+    let unchanged = 0;
     const errors: string[] = [];
 
-    if (invoices && invoices.length > 0) {
-      for (const invoice of invoices) {
+    // --- Map + de-duplicate --------------------------------------------------
+    // The window (>= the 24h lookback floor) returns ~1,300 invoices per run,
+    // but only a handful actually changed since the previous run. The old loop
+    // did 3 PostgREST round-trips for EVERY one of them, every 5 minutes, which
+    // blew the Edge Function CPU budget ("CPU Time exceeded" -> HTTP 546).
+    // Now: map once, bulk-load the stored rows in chunks, skip rows whose
+    // Acumatica LastModifiedDateTime/status/balance/amount are unchanged, and
+    // write only the changed ones with bounded concurrency.
+    const syncStamp = new Date().toISOString();
+    const keyOf = (ref: string, type: string) => `${ref}\u0001${type}`;
+    const toMs = (v: unknown) => {
+      if (v === null || v === undefined || v === '') return NaN;
+      return new Date(v as string).getTime();
+    };
+    const mappedByKey = new Map<string, any>();
+
+    for (const invoice of invoices) {
+      const mappedInvoice: any = { raw_data: invoice, last_sync_timestamp: syncStamp };
+
+      for (const [acuKey, dbKey] of Object.entries(fieldMapping)) {
+        if (invoice[acuKey]?.value !== undefined) {
+          mappedInvoice[dbKey] = invoice[acuKey].value;
+        }
+      }
+
+      if (!mappedInvoice.reference_number) {
+        errors.push(`Invoice missing ReferenceNbr`);
+        continue;
+      }
+
+      const originalRef = mappedInvoice.reference_number.trim();
+      // Store Acumatica's native reference verbatim. Zero-padding 5-digit
+      // refs to 6 collided them with other customers' real 6-digit refs
+      // (unique on reference_number,type), so they used to be dropped.
+      mappedInvoice.reference_number = originalRef;
+
+      // $skip paging over a live result set can return the same invoice twice;
+      // keep the most recently modified copy.
+      const k = keyOf(mappedInvoice.reference_number, mappedInvoice.type);
+      const prev = mappedByKey.get(k);
+      if (!prev || !(toMs(prev.last_modified_datetime) > toMs(mappedInvoice.last_modified_datetime))) {
+        mappedByKey.set(k, mappedInvoice);
+      }
+    }
+
+    // --- Bulk-load what we already have --------------------------------------
+    const existingByKey = new Map<string, any>();
+    const allRefs = [...new Set([...mappedByKey.values()].map((m) => m.reference_number))];
+    const LOOKUP_CHUNK = 150;
+    for (let i = 0; i < allRefs.length; i += LOOKUP_CHUNK) {
+      const chunk = allRefs.slice(i, i + LOOKUP_CHUNK);
+      const { data: rows, error: lookupError } = await supabase
+        .from('acumatica_invoices')
+        .select('id, reference_number, type, status, balance, amount, last_modified_datetime')
+        .in('reference_number', chunk);
+      if (lookupError) {
+        throw new Error(`Failed to load existing invoices: ${lookupError.message}`);
+      }
+      for (const row of rows || []) existingByKey.set(keyOf(row.reference_number, row.type), row);
+    }
+
+    const sameNum = (a: unknown, b: unknown) =>
+      (a === null || a === undefined) && (b === null || b === undefined)
+        ? true
+        : Number(a) === Number(b);
+
+    const work: { mappedInvoice: any; existing: any }[] = [];
+    for (const [k, mappedInvoice] of mappedByKey) {
+      const existing = existingByKey.get(k) || null;
+      if (
+        existing &&
+        mappedInvoice.last_modified_datetime !== undefined &&
+        toMs(existing.last_modified_datetime) === toMs(mappedInvoice.last_modified_datetime) &&
+        existing.status === mappedInvoice.status &&
+        sameNum(existing.balance, mappedInvoice.balance) &&
+        sameNum(existing.amount, mappedInvoice.amount)
+      ) {
+        unchanged++;
+        continue;
+      }
+      work.push({ mappedInvoice, existing });
+    }
+
+    // Oldest modification first, so a capped run makes ordered progress.
+    work.sort((a, b) =>
+      (toMs(a.mappedInvoice.last_modified_datetime) || 0) - (toMs(b.mappedInvoice.last_modified_datetime) || 0));
+
+    // Per-run cap (CPU safety). Anything left over is picked up by the next cron
+    // run: we report success:false so the master does NOT advance
+    // last_successful_sync, the window still covers the remainder, and rows
+    // already written are skipped by the unchanged-check above.
+    const MAX_WRITES_PER_RUN = 250;
+    const WRITE_CONCURRENCY = 6;
+    const deferred = Math.max(0, work.length - MAX_WRITES_PER_RUN);
+    const toWrite = work.slice(0, MAX_WRITES_PER_RUN);
+    console.log(`Diff: ${mappedByKey.size} unique fetched, ${unchanged} unchanged, ${work.length} to write${deferred ? ` (${deferred} deferred to next run)` : ''}`);
+
+    const processOne = async ({ mappedInvoice, existing }: { mappedInvoice: any; existing: any }) => {
         try {
-
-          const mappedInvoice: any = { raw_data: invoice, last_sync_timestamp: new Date().toISOString() };
-
-          for (const [acuKey, dbKey] of Object.entries(fieldMapping)) {
-            if (invoice[acuKey]?.value !== undefined) {
-              mappedInvoice[dbKey] = invoice[acuKey].value;
-            }
-          }
-
-          if (!mappedInvoice.reference_number) {
-            errors.push(`Invoice missing ReferenceNbr`);
-            continue;
-          }
-
-          const originalRef = mappedInvoice.reference_number.trim();
-          // Store Acumatica's native reference verbatim. Zero-padding 5-digit
-          // refs to 6 collided them with other customers' real 6-digit refs
-          // (unique on reference_number,type), so they used to be dropped.
-          mappedInvoice.reference_number = originalRef;
-
-          const { data: existing } = await supabase
-            .from('acumatica_invoices')
-            .select('id, status, date')
-            .eq('reference_number', mappedInvoice.reference_number)
-            .eq('type', mappedInvoice.type)
-            .maybeSingle();
-
           if (existing) {
             const oldStatus = existing.status;
             const { error } = await supabase
@@ -321,7 +391,38 @@ Deno.serve(async (req: Request) => {
         } catch (err) {
           errors.push(`Error processing invoice: ${err.message}`);
         }
+    };
+
+    let cursor = 0;
+    const runWorker = async () => {
+      while (cursor < toWrite.length) {
+        const item = toWrite[cursor++];
+        await processOne(item);
       }
+    };
+    await Promise.all(Array.from({ length: Math.min(WRITE_CONCURRENCY, toWrite.length) }, runWorker));
+
+    if (deferred > 0) {
+      // Partial run: leave last_successful_sync alone so the next run's window
+      // still covers the remainder.
+      const msg = `Partial invoice sync: wrote ${created + updated} of ${work.length} changed invoices; ${deferred} deferred to the next run`;
+      console.log(msg);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          partial: true,
+          error: msg,
+          totalFetched: invoices.length,
+          unchanged,
+          processed: created + updated,
+          created,
+          updated,
+          deferred,
+          errors: errors.slice(0, 10),
+          totalErrors: errors.length
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const syncResultData = {
@@ -348,6 +449,7 @@ Deno.serve(async (req: Request) => {
         processed: created + updated,
         created,
         updated,
+        unchanged,
         lookbackMinutes,
         filterDate: cutoffTime.toISOString(),
         errors: errors.slice(0, 10),
