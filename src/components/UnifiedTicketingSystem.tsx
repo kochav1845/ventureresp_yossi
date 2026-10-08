@@ -28,6 +28,23 @@ import BatchNoteModal from './MyAssignments/BatchNoteModal';
 import PromiseDateModal from './MyAssignments/PromiseDateModal';
 import { sortTicketsByPriority } from './MyAssignments/utils';
 import TicketFilterSidebar, { TicketAdvancedFilters, emptyFilters } from './MyAssignments/TicketFilterSidebar';
+import InvoiceFilterPanel from './InvoiceFilterPanel';
+import DueDateReminders from './DueDateReminders';
+import {
+  DueDateReminderPlan,
+  DEFAULT_REMINDER_PLAN,
+  createDueDateReminders,
+} from '../lib/dueDateReminders';
+import {
+  InvoiceFilters,
+  InvoiceTab,
+  TicketSourceFilter,
+  DEFAULT_INVOICE_FILTERS,
+  describeInvoiceFilters,
+  fetchFilteredInvoices,
+  findExistingAssignments,
+  hasActiveInvoiceFilters,
+} from '../lib/invoiceFilters';
 import CollectorCalendar from './MyAssignments/CollectorCalendar';
 import { format } from 'date-fns';
 import { isDatePast, formatDate as formatDateUtil } from '../lib/dateUtils';
@@ -80,6 +97,10 @@ interface Invoice {
   amount: number;
   balance: number;
   description: string;
+  type?: string;
+  status?: string;
+  color_status?: string | null;
+  days_overdue?: number | null;
 }
 
 interface Collector {
@@ -118,6 +139,9 @@ export default function UnifiedTicketingSystem({
 
   // Create ticket states
   const [customers, setCustomers] = useState<Customer[]>([]);
+  // The chosen customer resolved on its own (fast), so the form doesn't wait for
+  // the full picker list just to show/confirm who the ticket is for.
+  const [selectedCustomerInfo, setSelectedCustomerInfo] = useState<Customer | null>(null);
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [customerInvoices, setCustomerInvoices] = useState<Invoice[]>([]);
@@ -129,12 +153,22 @@ export default function UnifiedTicketingSystem({
   const [ticketType, setTicketType] = useState<string>('');
   const [ticketNotes, setTicketNotes] = useState<string>('');
   const [ticketDueDate, setTicketDueDate] = useState<string>('');
+  const [dueReminderPlan, setDueReminderPlan] = useState<DueDateReminderPlan>({ ...DEFAULT_REMINDER_PLAN });
   const [creating, setCreating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [pendingInvoiceRef, setPendingInvoiceRef] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Invoice filters inside the create form — the same panel the Customer page
+  // uses, so "everything 90+ days overdue" means the same thing in both places.
+  const [createFilters, setCreateFilters] = useState<InvoiceFilters>({ ...DEFAULT_INVOICE_FILTERS });
+  const [createTab, setCreateTab] = useState<InvoiceTab>('open-invoices');
+  // Tickets are about money owed, so credit memos stay out unless a prefill
+  // from the Customer page says that view had them switched on.
+  const [createExcludeCM, setCreateExcludeCM] = useState(true);
+  const prefillHandled = useRef(false);
 
   // Batch operations
   const [memoModalInvoice, setMemoModalInvoice] = useState<any>(null);
@@ -418,6 +452,7 @@ export default function UnifiedTicketingSystem({
 
       if (customerId) {
         setSelectedCustomer(customerId);
+        loadSelectedCustomerInfo(customerId);
         loadCustomerInvoices(customerId);
       }
 
@@ -437,6 +472,40 @@ export default function UnifiedTicketingSystem({
       setPendingInvoiceRef(null);
     }
   }, [pendingInvoiceRef, customerInvoices]);
+
+  // Arriving from the Customer page's "Create Ticket (N)" button: the whole
+  // filtered invoice set is handed over in router state, along with the filter
+  // that produced it so the ticket can offer a catch-up later.
+  useEffect(() => {
+    const prefill = (location.state as any)?.ticketPrefill;
+    if (!prefill || prefillHandled.current || !user || !profile) return;
+    prefillHandled.current = true;
+
+    setActiveTab('create');
+    if (customers.length === 0) loadCustomers();
+    if (collectors.length === 0) loadCollectors();
+
+    setSelectedCustomer(prefill.customerId);
+    setSearchTerm(prefill.customerName || '');
+    loadSelectedCustomerInfo(prefill.customerId, prefill.customerName);
+
+    const src = prefill.sourceFilter as TicketSourceFilter | undefined;
+    if (src) {
+      setCreateFilters(src.filters);
+      setCreateTab(src.tab);
+      setCreateExcludeCM(src.excludeCreditMemos);
+    }
+
+    loadCustomerInvoices(prefill.customerId, {
+      filters: src?.filters,
+      tab: src?.tab,
+      excludeCreditMemos: src?.excludeCreditMemos,
+      preselect: prefill.invoiceRefs || [],
+    });
+
+    // Drop the state so a reload doesn't silently re-prefill the form.
+    window.history.replaceState({}, '');
+  }, [location.state, user, profile]);
 
   // Set customer name in search field when customers load and one is pre-selected
   useEffect(() => {
@@ -718,6 +787,24 @@ export default function UnifiedTicketingSystem({
     }
   };
 
+  // Resolve just the chosen customer fast (one row) so the Create-Ticket form shows
+  // it immediately, instead of waiting for the full ~2.8k customer picker to load.
+  const loadSelectedCustomerInfo = async (customerId: string, fallbackName?: string) => {
+    if (fallbackName) {
+      setSelectedCustomerInfo({ customer_id: customerId, customer_name: fallbackName, balance: 0 });
+      setSearchTerm(fallbackName);
+    }
+    const { data } = await supabase
+      .from('cached_customer_balances')
+      .select('customer_id, customer_name, gross_balance')
+      .eq('customer_id', customerId)
+      .maybeSingle();
+    if (data) {
+      setSelectedCustomerInfo({ customer_id: data.customer_id, customer_name: data.customer_name, balance: (data as any).gross_balance || 0 });
+      setSearchTerm(prev => prev || data.customer_name);
+    }
+  };
+
   const loadCustomers = async () => {
     setLoadingCustomers(true);
     try {
@@ -777,23 +864,53 @@ export default function UnifiedTicketingSystem({
     }
   };
 
-  const loadCustomerInvoices = async (customerId: string) => {
+  /**
+   * Load the invoices offered in the create form. Goes through the same
+   * filtered RPC as the Customer detail page so the Advanced Filters here
+   * behave identically. `selectAll` auto-ticks the result, which is what you
+   * want right after changing a filter ("the ticket is what the filter shows");
+   * otherwise any selection that still matches is preserved.
+   */
+  const loadCustomerInvoices = async (
+    customerId: string,
+    opts: {
+      filters?: InvoiceFilters;
+      tab?: InvoiceTab;
+      excludeCreditMemos?: boolean;
+      selectAll?: boolean;
+      preselect?: string[];
+    } = {}
+  ) => {
+    const filters = opts.filters ?? createFilters;
+    const tab = opts.tab ?? createTab;
+    const excludeCM = opts.excludeCreditMemos ?? createExcludeCM;
+
     setLoadingInvoices(true);
     setCustomerInvoices([]);
     try {
-      const { data, error } = await supabase
-        .rpc('get_unpaid_invoices_for_customer', { p_customer_id: customerId });
+      const rows = await fetchFilteredInvoices(customerId, filters, tab, excludeCM);
+      setCustomerInvoices(rows as any);
 
-      if (error) throw error;
-      const mapped = (data || []).map((inv: any) => ({
-        ...inv,
-        balance: inv.effective_balance,
-      }));
-      setCustomerInvoices(mapped);
+      const refs = rows.map(r => r.reference_number);
+      if (opts.preselect) {
+        setSelectedInvoicesForTicket(opts.preselect.filter(r => refs.includes(r)));
+      } else if (opts.selectAll) {
+        setSelectedInvoicesForTicket(refs);
+      } else {
+        setSelectedInvoicesForTicket(prev => prev.filter(r => refs.includes(r)));
+      }
     } catch (error) {
       console.error('Error loading customer invoices:', error);
+      toast.error('Could not load this customer’s invoices');
     } finally {
       setLoadingInvoices(false);
+    }
+  };
+
+  const handleCreateFiltersChange = (next: InvoiceFilters) => {
+    setCreateFilters(next);
+    if (selectedCustomer) {
+      loadCustomerInvoices(selectedCustomer, { filters: next, selectAll: true });
     }
   };
 
@@ -801,6 +918,7 @@ export default function UnifiedTicketingSystem({
     const customer = customers.find(c => c.customer_id === customerId);
     if (customer) {
       setSearchTerm(customer.customer_name);
+      setSelectedCustomerInfo(customer);
     }
     setSelectedCustomer(customerId);
     setShowCustomerDropdown(false);
@@ -834,6 +952,37 @@ export default function UnifiedTicketingSystem({
 
     setCreating(true);
     try {
+      // Remember the criteria that produced this list so the ticket can offer a
+      // "re-run filter" catch-up later. Hand-picked tickets store nothing.
+      const activeSource: TicketSourceFilter | null = hasActiveInvoiceFilters(createFilters)
+        ? {
+            tab: createTab,
+            excludeCreditMemos: createExcludeCM,
+            capturedAt: new Date().toISOString(),
+            filters: createFilters,
+          }
+        : null;
+
+      // Invoice refs are globally unique in invoice_assignments, so adding one
+      // that's already on another ticket MOVES it. Say so before doing it --
+      // easy to hit now that a whole filtered batch can be selected at once.
+      const alreadyAssigned = await findExistingAssignments(selectedInvoicesForTicket);
+      if (alreadyAssigned.size > 0) {
+        const names = Array.from(alreadyAssigned.entries())
+          .slice(0, 8)
+          .map(([ref, info]) => `  ${ref}${info.ticketNumber ? ` → ${info.ticketNumber}` : ''}`)
+          .join('\n');
+        const proceed = window.confirm(
+          `${alreadyAssigned.size} of the selected invoice(s) already belong to another ticket.\n\n` +
+          `${names}${alreadyAssigned.size > 8 ? `\n  …and ${alreadyAssigned.size - 8} more` : ''}\n\n` +
+          `Continuing will MOVE them onto this ticket. Proceed?`
+        );
+        if (!proceed) {
+          setCreating(false);
+          return;
+        }
+      }
+
       const { data: existingTickets, error: checkError } = await supabase
         .from('collection_tickets')
         .select('*')
@@ -861,11 +1010,22 @@ export default function UnifiedTicketingSystem({
             });
           }
 
+          // Only stamp the filter if the ticket doesn't already carry one --
+          // never overwrite the criteria the ticket was originally built from.
+          if (activeSource && !existingTickets[0].source_filter) {
+            await supabase
+              .from('collection_tickets')
+              .update({ source_filter: activeSource })
+              .eq('id', existingTickets[0].id);
+          }
+
           await supabase.from('ticket_activity_log').insert({
             ticket_id: existingTickets[0].id,
             created_by: user!.id,
             activity_type: 'invoice_added',
-            description: `Added ${selectedInvoicesForTicket.length} invoice(s) to ticket`
+            description: activeSource
+              ? `Added ${selectedInvoicesForTicket.length} invoice(s) matching "${describeInvoiceFilters(createFilters, createTab)}"`
+              : `Added ${selectedInvoicesForTicket.length} invoice(s) to ticket`
           });
 
           toast.success(`Successfully added ${selectedInvoicesForTicket.length} invoice(s) to ticket ${existingTickets[0].ticket_number}`);
@@ -876,7 +1036,7 @@ export default function UnifiedTicketingSystem({
         }
       }
 
-      const selectedCustomerData = customers.find(c => c.customer_id === selectedCustomer);
+      const selectedCustomerData = (selectedCustomerInfo && selectedCustomerInfo.customer_id === selectedCustomer) ? selectedCustomerInfo : customers.find(c => c.customer_id === selectedCustomer);
       if (!selectedCustomerData) {
         throw new Error('Selected customer not found');
       }
@@ -891,7 +1051,8 @@ export default function UnifiedTicketingSystem({
           priority: priority,
           status: 'open',
           ticket_type: ticketType,
-          due_date: ticketDueDate || null
+          due_date: ticketDueDate || null,
+          source_filter: activeSource
         })
         .select()
         .single();
@@ -914,7 +1075,9 @@ export default function UnifiedTicketingSystem({
         ticket_id: newTicket.id,
         created_by: user!.id,
         activity_type: 'created',
-        description: `Created ticket with ${selectedInvoicesForTicket.length} invoice(s)`
+        description: activeSource
+          ? `Created ticket with ${selectedInvoicesForTicket.length} invoice(s) matching "${describeInvoiceFilters(createFilters, createTab)}"`
+          : `Created ticket with ${selectedInvoicesForTicket.length} invoice(s)`
       });
 
       if (ticketNotes) {
@@ -925,7 +1088,31 @@ export default function UnifiedTicketingSystem({
         });
       }
 
-      toast.success(`Ticket ${newTicket.ticket_number} created successfully!`);
+      // "Remind me before the due date" — one reminder per lead time, straight
+      // into the Reminders section. Never let this sink the created ticket.
+      let reminderNote = '';
+      if (dueReminderPlan.enabled && ticketDueDate && profile?.id) {
+        try {
+          const { created: n, skippedPast } = await createDueDateReminders({
+            plan: dueReminderPlan,
+            dueDate: ticketDueDate,
+            userId: profile.id,
+            title: `Ticket ${newTicket.ticket_number} due — ${selectedCustomerData.customer_name}`,
+            ticketId: newTicket.id,
+            reminderType: 'follow_up',
+            priority,
+          });
+          reminderNote = n ? ` · ${n} reminder${n === 1 ? '' : 's'} set` : '';
+          if (skippedPast.length && !n) {
+            toast.warning('Ticket created, but every reminder lead time had already passed.');
+          }
+        } catch (re: any) {
+          console.error('Error scheduling due-date reminders:', re);
+          toast.warning('Ticket created, but the reminders could not be scheduled: ' + (re?.message || ''));
+        }
+      }
+
+      toast.success(`Ticket ${newTicket.ticket_number} created successfully!${reminderNote}`);
       resetCreateForm();
       await loadTickets();
       setActiveTab('tickets');
@@ -947,6 +1134,11 @@ export default function UnifiedTicketingSystem({
     setTicketNotes('');
     setTicketDueDate('');
     setSearchTerm('');
+    setSelectedCustomerInfo(null);
+    setCreateFilters({ ...DEFAULT_INVOICE_FILTERS });
+    setCreateTab('open-invoices');
+    setCreateExcludeCM(true);
+    setDueReminderPlan({ ...DEFAULT_REMINDER_PLAN });
   };
 
   const handleColorChange = async (invoiceRefNumber: string, newColor: string | null) => {
@@ -1483,7 +1675,7 @@ export default function UnifiedTicketingSystem({
       : individualAssignments.length;
 
 
-  const selectedCustomerData = customers.find(c => c.customer_id === selectedCustomer);
+  const selectedCustomerData = (selectedCustomerInfo && selectedCustomerInfo.customer_id === selectedCustomer) ? selectedCustomerInfo : customers.find(c => c.customer_id === selectedCustomer);
 
   const showSidebar = showFilterSidebar && activeTab !== 'create';
 
@@ -1637,6 +1829,7 @@ export default function UnifiedTicketingSystem({
                       onChange={(e) => {
                         setSearchTerm(e.target.value);
                         setSelectedCustomer('');
+                        setSelectedCustomerInfo(null);
                         setShowCustomerDropdown(true);
                       }}
                       onFocus={() => {
@@ -1692,6 +1885,58 @@ export default function UnifiedTicketingSystem({
                   )}
                 </div>
 
+                {/* Same filter panel as the Customer page; changing anything here
+                    re-queries and re-selects the matching set. */}
+                {selectedCustomer && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-medium text-gray-700">Narrow the invoices</span>
+                      <div className="flex rounded-lg overflow-hidden border border-gray-300">
+                        {([
+                          { v: 'open-invoices', label: 'Open' },
+                          { v: 'balanced-invoices', label: 'Balanced' },
+                          { v: 'paid-invoices', label: 'Paid' },
+                        ] as Array<{ v: InvoiceTab; label: string }>).map(opt => (
+                          <button
+                            key={opt.v}
+                            type="button"
+                            onClick={() => {
+                              setCreateTab(opt.v);
+                              loadCustomerInvoices(selectedCustomer, { tab: opt.v, selectAll: true });
+                            }}
+                            className={`px-3 py-1 text-xs transition-colors ${
+                              createTab === opt.v
+                                ? 'bg-blue-600 text-white font-semibold'
+                                : 'bg-white text-gray-600 hover:bg-blue-50'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                      <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer ml-auto">
+                        <input
+                          type="checkbox"
+                          checked={createExcludeCM}
+                          onChange={(e) => {
+                            setCreateExcludeCM(e.target.checked);
+                            loadCustomerInvoices(selectedCustomer, { excludeCreditMemos: e.target.checked, selectAll: true });
+                          }}
+                          className="h-3.5 w-3.5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        Exclude credit memos
+                      </label>
+                    </div>
+                    <InvoiceFilterPanel
+                      filters={createFilters}
+                      onFiltersChange={handleCreateFiltersChange}
+                      activeTab={createTab}
+                      compact
+                      title="Invoice Filters"
+                    />
+                  </div>
+                )}
+
                 {selectedCustomer && loadingInvoices && (
                   <div className="flex items-center gap-2 text-sm text-gray-500 py-3">
                     <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
@@ -1699,10 +1944,25 @@ export default function UnifiedTicketingSystem({
                   </div>
                 )}
                 {selectedCustomer && !loadingInvoices && customerInvoices.length === 0 && (
-                  <div className="text-sm text-gray-500 py-3">No open invoices found for this customer.</div>
+                  <div className="text-sm text-gray-500 py-3">
+                    No invoices match these filters for this customer.
+                  </div>
                 )}
                 {customerInvoices.length > 0 && (
                   <div>
+                    {hasActiveInvoiceFilters(createFilters) && (
+                      <div className="mb-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                        Filtered by <span className="font-semibold">{describeInvoiceFilters(createFilters, createTab)}</span>
+                        {' '}— {customerInvoices.length} match
+                        {', '}
+                        <span className="font-semibold">
+                          ${customerInvoices
+                            .filter(i => selectedInvoicesForTicket.includes(i.reference_number))
+                            .reduce((s, i) => s + (Number(i.balance) || 0), 0)
+                            .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>{' '}selected
+                      </div>
+                    )}
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-sm font-medium text-gray-700">
                         Select Invoices ({selectedInvoicesForTicket.length} selected)
@@ -1824,6 +2084,13 @@ export default function UnifiedTicketingSystem({
                     />
                   </div>
                 </div>
+
+                <DueDateReminders
+                  dueDate={ticketDueDate}
+                  plan={dueReminderPlan}
+                  onChange={setDueReminderPlan}
+                  label="Remind me before this ticket is due"
+                />
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
