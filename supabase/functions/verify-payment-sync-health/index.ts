@@ -7,10 +7,12 @@ const corsHeaders = {
 };
 
 async function getAcumaticaSession(supabase: any, acumaticaUrl: string, credentials: any): Promise<string> {
+  // acumatica_session_cache columns are session_cookie / is_valid
+  // (it never had session_id / is_active -- every call here 400'd).
   const { data: cachedSession } = await supabase
     .from('acumatica_session_cache')
-    .select('session_id')
-    .eq('is_active', true)
+    .select('session_cookie')
+    .eq('is_valid', true)
     .gte('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })
     .limit(1)
@@ -18,7 +20,7 @@ async function getAcumaticaSession(supabase: any, acumaticaUrl: string, credenti
 
   if (cachedSession) {
     console.log('Using cached session cookies');
-    return cachedSession.session_id;
+    return cachedSession.session_cookie;
   }
 
   console.log('No valid cached session, logging in...');
@@ -52,15 +54,15 @@ async function getAcumaticaSession(supabase: any, acumaticaUrl: string, credenti
 
   await supabase
     .from('acumatica_session_cache')
-    .update({ is_active: false })
-    .eq('is_active', true);
+    .update({ is_valid: false })
+    .eq('is_valid', true);
 
   await supabase
     .from('acumatica_session_cache')
     .insert({
-      session_id: cookies,
+      session_cookie: cookies,
       expires_at: expiresAt.toISOString(),
-      is_active: true,
+      is_valid: true,
     });
 
   console.log('Logged in and cached session');
@@ -74,11 +76,13 @@ Deno.serve(async (req: Request) => {
 
   const startTime = Date.now();
 
+  // Declared outside try so the catch block below can use it.
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  );
+
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
 
     const { sampleSize = 50 } = await req.json().catch(() => ({}));
 
@@ -107,8 +111,9 @@ Deno.serve(async (req: Request) => {
 
     const { data: recentPayments } = await supabase
       .from('acumatica_payments')
-      .select('reference_number, customer_name, status')
-      .gte('payment_date', thirtyDaysAgo.toISOString().split('T')[0])
+      .select('reference_number, type, customer_name, status')
+      // acumatica_payments has no payment_date column; application_date is the payment date
+      .gte('application_date', thirtyDaysAgo.toISOString().split('T')[0])
       .order('created_at', { ascending: false })
       .limit(sampleSize);
 
@@ -136,7 +141,7 @@ Deno.serve(async (req: Request) => {
     for (const payment of recentPayments) {
       try {
         let paymentResponse = await fetch(
-          `${acumaticaUrl}/entity/Default/22.200.001/Payment/${payment.reference_number}`,
+          `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(payment.type)}/${encodeURIComponent(payment.reference_number)}`,
           {
             method: 'GET',
             headers: {
@@ -163,13 +168,13 @@ Deno.serve(async (req: Request) => {
             console.log('Session invalid or login limit hit, getting fresh session...');
             await supabase
               .from('acumatica_session_cache')
-              .update({ is_active: false })
-              .eq('is_active', true);
+              .update({ is_valid: false })
+              .eq('is_valid', true);
 
             cookies = await getAcumaticaSession(supabase, acumaticaUrl, credentials);
 
             paymentResponse = await fetch(
-              `${acumaticaUrl}/entity/Default/22.200.001/Payment/${payment.reference_number}`,
+              `${acumaticaUrl}/entity/Default/24.200.001/Payment/${encodeURIComponent(payment.type)}/${encodeURIComponent(payment.reference_number)}`,
               {
                 method: 'GET',
                 headers: {
@@ -218,19 +223,24 @@ Deno.serve(async (req: Request) => {
     const syncRate = ((results.inSync / results.totalChecked) * 100).toFixed(1);
     const healthStatus = parseFloat(syncRate) >= 95 ? 'healthy' : parseFloat(syncRate) >= 85 ? 'warning' : 'critical';
 
+    // sync_change_logs columns: sync_type, action_type, entity_reference, change_summary,
+    // change_details, sync_source are required/real (entity_type/old_value/new_value don't exist,
+    // entity_id is a uuid).
     await supabase
       .from('sync_change_logs')
       .insert({
-        entity_type: 'payment',
-        entity_id: 'health_check',
         sync_type: 'health_verification',
-        action_type: healthStatus,
-        old_value: null,
-        new_value: JSON.stringify({
+        action_type: 'health_check', // healthStatus is in change_summary/change_details
+
+        entity_reference: 'payment_health_check',
+        entity_name: 'Payment sync health check',
+        change_summary: `Payment sync health: ${healthStatus} (${syncRate}% of ${results.totalChecked} in sync)`,
+        change_details: {
           ...results,
           syncRate: `${syncRate}%`,
           healthStatus,
-        }),
+        },
+        sync_source: 'scheduled_sync',
       });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1) + 's';
@@ -259,8 +269,8 @@ Deno.serve(async (req: Request) => {
       console.log('Session expired, invalidating cache');
       await supabase
         .from('acumatica_session_cache')
-        .update({ is_active: false })
-        .eq('is_active', true);
+        .update({ is_valid: false })
+        .eq('is_valid', true);
     }
 
     return new Response(

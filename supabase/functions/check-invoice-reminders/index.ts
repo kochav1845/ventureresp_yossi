@@ -21,13 +21,18 @@ Deno.serve(async (req: Request) => {
 
     const now = new Date().toISOString();
 
+    // LEFT join, not !inner: a reminder doesn't have to hang off an invoice.
+    // Ticket reminders and due-date reminders that only carry a reference
+    // number were silently never triggered under the inner join.
     const { data: dueReminders, error: fetchError } = await supabase
       .from('invoice_reminders')
       .select(`
         *,
-        acumatica_invoices!inner(reference_number, customer, customer_name)
+        acumatica_invoices(reference_number, customer, customer_name),
+        collection_tickets(ticket_number, customer_name)
       `)
       .eq('is_triggered', false)
+      .is('completed_at', null)
       .lte('reminder_date', now);
 
     if (fetchError) {
@@ -50,12 +55,28 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const notifications = dueReminders.map(reminder => ({
-      user_id: reminder.user_id,
-      reminder_id: reminder.id,
-      invoice_id: reminder.invoice_id,
-      message: `Reminder for Invoice ${(reminder.acumatica_invoices as any).reference_number}: ${reminder.title}`
-    }));
+    const notifications = dueReminders.map(reminder => {
+      // Name whatever the reminder is actually about; none of these are
+      // guaranteed to be present now that the join is a LEFT one.
+      const invRef =
+        (reminder.acumatica_invoices as any)?.reference_number ||
+        reminder.invoice_reference_number;
+      const ticketNo = (reminder.collection_tickets as any)?.ticket_number;
+      const about = invRef
+        ? `Invoice ${invRef}`
+        : ticketNo
+        ? `Ticket ${ticketNo}`
+        : null;
+
+      return {
+        user_id: reminder.user_id,
+        reminder_id: reminder.id,
+        invoice_id: reminder.invoice_id,
+        message: about
+          ? `Reminder for ${about}: ${reminder.title}`
+          : `Reminder: ${reminder.title}`,
+      };
+    });
 
     const { error: notifError } = await supabase
       .from('user_reminder_notifications')
