@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
-import { ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Ticket, ChevronRight, ChevronDown, PauseCircle, Mail, MapPin, Phone, Building2, Hash } from 'lucide-react';
+import { PencilLine, ArrowLeft, DollarSign, FileText, CreditCard, Calendar, TrendingUp, AlertCircle, TrendingDown, MessageSquare, Send, Tag, Clock, User, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Ticket, ChevronRight, ChevronDown, PauseCircle, Mail, MapPin, Phone, Building2, Hash } from 'lucide-react';
 import { supabase, logActivity } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -8,6 +8,16 @@ import { usePageCache } from '../contexts/PageCacheContext';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { getAcumaticaInvoiceUrl, getAcumaticaPaymentUrl, getAcumaticaCustomerUrl } from '../lib/acumaticaLinks';
 import InvoiceFilterPanel from './InvoiceFilterPanel';
+import ManualBadge from './ManualBadge';
+import AddInvoiceModal from './ManualEntry/AddInvoiceModal';
+import RecordPaymentModal from './ManualEntry/RecordPaymentModal';
+import {
+  InvoiceFilters,
+  InvoiceTab,
+  TicketSourceFilter,
+  describeInvoiceFilters,
+  fetchFilteredInvoices,
+} from '../lib/invoiceFilters';
 import CustomerTimelineChart from './CustomerTimelineChart';
 import CustomerAIChat from './CustomerAIChat';
 
@@ -56,6 +66,8 @@ interface CustomerData {
   last_contact_date?: string;
   last_order_date?: string;
   days_from_invoice_threshold?: number;
+  /** 'manual' = entered by hand in this app, not synced from Acumatica. */
+  source?: string | null;
 }
 
 interface InvoiceData {
@@ -71,6 +83,7 @@ interface InvoiceData {
   color_status: string | null;
   description: string | null;
   days_overdue?: number;
+  source?: string | null;
 }
 
 interface PaymentData {
@@ -151,7 +164,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const observer = useRef<IntersectionObserver | null>(null);
   const ITEMS_PER_PAGE = 50;
 
-  const [advancedFilters, setAdvancedFilters] = useState(() => cd?.advancedFilters ?? {
+  const [advancedFilters, setAdvancedFilters] = useState<InvoiceFilters>(() => cd?.advancedFilters ?? {
     dateFrom: inheritedDateFrom,
     dateTo: inheritedDateTo,
     amountMin: inheritedAmountMin,
@@ -163,6 +176,9 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     sortBy: 'date',
     sortOrder: 'desc' as 'asc' | 'desc'
   });
+  const [buildingTicket, setBuildingTicket] = useState(false);
+  const [showAddInvoice, setShowAddInvoice] = useState(false);
+  const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [invoiceStats, setInvoiceStats] = useState<any>(() => cd?.invoiceStats ?? null);
   const [filteredStats, setFilteredStats] = useState<any>(() => cd?.filteredStats ?? null);
   const [changingColorForInvoice, setChangingColorForInvoice] = useState<string | null>(null);
@@ -441,8 +457,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     }
   };
 
-  const loadPaymentsData = async () => {
-    if (payments.length > 0) return;
+  const loadPaymentsData = async (force = false) => {
+    if (!force && payments.length > 0) return;
     if (!customer) return;
 
     setLoadingPayments(true);
@@ -457,7 +473,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       while (hasMorePayments) {
         const { data: chunk, error: paymentsError } = await supabase
           .from('acumatica_payments')
-          .select('id, reference_number, application_date, doc_date, payment_method, status, payment_amount, available_balance, description, type')
+          .select('id, reference_number, application_date, doc_date, payment_method, status, payment_amount, available_balance, description, type, source')
           .eq('customer_id', acumaticaCustomerId)
           .order('application_date', { ascending: false })
           .range(offset, offset + CHUNK_SIZE - 1);
@@ -736,6 +752,53 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     navigate(`/ticket/${ticketId}`);
   };
 
+  /**
+   * Turn whatever the Advanced Filters are currently showing into a ticket.
+   * The list on screen is lazy-loaded 50 at a time, so re-query the server for
+   * the WHOLE matching set rather than shipping only the rows scrolled into
+   * view, then hand it to the ticketing screen prefilled.
+   */
+  const handleCreateTicketFromFilter = async () => {
+    if (!customer || activeTab === 'payments') return;
+    setBuildingTicket(true);
+    try {
+      const invoices = await fetchFilteredInvoices(
+        customerId,
+        advancedFilters,
+        activeTab as InvoiceTab,
+        excludeCreditMemos
+      );
+
+      if (invoices.length === 0) {
+        toast.warning('No invoices match the current filters.');
+        return;
+      }
+
+      const sourceFilter: TicketSourceFilter = {
+        tab: activeTab as InvoiceTab,
+        excludeCreditMemos,
+        capturedAt: new Date().toISOString(),
+        filters: advancedFilters,
+      };
+
+      navigate('/collection-ticketing', {
+        state: {
+          ticketPrefill: {
+            customerId,
+            customerName: customer.customer_name,
+            invoiceRefs: invoices.map(i => i.reference_number),
+            sourceFilter,
+          },
+        },
+      });
+    } catch (error: any) {
+      console.error('Error building ticket from filters:', error);
+      toast.error('Could not collect the filtered invoices: ' + error.message);
+    } finally {
+      setBuildingTicket(false);
+    }
+  };
+
   const handleQuickFilter = (type: string) => {
     if (!invoiceStats) return;
 
@@ -817,6 +880,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               {customer.customer_name}
             </h1>
             <span className="text-xs text-gray-400 font-mono">{customer.customer_id}</span>
+            <ManualBadge source={customer.source} />
           </div>
           <div className="flex items-center gap-3">
             <a
@@ -829,6 +893,24 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               <ExternalLink className="w-3.5 h-3.5" />
               View in Acumatica
             </a>
+            {/* Hand-entered records: an invoice Acumatica doesn't have, or a
+                cheque that arrived outside the sync. Both are tagged Manual. */}
+            <button
+              onClick={() => setShowAddInvoice(true)}
+              title="Add an invoice by hand for this customer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+            >
+              <PencilLine className="w-3.5 h-3.5" />
+              Add Invoice
+            </button>
+            <button
+              onClick={() => setShowRecordPayment(true)}
+              title="Record a payment and upload the check image"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+            >
+              <PencilLine className="w-3.5 h-3.5" />
+              Record Payment
+            </button>
             {customer.contact_status === 'touched' ? (
               <span className="px-2 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
                 Contacted
@@ -1113,6 +1195,36 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               onQuickFilter={handleQuickFilter}
             />
 
+            {/* Turn the current filter result into a collection ticket. */}
+            {activeTab !== 'payments' && (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-3 py-2 bg-teal-50 border border-teal-200 rounded-lg">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-teal-900">
+                    {filteredStats?.total_count ?? 0} invoice{(filteredStats?.total_count ?? 0) === 1 ? '' : 's'} match
+                    {filteredStats?.total_balance != null && (
+                      <span className="text-teal-700 font-semibold">
+                        {' '}· ${Number(filteredStats.total_balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} outstanding
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-teal-700 truncate">
+                    {describeInvoiceFilters(advancedFilters, activeTab as InvoiceTab)}
+                  </p>
+                </div>
+                <button
+                  onClick={handleCreateTicketFromFilter}
+                  disabled={buildingTicket || !(filteredStats?.total_count > 0)}
+                  title="Create a collection ticket containing every invoice that matches these filters"
+                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Ticket className="w-3.5 h-3.5" />
+                  {buildingTicket
+                    ? 'Collecting…'
+                    : `Create Ticket (${filteredStats?.total_count ?? 0})`}
+                </button>
+              </div>
+            )}
+
             {activeTab === 'open-invoices' && (
               <div className="max-h-[600px] overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
                 {advancedFilters.colorStatus && (
@@ -1158,7 +1270,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                               ref={index === displayedInvoices.length - 1 ? lastInvoiceRef : undefined}
                               className={`group transition-colors ${isOver90Days ? 'bg-red-50/50 hover:bg-red-50' : 'hover:bg-gray-50'}`}
                             >
-                              <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{invoice.reference_number}</td>
+                              <td className="px-4 py-2.5 text-sm font-medium text-gray-900">
+                              <span className="inline-flex items-center gap-1.5">
+                                {invoice.reference_number}
+                                <ManualBadge source={invoice.source} size="xs" label="M" title="Invoice entered by hand in this app" />
+                              </span>
+                            </td>
                               <td className="px-4 py-2.5 text-sm text-gray-600">{formatDateUtil(invoice.date)}</td>
                               <td className="px-4 py-2.5 text-sm text-gray-600">{formatDateUtil(invoice.due_date)}</td>
                               <td className="px-4 py-2.5 relative" data-tour="detail-color-status">
@@ -1281,7 +1398,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                             ref={index === displayedInvoices.length - 1 ? lastInvoiceRef : undefined}
                             className="group hover:bg-gray-50 transition-colors"
                           >
-                            <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{invoice.reference_number}</td>
+                            <td className="px-4 py-2.5 text-sm font-medium text-gray-900">
+                              <span className="inline-flex items-center gap-1.5">
+                                {invoice.reference_number}
+                                <ManualBadge source={invoice.source} size="xs" label="M" title="Invoice entered by hand in this app" />
+                              </span>
+                            </td>
                             <td className="px-4 py-2.5 text-sm text-gray-600">{formatDateUtil(invoice.date)}</td>
                             <td className="px-4 py-2.5">
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">{invoice.status}</span>
@@ -1348,7 +1470,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                             ref={index === displayedInvoices.length - 1 ? lastInvoiceRef : undefined}
                             className="group hover:bg-gray-50 transition-colors"
                           >
-                            <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{invoice.reference_number}</td>
+                            <td className="px-4 py-2.5 text-sm font-medium text-gray-900">
+                              <span className="inline-flex items-center gap-1.5">
+                                {invoice.reference_number}
+                                <ManualBadge source={invoice.source} size="xs" label="M" title="Invoice entered by hand in this app" />
+                              </span>
+                            </td>
                             <td className="px-4 py-2.5 text-sm text-gray-600">{formatDateUtil(invoice.date)}</td>
                             <td className="px-4 py-2.5 text-sm text-gray-600">{formatDateUtil(invoice.due_date)}</td>
                             <td className="px-4 py-2.5 text-sm text-right text-gray-700">{formatCurrency(invoice.amount)}</td>
@@ -1413,7 +1540,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                       <tbody className="divide-y divide-gray-50">
                         {validPayments.map((payment) => (
                           <tr key={payment.id} className="group hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{payment.reference_number}</td>
+                            <td className="px-4 py-2.5 text-sm font-medium text-gray-900">
+                              <span className="inline-flex items-center gap-1.5">
+                                {payment.reference_number}
+                                <ManualBadge source={(payment as any).source} size="xs" label="M" title="Payment entered by hand in this app" />
+                              </span>
+                            </td>
                             <td className="px-4 py-2.5 text-sm text-gray-600">{formatDateUtil(payment.doc_date || payment.application_date)}</td>
                             <td className="px-4 py-2.5 text-sm text-gray-600">{payment.payment_method || '-'}</td>
                             <td className="px-4 py-2.5">
@@ -1525,6 +1657,29 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         <CustomerAIChat
           customerId={customer.customer_id}
           customerName={customer.customer_name}
+        />
+      )}
+
+      {showAddInvoice && customer && (
+        <AddInvoiceModal
+          customerId={customer.customer_id}
+          customerName={customer.customer_name}
+          onClose={() => setShowAddInvoice(false)}
+          onCreated={() => { loadCustomerBasicInfo(); loadInvoices(0, false); loadFilteredStats(); }}
+        />
+      )}
+
+      {showRecordPayment && customer && (
+        <RecordPaymentModal
+          customerId={customer.customer_id}
+          customerName={customer.customer_name}
+          onClose={() => setShowRecordPayment(false)}
+          onCreated={() => {
+            loadCustomerBasicInfo();
+            loadInvoices(0, false);
+            loadFilteredStats();
+            loadPaymentsData(true);
+          }}
         />
       )}
     </div>

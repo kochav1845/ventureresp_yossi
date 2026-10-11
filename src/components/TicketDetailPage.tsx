@@ -15,6 +15,19 @@ import { useOrg } from '../contexts/OrgContext';
 import { useToast } from '../contexts/ToastContext';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../lib/acumaticaLinks';
 import { formatDate, isDatePast } from '../lib/dateUtils';
+import InvoiceFilterPanel from './InvoiceFilterPanel';
+import {
+  InvoiceFilters,
+  InvoiceTab,
+  TicketSourceFilter,
+  FilteredInvoice,
+  DEFAULT_INVOICE_FILTERS,
+  describeInvoiceFilters,
+  diffAgainstSourceFilter,
+  fetchFilteredInvoices,
+  findExistingAssignments,
+  parseSourceFilter,
+} from '../lib/invoiceFilters';
 import InvoiceMemoModal from './InvoiceMemoModal';
 import TicketMemoModal from './TicketMemoModal';
 import CreateReminderModal from './CreateReminderModal';
@@ -105,6 +118,19 @@ export default function TicketDetailPage() {
   const [selectedNewInvoices, setSelectedNewInvoices] = useState<Set<string>>(new Set());
   const [loadingAvailable, setLoadingAvailable] = useState(false);
   const [addingInvoices, setAddingInvoices] = useState(false);
+
+  // Filters for the "Add Invoices" picker — same panel as the Customer page.
+  const [addFilters, setAddFilters] = useState<InvoiceFilters>({ ...DEFAULT_INVOICE_FILTERS });
+  // The filter this ticket was originally built from, plus the pending catch-up.
+  const [sourceFilter, setSourceFilter] = useState<TicketSourceFilter | null>(null);
+  const [catchUp, setCatchUp] = useState<{
+    toAdd: FilteredInvoice[];
+    settled: string[];
+    /** Match the filter but sit on another ticket — never moved automatically. */
+    onOtherTickets: Array<{ ref: string; ticketNumber: string | null }>;
+  } | null>(null);
+  const [checkingCatchUp, setCheckingCatchUp] = useState(false);
+  const [applyingCatchUp, setApplyingCatchUp] = useState(false);
   const [removingInvoice, setRemovingInvoice] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [invoiceSortField, setInvoiceSortField] = useState<InvoiceSortField | null>(null);
@@ -130,7 +156,7 @@ export default function TicketDetailPage() {
         .select(`
           id, ticket_number, status, priority, notes, created_at, resolved_at,
           customer_id, assigned_collector_id, ticket_type, due_date,
-          promise_date, promise_by_user_id,
+          promise_date, promise_by_user_id, source_filter,
           user_profiles!collection_tickets_assigned_collector_id_fkey (full_name)
         `)
         .eq('id', ticketId)
@@ -300,6 +326,8 @@ export default function TicketDetailPage() {
         .order('application_date', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      setSourceFilter(parseSourceFilter((ticketData as any).source_filter));
 
       const ticketGroup: TicketGroup = {
         ticket_id: ticketData.id,
@@ -492,8 +520,8 @@ export default function TicketDetailPage() {
     loadTicketData();
   };
 
-  const handleAddInvoices = async (invoiceRefs: string[]) => {
-    if (!ticket) return;
+  const handleAddInvoices = async (invoiceRefs: string[], opts: { activityNote?: string } = {}) => {
+    if (!ticket || invoiceRefs.length === 0) return;
     try {
       const { data: ticketData } = await supabase
         .from('collection_tickets')
@@ -512,6 +540,15 @@ export default function TicketDetailPage() {
 
       const { error } = await supabase.from('invoice_assignments').insert(insertData);
       if (error) throw error;
+
+      await supabase.from('ticket_activity_log').insert({
+        ticket_id: ticket.ticket_id,
+        created_by: user?.id,
+        activity_type: 'invoice_added',
+        description: opts.activityNote
+          ? `${opts.activityNote} — added ${invoiceRefs.length} invoice(s)`
+          : `Added ${invoiceRefs.length} invoice(s) to ticket`,
+      });
 
       setShowAddInvoices(false);
       setSelectedNewInvoices(new Set());
@@ -539,26 +576,85 @@ export default function TicketDetailPage() {
     }
   };
 
-  const loadAvailableInvoices = async () => {
+  /**
+   * Invoices that could still be added, run through the same filtered RPC the
+   * Customer page uses so the Advanced Filters work here too. Anything already
+   * on the ticket is dropped from the list.
+   */
+  const loadAvailableInvoices = async (filters: InvoiceFilters = addFilters) => {
     if (!ticket) return;
     setLoadingAvailable(true);
     try {
-      const currentRefs = ticket.invoices.map(inv => inv.invoice_reference_number);
-      const { data, error } = await supabase
-        .from('acumatica_invoices')
-        .select('reference_number, date, due_date, amount, balance, description')
-        .neq('status', 'On Hold')
-        .eq('customer', ticket.customer_id)
-        .eq('status', 'Open')
-        .gt('balance', 0)
-        .order('date', { ascending: false });
+      const currentRefs = new Set(ticket.invoices.map(inv => inv.invoice_reference_number));
+      const rows = await fetchFilteredInvoices(
+        ticket.customer_id,
+        filters,
+        (sourceFilter?.tab ?? 'open-invoices') as InvoiceTab,
+        true
+      );
+      const candidates = rows.filter(inv => !currentRefs.has(inv.reference_number));
 
-      if (error) throw error;
-      setAvailableInvoices((data || []).filter(inv => !currentRefs.includes(inv.reference_number)));
+      // An invoice belongs to exactly one ticket, so anything already assigned
+      // elsewhere isn't actually available — hide it rather than let the insert
+      // fail on the unique constraint.
+      const taken = await findExistingAssignments(candidates.map(i => i.reference_number));
+      setAvailableInvoices(candidates.filter(inv => !taken.has(inv.reference_number)) as any);
     } catch (err) {
       console.error('Error loading available invoices:', err);
+      toast.error('Could not load invoices for this customer');
     } finally {
       setLoadingAvailable(false);
+    }
+  };
+
+  const handleAddFiltersChange = (next: InvoiceFilters) => {
+    setAddFilters(next);
+    setSelectedNewInvoices(new Set());
+    loadAvailableInvoices(next);
+  };
+
+  /**
+   * Re-run the filter this ticket was built from and report what has drifted.
+   * Read-only — nothing is written until the user hits Apply.
+   */
+  const handleCheckCatchUp = async () => {
+    if (!ticket || !sourceFilter) return;
+    setCheckingCatchUp(true);
+    try {
+      const currentRefs = ticket.invoices.map(i => i.invoice_reference_number);
+      const { toAdd, settled } = await diffAgainstSourceFilter(ticket.customer_id, sourceFilter, currentRefs);
+
+      // An invoice can only be on one ticket, so anything already assigned
+      // elsewhere is reported but left alone.
+      const taken = await findExistingAssignments(toAdd.map(i => i.reference_number));
+      const free = toAdd.filter(i => !taken.has(i.reference_number));
+      const onOtherTickets = toAdd
+        .filter(i => taken.has(i.reference_number))
+        .map(i => ({ ref: i.reference_number, ticketNumber: taken.get(i.reference_number)!.ticketNumber }));
+
+      setCatchUp({ toAdd: free, settled, onOtherTickets });
+      if (free.length === 0 && settled.length === 0 && onOtherTickets.length === 0) {
+        toast.success('This ticket is already up to date with its filter.');
+      }
+    } catch (err: any) {
+      console.error('Error re-running ticket filter:', err);
+      toast.error('Could not re-run the filter: ' + err.message);
+    } finally {
+      setCheckingCatchUp(false);
+    }
+  };
+
+  /** Apply only the additions — invoices never leave a ticket on their own. */
+  const handleApplyCatchUp = async () => {
+    if (!ticket || !catchUp || catchUp.toAdd.length === 0) return;
+    setApplyingCatchUp(true);
+    try {
+      await handleAddInvoices(catchUp.toAdd.map(i => i.reference_number), {
+        activityNote: `Re-ran filter "${describeInvoiceFilters(sourceFilter!.filters, sourceFilter!.tab)}"`,
+      });
+      setCatchUp(null);
+    } finally {
+      setApplyingCatchUp(false);
     }
   };
 
@@ -937,7 +1033,15 @@ export default function TicketDetailPage() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => { setShowAddInvoices(true); setSelectedNewInvoices(new Set()); loadAvailableInvoices(); }}
+                  onClick={() => {
+                    // Seed the picker with the filter this ticket came from, so
+                    // "more like these" is one click away.
+                    const seed = sourceFilter?.filters ?? { ...DEFAULT_INVOICE_FILTERS };
+                    setAddFilters(seed);
+                    setShowAddInvoices(true);
+                    setSelectedNewInvoices(new Set());
+                    loadAvailableInvoices(seed);
+                  }}
                   data-tour="ticket-add-invoice"
                   className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition-colors flex items-center gap-1 font-medium"
                 >
@@ -952,6 +1056,71 @@ export default function TicketDetailPage() {
             </div>
 
             <div className="px-3 py-2">
+              {/* Built-from-a-filter banner + on-demand catch-up. The ticket's
+                  invoice list never changes on its own; this only offers. */}
+              {sourceFilter && (
+                <div className="mb-3 border border-indigo-200 rounded bg-indigo-50 overflow-hidden">
+                  <div className="flex items-center justify-between gap-3 px-2.5 py-1.5">
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-wide text-indigo-500 leading-none">Built from filter</p>
+                      <p className="text-xs font-semibold text-indigo-900 truncate">
+                        {describeInvoiceFilters(sourceFilter.filters, sourceFilter.tab)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleCheckCatchUp}
+                      disabled={checkingCatchUp}
+                      title="Re-run this filter and show what has changed since the ticket was made"
+                      className="flex-shrink-0 px-2 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-1 font-medium"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${checkingCatchUp ? 'animate-spin' : ''}`} />
+                      {checkingCatchUp ? 'Checking…' : 'Re-run filter'}
+                    </button>
+                  </div>
+
+                  {catchUp && (catchUp.toAdd.length > 0 || catchUp.settled.length > 0 || catchUp.onOtherTickets.length > 0) && (
+                    <div className="px-2.5 py-2 border-t border-indigo-200 bg-white">
+                      {catchUp.toAdd.length > 0 && (
+                        <p className="text-xs text-green-800">
+                          <span className="font-semibold">+{catchUp.toAdd.length}</span> now match this filter but aren’t on the ticket
+                          <span className="font-semibold">
+                            {' '}(+${catchUp.toAdd.reduce((s, i) => s + (Number(i.balance) || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                          </span>
+                          <span className="text-gray-500"> — {catchUp.toAdd.slice(0, 6).map(i => i.reference_number).join(', ')}{catchUp.toAdd.length > 6 ? '…' : ''}</span>
+                        </p>
+                      )}
+                      {catchUp.settled.length > 0 && (
+                        <p className="text-xs text-gray-600 mt-1">
+                          <span className="font-semibold">{catchUp.settled.length}</span> on the ticket no longer match (paid or status changed)
+                          <span className="text-gray-500"> — {catchUp.settled.slice(0, 6).join(', ')}{catchUp.settled.length > 6 ? '…' : ''}</span>
+                          <span className="block text-[10px] text-gray-400">Left in place — remove them by hand if you want them off.</span>
+                        </p>
+                      )}
+                      {catchUp.onOtherTickets.length > 0 && (
+                        <p className="text-xs text-amber-800 mt-1">
+                          <span className="font-semibold">{catchUp.onOtherTickets.length}</span> match but already belong to another ticket
+                          <span className="text-gray-500">
+                            {' '}— {catchUp.onOtherTickets.slice(0, 4).map(o => `${o.ref}${o.ticketNumber ? ` (${o.ticketNumber})` : ''}`).join(', ')}
+                            {catchUp.onOtherTickets.length > 4 ? '…' : ''}
+                          </span>
+                          <span className="block text-[10px] text-gray-400">An invoice can only sit on one ticket, so these are left where they are.</span>
+                        </p>
+                      )}
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        <button onClick={() => setCatchUp(null)} className="px-2.5 py-1 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50 transition-colors">Dismiss</button>
+                        <button
+                          onClick={handleApplyCatchUp}
+                          disabled={catchUp.toAdd.length === 0 || applyingCatchUp}
+                          className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 transition-colors font-medium"
+                        >
+                          {applyingCatchUp ? 'Adding…' : `Add ${catchUp.toAdd.length}`}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {showAddInvoices && (
                 <div className="mb-3 border border-green-300 rounded bg-green-50 overflow-hidden">
                   <div className="flex items-center justify-between px-2.5 py-1.5 bg-green-100 border-b border-green-300">
@@ -959,10 +1128,16 @@ export default function TicketDetailPage() {
                     <button onClick={() => setShowAddInvoices(false)} className="p-0.5 text-green-700 hover:text-green-900 rounded hover:bg-green-200 transition-colors"><X className="w-3.5 h-3.5" /></button>
                   </div>
                   <div className="p-2.5">
+                    <InvoiceFilterPanel
+                      filters={addFilters}
+                      onFiltersChange={handleAddFiltersChange}
+                      compact
+                      title="Filter invoices"
+                    />
                     {loadingAvailable ? (
                       <div className="flex items-center justify-center py-4"><Loader2 className="w-4 h-4 text-green-600 animate-spin" /><span className="ml-2 text-xs text-green-700">Loading...</span></div>
                     ) : availableInvoices.length === 0 ? (
-                      <p className="text-xs text-gray-600 text-center py-3">No additional open invoices found.</p>
+                      <p className="text-xs text-gray-600 text-center py-3">No invoices match these filters (invoices already on the ticket are hidden).</p>
                     ) : (
                       <>
                         <div className="flex items-center justify-between mb-1.5">

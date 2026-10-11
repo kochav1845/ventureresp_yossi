@@ -1,18 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Filter, Calendar, DollarSign, ChevronDown, ChevronUp, X, TrendingUp, TrendingDown, Clock, RotateCcw } from 'lucide-react';
-
-interface InvoiceFilters {
-  dateFrom: string;
-  dateTo: string;
-  amountMin: string;
-  amountMax: string;
-  daysOverdueMin: string;
-  daysOverdueMax: string;
-  colorStatus: string;
-  invoiceStatus: string;
-  sortBy: string;
-  sortOrder: 'asc' | 'desc';
-}
+import { InvoiceFilters, DEFAULT_INVOICE_FILTERS, hasActiveInvoiceFilters } from '../lib/invoiceFilters';
 
 interface InvoiceStats {
   highest_invoice_amount: number | null;
@@ -37,10 +25,15 @@ interface FilteredStats {
 interface InvoiceFilterPanelProps {
   filters: InvoiceFilters;
   onFiltersChange: (filters: InvoiceFilters) => void;
-  stats: InvoiceStats | null;
-  filteredStats: FilteredStats | null;
-  activeTab: 'open-invoices' | 'paid-invoices' | 'payments';
-  onQuickFilter: (type: string) => void;
+  /** The quick-stat cards along the top. Omit them in the ticket forms. */
+  stats?: InvoiceStats | null;
+  filteredStats?: FilteredStats | null;
+  activeTab?: 'open-invoices' | 'balanced-invoices' | 'paid-invoices' | 'payments';
+  onQuickFilter?: (type: string) => void;
+  /** Drops the stat cards and tightens the chrome for use inside a form. */
+  compact?: boolean;
+  title?: string;
+  defaultExpanded?: boolean;
 }
 
 export default function InvoiceFilterPanel({
@@ -48,34 +41,18 @@ export default function InvoiceFilterPanel({
   onFiltersChange,
   stats,
   filteredStats,
-  activeTab,
-  onQuickFilter
+  activeTab = 'open-invoices',
+  onQuickFilter,
+  compact = false,
+  title = 'Advanced Filters',
+  defaultExpanded
 }: InvoiceFilterPanelProps) {
-  const hasActive = !!(
-    filters.dateFrom ||
-    filters.dateTo ||
-    filters.amountMin ||
-    filters.amountMax ||
-    filters.daysOverdueMin ||
-    filters.daysOverdueMax ||
-    filters.colorStatus ||
-    filters.invoiceStatus
-  );
-  const [isExpanded, setIsExpanded] = useState(hasActive);
+  const hasActive = hasActiveInvoiceFilters(filters);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded ?? hasActive);
   const [hasActiveFilters, setHasActiveFilters] = useState(hasActive);
 
   useEffect(() => {
-    const active = !!(
-      filters.dateFrom ||
-      filters.dateTo ||
-      filters.amountMin ||
-      filters.amountMax ||
-      filters.daysOverdueMin ||
-      filters.daysOverdueMax ||
-      filters.colorStatus ||
-      filters.invoiceStatus
-    );
-    setHasActiveFilters(active);
+    setHasActiveFilters(hasActiveInvoiceFilters(filters));
   }, [filters]);
 
   const handleFilterChange = (key: keyof InvoiceFilters, value: string) => {
@@ -98,18 +75,7 @@ export default function InvoiceFilterPanel({
   };
 
   const clearAllFilters = () => {
-    onFiltersChange({
-      dateFrom: '',
-      dateTo: '',
-      amountMin: '',
-      amountMax: '',
-      daysOverdueMin: '',
-      daysOverdueMax: '',
-      colorStatus: '',
-      invoiceStatus: '',
-      sortBy: 'date',
-      sortOrder: 'desc'
-    });
+    onFiltersChange({ ...DEFAULT_INVOICE_FILTERS });
   };
 
   const formatCurrency = (amount: number | null) => {
@@ -143,7 +109,7 @@ export default function InvoiceFilterPanel({
         >
           <div className="flex items-center gap-3">
             <Filter className={`w-5 h-5 ${hasActiveFilters ? 'text-blue-600' : 'text-gray-500'}`} />
-            <span className="font-medium text-gray-900">Advanced Filters</span>
+            <span className="font-medium text-gray-900">{title}</span>
             {hasActiveFilters && (
               <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
                 Active
@@ -159,10 +125,10 @@ export default function InvoiceFilterPanel({
 
         {isExpanded && (
           <div className="px-4 pb-4 border-t border-gray-100">
-            {stats && (
+            {stats && !compact && (
               <div className="mt-4 mb-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 <button
-                  onClick={() => onQuickFilter('highest')}
+                  onClick={() => onQuickFilter?.('highest')}
                   className="p-3 bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-lg hover:shadow-md transition-all text-left"
                 >
                   <div className="flex items-center gap-2 mb-1">
@@ -176,7 +142,7 @@ export default function InvoiceFilterPanel({
                 </button>
 
                 <button
-                  onClick={() => onQuickFilter('lowest')}
+                  onClick={() => onQuickFilter?.('lowest')}
                   className="p-3 bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg hover:shadow-md transition-all text-left"
                 >
                   <div className="flex items-center gap-2 mb-1">
@@ -190,7 +156,7 @@ export default function InvoiceFilterPanel({
                 </button>
 
                 <button
-                  onClick={() => onQuickFilter('oldest_unpaid')}
+                  onClick={() => onQuickFilter?.('oldest_unpaid')}
                   className="p-3 bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-lg hover:shadow-md transition-all text-left"
                 >
                   <div className="flex items-center gap-2 mb-1">
@@ -204,7 +170,7 @@ export default function InvoiceFilterPanel({
                 </button>
 
                 <button
-                  onClick={() => onQuickFilter('newest_unpaid')}
+                  onClick={() => onQuickFilter?.('newest_unpaid')}
                   className="p-3 bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 rounded-lg hover:shadow-md transition-all text-left"
                 >
                   <div className="flex items-center gap-2 mb-1">
@@ -218,7 +184,7 @@ export default function InvoiceFilterPanel({
                 </button>
 
                 <button
-                  onClick={() => onQuickFilter('most_overdue')}
+                  onClick={() => onQuickFilter?.('most_overdue')}
                   className="p-3 bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-lg hover:shadow-md transition-all text-left"
                 >
                   <div className="flex items-center gap-2 mb-1">
