@@ -1,3 +1,29 @@
+/*
+  # Fix filtered_net_balance subtracting UNfiltered credit memos
+
+  `get_customers_with_balance` returned
+      filtered_net_balance = filtered_gross_bal - credit_memo_amt
+  where `filtered_gross_bal` only sums the Invoice/Debit-Memo rows that pass the
+  active invoice-level filter (days overdue / invoice date range / invoice
+  amount) but `credit_memo_amt` is the customer's ENTIRE open credit-memo
+  balance. So under a filter like "Overdue 90+" the app subtracted credit memos
+  that are not themselves 90+ days old, under-reporting the filtered balance.
+
+  Example (customer 15278995, New Vanderbilt Rehab & Care Center, 2026-09-14):
+    90+ gross (invoice-date basis) .......... $173,883.04   (Acumatica agrees)
+    all open credit memos ....................  $4,774.17
+    of which actually 90+ ....................    $962.83
+    shown in app (gross - ALL cm) ........... $169,108.87   <- wrong
+    correct net (gross - 90+ cm) ............ $172,920.21
+
+  Fix: compute a `filtered_cm_bal` with the SAME predicate as
+  `filtered_gross_bal` and net against that. With no invoice-level filter
+  active both fall back to the unfiltered totals, so the unfiltered view is
+  unchanged.
+
+  Signature and return columns are unchanged (CREATE OR REPLACE only).
+*/
+
 CREATE OR REPLACE FUNCTION public.get_customers_with_balance(p_search text, p_status_filter text, p_country_filter text, p_sort_by text, p_sort_order text, p_limit integer, p_offset integer, p_date_from timestamp with time zone, p_date_to timestamp with time zone, p_balance_filter text, p_min_balance numeric, p_max_balance numeric, p_min_open_invoices integer, p_max_open_invoices integer, p_min_invoice_amount numeric, p_max_invoice_amount numeric, p_exclude_credit_memos boolean, p_date_context text, p_calculate_avg_days boolean, p_min_days_overdue integer, p_max_days_overdue integer, p_test_customers boolean, p_overdue_basis text DEFAULT 'due_date'::text)
  RETURNS TABLE(id uuid, customer_id text, customer_name text, customer_status text, email_address text, phone1 text, address_line1 text, address_line2 text, city text, state text, postal_code text, country text, customer_class text, terms text, credit_limit numeric, statement_cycle text, parent_account text, price_class text, shipping_terms text, acumatica_record_id text, synced_at timestamp with time zone, created_at timestamp with time zone, updated_at timestamp with time zone, red_threshold_days integer, color_status text, calculated_balance numeric, gross_balance numeric, credit_memo_balance numeric, open_invoice_count bigint, red_count bigint, yellow_count bigint, green_count bigint, max_days_overdue integer, exclude_from_payment_analytics boolean, exclude_from_customer_analytics boolean, avg_days_to_collect numeric, filtered_gross_balance numeric, filtered_invoice_count bigint, filtered_net_balance numeric)
  LANGUAGE plpgsql
@@ -252,4 +278,4 @@ SELECT
   (COALESCE(fc.filtered_gross_bal, 0) - COALESCE(fc.filtered_cm_bal, 0))::numeric as filtered_net_balance
 FROM filtered_customers fc;
 END;
-$function$
+$function$;

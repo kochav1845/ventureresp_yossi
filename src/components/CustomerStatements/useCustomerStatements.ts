@@ -117,7 +117,11 @@ export function useCustomerStatements() {
   const mapInvoices = (data: any[]): StatementInvoice[] => {
     const today = new Date();
     return data.map((inv: any) => {
-      const dueDate = inv.due_date ? new Date(inv.due_date) : today;
+      // Aged from the DUE date, matching every other overdue figure in the app.
+      // No due date falls back to the invoice date rather than counting as
+      // current, which is what the server-side COALESCE(due_date, date) does.
+      const basis = inv.due_date || inv.date;
+      const dueDate = basis ? new Date(basis) : today;
       const daysOverdue = Math.max(0, Math.floor((today.getTime() - dueDate.getTime()) / 86400000));
       const isCredit = inv.type === 'Credit Memo' || inv.type === 'Credit WO';
       const rawAmount = Number(inv.amount) || Number(inv.dac_total) || 0;

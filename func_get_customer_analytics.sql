@@ -1,7 +1,6 @@
 CREATE OR REPLACE FUNCTION public.get_customer_analytics(p_search text DEFAULT NULL::text, p_status_filter text DEFAULT 'all'::text, p_country_filter text DEFAULT 'all'::text, p_date_from timestamp with time zone DEFAULT NULL::timestamp with time zone, p_date_to timestamp with time zone DEFAULT NULL::timestamp with time zone, p_excluded_customer_ids text[] DEFAULT NULL::text[], p_balance_filter text DEFAULT 'all'::text, p_min_balance numeric DEFAULT NULL::numeric, p_max_balance numeric DEFAULT NULL::numeric, p_min_open_invoices integer DEFAULT NULL::integer, p_max_open_invoices integer DEFAULT NULL::integer, p_date_context text DEFAULT 'invoice_date'::text, p_min_days_overdue integer DEFAULT NULL::integer, p_max_days_overdue integer DEFAULT NULL::integer, p_exclude_credit_memos boolean DEFAULT false, p_test_customers boolean DEFAULT false)
  RETURNS json
  LANGUAGE plpgsql
- SECURITY DEFINER
 AS $function$
 DECLARE
 v_has_filters boolean;
@@ -80,7 +79,7 @@ END)::int as inv_count,
 BOOL_OR(i.status = 'Open' AND i.balance > 0 AND i.due_date < CURRENT_DATE AND (NOT p_exclude_credit_memos OR i.type != 'Credit Memo')) as is_overdue,
 MAX(CASE 
 WHEN i.status = 'Open' AND i.balance > 0 AND (NOT p_exclude_credit_memos OR i.type != 'Credit Memo')
-THEN GREATEST(0, CURRENT_DATE - i.date)
+THEN GREATEST(0, CURRENT_DATE - COALESCE(i.due_date, i.date))
 ELSE 0
 END)::int as max_days_overdue
 FROM base_customers bc

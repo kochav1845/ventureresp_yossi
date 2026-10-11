@@ -6,6 +6,8 @@ import { ArrowLeft, CreditCard as Edit2, Trash2, Users, RefreshCw, Mail, CheckSq
 import { usePageCache } from '../contexts/PageCacheContext';
 import { useToast } from '../contexts/ToastContext';
 import CustomerFiles from './CustomerFiles';
+import ManualBadge from './ManualBadge';
+import AddCustomerModal from './ManualEntry/AddCustomerModal';
 import PageHelp, { HelpSection } from './PageHelp';
 import * as XLSX from 'xlsx';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, Cell, PieChart, Pie } from 'recharts';
@@ -37,6 +39,8 @@ type Customer = {
   filtered_net_balance?: number;
   filtered_invoice_count?: number;
   gross_balance?: number;
+  /** 'manual' = entered by hand in this app, not synced from Acumatica. */
+  source?: string | null;
 };
 
 type ScheduledEmail = {
@@ -79,9 +83,11 @@ const DEFAULT_FILTERS: FilterConfig = {
   maxInvoiceAmount: Infinity,
   minDaysOverdue: 0,
   maxDaysOverdue: Infinity,
-  // Overdue is counted from the INVOICE date by default (so "Overdue 90+" = 90
-  // days since the invoice). The drawer toggle can still switch it to due date.
-  overdueBasis: 'invoice_date',
+  // Overdue is counted from the DUE date everywhere in the app (an invoice with
+  // no due date falls back to its invoice date). "Overdue 90+" therefore means
+  // 90 days PAST DUE. The drawer toggle can still switch this view to the
+  // invoice date, but due date is the house rule.
+  overdueBasis: 'due_date',
   dateFrom: '',
   dateTo: '',
   logicOperator: 'AND',
@@ -107,7 +113,7 @@ const DEFAULT_QUICK_FILTERS: QuickFilter[] = [
   { label: 'High Balance', desc: '$10k+', filter: { minBalance: 10000 } },
   { label: 'Medium Balance', desc: '$5k–$10k', filter: { minBalance: 5000, maxBalance: 10000 } },
   { label: 'Many Invoices', desc: '20+ open', filter: { minInvoiceCount: 20 } },
-  { label: 'Overdue 90+', desc: 'days since invoice', filter: { minDaysOverdue: 90 } },
+  { label: 'Overdue 90+', desc: 'days past due', filter: { minDaysOverdue: 90 } },
   { label: 'Critical', desc: '$20k+', filter: { minBalance: 20000 } },
 ];
 
@@ -153,7 +159,7 @@ const CUSTOMERS_HELP: HelpSection[] = [
       { label: 'Customer (name + ID)', body: 'Name and account ID. Click the name to open the customer’s full detail in a new tab.' },
       { label: 'Invoices', body: 'Number of open invoices. Under an invoice-level filter it shows “matched / total”.' },
       { label: 'Balance', body: 'What they owe. Credit Memos ON = net (credit memos subtracted); OFF = gross. Under a filter it shows “X of Y”.' },
-      { label: 'Overdue', body: 'Most days any open invoice is overdue — counted from the invoice date by default (change in Filters). Red >90, orange >60, amber >30.' },
+      { label: 'Overdue', body: 'Most days any open invoice is past its DUE date (invoices with no due date fall back to their invoice date). Red >90, orange >60, amber >30. The Filters drawer can switch this view to count from the invoice date instead.' },
       { label: 'Last Payment', body: 'Date + amount of their most recent payment. Turns amber/red after 60/90+ days with no payment.' },
       { label: 'Resp.', body: '“Responded this month.” Tick it to mark whether the customer answered collection outreach this month.' },
       { label: 'Pay', body: 'Eye toggle: include/exclude this customer from Payment Analytics. Green eye = included; red crossed-eye = excluded.' },
@@ -239,6 +245,7 @@ export default function Customers({ onBack }: CustomersProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [showFilters, setShowFilters] = useState(() => cl?.showFilters ?? false);
   const [excludeCreditMemos, setExcludeCreditMemos] = useState(() => cl?.excludeCreditMemos ?? false);
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [customersWithOpenTickets, setCustomersWithOpenTickets] = useState<Map<string, number>>(new Map());
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(() => cl?.expandedCustomerId ?? null);
   const [expandedInvoices, setExpandedInvoices] = useState<Map<string, any[]>>(() => cl?.expandedInvoices ?? new Map());
@@ -551,7 +558,8 @@ export default function Customers({ onBack }: CustomersProps) {
     yellow_count: item.yellow_count || 0,
     green_count: item.green_count || 0,
     exclude_from_payment_analytics: item.exclude_from_payment_analytics || false,
-    exclude_from_customer_analytics: item.exclude_from_customer_analytics || false
+    exclude_from_customer_analytics: item.exclude_from_customer_analytics || false,
+    source: item.source ?? 'acumatica'
   });
 
   const loadCustomersBatched = async () => {
@@ -1186,6 +1194,14 @@ export default function Customers({ onBack }: CustomersProps) {
               className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-md text-xs font-medium">Search</button>
           </div>
           <div className="flex-1" />
+          {/* Manually-entered customer: lives only in this app, never synced. */}
+          <button
+            onClick={() => setShowAddCustomer(true)}
+            title="Add a customer that only exists in this app (not in Acumatica)"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-medium flex-shrink-0 transition-colors"
+          >
+            <Plus size={14} /> New Customer
+          </button>
           <PageHelp title="Customers" intro="Every customer with their balance and status, so you can prioritise collections, filter/segment them, and act. Here's what each part means:" sections={CUSTOMERS_HELP} />
           {/* Credit-memo toggle. ON (default) = include: each customer's credit memos
               are subtracted so Balance shows the real net amount owed. OFF = gross. */}
@@ -1333,6 +1349,7 @@ export default function Customers({ onBack }: CustomersProps) {
                                     const cid = customer.customer_id || customer.id;
                                     if (cid) window.open(buildCustomerUrl(cid), '_blank', 'noopener,noreferrer');
                                   }}>{customer.name}</span>
+                                <ManualBadge source={customer.source} size="sm" />
                                 {(() => {
                                   const tc = customersWithOpenTickets.get(customer.id) || 0;
                                   return (
@@ -1965,6 +1982,13 @@ export default function Customers({ onBack }: CustomersProps) {
           </div>
         </div>
       </div>
+    )}
+
+    {showAddCustomer && (
+      <AddCustomerModal
+        onClose={() => setShowAddCustomer(false)}
+        onCreated={() => { loadCachedStats(); loadCustomersBatched(); }}
+      />
     )}
     </>
   );
