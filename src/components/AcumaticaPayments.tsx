@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Search, DollarSign, Filter, X, CreditCard, User, FileText, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import ManualBadge from './ManualBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 
@@ -83,7 +84,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
           .select('*', { count: 'exact', head: true }),
         supabase
           .from('acumatica_payments')
-          .select('id, reference_number, type, customer_id, status, application_date, doc_date, payment_amount, available_balance, currency_id, description, payment_method, payment_ref, cash_account, hold, is_cc_payment, last_modified_datetime, synced_at, created_at, last_sync_timestamp')
+          .select('id, reference_number, type, customer_id, status, application_date, doc_date, payment_amount, available_balance, currency_id, description, payment_method, payment_ref, cash_account, hold, is_cc_payment, last_modified_datetime, synced_at, created_at, last_sync_timestamp, source')
           .order('application_date', { ascending: false })
           .range(page * pageSize, (page + 1) * pageSize - 1),
         ensureCustomerMap()
@@ -142,7 +143,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
 
       let query = supabase
         .from('acumatica_payments')
-        .select('id, reference_number, type, customer_id, status, application_date, doc_date, payment_amount, available_balance, currency_id, description, payment_method, payment_ref, cash_account, hold, is_cc_payment, last_modified_datetime, synced_at, created_at, last_sync_timestamp');
+        .select('id, reference_number, type, customer_id, status, application_date, doc_date, payment_amount, available_balance, currency_id, description, payment_method, payment_ref, cash_account, hold, is_cc_payment, last_modified_datetime, synced_at, created_at, last_sync_timestamp, source');
 
       if (hasSearchTerm) {
         // Build OR condition that includes customer IDs matching customer names
@@ -952,6 +953,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
                         >
                           <td className="py-3 px-4 text-gray-900 text-sm border-r border-gray-300">
                             <span className="font-medium">{payment.reference_number || 'N/A'}</span>
+                            <ManualBadge source={(payment as any).source} size="xs" label="M" title="Payment entered by hand in this app" className="ml-1.5" />
                           </td>
                           <td className="py-3 px-4 text-gray-900 text-sm border-r border-gray-300">
                             {payment.customer_name || payment.customer_id || 'N/A'}

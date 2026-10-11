@@ -547,7 +547,12 @@ async function processSync(supabase: any, sessionManager: AcumaticaSessionManage
       .select('id, reference_number, type')
       .gte('application_date', `${startDate}T00:00:00`)
       .lte('application_date', `${endDate}T23:59:59`)
-      .neq('type', 'Credit Memo');
+      .neq('type', 'Credit Memo')
+      // Hand-entered payments don't exist in Acumatica by definition, so they
+      // would look "extra", cost an API lookup each and then be deleted on the
+      // 404. A DB trigger also refuses the delete, but keep them out of the
+      // candidate list so they never eat into the 50-row reconcile budget.
+      .neq('source', 'manual');
 
     if (dbAllInRange) {
       const extras = dbAllInRange.filter(

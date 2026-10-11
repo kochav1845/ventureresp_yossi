@@ -94,6 +94,9 @@ async function processReconciliation(supabase: any, targetMonth: string, jobId: 
         .select('reference_number, type')
         .gte('date', startDate)
         .lte('date', endDate)
+        // Hand-entered invoices are unknown to Acumatica, so they would every
+        // run be classed as orphans and deleted. Never consider them here.
+        .neq('source', 'manual')
         .order('reference_number', { ascending: true })
         .range(offset, offset + LIMIT - 1);
 

@@ -187,7 +187,9 @@ Deno.serve(async (req: Request) => {
     const { data: duplicates } = await supabase
       .from('acumatica_invoices')
       .select('id, reference_number, type')
-      .is('customer', null);
+      .is('customer', null)
+      // Never treat a hand-entered invoice as a stray duplicate to clean up.
+      .neq('source', 'manual');
 
     if (duplicates && duplicates.length > 0) {
       console.log(`Found ${duplicates.length} duplicate records with null customer, removing...`);
@@ -399,10 +401,15 @@ Deno.serve(async (req: Request) => {
     }
 
     // Log the reconciliation run
+    // sync_change_logs has no entity_type/details columns; entity_reference, change_summary
+    // and sync_source are NOT NULL -- the old shape 400'd on every run.
     await supabase.from('sync_change_logs').insert({
-      entity_type: 'invoice_reconciliation',
+      sync_type: 'invoice_reconciliation',
       action_type: 'reconciled',
-      details: {
+      entity_reference: 'invoice_reconciliation',
+      change_summary: `Reconciled ${results.totalChecked} invoices (${mode}): ${results.updated} updated, ${results.statusMismatches} status / ${results.balanceMismatches} balance mismatches`,
+      sync_source: 'scheduled_sync',
+      change_details: {
         totalChecked: results.totalChecked,
         statusMismatches: results.statusMismatches,
         balanceMismatches: results.balanceMismatches,

@@ -234,6 +234,9 @@ Deno.serve(async (req: Request) => {
           .from('acumatica_invoices')
           .select('id, date, status, balance')
           .eq('reference_number', paddedRefNbr)
+          // Only a synced row may be replaced by a fresher Acumatica copy;
+          // a hand-entered invoice is never the sync's to delete.
+          .neq('source', 'manual')
           .maybeSingle();
 
         if (existing) {
