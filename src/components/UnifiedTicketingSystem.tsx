@@ -29,6 +29,7 @@ import PromiseDateModal from './MyAssignments/PromiseDateModal';
 import { sortTicketsByPriority } from './MyAssignments/utils';
 import TicketFilterSidebar, { TicketAdvancedFilters, emptyFilters } from './MyAssignments/TicketFilterSidebar';
 import InvoiceFilterPanel from './InvoiceFilterPanel';
+import { currentOrgId } from '../lib/manualRecords';
 import DueDateReminders from './DueDateReminders';
 import {
   DueDateReminderPlan,
@@ -850,9 +851,14 @@ export default function UnifiedTicketingSystem({
 
   const loadCollectors = async () => {
     try {
+      // Scope to the caller's organization. Without this the live org's
+      // dropdown also listed every demo-org account (and vice versa), which is
+      // both confusing and cross-tenant leakage of names and addresses.
+      const orgId = await currentOrgId();
       const { data, error } = await supabase
         .from('user_profiles')
         .select('id, full_name, email')
+        .eq('organization_id', orgId)
         .in('role', ['collector', 'manager', 'admin'])
         .eq('account_status', 'approved')
         .order('full_name');
@@ -1504,6 +1510,96 @@ export default function UnifiedTicketingSystem({
     } catch (error: any) {
       console.error('Bulk ticket priority change error:', error);
       toast.error('Failed to update some tickets: ' + error.message);
+    } finally {
+      setProcessingBulkTickets(false);
+    }
+  };
+
+  /**
+   * Delete tickets through the delete_tickets RPC rather than a plain table
+   * delete. invoice_assignments / invoice_reminders are ON DELETE SET NULL, so
+   * a direct delete leaves the invoices behind as stray "individual
+   * assignments" and the reminders pointing at nothing; the RPC clears them in
+   * one transaction and is org-scoped server-side.
+   */
+  const [deletingTicketId, setDeletingTicketId] = useState<string | null>(null);
+
+  const runTicketDelete = async (ids: string[]): Promise<boolean> => {
+    const { data, error } = await supabase.rpc('delete_tickets', { p_ticket_ids: ids });
+    if (error) throw error;
+    const r = Array.isArray(data) ? data[0] : data;
+    const parts = [`${r?.tickets_deleted ?? 0} ticket(s) deleted`];
+    if (r?.assignments_deleted) parts.push(`${r.assignments_deleted} invoice assignment(s) removed`);
+    if (r?.reminders_deleted) parts.push(`${r.reminders_deleted} reminder(s) removed`);
+    if (r?.skipped_other_org) parts.push(`${r.skipped_other_org} skipped (different organization)`);
+    toast.success(parts.join(' · '));
+    return true;
+  };
+
+  const handleDeleteTicket = async (ticket: TicketGroup) => {
+    const invCount = ticket.invoices?.length || 0;
+    const ok = window.confirm(
+      `Permanently delete ticket ${ticket.ticket_number} (${ticket.customer_name})?
+
+` +
+      `This also removes its ${invCount} invoice assignment(s), notes, memos, activity log and ` +
+      `any reminders attached to it. The invoices themselves are NOT touched.
+
+` +
+      `This cannot be undone.`
+    );
+    if (!ok) return;
+
+    setDeletingTicketId(ticket.ticket_id);
+    try {
+      await runTicketDelete([ticket.ticket_id]);
+      setSelectedTickets(prev => {
+        const n = new Set(prev); n.delete(ticket.ticket_id); return n;
+      });
+      await loadTickets();
+    } catch (error: any) {
+      console.error('Delete ticket error:', error);
+      toast.error('Failed to delete the ticket: ' + error.message);
+    } finally {
+      setDeletingTicketId(null);
+    }
+  };
+
+  const handleBulkDeleteTickets = async () => {
+    const ids = Array.from(selectedTickets);
+    if (ids.length === 0) return;
+
+    const ok = window.confirm(
+      `Permanently delete ${ids.length} ticket(s)?
+
+` +
+      `This also removes their invoice assignments, notes, memos, activity log and attached ` +
+      `reminders. The invoices themselves are NOT touched.
+
+` +
+      `This cannot be undone.`
+    );
+    if (!ok) return;
+
+    // Second prompt once it's a sweep rather than a handful.
+    if (ids.length >= 10) {
+      const typed = window.prompt(
+        `That is ${ids.length} tickets. Type DELETE to confirm.`
+      );
+      if (typed !== 'DELETE') {
+        toast.info('Nothing was deleted.');
+        return;
+      }
+    }
+
+    setProcessingBulkTickets(true);
+    try {
+      await runTicketDelete(ids);
+      setSelectedTickets(new Set());
+      await loadTickets();
+    } catch (error: any) {
+      console.error('Bulk ticket delete error:', error);
+      toast.error('Failed to delete the tickets: ' + error.message);
     } finally {
       setProcessingBulkTickets(false);
     }
@@ -2207,6 +2303,7 @@ export default function UnifiedTicketingSystem({
                         onClearSelection={() => setSelectedTickets(new Set())}
                         onBatchStatusChange={handleBulkTicketStatusChange}
                         onBatchPriorityChange={handleBulkTicketPriorityChange}
+                        onBatchDelete={handleBulkDeleteTickets}
                       />
                       {displayTickets.map(ticket => (
                         <TicketCard
@@ -2231,6 +2328,8 @@ export default function UnifiedTicketingSystem({
                           onOpenInvoiceReminder={handleOpenInvoiceReminder}
                           onAddInvoices={handleAddInvoicesToTicket}
                           onRemoveInvoice={handleRemoveInvoiceFromTicket}
+                          onDeleteTicket={handleDeleteTicket}
+                          deletingTicket={deletingTicketId === ticket.ticket_id}
                           isTicketSelected={selectedTickets.has(ticket.ticket_id)}
                           onToggleTicketSelection={toggleTicketSelection}
                         />

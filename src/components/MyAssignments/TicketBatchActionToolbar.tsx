@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Edit3, AlertTriangle, X, ChevronDown } from 'lucide-react';
+import { Edit3, AlertTriangle, X, ChevronDown, Trash2 } from 'lucide-react';
 import { TicketStatusOption } from './types';
 
 interface TicketBatchActionToolbarProps {
@@ -11,6 +11,8 @@ interface TicketBatchActionToolbarProps {
   onClearSelection: () => void;
   onBatchStatusChange: (newStatus: string) => void;
   onBatchPriorityChange: (newPriority: string) => void;
+  /** Delete every selected ticket. Omitted => no delete control is rendered. */
+  onBatchDelete?: () => void;
 }
 
 const priorityOptions = [
@@ -28,7 +30,8 @@ export default function TicketBatchActionToolbar({
   onToggleSelectAll,
   onClearSelection,
   onBatchStatusChange,
-  onBatchPriorityChange
+  onBatchPriorityChange,
+  onBatchDelete
 }: TicketBatchActionToolbarProps) {
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [showPriorityMenu, setShowPriorityMenu] = useState(false);
@@ -36,7 +39,7 @@ export default function TicketBatchActionToolbar({
   if (selectedCount === 0) {
     return (
       <div className="mb-4 flex items-center gap-3 flex-wrap" data-tour="ticket-batch-actions">
-        <span className="text-sm text-gray-500">{selectedCount} invoice(s) selected</span>
+        <span className="text-sm text-gray-500">{selectedCount} ticket(s) selected</span>
         <button
           onClick={onToggleSelectAll}
           className="px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -135,6 +138,21 @@ export default function TicketBatchActionToolbar({
               </div>
             )}
           </div>
+
+          {onBatchDelete && (
+            <>
+              <span className="w-px h-6 bg-blue-200" aria-hidden="true" />
+              <button
+                onClick={onBatchDelete}
+                disabled={processing}
+                title={`Permanently delete the ${selectedCount} selected ticket${selectedCount !== 1 ? 's' : ''}`}
+                className="px-3 py-1.5 bg-white border border-red-300 text-red-700 rounded-lg hover:bg-red-50 font-medium flex items-center gap-1.5 disabled:opacity-50 text-sm whitespace-nowrap"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete {selectedCount === totalCount ? 'All' : selectedCount}
+              </button>
+            </>
+          )}
         </div>
       </div>
 

@@ -44,6 +44,9 @@ interface TicketCardProps {
   onRemoveInvoice?: (ticketId: string, invoiceRef: string) => Promise<void>;
   isTicketSelected?: boolean;
   onToggleTicketSelection?: (ticketId: string) => void;
+  /** Delete this one ticket. Omitted => no delete control is rendered. */
+  onDeleteTicket?: (ticket: TicketGroup) => void;
+  deletingTicket?: boolean;
 }
 
 export default function TicketCard({
@@ -68,7 +71,9 @@ export default function TicketCard({
   onAddInvoices,
   onRemoveInvoice,
   isTicketSelected = false,
-  onToggleTicketSelection
+  onToggleTicketSelection,
+  onDeleteTicket,
+  deletingTicket = false
 }: TicketCardProps) {
   const toast = useToast();
   const rawNavigate = useNavigate();
@@ -413,6 +418,17 @@ export default function TicketCard({
                   </span>
                 )}
               </div>
+            )}
+            {onDeleteTicket && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDeleteTicket(ticket); }}
+                disabled={deletingTicket}
+                title={`Delete ticket ${ticket.ticket_number}`}
+                aria-label={`Delete ticket ${ticket.ticket_number}`}
+                className="flex items-center justify-center w-5 h-5 rounded border border-red-200 bg-white/70 text-red-500 hover:bg-red-50 hover:text-red-700 hover:border-red-300 disabled:opacity-40 transition-colors flex-shrink-0"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
             )}
           </div>
           <div className="relative flex-shrink-0" ref={priorityDropdownRef}>
