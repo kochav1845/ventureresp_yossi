@@ -27,6 +27,12 @@ export interface Assignment {
   };
 }
 
+export interface TicketCollector {
+  id: string;
+  name: string;
+  is_primary: boolean;
+}
+
 export interface TicketGroup {
   ticket_id: string;
   ticket_number: string;
@@ -38,6 +44,12 @@ export interface TicketGroup {
   ticket_closed_at?: string | null;
   assigned_collector_id?: string | null;
   assigned_collector_name?: string | null;
+  /**
+   * Everyone working this ticket, the primary included. A ticket can be shared
+   * between several collectors; all of them see it under My Assignments and
+   * the sharing is shown openly wherever collectors are listed.
+   */
+  collectors?: TicketCollector[];
   customer_id: string;
   customer_name: string;
   promise_date?: string | null;

@@ -120,6 +120,7 @@ export default function TicketDetailPage() {
   const [addingInvoices, setAddingInvoices] = useState(false);
 
   // Filters for the "Add Invoices" picker — same panel as the Customer page.
+  const [collectors, setCollectors] = useState<Array<{ id: string; name: string; is_primary: boolean }>>([]);
   const [addFilters, setAddFilters] = useState<InvoiceFilters>({ ...DEFAULT_INVOICE_FILTERS });
   // The filter this ticket was originally built from, plus the pending catch-up.
   const [sourceFilter, setSourceFilter] = useState<TicketSourceFilter | null>(null);
@@ -174,6 +175,23 @@ export default function TicketDetailPage() {
         .select('customer_name')
         .eq('customer_id', ticketData.customer_id)
         .maybeSingle();
+
+      // Everyone sharing this ticket (the primary included).
+      const { data: shareRows } = await supabase
+        .from('ticket_collectors')
+        .select('collector_id, is_primary, user_profiles(full_name, email)')
+        .eq('ticket_id', ticketId);
+
+      const ticketCollectors = (shareRows || [])
+        .map((r: any) => ({
+          id: r.collector_id,
+          name: r.user_profiles?.full_name || r.user_profiles?.email || 'Unknown',
+          is_primary: !!r.is_primary,
+        }))
+        .sort((a, b) =>
+          a.is_primary === b.is_primary ? a.name.localeCompare(b.name) : a.is_primary ? -1 : 1
+        );
+      setCollectors(ticketCollectors);
 
       const { data: assignments } = await supabase
         .from('invoice_assignments')
@@ -883,11 +901,24 @@ export default function TicketDetailPage() {
                 <ExternalLink className="w-2.5 h-2.5" />
                 View in Acumatica
               </a>
-              {ticket.assigned_collector_name && (
-                <div className="flex items-center gap-1.5 px-2 py-1.5 bg-teal-50 border border-teal-200 rounded text-xs">
-                  <User className="w-3 h-3 text-teal-600 flex-shrink-0" />
-                  <span className="text-teal-600">Assigned:</span>
-                  <span className="font-semibold text-teal-900">{ticket.assigned_collector_name}</span>
+              {(collectors.length > 0 || ticket.assigned_collector_name) && (
+                <div className="flex items-start gap-1.5 px-2 py-1.5 bg-teal-50 border border-teal-200 rounded text-xs">
+                  <User className="w-3 h-3 text-teal-600 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <span className="text-teal-600">
+                      {collectors.length > 1 ? `Shared between ${collectors.length}:` : 'Assigned:'}
+                    </span>{' '}
+                    <span className="font-semibold text-teal-900">
+                      {collectors.length
+                        ? collectors.map(c => c.name).join(', ')
+                        : ticket.assigned_collector_name}
+                    </span>
+                    {collectors.length > 1 && (
+                      <span className="block text-[10px] text-teal-700">
+                        Each of them sees this ticket under My Assignments.
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

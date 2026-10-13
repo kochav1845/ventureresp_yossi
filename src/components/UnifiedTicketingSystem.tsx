@@ -150,6 +150,10 @@ export default function UnifiedTicketingSystem({
   const fmtMoney = (n: number) => `$${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const [selectedInvoicesForTicket, setSelectedInvoicesForTicket] = useState<string[]>([]);
   const [selectedCollector, setSelectedCollector] = useState<string>('');
+  // Additional collectors the ticket is shared with. selectedCollector stays the
+  // primary, because invoice_assignments.assigned_collector_id is NOT NULL and
+  // plenty of existing logic keys off a single owner.
+  const [extraCollectors, setExtraCollectors] = useState<string[]>([]);
   const [priority, setPriority] = useState<string>('medium');
   const [ticketType, setTicketType] = useState<string>('');
   const [ticketNotes, setTicketNotes] = useState<string>('');
@@ -710,8 +714,26 @@ export default function UnifiedTicketingSystem({
         `);
 
       if (showOnlyAssigned) {
-        assignmentQuery = assignmentQuery.eq('assigned_collector_id', profile.id);
-        emptyTicketsQuery = emptyTicketsQuery.eq('assigned_collector_id', profile.id);
+        // A ticket can be shared between collectors, so "mine" is no longer
+        // just assigned_collector_id -- my_ticket_ids() returns every ticket I
+        // am named on, whether through ticket_collectors or through holding one
+        // of its invoice assignments.
+        const { data: mine, error: mineError } = await supabase.rpc('my_ticket_ids');
+        if (mineError) throw mineError;
+        const myTicketIds = (mine || []).map((r: any) => r.ticket_id).filter(Boolean);
+
+        if (myTicketIds.length > 0) {
+          const idList = `(${myTicketIds.join(',')})`;
+          assignmentQuery = assignmentQuery.or(
+            `assigned_collector_id.eq.${profile.id},ticket_id.in.${idList}`
+          );
+          emptyTicketsQuery = emptyTicketsQuery.or(
+            `assigned_collector_id.eq.${profile.id},id.in.${idList}`
+          );
+        } else {
+          assignmentQuery = assignmentQuery.eq('assigned_collector_id', profile.id);
+          emptyTicketsQuery = emptyTicketsQuery.eq('assigned_collector_id', profile.id);
+        }
       }
 
       const [assignmentResult, emptyTicketsResult] = await Promise.all([
@@ -758,7 +780,7 @@ export default function UnifiedTicketingSystem({
       const uniqueCustomerIds = [...new Set(ticketGroupsArray.map(t => t.customer_id))];
       const allInvoiceRefs = ticketGroupsArray.flatMap(t => t.invoices.map(inv => inv.invoice_reference_number));
 
-      const [enrichmentResult, customerStatsResult, appResult] = await Promise.all([
+      const [enrichmentResult, customerStatsResult, appResult, collectorsResult] = await Promise.all([
         ticketIds.length > 0
           ? supabase.rpc('get_ticket_enrichment_bulk', { p_ticket_ids: ticketIds })
           : { data: [], error: null },
@@ -772,10 +794,39 @@ export default function UnifiedTicketingSystem({
               .in('invoice_reference_number', allInvoiceRefs)
               .gt('amount_paid', 0)
               .order('application_date', { ascending: false })
+          : { data: [], error: null },
+        // Everyone on each ticket, so a shared ticket can show all its
+        // collectors rather than just the primary.
+        ticketIds.length > 0
+          ? supabase
+              .from('ticket_collectors')
+              .select('ticket_id, collector_id, is_primary, user_profiles(full_name, email)')
+              .in('ticket_id', ticketIds)
           : { data: [], error: null }
       ]);
 
       applyEnrichment(ticketGroupsArray, enrichmentResult, customerStatsResult, appResult);
+
+      if (!collectorsResult.error && collectorsResult.data) {
+        const byTicket = new Map<string, any[]>();
+        (collectorsResult.data as any[]).forEach(row => {
+          const list = byTicket.get(row.ticket_id) || [];
+          list.push({
+            id: row.collector_id,
+            name: row.user_profiles?.full_name || row.user_profiles?.email || 'Unknown',
+            is_primary: !!row.is_primary,
+          });
+          byTicket.set(row.ticket_id, list);
+        });
+        ticketGroupsArray.forEach(t => {
+          const list = byTicket.get(t.ticket_id) || [];
+          // Primary first, then alphabetical, so the order is stable.
+          list.sort((a, b) =>
+            a.is_primary === b.is_primary ? a.name.localeCompare(b.name) : a.is_primary ? -1 : 1
+          );
+          t.collectors = list;
+        });
+      }
 
       const sortedEnriched = sortTicketsByPriority([...ticketGroupsArray]);
       setTickets(sortedEnriched);
@@ -1065,6 +1116,23 @@ export default function UnifiedTicketingSystem({
 
       if (ticketError) throw ticketError;
 
+      // Share the ticket with the other collectors. The primary is written by
+      // the sync_primary_ticket_collector trigger, so only the extras go here.
+      if (extraCollectors.length > 0) {
+        const { error: shareError } = await supabase.from('ticket_collectors').insert(
+          extraCollectors.map(cid => ({
+            ticket_id: newTicket.id,
+            collector_id: cid,
+            is_primary: false,
+            added_by: profile.id,
+          }))
+        );
+        if (shareError) {
+          console.error('Error sharing ticket with collectors:', shareError);
+          toast.warning('Ticket created, but it could not be shared with the other collectors.');
+        }
+      }
+
       for (const refNumber of selectedInvoicesForTicket) {
         await supabase.from('invoice_assignments').upsert({
           invoice_reference_number: refNumber,
@@ -1081,9 +1149,11 @@ export default function UnifiedTicketingSystem({
         ticket_id: newTicket.id,
         created_by: user!.id,
         activity_type: 'created',
-        description: activeSource
-          ? `Created ticket with ${selectedInvoicesForTicket.length} invoice(s) matching "${describeInvoiceFilters(createFilters, createTab)}"`
-          : `Created ticket with ${selectedInvoicesForTicket.length} invoice(s)`
+        description:
+          (activeSource
+            ? `Created ticket with ${selectedInvoicesForTicket.length} invoice(s) matching "${describeInvoiceFilters(createFilters, createTab)}"`
+            : `Created ticket with ${selectedInvoicesForTicket.length} invoice(s)`) +
+          (extraCollectors.length > 0 ? `, shared with ${extraCollectors.length + 1} collectors` : '')
       });
 
       if (ticketNotes) {
@@ -1145,6 +1215,7 @@ export default function UnifiedTicketingSystem({
     setCreateTab('open-invoices');
     setCreateExcludeCM(true);
     setDueReminderPlan({ ...DEFAULT_REMINDER_PLAN });
+    setExtraCollectors([]);
   };
 
   const handleColorChange = async (invoiceRefNumber: string, newColor: string | null) => {
@@ -2131,6 +2202,40 @@ export default function UnifiedTicketingSystem({
                         </option>
                       ))}
                     </select>
+
+                    {/* Share the same ticket with more collectors. Each one sees
+                        it under My Assignments; the sharing is shown openly. */}
+                    {selectedCollector && (
+                      <div className="mt-2">
+                        <p className="text-xs font-medium text-gray-600 mb-1.5">
+                          Also share with {extraCollectors.length > 0 && (
+                            <span className="text-teal-700">({extraCollectors.length} selected)</span>
+                          )}
+                        </p>
+                        <div className="border border-gray-200 rounded-lg max-h-32 overflow-y-auto divide-y divide-gray-100">
+                          {collectors.filter(c => c.id !== selectedCollector).map((c) => (
+                            <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={extraCollectors.includes(c.id)}
+                                onChange={(e) => setExtraCollectors(prev =>
+                                  e.target.checked ? [...prev, c.id] : prev.filter(x => x !== c.id)
+                                )}
+                                className="h-3.5 w-3.5 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                              />
+                              <span className="text-gray-800 truncate">{c.full_name}</span>
+                              <span className="text-gray-400 text-xs truncate">{c.email}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {extraCollectors.length > 0 && (
+                          <p className="text-[11px] text-teal-700 mt-1">
+                            This ticket will be shared between {extraCollectors.length + 1} collectors
+                            and appear under each of their My Assignments.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div>

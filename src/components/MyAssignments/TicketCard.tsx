@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Image, File, ArrowUp, ArrowDown, Mail, Send } from 'lucide-react';
+import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Users, Image, File, ArrowUp, ArrowDown, Mail, Send } from 'lucide-react';
 import { formatDistanceToNow, format as dateFnsFormat } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
 import { getPriorityColor, getStatusColor, calculateTotalBalance, sortInvoices } from './utils';
@@ -475,11 +475,27 @@ export default function TicketCard({
         </div>
 
         <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[11px] text-gray-600">
-          {ticket.assigned_collector_name && (
-            <span className="flex items-center gap-1">
-              <User className="w-3 h-3 text-teal-600" />
+          {/* A ticket can be shared; list everyone on it and say so plainly.
+              Falls back to assigned_collector_name until enrichment lands. */}
+          {(ticket.collectors?.length || ticket.assigned_collector_name) && (
+            <span className="flex items-center gap-1 flex-wrap">
+              {(ticket.collectors?.length || 0) > 1
+                ? <Users className="w-3 h-3 text-teal-600" />
+                : <User className="w-3 h-3 text-teal-600" />}
               <span className="text-gray-500">Assigned:</span>
-              <span className="font-medium text-gray-800">{ticket.assigned_collector_name}</span>
+              <span className="font-medium text-gray-800">
+                {ticket.collectors?.length
+                  ? ticket.collectors.map(c => c.name).join(', ')
+                  : ticket.assigned_collector_name}
+              </span>
+              {(ticket.collectors?.length || 0) > 1 && (
+                <span
+                  className="px-1.5 py-0.5 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-[9px] font-bold uppercase tracking-wide"
+                  title={`Shared between ${ticket.collectors!.length} collectors: ${ticket.collectors!.map(c => c.name).join(', ')}`}
+                >
+                  Shared · {ticket.collectors!.length}
+                </span>
+              )}
             </span>
           )}
           {ticket.ticket_created_at && (
