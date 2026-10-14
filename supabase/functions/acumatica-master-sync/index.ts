@@ -326,7 +326,7 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       await syncEntity(entityType);
-      console.log(`[MASTER-SYNC] ${entityType} sync completed, moving to next entity`);
+      if (!stop) console.log(`[MASTER-SYNC] ${entityType} sync completed, moving to next entity`);
     }
 
     // Log out cached Acumatica sessions that have expired (Acumatica limits
