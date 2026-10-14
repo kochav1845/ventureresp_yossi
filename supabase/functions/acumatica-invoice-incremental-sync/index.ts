@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { AcumaticaSessionManager } from "../_shared/acumatica-session.ts";
+import { AcumaticaSessionManager, acumaticaAccessResponse, isAcumaticaAccessError } from "../_shared/acumatica-session.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -121,11 +121,6 @@ Deno.serve(async (req: Request) => {
       branch
     };
 
-    // Get session cookie using session manager
-    console.log('Getting Acumatica session...');
-    const sessionCookie = await sessionManager.getSession(credentials);
-    console.log('Session obtained successfully');
-
     // Base the cutoff on the LAST SUCCESSFUL SYNC (with an overlap margin) rather
     // than only a fixed rolling window. If syncs fail for a stretch (e.g. gateway
     // 504s), the next success then re-fetches everything modified during the
@@ -168,39 +163,9 @@ Deno.serve(async (req: Request) => {
     while (true) {
       const pageUrl = `${acumaticaUrl}/entity/Default/24.200.001/Invoice?$filter=${baseFilter}&$top=${PAGE_SIZE}&$skip=${skip}`;
 
-      const pageResponse = await fetch(pageUrl, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Cookie": sessionCookie,
-        },
-      });
-
-      if (!pageResponse.ok) {
-        const errorText = await pageResponse.text();
-        throw new Error(`Failed to fetch invoices (skip=${skip}): ${pageResponse.status} ${pageResponse.statusText}. Details: ${errorText.substring(0, 500)}`);
-      }
-
-      const responseText = await pageResponse.text();
-
-      // Check if response looks like HTML error page
-      if (responseText.trim().startsWith('<')) {
-        throw new Error(`Received HTML response instead of JSON at skip=${skip}. This usually indicates an Acumatica error or session timeout.`);
-      }
-
-      let page;
-      try {
-        page = JSON.parse(responseText);
-      } catch (parseError) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: `Failed to parse invoice response at skip=${skip}: ${parseError.message}`,
-            details: 'The response from Acumatica may be incomplete.'
-          }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      // Logs in (or reuses the cached session), re-logs in once on a 401, and
+      // throws AcumaticaAccessError when Acumatica is down / in maintenance.
+      const page = await sessionManager.getJson(credentials, pageUrl, `invoices (skip=${skip})`);
 
       const batch = Array.isArray(page) ? page : [];
       invoices = invoices.concat(batch);
@@ -458,6 +423,9 @@ Deno.serve(async (req: Request) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
+    if (isAcumaticaAccessError(err)) {
+      return acumaticaAccessResponse(err, 'invoice', corsHeaders);
+    }
     console.error('Error in invoice incremental sync:', err);
 
     await createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!)

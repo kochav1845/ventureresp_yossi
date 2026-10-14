@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { AcumaticaSessionManager } from "../_shared/acumatica-session.ts";
+import { AcumaticaSessionManager, acumaticaAccessResponse, isAcumaticaAccessError } from "../_shared/acumatica-session.ts";
+import { attachmentStoragePath, uploadAttachmentOnce } from "../_shared/payment-attachments.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -170,16 +171,35 @@ Deno.serve(async (req: Request) => {
       branch
     };
 
-    // Get session cookie using session manager
-    console.log('Getting Acumatica session...');
-    const sessionCookie = await sessionManager.getSession(credentials);
-    console.log('Session obtained successfully');
+    // Cover everything since the last successful sync (plus overlap), not just
+    // the configured window: after an Acumatica outage longer than the window
+    // (it was down 07:15-08:35 UTC on 2026-10-14) the first good run catches up
+    // instead of silently skipping what changed meanwhile. 7-day ceiling.
+    const SAFETY_MARGIN_MIN = 30;
+    const MAX_LOOKBACK_MIN = 10080;
+    let effectiveLookbackMinutes = lookbackMinutes;
+    try {
+      const { data: statusRow } = await supabase
+        .from('sync_status')
+        .select('last_successful_sync')
+        .eq('entity_type', 'payment')
+        .maybeSingle();
+      if (statusRow?.last_successful_sync) {
+        const minsSinceSuccess = (Date.now() - new Date(statusRow.last_successful_sync).getTime()) / 60000;
+        effectiveLookbackMinutes = Math.min(
+          Math.max(lookbackMinutes, MAX_LOOKBACK_MIN),
+          Math.max(lookbackMinutes, Math.ceil(minsSinceSuccess) + SAFETY_MARGIN_MIN)
+        );
+      }
+    } catch (_e) {
+      // fall back to the configured lookback
+    }
 
-    const cutoffTime = new Date(Date.now() - lookbackMinutes * 60 * 1000);
+    const cutoffTime = new Date(Date.now() - effectiveLookbackMinutes * 60 * 1000);
     const filterDate = cutoffTime.toISOString().split('.')[0];
 
     const baseFilter = `LastModifiedDateTime gt datetimeoffset'${filterDate}'`;
-    console.log(`Fetching payments modified after ${filterDate} (last ${lookbackMinutes} minutes)`);
+    console.log(`Fetching payments modified after ${filterDate} (effective lookback ${effectiveLookbackMinutes} min; configured ${lookbackMinutes} min)`);
 
     // Paginate with $top/$skip so large lookback windows (e.g. multi-day catch-up)
     // don't overrun a single un-paginated request.
@@ -190,31 +210,9 @@ Deno.serve(async (req: Request) => {
     while (true) {
       const pageUrl = `${acumaticaUrl}/entity/Default/24.200.001/Payment?$expand=files&$filter=${baseFilter}&$custom=Document.DocDate,Document.FinPeriodID&$top=${PAGE_SIZE}&$skip=${skip}`;
 
-      const pageResponse = await fetch(pageUrl, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "Cookie": sessionCookie,
-        },
-      });
-
-      if (!pageResponse.ok) {
-        const errorText = await pageResponse.text();
-        throw new Error(`Failed to fetch payments (skip=${skip}): ${pageResponse.status} ${pageResponse.statusText}. Details: ${errorText.substring(0, 500)}`);
-      }
-
-      const responseText = await pageResponse.text();
-      if (responseText.trim().startsWith('<')) {
-        throw new Error(`Received HTML response instead of JSON at skip=${skip}. This usually indicates an Acumatica error or session timeout.`);
-      }
-
-      let page;
-      try {
-        page = JSON.parse(responseText);
-      } catch (parseError) {
-        throw new Error(`Failed to parse payment response at skip=${skip}: ${parseError.message}`);
-      }
+      // Logs in (or reuses the cached session), re-logs in once on a 401, and
+      // throws AcumaticaAccessError when Acumatica is down / in maintenance.
+      const page = await sessionManager.getJson(credentials, pageUrl, `payments (skip=${skip})`);
 
       const batch = Array.isArray(page) ? page : [];
       payments = payments.concat(batch);
@@ -746,32 +744,42 @@ Deno.serve(async (req: Request) => {
               try {
                 const fileUrl = `${acumaticaUrl}/(W(2))/Frames/GetFile.ashx?fileID=${fileId}`;
                 const fileResponse = await sessionManager.makeAuthenticatedRequest(credentials, fileUrl);
+                const contentType = fileResponse.headers.get('content-type') || 'application/octet-stream';
+                const cleanFileName = (fileName.split('\\').pop() || fileName).replace(/[#?&]/g, '_');
 
-                if (fileResponse.ok) {
+                if (!fileResponse.ok) {
+                  await fileResponse.body?.cancel();
+                  console.warn(`[ATTACHMENT] Download failed for payment ${refNbr} file ${cleanFileName}: HTTP ${fileResponse.status}`);
+                  errors.push(`Attachment download failed for ${refNbr} - ${cleanFileName}: HTTP ${fileResponse.status}`);
+                } else if (contentType.includes('text/html') && !/\.html?$/i.test(cleanFileName)) {
+                  // GetFile.ashx can answer an expired session / maintenance with an
+                  // HTML page and 200; never store that as the attachment.
+                  await fileResponse.body?.cancel();
+                  console.warn(`[ATTACHMENT] Got an HTML page instead of ${cleanFileName} for payment ${refNbr}; will retry next run`);
+                  errors.push(`Attachment download for ${refNbr} - ${cleanFileName} returned HTML, not the file`);
+                } else {
                   const fileBlob = await fileResponse.arrayBuffer();
-                  const cleanFileName = (fileName.split('\\').pop() || fileName).replace(/[#?&]/g, '_');
-                  const storagePath = `payments/${refNbr}/${new Date().toISOString().replace(/[:.]/g, '-')}-${cleanFileName}`;
+                  // One key per Acumatica file id, valid characters only (a "[55]" in
+                  // the name was rejected with 400 InvalidKey every run), and never
+                  // overwritten: a retry hits "already exists" instead of adding a copy.
+                  const storagePath = attachmentStoragePath(refNbr, fileId, cleanFileName);
+                  const upload = await uploadAttachmentOnce(supabase, storagePath, new Uint8Array(fileBlob), contentType);
 
-                  const { error: uploadError } = await supabase.storage
-                    .from('payment-check-images')
-                    .upload(storagePath, new Uint8Array(fileBlob), {
-                      contentType: fileResponse.headers.get('content-type') || 'application/octet-stream',
-                      upsert: true
-                    });
-
-                  if (!uploadError) {
-                    fileStored = true;
+                  if (!upload.ok) {
+                    console.warn(`[ATTACHMENT] Upload failed for payment ${refNbr} file ${cleanFileName} -> ${storagePath}: ${upload.error}`);
+                    errors.push(`Attachment upload failed for ${refNbr} - ${cleanFileName}: ${upload.error}`);
+                  } else {
                     const isCheckImage = cleanFileName.toLowerCase().includes('check') ||
                                         cleanFileName.toLowerCase().includes('.jpg') ||
                                         cleanFileName.toLowerCase().includes('.jpeg') ||
                                         cleanFileName.toLowerCase().includes('.png');
 
-                    await supabase
+                    const { error: rowError } = await supabase
                       .from('payment_attachments')
                       .upsert({
                         payment_reference_number: refNbr,
                         file_name: cleanFileName,
-                        file_type: fileResponse.headers.get('content-type') || 'application/octet-stream',
+                        file_type: contentType,
                         file_size: fileBlob.byteLength,
                         storage_path: storagePath,
                         file_id: fileId,
@@ -780,28 +788,37 @@ Deno.serve(async (req: Request) => {
                         onConflict: 'payment_reference_number,file_id'
                       });
 
-                    filesSynced++;
-                    console.log(`Synced file ${cleanFileName} for payment ${refNbr}`);
+                    if (rowError) {
+                      // The object is stored; the next run finds it ("already exists")
+                      // and only writes this row.
+                      console.warn(`[ATTACHMENT] Stored ${storagePath} but could not record it: ${rowError.message}`);
+                      errors.push(`Attachment row failed for ${refNbr} - ${cleanFileName}: ${rowError.message}`);
+                    } else {
+                      fileStored = true;
+                      filesSynced++;
+                      console.log(`Synced file ${cleanFileName} for payment ${refNbr}`);
 
-                    console.log(`Logging attachment_fetched for ${refNbr} - ${cleanFileName}`);
-                    await supabase.rpc('log_sync_change', {
-                      p_sync_type: 'payment_attachment',
-                      p_action_type: 'attachment_fetched',
-                      p_entity_id: paymentDbId || (changed ? null : existing?.id ?? null),
-                      p_entity_reference: refNbr,
-                      p_entity_name: `Attachment: ${cleanFileName}`,
-                      p_change_summary: `Fetched and synced attachment ${cleanFileName} for payment ${refNbr}`,
-                      p_change_details: {
-                        payment_ref: refNbr,
-                        file_name: cleanFileName,
-                        file_size: fileBlob.byteLength,
-                        file_type: fileResponse.headers.get('content-type') || 'application/octet-stream',
-                        is_check_image: isCheckImage,
-                        storage_path: storagePath
-                      },
-                      p_sync_source: 'scheduled_sync'
-                    });
-                    console.log(`Successfully logged attachment_fetched`);
+                      console.log(`Logging attachment_fetched for ${refNbr} - ${cleanFileName}`);
+                      await supabase.rpc('log_sync_change', {
+                        p_sync_type: 'payment_attachment',
+                        p_action_type: 'attachment_fetched',
+                        p_entity_id: paymentDbId || (changed ? null : existing?.id ?? null),
+                        p_entity_reference: refNbr,
+                        p_entity_name: `Attachment: ${cleanFileName}`,
+                        p_change_summary: `Fetched and synced attachment ${cleanFileName} for payment ${refNbr}`,
+                        p_change_details: {
+                          payment_ref: refNbr,
+                          file_name: cleanFileName,
+                          file_size: fileBlob.byteLength,
+                          file_type: contentType,
+                          is_check_image: isCheckImage,
+                          storage_path: storagePath,
+                          already_in_storage: upload.existed
+                        },
+                        p_sync_source: 'scheduled_sync'
+                      });
+                      console.log(`Successfully logged attachment_fetched`);
+                    }
                   }
                 }
               } catch (fileError: any) {
@@ -890,6 +907,9 @@ Deno.serve(async (req: Request) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
+    if (isAcumaticaAccessError(error)) {
+      return acumaticaAccessResponse(error, 'payment', corsHeaders);
+    }
     console.error('Payment sync error:', error);
 
     await createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!)

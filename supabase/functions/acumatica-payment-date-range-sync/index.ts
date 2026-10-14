@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { AcumaticaSessionManager } from "../_shared/acumatica-session.ts";
+import { attachmentStoragePath, uploadAttachmentOnce } from "../_shared/payment-attachments.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -135,39 +136,52 @@ async function fetchPaymentDetails(
         if (!fileId || !fileName) continue;
 
         try {
+          // Already stored (a payment_attachments row exists): never download or
+          // upload it again. Re-running a date range used to add a new
+          // "<timestamp>-<name>" copy of every attachment in the range.
+          const { data: known } = await supabase
+            .from('payment_attachments')
+            .select('id')
+            .eq('payment_reference_number', refNbr)
+            .eq('file_id', fileId)
+            .limit(1);
+          if (known && known.length > 0) continue;
+
           const fileUrl = `${credentials.acumaticaUrl}/(W(2))/Frames/GetFile.ashx?fileID=${fileId}`;
           const fileResponse = await sessionManager.makeAuthenticatedRequest(credentials, fileUrl);
-          if (fileResponse.ok) {
+          const contentType = fileResponse.headers.get('content-type') || 'application/octet-stream';
+          const cleanFileName = (fileName.split('\\').pop() || fileName).replace(/[#?&]/g, '_');
+          if (!fileResponse.ok || (contentType.includes('text/html') && !/\.html?$/i.test(cleanFileName))) {
+            await fileResponse.body?.cancel();
+            stats.errors.push(`Attachment download failed for ${refNbr} - ${cleanFileName}: HTTP ${fileResponse.status} ${contentType}`);
+          } else {
             const fileBlob = await fileResponse.arrayBuffer();
-            const cleanFileName = (fileName.split('\\').pop() || fileName).replace(/[#?&]/g, '_');
-            const storagePath = `payments/${refNbr}/${new Date().toISOString().replace(/[:.]/g, '-')}-${cleanFileName}`;
+            // One key per Acumatica file id, valid characters only, never overwritten.
+            const storagePath = attachmentStoragePath(refNbr, fileId, cleanFileName);
+            const upload = await uploadAttachmentOnce(supabase, storagePath, new Uint8Array(fileBlob), contentType);
 
-            const { error: uploadError } = await supabase.storage
-              .from('payment-check-images')
-              .upload(storagePath, new Uint8Array(fileBlob), {
-                contentType: fileResponse.headers.get('content-type') || 'application/octet-stream',
-                upsert: true
-              });
-
-            if (!uploadError) {
+            if (!upload.ok) {
+              stats.errors.push(`Attachment upload failed for ${refNbr} - ${cleanFileName}: ${upload.error}`);
+            } else {
               const isCheckImage = cleanFileName.toLowerCase().includes('check') ||
                 cleanFileName.toLowerCase().includes('.jpg') ||
                 cleanFileName.toLowerCase().includes('.jpeg') ||
                 cleanFileName.toLowerCase().includes('.png');
 
-              await supabase
+              const { error: rowError } = await supabase
                 .from('payment_attachments')
                 .upsert({
                   payment_reference_number: refNbr,
                   file_name: cleanFileName,
-                  file_type: fileResponse.headers.get('content-type') || 'application/octet-stream',
+                  file_type: contentType,
                   file_size: fileBlob.byteLength,
                   storage_path: storagePath,
                   file_id: fileId,
                   is_check_image: isCheckImage,
                 }, { onConflict: 'payment_reference_number,file_id' });
 
-              stats.filesSynced++;
+              if (rowError) stats.errors.push(`Attachment row failed for ${refNbr} - ${cleanFileName}: ${rowError.message}`);
+              else stats.filesSynced++;
             }
           }
         } catch (fileError: any) {
