@@ -185,28 +185,33 @@ export class AcumaticaSessionManager {
    * can skip the run instead of failing it. Other HTTP errors throw a plain Error.
    */
   async getJson(credentials: AcumaticaCredentials, url: string, what = 'Acumatica data'): Promise<any> {
+    // A hung Acumatica becomes a clean skip instead of the edge wall-clock kill.
     const send = async (cookie: string) => {
       try {
-        return await fetch(url, {
+        const res = await fetch(url, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Cookie': cookie },
+          signal: AbortSignal.timeout(60_000),
         });
+        if (res.status === 401) {
+          await res.body?.cancel();
+          return { res, text: '' };
+        }
+        return { res, text: await res.text() };
       } catch (err: any) {
         throw new AcumaticaAccessError('unavailable', null, `Acumatica unreachable while fetching ${what} (${err?.message || err})`);
       }
     };
 
     if (!this.cookie) this.cookie = await this.getSession(credentials);
-    let res = await send(this.cookie);
+    let { res, text } = await send(this.cookie);
     if (res.status === 401) {
-      await res.body?.cancel();
       console.log(`Session rejected (401) while fetching ${what}; logging in again`);
       await this.invalidateSession(this.cookie);
       this.cookie = await this.getSession(credentials);
-      res = await send(this.cookie);
+      ({ res, text } = await send(this.cookie));
     }
 
-    const text = await res.text();
     if (!res.ok) {
       const access = classifyAcumaticaFailure(res.status, text);
       if (access) throw access;
@@ -266,7 +271,10 @@ export class AcumaticaSessionManager {
             .update({ is_valid: false, session_cookie: LOGGED_OUT })
             .eq('id', row.id);
         } else {
-          result.failed++;
+          // Acumatica is not answering; the rest would wait out the same timeout.
+          // They stay queued and are retried next run (until they age out).
+          result.failed = (rows || []).length - result.loggedOut;
+          break;
         }
       }
 
