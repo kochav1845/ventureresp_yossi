@@ -19,7 +19,7 @@ export const CHECK_IMAGE_BUCKET = 'payment-check-images';
 export function storageSafeFileName(name: string, maxLen = 120): string {
   const base = String(name ?? '').split(/[\\/]/).pop() || '';
   let safe = base
-    .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^A-Za-z0-9._\-() ]+/g, '_')
     .replace(/_{2,}/g, '_')
     .trim();
