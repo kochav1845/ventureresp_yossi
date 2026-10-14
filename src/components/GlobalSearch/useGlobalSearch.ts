@@ -8,6 +8,12 @@ export interface SearchResult {
   subtitle: string;
   meta_line: string;
   route: string;
+  /**
+   * Where clicking this result actually goes — the specific record, not the
+   * list it lives on. Built per category below, since only here do we still
+   * have the row (customer_id, reference_number, …) needed to address it.
+   */
+  deep_link: string;
   relevance: number;
 }
 
@@ -31,6 +37,7 @@ async function searchInvoices(pattern: string): Promise<SearchResult[]> {
     subtitle: i.customer_name || '',
     meta_line: `${i.type || ''} | $${i.amount ?? 0} | Bal: $${i.balance ?? 0} | ${i.status || ''}`,
     route: '/invoices',
+    deep_link: `/customers?invoice=${encodeURIComponent(i.reference_number || '')}`,
     relevance: (i.reference_number || '').toLowerCase().startsWith(pattern.toLowerCase()) ? 0.95 : 0.7,
   }));
 }
@@ -50,6 +57,7 @@ async function searchCustomers(pattern: string): Promise<SearchResult[]> {
     subtitle: c.customer_id || '',
     meta_line: `${c.customer_class || ''} | ${c.general_email || ''} | Bal: $${c.balance ?? 0}`,
     route: '/customers',
+    deep_link: `/customers?customer=${encodeURIComponent(c.customer_id || '')}`,
     relevance: (c.customer_name || '').toLowerCase().startsWith(pattern.toLowerCase()) ? 0.95 : 0.7,
   }));
 }
@@ -69,6 +77,9 @@ async function searchPayments(pattern: string): Promise<SearchResult[]> {
     subtitle: p.customer_name || p.customer_id || '',
     meta_line: `${p.type || ''} | $${p.payment_amount ?? 0} | ${p.payment_method || ''} | ${p.status || ''}`,
     route: '/payments',
+    deep_link: p.customer_id
+      ? `/customers?customer=${encodeURIComponent(p.customer_id)}`
+      : '/acumatica-payments',
     relevance: (p.reference_number || '').toLowerCase().startsWith(pattern.toLowerCase()) ? 0.95 : 0.7,
   }));
 }
@@ -88,6 +99,7 @@ async function searchTickets(pattern: string): Promise<SearchResult[]> {
     subtitle: t.customer_name || '',
     meta_line: `${t.ticket_type || ''} | ${t.priority || ''} | ${t.status || ''}`,
     route: '/tickets',
+    deep_link: `/ticket/${t.id}`,
     relevance: (t.ticket_number || '').toLowerCase().startsWith(pattern.toLowerCase()) ? 0.95 : 0.7,
   }));
 }
@@ -107,6 +119,7 @@ async function searchUsers(pattern: string): Promise<SearchResult[]> {
     subtitle: u.email || '',
     meta_line: `${u.role || ''} | ${u.account_status || ''}`,
     route: '/admin',
+    deep_link: '/collector-monitoring',
     relevance: (u.full_name || '').toLowerCase().startsWith(pattern.toLowerCase()) ? 0.95 : 0.7,
   }));
 }

@@ -90,20 +90,24 @@ export default function GlobalSearchBar() {
     saveRecentSearch(query);
     close();
 
-    const category = result.category;
-    if (category === 'invoice') {
-      navigate('/acumatica-invoices', { state: { searchQuery: result.title } });
-    } else if (category === 'customer') {
-      navigate('/acumatica-customers', { state: { searchQuery: result.subtitle || result.title } });
-    } else if (category === 'payment') {
-      navigate('/acumatica-payments', { state: { searchQuery: result.title } });
-    } else if (category === 'ticket') {
-      navigate('/collection-ticketing', { state: { searchQuery: result.title } });
-    } else if (category === 'collector') {
-      navigate('/collector-monitoring', { state: { searchQuery: result.title } });
-    } else {
-      navigate(result.route);
+    // Go to the record itself. This used to send every category to its admin
+    // LIST page with the query tucked into router state — but none of those
+    // pages read location.state, so picking a customer just dumped you on an
+    // unfiltered Acumatica Customers list with no sign of what you'd clicked.
+    if (result.deep_link) {
+      navigate(result.deep_link);
+      return;
     }
+
+    // Fallback for a result built without one.
+    const LIST_ROUTES: Record<string, string> = {
+      invoice: '/acumatica-invoices',
+      customer: '/acumatica-customers',
+      payment: '/acumatica-payments',
+      ticket: '/collection-ticketing',
+      collector: '/collector-monitoring',
+    };
+    navigate(LIST_ROUTES[result.category] || result.route);
   }, [navigate, saveRecentSearch, close, query]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
