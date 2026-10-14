@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { AcumaticaSessionManager } from "../_shared/acumatica-session.ts";
+import { AcumaticaSessionManager, acumaticaAccessResponse, isAcumaticaAccessError } from "../_shared/acumatica-session.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -124,33 +124,40 @@ Deno.serve(async (req: Request) => {
       branch
     };
 
-    // Get session cookie using session manager
-    console.log('Getting Acumatica session...');
-    const sessionCookie = await sessionManager.getSession(credentials);
-    console.log('Session obtained successfully');
+    // The configured window is only 25 minutes. Cover everything since the last
+    // successful sync (plus overlap) so that after an Acumatica outage (down
+    // 07:15-08:35 UTC on 2026-10-14) the first good run catches up instead of
+    // skipping the customers changed meanwhile. 7-day ceiling.
+    const SAFETY_MARGIN_MIN = 10;
+    const MAX_LOOKBACK_MIN = 10080;
+    let effectiveLookbackMinutes = lookbackMinutes;
+    try {
+      const { data: statusRow } = await supabase
+        .from('sync_status')
+        .select('last_successful_sync')
+        .eq('entity_type', 'customer')
+        .maybeSingle();
+      if (statusRow?.last_successful_sync) {
+        const minsSinceSuccess = (Date.now() - new Date(statusRow.last_successful_sync).getTime()) / 60000;
+        effectiveLookbackMinutes = Math.min(
+          Math.max(lookbackMinutes, MAX_LOOKBACK_MIN),
+          Math.max(lookbackMinutes, Math.ceil(minsSinceSuccess) + SAFETY_MARGIN_MIN)
+        );
+      }
+    } catch (_e) {
+      // fall back to the configured lookback
+    }
 
-    const cutoffTime = new Date(Date.now() - lookbackMinutes * 60 * 1000);
+    const cutoffTime = new Date(Date.now() - effectiveLookbackMinutes * 60 * 1000);
     const filterDate = cutoffTime.toISOString().split('.')[0];
 
     const customersUrl = `${acumaticaUrl}/entity/Default/24.200.001/Customer?$filter=LastModifiedDateTime gt datetimeoffset'${filterDate}'&$expand=MainContact`;
 
-    console.log(`Fetching customers modified after ${filterDate} (last ${lookbackMinutes} minutes)`);
+    console.log(`Fetching customers modified after ${filterDate} (effective lookback ${effectiveLookbackMinutes} min; configured ${lookbackMinutes} min)`);
 
-    const customersResponse = await fetch(customersUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Cookie": sessionCookie,
-      },
-    });
-
-    if (!customersResponse.ok) {
-      const errorText = await customersResponse.text();
-      throw new Error(`Failed to fetch customers: ${customersResponse.status} ${customersResponse.statusText}. Details: ${errorText.substring(0, 500)}`);
-    }
-
-    const customersData = await customersResponse.json();
-    // Session is automatically managed, no need to manually logout
+    // Logs in (or reuses the cached session), re-logs in once on a 401, and
+    // throws AcumaticaAccessError when Acumatica is down / in maintenance.
+    const customersData = await sessionManager.getJson(credentials, customersUrl, 'customers');
 
     const customers = Array.isArray(customersData) ? customersData : [];
 
@@ -245,6 +252,9 @@ Deno.serve(async (req: Request) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
+    if (isAcumaticaAccessError(err)) {
+      return acumaticaAccessResponse(err, 'customer', corsHeaders);
+    }
     console.error('Error in customer incremental sync:', err);
     return new Response(
       JSON.stringify({ error: err.message }),

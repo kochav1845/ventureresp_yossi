@@ -1,4 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { AcumaticaAccessError, classifyAcumaticaFailure, summarizeAcumaticaBody } from './acumatica-errors.ts';
+
+export * from './acumatica-errors.ts';
 
 interface AcumaticaCredentials {
   acumaticaUrl: string;
@@ -8,8 +11,19 @@ interface AcumaticaCredentials {
   branch?: string;
 }
 
+// A cached session is handed out until expires_at; a run that picked it up just
+// before then can keep using it for at most the edge wall-clock limit (400s).
+// Only sessions past expiry + this grace are logged out, so no run is cut off.
+const RETIRE_GRACE_MS = 7 * 60 * 1000;
+// Older than this, Acumatica has timed the session out on its own.
+const RETIRE_WINDOW_MS = 90 * 60 * 1000;
+// Marker for "logged out": the cookie is wiped (it stays usable as an auth
+// ticket after logout, so it should not sit in the table anyway).
+const LOGGED_OUT = '';
+
 export class AcumaticaSessionManager {
   private supabase;
+  private cookie: string | null = null;
 
   constructor(supabaseUrl: string, supabaseKey: string) {
     this.supabase = createClient(supabaseUrl, supabaseKey);
@@ -39,20 +53,28 @@ export class AcumaticaSessionManager {
     const { acumaticaUrl, username, password, company, branch } = credentials;
 
     const loginUrl = `${acumaticaUrl}/entity/auth/login`;
-    const loginResponse = await fetch(loginUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: username,
-        password: password,
-        company: company || '',
-        branch: branch || '',
-      }),
-    });
+    let loginResponse: Response;
+    try {
+      loginResponse = await fetch(loginUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: username,
+          password: password,
+          company: company || '',
+          branch: branch || '',
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (err: any) {
+      throw new AcumaticaAccessError('unavailable', null, `Acumatica unreachable at login (${err?.message || err})`);
+    }
 
     if (!loginResponse.ok) {
       const errorText = await loginResponse.text();
-      throw new Error(`Authentication failed: ${errorText}`);
+      const access = classifyAcumaticaFailure(loginResponse.status, errorText, true);
+      if (access) throw access;
+      throw new Error(`Authentication failed: HTTP ${loginResponse.status}: ${summarizeAcumaticaBody(errorText)}`);
     }
 
     const setCookieHeader = loginResponse.headers.get('set-cookie');
@@ -75,6 +97,20 @@ export class AcumaticaSessionManager {
 
     if (regError) {
       console.error('Error registering session:', regError);
+    } else if (sessionId) {
+      // register_acumatica_session returns the EXISTING session when another run
+      // logged in at the same moment and registered first. Use that one and log
+      // ours out, instead of leaving an untracked session open on Acumatica.
+      const { data: winner } = await this.supabase
+        .from('acumatica_session_cache')
+        .select('session_cookie')
+        .eq('id', sessionId)
+        .maybeSingle();
+      if (winner?.session_cookie && winner.session_cookie !== sessionCookie) {
+        await this.logoutCookie(acumaticaUrl, sessionCookie);
+        console.log('Another run registered an Acumatica session first; using it and logged ours out');
+        return winner.session_cookie;
+      }
     }
 
     console.log('New session created and registered');
@@ -139,6 +175,115 @@ export class AcumaticaSessionManager {
     }
 
     return response;
+  }
+
+  /**
+   * GET an Acumatica REST resource and parse the JSON. Keeps one session for the
+   * life of this manager (one request), re-logs in once on a 401, and turns the
+   * "Acumatica is not there" answers (network error, 502/503/504/429, an HTML
+   * maintenance page instead of JSON) into an AcumaticaAccessError so the caller
+   * can skip the run instead of failing it. Other HTTP errors throw a plain Error.
+   */
+  async getJson(credentials: AcumaticaCredentials, url: string, what = 'Acumatica data'): Promise<any> {
+    const send = async (cookie: string) => {
+      try {
+        return await fetch(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Cookie': cookie },
+        });
+      } catch (err: any) {
+        throw new AcumaticaAccessError('unavailable', null, `Acumatica unreachable while fetching ${what} (${err?.message || err})`);
+      }
+    };
+
+    if (!this.cookie) this.cookie = await this.getSession(credentials);
+    let res = await send(this.cookie);
+    if (res.status === 401) {
+      await res.body?.cancel();
+      console.log(`Session rejected (401) while fetching ${what}; logging in again`);
+      await this.invalidateSession(this.cookie);
+      this.cookie = await this.getSession(credentials);
+      res = await send(this.cookie);
+    }
+
+    const text = await res.text();
+    if (!res.ok) {
+      const access = classifyAcumaticaFailure(res.status, text);
+      if (access) throw access;
+      throw new Error(`Failed to fetch ${what}: ${res.status} ${res.statusText}. Details: ${summarizeAcumaticaBody(text)}`);
+    }
+    if (text.trim().startsWith('<')) {
+      throw new AcumaticaAccessError('unavailable', res.status,
+        `Acumatica returned an HTML page instead of JSON for ${what} (${summarizeAcumaticaBody(text)})`);
+    }
+    try {
+      return JSON.parse(text);
+    } catch (err: any) {
+      throw new Error(`Failed to parse ${what}: ${err.message} (response may be incomplete)`);
+    }
+  }
+
+  /** POST /entity/auth/logout. true = Acumatica answered (session is gone), false = could not reach it. */
+  private async logoutCookie(acumaticaUrl: string, cookie: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${acumaticaUrl}/entity/auth/logout`, {
+        method: 'POST',
+        headers: { 'Cookie': cookie },
+        signal: AbortSignal.timeout(10_000),
+      });
+      await res.body?.cancel();
+      // 204 = logged out; 401 = already gone. 5xx / HTML = Acumatica down, try later.
+      return res.ok || res.status === 401;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Log out cached sessions that have expired (past a grace period, so nobody is
+   * still using them) and wipe their cookies. Acumatica limits concurrent API
+   * logins; before this, every 25-minute cache entry was simply abandoned
+   * (~48 sessions/day never logged out). Safe to call from any run; best-effort.
+   */
+  async retireExpiredSessions(credentials: AcumaticaCredentials): Promise<{ loggedOut: number; failed: number }> {
+    const now = Date.now();
+    const result = { loggedOut: 0, failed: 0 };
+    try {
+      const { data: rows, error } = await this.supabase
+        .from('acumatica_session_cache')
+        .select('id, session_cookie')
+        .lt('expires_at', new Date(now - RETIRE_GRACE_MS).toISOString())
+        .gt('expires_at', new Date(now - RETIRE_WINDOW_MS).toISOString())
+        .neq('session_cookie', LOGGED_OUT)
+        .limit(10);
+      if (error) throw error;
+
+      for (const row of rows || []) {
+        if (await this.logoutCookie(credentials.acumaticaUrl, row.session_cookie)) {
+          result.loggedOut++;
+          await this.supabase
+            .from('acumatica_session_cache')
+            .update({ is_valid: false, session_cookie: LOGGED_OUT })
+            .eq('id', row.id);
+        } else {
+          result.failed++;
+        }
+      }
+
+      // Sessions that aged out unretired (before this existed, or while Acumatica
+      // was down) are dead on Acumatica's side; just stop storing their cookies.
+      await this.supabase
+        .from('acumatica_session_cache')
+        .update({ is_valid: false, session_cookie: LOGGED_OUT })
+        .lt('expires_at', new Date(now - RETIRE_WINDOW_MS).toISOString())
+        .neq('session_cookie', LOGGED_OUT);
+    } catch (err: any) {
+      console.warn('[acumatica-session] Could not retire expired sessions:', err?.message || err);
+    }
+    if (result.loggedOut || result.failed) {
+      console.log(`[acumatica-session] Retired expired sessions: ${result.loggedOut} logged out${result.failed ? `, ${result.failed} to retry (Acumatica unreachable)` : ''}`);
+    }
+    return result;
   }
 
   async logout(credentials: AcumaticaCredentials, sessionCookie: string) {
