@@ -6,6 +6,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+// Work that deleting the user would silently destroy or orphan, through
+// ON DELETE CASCADE / SET NULL on user_profiles. invoice_assignments is the
+// sharp one: it is what puts invoices on tickets, and it cascades, so deleting a
+// collector used to strip their invoices off every ticket without a word.
+const ASSIGNED_WORK: Array<{ table: string; column: string; label: string }> = [
+  { table: 'invoice_assignments', column: 'assigned_collector_id', label: 'invoice(s) on tickets' },
+  { table: 'collection_tickets', column: 'assigned_collector_id', label: 'ticket(s) assigned to them' },
+  { table: 'ticket_collectors', column: 'collector_id', label: 'ticket(s) shared with them' },
+  { table: 'collector_customer_assignments', column: 'assigned_collector_id', label: 'customer(s) assigned to them' },
+  { table: 'collector_assignments', column: 'collector_id', label: 'collector assignment(s)' },
+  { table: 'invoice_collector_assignments', column: 'collector_id', label: 'invoice collector assignment(s)' },
+  { table: 'collector_email_schedules', column: 'collector_id', label: 'scheduled collector email(s)' },
+  { table: 'auto_ticket_rules', column: 'assigned_collector_id', label: 'auto-ticket rule(s) assigning to them' },
+  { table: 'auto_ticket_rules', column: 'created_by', label: 'auto-ticket rule(s) they created' },
+];
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -15,23 +34,14 @@ Deno.serve(async (req: Request) => {
     console.log('Force delete user request received');
 
     const { email } = await req.json();
-    console.log('Email to delete:', email);
-
     if (!email) {
-      console.error('No email provided');
-      return new Response(
-        JSON.stringify({ error: 'Email is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return json({ error: 'Email is required' }, 400);
     }
+    const target = String(email).trim().toLowerCase();
+    console.log('Email to delete:', target);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-
-    console.log('Environment check:', {
-      hasUrl: !!supabaseUrl,
-      hasKey: !!serviceRoleKey
-    });
 
     const supabaseAdmin = createClient(
       supabaseUrl ?? '',
@@ -48,106 +58,125 @@ Deno.serve(async (req: Request) => {
     const authHeader = req.headers.get('Authorization');
     const token = authHeader?.replace('Bearer ', '');
     if (!token) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return json({ error: 'Unauthorized' }, 401);
     }
     const anonClient = createClient(supabaseUrl ?? '', Deno.env.get('SUPABASE_ANON_KEY') ?? '');
     const { data: { user: caller } } = await anonClient.auth.getUser(token);
     if (!caller) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return json({ error: 'Unauthorized' }, 401);
     }
     const { data: callerProfile } = await supabaseAdmin
-      .from('user_profiles').select('role').eq('id', caller.id).maybeSingle();
+      .from('user_profiles').select('role, organization_id').eq('id', caller.id).maybeSingle();
     if (!callerProfile || callerProfile.role !== 'admin') {
-      return new Response(JSON.stringify({ error: 'Forbidden: admin only' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return json({ error: 'Forbidden: admin only' }, 403);
     }
-    // Don't let an admin delete themselves via this endpoint.
-    if (caller.email === email) {
-      return new Response(JSON.stringify({ error: 'You cannot delete your own account here' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
+    // Admin of one organization only. Without this, the demo org's admin could
+    // delete Venture's users.
+    const { data: superRow } = await supabaseAdmin
+      .from('super_admins').select('user_id').eq('user_id', caller.id).maybeSingle();
+    const isSuper = !!superRow;
+    const sameOrg = (orgId: string | null) => isSuper || orgId === callerProfile.organization_id;
 
-    console.log('Listing all users to find target...');
-    const { data: users, error: listError } = await supabaseAdmin.auth.admin.listUsers();
-    console.log('listUsers response:', { hasData: !!users, error: listError });
-
-    if (listError) {
-      console.error('Error listing users:', listError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to list users', details: listError }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // ── Find the target ──
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('user_profiles').select('id, email, full_name, organization_id').eq('email', target).maybeSingle();
+    if (profileError) {
+      console.error('Error looking up profile:', profileError);
+      return json({ error: 'Failed to look up user', details: profileError.message }, 500);
     }
 
-    if (!users || !users.users) {
-      console.error('No users data returned');
-      return new Response(
-        JSON.stringify({ error: 'No users data returned from auth system' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    let userId: string;
+    if (profile) {
+      if (!sameOrg(profile.organization_id)) {
+        return json({ error: 'That user belongs to another organization' }, 403);
+      }
+      userId = profile.id;
+    } else {
+      // No profile: a stuck sign-up that the Force Delete page clears so the
+      // email can register again. listUsers returns 50 per page; walk them all.
+      let found: { id: string } | undefined;
+      for (let page = 1; !found; page++) {
+        const { data, error: listError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
+        if (listError) {
+          console.error('Error listing users:', listError);
+          return json({ error: 'Failed to list users', details: listError.message }, 500);
+        }
+        found = data.users.find(u => u.email?.toLowerCase() === target);
+        if (data.users.length < 1000) break;
+      }
+      if (!found) {
+        return json({ error: `No account found for ${target}` }, 404);
+      }
+      // Its only link to an organization is a pending sign-up request.
+      const { data: pending } = await supabaseAdmin
+        .from('pending_users').select('organization_id').eq('email', target);
+      if ((pending ?? []).some(p => p.organization_id && !sameOrg(p.organization_id))) {
+        return json({ error: 'That account belongs to another organization' }, 403);
+      }
+      userId = found.id;
     }
 
-    console.log(`Found ${users.users.length} total users, searching for ${email}`);
-    const user = users.users.find(u => u.email === email);
-    console.log('User found:', !!user);
+    if (userId === caller.id) {
+      return json({ error: 'You cannot delete your own account here' }, 400);
+    }
+    const who = profile?.full_name || target;
 
-    if (!user) {
-      console.log('User not found in auth system');
-      return new Response(
-        JSON.stringify({ message: 'User not found in auth system', email }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // ── Refuse while they still hold work a delete would destroy ──
+    if (profile) {
+      const held: string[] = [];
+      for (const w of ASSIGNED_WORK) {
+        const { count, error: countError } = await supabaseAdmin
+          .from(w.table).select('*', { count: 'exact', head: true }).eq(w.column, userId);
+        if (countError) {
+          console.error(`Error counting ${w.table}.${w.column}:`, countError);
+          return json({ error: 'Could not check what this user is assigned to, so nothing was deleted', details: countError.message }, 500);
+        }
+        if (count) held.push(`${count} ${w.label}`);
+      }
+      if (held.length) {
+        return json({
+          error: `${who} can't be deleted yet: they still have ${held.join(', ')}. Deleting them would remove that work. Reassign it first, then delete.`,
+        }, 409);
+      }
     }
 
-    console.log('Found user with ID:', user.id);
-
-    // Delete from user_profiles first
-    const { error: profileDeleteError } = await supabaseAdmin
-      .from('user_profiles')
-      .delete()
-      .eq('id', user.id);
-
-    if (profileDeleteError) {
-      console.error('Error deleting profile:', profileDeleteError);
+    // ── Delete ──
+    // One delete, on auth.users. user_profiles.id cascades from it, so the login
+    // and the profile go together or not at all. (Deleting the profile first, as
+    // this used to, could leave a login with no profile if the auth delete failed.)
+    console.log('Deleting user', userId);
+    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (deleteError) {
+      console.error('Error deleting user:', deleteError);
+      // History tables (notes, memos, status changes, edits...) reference the user
+      // with NO ACTION, so Postgres refuses; GoTrue reports it as a database error.
+      if (/database error/i.test(deleteError.message ?? '')) {
+        return json({
+          error: `${who} can't be deleted: their name is on records in the system (notes, memos, status changes or edits) that must keep it.`,
+          details: deleteError.message,
+        }, 409);
+      }
+      return json({ error: 'Failed to delete user', details: deleteError.message }, 500);
     }
 
-    // Delete from pending_users if exists
-    const { error: pendingDeleteError } = await supabaseAdmin
-      .from('pending_users')
-      .delete()
-      .eq('email', email);
-
+    // Clear their sign-up request so the email can register again.
+    let pendingDelete = supabaseAdmin.from('pending_users').delete().eq('email', target);
+    if (!isSuper) {
+      pendingDelete = pendingDelete.or(`organization_id.is.null,organization_id.eq.${callerProfile.organization_id}`);
+    }
+    const { error: pendingDeleteError } = await pendingDelete;
     if (pendingDeleteError) {
       console.error('Error deleting pending user:', pendingDeleteError);
     }
 
-    // Delete the auth user
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
-
-    if (deleteError) {
-      console.error('Error deleting user:', deleteError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to delete user', details: deleteError }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: `User ${email} has been completely deleted`,
-        userId: user.id
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return json({
+      success: true,
+      message: `User ${target} has been completely deleted`,
+      userId,
+    });
 
   } catch (error) {
     console.error('Error:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return json({ error: error.message }, 500);
   }
 });

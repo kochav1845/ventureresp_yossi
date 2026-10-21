@@ -30,8 +30,15 @@ export default function ForceDeleteUser({ onBack }: ForceDeleteUserProps) {
         body: { email: email.trim() },
       });
 
+      // A non-2xx from the function arrives as FunctionsHttpError, whose useful
+      // message is in the response body rather than invokeError.message.
       if (invokeError) {
-        throw invokeError;
+        let detail = invokeError.message;
+        try {
+          const body = await (invokeError as any).context?.json?.();
+          if (body?.error) detail = body.error;
+        } catch { /* keep the generic message */ }
+        throw new Error(detail);
       }
 
       if (data.error) {

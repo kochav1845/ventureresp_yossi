@@ -269,7 +269,16 @@ export default function UserManagementSidebar({ onClose, isOpen }: UserManagemen
         body: { email: selectedUser.email }
       });
 
-      if (error) throw error;
+      // A non-2xx from the function arrives as FunctionsHttpError, whose useful
+      // message ("still has 12 invoices on tickets...") is in the response body.
+      if (error) {
+        let detail = error.message;
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.error) detail = body.error;
+        } catch { /* keep the generic message */ }
+        throw new Error(detail);
+      }
       if (data?.error) throw new Error(data.error);
 
       setShowDeleteConfirm(false);

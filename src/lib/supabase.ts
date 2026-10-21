@@ -42,7 +42,13 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     },
     fetch: (url, options = {}) => {
       const headers = new Headers(options.headers);
-      if (currentOrgId) {
+      // x-org-id is for PostgREST (get_user_org_id reads it). Edge functions never
+      // read it and none list it in Access-Control-Allow-Headers, so on a
+      // functions.invoke() the browser's CORS preflight rejected the request
+      // outright: "Failed to send a request to the Edge Function" (Delete User,
+      // Create User, temp passwords, sync buttons...).
+      const href = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
+      if (currentOrgId && !href.includes('/functions/v1/')) {
         headers.set('x-org-id', currentOrgId);
       }
       return fetch(url, { ...options, headers });
