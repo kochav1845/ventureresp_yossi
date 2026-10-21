@@ -40,6 +40,10 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   impersonateUser: (userId: string) => Promise<void>;
   stopImpersonation: () => Promise<void>;
+  // Set when a session was signed out because the profile is not approved, so
+  // the sign-in screen can say why instead of looking like a failed password.
+  accountStatusMessage: string | null;
+  clearAccountStatusMessage: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -50,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [originalProfile, setOriginalProfile] = useState<UserProfile | null>(null);
+  const [accountStatusMessage, setAccountStatusMessage] = useState<string | null>(null);
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
   // Which user id we've already loaded a profile for. Lets the auth-state handler
@@ -242,6 +247,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
 
       if (error) throw error;
+
+      // The approval gate, client side. The server-side one is in
+      // get_user_org_id(), which returns NULL for an unapproved profile so the
+      // session reads nothing -- but without this the user would be left
+      // staring at an app full of empty tables with no explanation.
+      if (data && data.account_status && data.account_status !== 'approved') {
+        loadedProfileForUser.current = null;
+        await signOutHere();
+        setUser(null);
+        setProfile(null);
+        setAccountStatusMessage(
+          data.account_status === 'declined'
+            ? 'Your account request was declined. Contact an administrator.'
+            : 'Your account is awaiting administrator approval.'
+        );
+        return;
+      }
+
       setProfile(data);
       loadedProfileForUser.current = userId;
     } catch (error: any) {
@@ -384,8 +407,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signUp,
     signOut,
     impersonateUser,
-    stopImpersonation
-  }), [user, profile, loading, isImpersonating, originalProfile]);
+    stopImpersonation,
+    accountStatusMessage,
+    clearAccountStatusMessage: () => setAccountStatusMessage(null)
+  }), [user, profile, loading, isImpersonating, originalProfile, accountStatusMessage]);
 
   return (
     <AuthContext.Provider value={contextValue}>

@@ -143,28 +143,47 @@ export default function AcumaticaPaymentFetch({ onBack }: AcumaticaPaymentFetchP
         throw new Error('Not authenticated');
       }
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/payment-invoice-links-sync`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
+      // The function works through the payments in time-boxed batches and
+      // returns a cursor; one call covers only part of the book.
+      let skip = 0;
+      let links = 0;
+      let payments = 0;
+
+      for (let pass = 0; pass < 200; pass++) {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/payment-invoice-links-sync`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ skip }),
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          throw new Error(errorData.error || `HTTP ${response.status}: Failed to sync`);
         }
-      );
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `HTTP ${response.status}: Failed to sync`);
-      }
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || 'Sync failed');
+        }
 
-      const result = await response.json();
+        links += result.total_links_created || 0;
+        payments += result.total_payments_processed || 0;
+        skip = result.next_skip ?? skip;
 
-      if (result.success) {
-        addLog(`✨ Successfully synced! Created ${result.total_links_created} invoice links from ${result.total_payments_processed} payments`);
-      } else {
-        throw new Error(result.error || 'Sync failed');
+        if (result.complete) {
+          addLog(`✨ Successfully synced! Created ${links} invoice links from ${payments} payments`);
+          break;
+        }
+        addLog(`… ${payments} of ${result.total_payments ?? '?'} payments, ${links} links so far`);
+        if (pass === 199) {
+          addLog(`⚠️ Stopped after 200 batches at payment ${skip}. Click again to continue.`);
+        }
       }
 
     } catch (err: any) {

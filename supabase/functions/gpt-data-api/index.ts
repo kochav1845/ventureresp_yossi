@@ -1039,12 +1039,13 @@ Deno.serve(async (req: Request) => {
 
       const { data: profile } = await supabase
         .from("user_profiles")
-        .select("role")
+        .select("role, account_status")
         .eq("id", user.id)
         .maybeSingle();
 
       if (
         !profile ||
+        (profile as any).account_status !== "approved" ||
         !["admin", "developer"].includes(profile.role)
       ) {
         return errorResponse(

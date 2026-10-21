@@ -71,8 +71,8 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Your sign-in has ended (you were signed out in another tab or on another device). Sign out, sign back in, and try again.' }, 401);
     }
     const { data: callerProfile } = await supabaseAdmin
-      .from('user_profiles').select('role, organization_id').eq('id', caller.id).maybeSingle();
-    if (!callerProfile || callerProfile.role !== 'admin') {
+      .from('user_profiles').select('role, organization_id, account_status').eq('id', caller.id).maybeSingle();
+    if (!callerProfile || callerProfile.account_status !== 'approved' || callerProfile.role !== 'admin') {
       return json({ error: 'Forbidden: admin only' }, 403);
     }
     // Admin of one organization only. Without this, the demo org's admin could

@@ -36,8 +36,9 @@ Deno.serve(async (req: Request) => {
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     const { data: callerProfile } = await supabaseAdmin
-      .from('user_profiles').select('role').eq('id', caller.id).maybeSingle();
-    if (!callerProfile || !['admin', 'manager'].includes(callerProfile.role)) {
+      .from('user_profiles').select('role, account_status').eq('id', caller.id).maybeSingle();
+    if (!callerProfile || callerProfile.account_status !== 'approved'
+        || !['admin', 'manager'].includes(callerProfile.role)) {
       return new Response(JSON.stringify({ success: false, error: 'Forbidden: admin only' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }

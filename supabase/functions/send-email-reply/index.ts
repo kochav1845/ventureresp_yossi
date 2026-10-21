@@ -38,9 +38,15 @@ Deno.serve(async (req: Request) => {
       if (!caller) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const { data: callerProfile } = await supabase
-        .from("user_profiles").select("role").eq("id", caller.id).maybeSingle();
-      if (!callerProfile) return new Response(JSON.stringify({ success: false, error: "Forbidden" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        .from("user_profiles").select("role, account_status").eq("id", caller.id).maybeSingle();
+      // Was `if (!callerProfile)`, i.e. ANY profile could send mail from the
+      // company domain. Staff role and an approved account are both required.
+      if (!callerProfile
+          || callerProfile.account_status !== "approved"
+          || !["admin", "manager", "collector"].includes(callerProfile.role)) {
+        return new Response(JSON.stringify({ success: false, error: "Forbidden" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
 
     const { to, subject, body, html, inbound_email_id, department }: SendEmailRequest = await req.json();

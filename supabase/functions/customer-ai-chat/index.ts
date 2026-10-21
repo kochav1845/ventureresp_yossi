@@ -503,7 +503,10 @@ Deno.serve(async (req: Request) => {
 
     // Caller's org — used to prevent reading a customer from another tenant (IDOR).
     const { data: callerProfile } = await supabase
-      .from("user_profiles").select("organization_id").eq("id", user.id).maybeSingle();
+      .from("user_profiles").select("organization_id, account_status").eq("id", user.id).maybeSingle();
+    if (!callerProfile || (callerProfile as any).account_status !== "approved") {
+      return errorResponse("Account is not approved", 403);
+    }
     const callerOrg = callerProfile?.organization_id ?? null;
 
     const body = await req.json();

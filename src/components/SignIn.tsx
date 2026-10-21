@@ -124,7 +124,7 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false);
   const [accountStatus, setAccountStatus] = useState<'pending' | 'rejected' | 'approved' | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, accountStatusMessage, clearAccountStatusMessage } = useAuth();
   const { org } = useOrg();
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -222,6 +222,7 @@ export default function SignIn() {
           }
         }
 
+        clearAccountStatusMessage();
         const { data, error } = await signIn(email, password);
 
         if (error) {
@@ -387,6 +388,12 @@ export default function SignIn() {
         </p>
 
         {error && <ErrorMessage error={error} />}
+
+        {!error && accountStatusMessage && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <p className="text-amber-800 text-sm">{accountStatusMessage}</p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {isSignUp && (

@@ -141,25 +141,46 @@ export default function SyncStatusDashboard({ onBack }: SyncStatusDashboardProps
     setMessage('Extracting payment-to-invoice links from payment history...');
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/payment-invoice-links-sync`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({}),
+      // Was sending the anon key as the bearer, which the function now rejects
+      // (admin only). Send the signed-in user's token.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not signed in');
+
+      // The function works through the payments in time-boxed batches and
+      // returns a cursor; one call covers only part of the book.
+      let skip = 0;
+      let links = 0;
+      let payments = 0;
+      for (let pass = 0; pass < 200; pass++) {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/payment-invoice-links-sync`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ skip }),
+          }
+        );
+
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+          setMessage(`❌ Sync failed: ${result.error || 'Unknown error'}`);
+          return;
         }
-      );
 
-      const result = await response.json();
+        links += result.total_links_created || 0;
+        payments += result.total_payments_processed || 0;
+        skip = result.next_skip ?? skip;
 
-      if (response.ok && result.success) {
-        setMessage(`✅ Payment applications synced! ${result.total_links_created} invoice applications extracted from ${result.total_payments_processed} payments.`);
-      } else {
-        setMessage(`❌ Sync failed: ${result.error || 'Unknown error'}`);
+        if (result.complete) {
+          setMessage(`✅ Payment applications synced! ${links} invoice applications extracted from ${payments} payments.`);
+          return;
+        }
+        setMessage(`Extracting payment-to-invoice links... ${payments} of ${result.total_payments ?? '?'} payments, ${links} links`);
       }
+      setMessage(`⚠️ Stopped after 200 batches at payment ${skip}. Click again to continue.`);
     } catch (err: any) {
       setMessage(`❌ Error: ${err.message}`);
     } finally {

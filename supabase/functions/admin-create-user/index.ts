@@ -82,11 +82,11 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerProfile } = await supabaseAdmin
       .from('user_profiles')
-      .select('role, organization_id, full_name')
+      .select('role, organization_id, full_name, account_status')
       .eq('id', caller.id)
       .maybeSingle();
 
-    if (!callerProfile || callerProfile.role !== 'admin') {
+    if (!callerProfile || callerProfile.account_status !== 'approved' || callerProfile.role !== 'admin') {
       return json({ error: 'Forbidden: admin only' }, 403);
     }
     if (!callerProfile.organization_id) {

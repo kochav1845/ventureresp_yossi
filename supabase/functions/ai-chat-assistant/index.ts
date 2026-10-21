@@ -1085,9 +1085,16 @@ Deno.serve(async (req: Request) => {
     // and pass it explicitly to any tool that writes rows.
     const { data: callerProfile } = await supabase
       .from("user_profiles")
-      .select("organization_id")
+      .select("organization_id, account_status, role")
       .eq("id", user.id)
       .maybeSingle();
+
+    // A valid JWT was the only requirement here, so a self-registered account
+    // could ask this assistant anything about the live AR book.
+    if (!callerProfile || (callerProfile as any).account_status !== "approved") {
+      return errorResponse("Account is not approved", 403);
+    }
+
     const toolCtx = { userId: user.id, orgId: (callerProfile as any)?.organization_id ?? null };
 
     const body = await req.json();
