@@ -26,8 +26,9 @@ import BatchActionToolbar from './MyAssignments/BatchActionToolbar';
 import TicketBatchActionToolbar from './MyAssignments/TicketBatchActionToolbar';
 import BatchNoteModal from './MyAssignments/BatchNoteModal';
 import PromiseDateModal from './MyAssignments/PromiseDateModal';
-import { sortTicketsByPriority } from './MyAssignments/utils';
+import { sortTicketsByPriority, sortTickets, TICKET_SORT_DEFAULT_DIR } from './MyAssignments/utils';
 import TicketFilterSidebar, { TicketAdvancedFilters, emptyFilters } from './MyAssignments/TicketFilterSidebar';
+import TicketSortControl, { TicketSort } from './MyAssignments/TicketSortControl';
 import InvoiceFilterPanel from './InvoiceFilterPanel';
 import { currentOrgId } from '../lib/manualRecords';
 import DueDateReminders from './DueDateReminders';
@@ -63,6 +64,7 @@ const TICKETS_HELP: HelpSection[] = [
     items: [
       { label: 'Create', body: 'Build a new ticket from a customer’s open invoices.' },
       { label: 'Tickets', body: 'Your list of tickets — the number is how many match the current filters.' },
+      { label: 'Sort by', body: 'Orders whatever the filters leave: by priority, Total Outstanding (the open-invoice total on each ticket), date created, or date modified (the last time anything changed — edits, invoices added, notes, memos). The button beside it flips the order. Your choice is remembered on this computer.' },
       { label: 'Calendar', body: 'A month view of your promises (green), ticket due dates (rose/red when overdue), reminders (amber), and scheduled emails. Click an item to open its ticket.' },
     ],
   },
@@ -227,6 +229,20 @@ export default function UnifiedTicketingSystem({
   const [advancedFilters, setAdvancedFilters] = useState<TicketAdvancedFilters>(emptyFilters);
   const [showFilterSidebar, setShowFilterSidebar] = useState(true);
 
+  // Sort, applied after filtering. Remembered per browser; storage can throw in private windows.
+  const [ticketSort, setTicketSort] = useState<TicketSort>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('tickets_sort') || 'null');
+      if (saved && saved.field in TICKET_SORT_DEFAULT_DIR && (saved.dir === 'asc' || saved.dir === 'desc')) {
+        return saved;
+      }
+    } catch { /* fall through to the default */ }
+    return { field: 'priority', dir: 'asc' };
+  });
+  useEffect(() => {
+    try { localStorage.setItem('tickets_sort', JSON.stringify(ticketSort)); } catch { /* not persisted */ }
+  }, [ticketSort]);
+
   // Separate closed tickets from active tickets
   const activeTickets = tickets.filter(t => t.ticket_status !== 'closed');
   const closedTickets = tickets.filter(t => t.ticket_status === 'closed');
@@ -390,14 +406,18 @@ export default function UnifiedTicketingSystem({
    * handleBulkTicketStatusChange and handleBulkDeleteTickets -- i.e. a bulk
    * delete could hit tickets that were never on screen. The size comparison was
    * wrong for the same reason, so "Deselect All" could not clear either.
+   * The chosen sort is applied here, after filtering, so it orders exactly the
+   * tickets on screen.
    */
-  const displayTickets = useMemo(() => (
+  const displayTickets = useMemo(() => sortTickets(
     showOnlyAssigned
       ? (activeTab === 'overdue' ? overdueTickets : filteredTickets)
       : activeTab === 'overdue' ? overdueTickets
       : activeTab === 'closed' ? filteredClosedTickets
-      : filteredTickets
-  ), [filteredTickets, filteredClosedTickets, overdueTickets, activeTab, showOnlyAssigned]);
+      : filteredTickets,
+    ticketSort.field,
+    ticketSort.dir
+  ), [filteredTickets, filteredClosedTickets, overdueTickets, activeTab, showOnlyAssigned, ticketSort]);
 
   // Compute total balance for display
   const displayedTicketsBalance = useMemo(
@@ -596,6 +616,7 @@ export default function UnifiedTicketingSystem({
         ticket.promise_date = e.promise_date;
         ticket.promise_by_user_name = e.promise_by_user_name;
         ticket.ticket_created_at = e.ticket_created_at;
+        ticket.ticket_updated_at = e.ticket_updated_at;
         ticket.ticket_closed_at = e.ticket_resolved_at;
 
         if (e.last_status_change_status) {
@@ -2411,6 +2432,9 @@ export default function UnifiedTicketingSystem({
                     </div>
                   ) : (
                     <>
+                      <div className="flex justify-end">
+                        <TicketSortControl sort={ticketSort} onChange={setTicketSort} />
+                      </div>
                       <TicketBatchActionToolbar
                         selectedCount={selectedTickets.size}
                         totalCount={displayTickets.length}

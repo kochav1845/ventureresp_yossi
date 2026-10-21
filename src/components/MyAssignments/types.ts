@@ -41,6 +41,7 @@ export interface TicketGroup {
   ticket_type: string;
   ticket_due_date?: string | null;
   ticket_created_at?: string | null;
+  ticket_updated_at?: string | null;
   ticket_closed_at?: string | null;
   assigned_collector_id?: string | null;
   assigned_collector_name?: string | null;

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Ticket, ExternalLink, Clock, AlertTriangle, Calendar, MessageSquare, Paperclip, Bell, Link2, DollarSign, FileText, CalendarDays, History, ChevronDown, ChevronUp, Plus, X, Trash2, CheckSquare as CheckIcon, Square as SquareIcon, CheckCircle, Banknote, User, Users, Image, File, ArrowUp, ArrowDown, Mail, Send } from 'lucide-react';
 import { formatDistanceToNow, format as dateFnsFormat } from 'date-fns';
 import { TicketGroup, Assignment, TicketStatusOption } from './types';
-import { getPriorityColor, getStatusColor, calculateTotalBalance, sortInvoices } from './utils';
+import { getPriorityColor, getStatusColor, calculateTotalBalance, isOpenInvoice, sortInvoices } from './utils';
 import type { InvoiceSortField, SortDirection } from './utils';
 import { getAcumaticaCustomerUrl, getAcumaticaInvoiceUrl } from '../../lib/acumaticaLinks';
 import { supabase } from '../../lib/supabase';
@@ -144,7 +144,7 @@ export default function TicketCard({
     }
   };
 
-  const rawOpenInvoices = ticket.invoices.filter(inv => inv.balance > 0 && inv.invoice_status !== 'Closed');
+  const rawOpenInvoices = ticket.invoices.filter(isOpenInvoice);
   const openInvoices = invoiceSortField ? sortInvoices(rawOpenInvoices, invoiceSortField, invoiceSortDir) : rawOpenInvoices;
   const paidInvoices = ticket.invoices.filter(inv => inv.balance <= 0 || inv.invoice_status === 'Closed');
 

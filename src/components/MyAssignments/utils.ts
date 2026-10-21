@@ -1,4 +1,4 @@
-import { Assignment } from './types';
+import { Assignment, TicketGroup } from './types';
 import { isDatePast } from '../../lib/dateUtils';
 
 export const getPriorityColor = (priority: string) => {
@@ -51,6 +51,14 @@ export const calculateTotalBalance = (invoices: Assignment[]) => {
   return invoices.reduce((sum, inv) => sum + (inv.balance || 0), 0);
 };
 
+/** An invoice still owed: what the ticket card lists under "Invoices (N open)". */
+export const isOpenInvoice = (inv: Assignment) => inv.balance > 0 && inv.invoice_status !== 'Closed';
+
+/** The ticket card's "Total Outstanding" footer: open invoices only, so credit memos and closed leftovers don't count. */
+export const calculateOpenBalance = (invoices: Assignment[]) => {
+  return calculateTotalBalance(invoices.filter(isOpenInvoice));
+};
+
 export const isPromiseBroken = (invoice: Assignment) => {
   if (invoice.color_status !== 'green' || !invoice.promise_date) {
     return false;
@@ -77,6 +85,66 @@ export const sortTicketsByPriority = <T extends { ticket_priority: string }>(tic
 
 export type InvoiceSortField = 'invoice_reference_number' | 'invoice_status' | 'date' | 'due_date' | 'collection_date' | 'amount' | 'balance' | 'color_status' | 'days';
 export type SortDirection = 'asc' | 'desc';
+
+export type TicketSortField = 'priority' | 'outstanding' | 'created' | 'modified';
+
+/** What each sort means when first picked: urgent, biggest, newest first. */
+export const TICKET_SORT_DEFAULT_DIR: Record<TicketSortField, SortDirection> = {
+  priority: 'asc',
+  outstanding: 'desc',
+  created: 'desc',
+  modified: 'desc',
+};
+
+const toTime = (value?: string | null) => {
+  if (!value) return null;
+  const t = Date.parse(value);
+  return Number.isNaN(t) ? null : t;
+};
+
+/**
+ * When anything on the ticket last changed. collection_tickets.updated_at alone
+ * is not enough: it only moves when the ticket row is edited, so adding invoices,
+ * notes or memos leaves it behind (live TKT000004: 8 invoices added at 18:03,
+ * updated_at still 17:16).
+ */
+export const getTicketLastModified = (ticket: TicketGroup): number | null => {
+  const times = [
+    ticket.ticket_updated_at,
+    ticket.last_activity?.created_at,
+    ticket.last_note?.created_at,
+    ticket.last_memo?.created_at,
+    ticket.ticket_created_at,
+  ].map(toTime).filter((t): t is number => t !== null);
+  return times.length ? Math.max(...times) : null;
+};
+
+const ticketSortKey = (ticket: TicketGroup, field: TicketSortField): number | null => {
+  switch (field) {
+    case 'priority': return getPriorityOrder(ticket.ticket_priority);
+    case 'outstanding': return calculateOpenBalance(ticket.invoices);
+    case 'created': return toTime(ticket.ticket_created_at);
+    case 'modified': return getTicketLastModified(ticket);
+  }
+};
+
+/**
+ * Sorts an already-filtered ticket list. The sort is stable and the list arrives
+ * in priority order, so ties keep that order. Tickets with no value (dates still
+ * loading from enrichment) go last in either direction.
+ */
+export const sortTickets = (tickets: TicketGroup[], field: TicketSortField, dir: SortDirection): TicketGroup[] => {
+  const sign = dir === 'asc' ? 1 : -1;
+  return tickets
+    .map(ticket => ({ ticket, key: ticketSortKey(ticket, field) }))
+    .sort((a, b) => {
+      if (a.key === null || b.key === null) {
+        return a.key === b.key ? 0 : a.key === null ? 1 : -1;
+      }
+      return (a.key - b.key) * sign;
+    })
+    .map(({ ticket }) => ticket);
+};
 
 export const sortInvoices = (invoices: Assignment[], field: InvoiceSortField, direction: SortDirection): Assignment[] => {
   return [...invoices].sort((a, b) => {
