@@ -55,6 +55,18 @@ export default function UserManagementSidebar({ onClose, isOpen }: UserManagemen
   const [impersonating, setImpersonating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // Set when the user still holds work: what they hold and who may take it over.
+  const [deleteHandover, setDeleteHandover] = useState<{
+    held: string[];
+    candidates: Array<{ id: string; name: string; email: string }>;
+  } | null>(null);
+  const [handoverTo, setHandoverTo] = useState('');
+
+  const closeDeleteConfirm = () => {
+    setShowDeleteConfirm(false);
+    setDeleteHandover(null);
+    setHandoverTo('');
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -266,22 +278,27 @@ export default function UserManagementSidebar({ onClose, isOpen }: UserManagemen
     setDeleting(true);
     try {
       const { data, error } = await supabase.functions.invoke('force-delete-user', {
-        body: { email: selectedUser.email }
+        body: { email: selectedUser.email, reassign_to: handoverTo || undefined }
       });
 
       // A non-2xx from the function arrives as FunctionsHttpError, whose useful
-      // message ("still has 12 invoices on tickets...") is in the response body.
+      // message ("still has 12 assigned invoices...") is in the response body.
       if (error) {
-        let detail = error.message;
+        let body: any = null;
         try {
-          const body = await (error as any).context?.json?.();
-          if (body?.error) detail = body.error;
+          body = await (error as any).context?.json?.();
         } catch { /* keep the generic message */ }
-        throw new Error(detail);
+        // They still hold work: ask who takes it over instead of failing.
+        if (body?.needs_reassign) {
+          setDeleteHandover({ held: body.held || [], candidates: body.candidates || [] });
+          return;
+        }
+        throw new Error(body?.error || error.message);
       }
       if (data?.error) throw new Error(data.error);
 
-      setShowDeleteConfirm(false);
+      if (data?.reassigned_to) alert(data.message);
+      closeDeleteConfirm();
       setSelectedUser(null);
       await loadUsers();
     } catch (error: any) {
@@ -618,9 +635,43 @@ export default function UserManagementSidebar({ onClose, isOpen }: UserManagemen
                 This will remove the user from Supabase Auth, their profile, pending records, and all associated data. This action cannot be undone.
               </p>
             </div>
+            {deleteHandover && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <p className="text-sm font-semibold text-amber-900">They still have work assigned:</p>
+                <ul className="text-xs text-amber-800 mt-1 ml-4 list-disc">
+                  {deleteHandover.held.map(item => <li key={item}>{item}</li>)}
+                </ul>
+                <p className="text-xs text-amber-800 mt-2">
+                  Deleting them would remove it. Choose who takes it all over; it moves to them, then the user is deleted. If anything fails, nothing moves.
+                </p>
+                {deleteHandover.candidates.length === 0 ? (
+                  <p className="text-xs font-semibold text-red-700 mt-2">
+                    There is no other approved collector, manager or admin in their organization to take it over.
+                  </p>
+                ) : (
+                  <>
+                    <label htmlFor="delete-handover-to" className="block text-xs font-medium text-amber-900 mt-3 mb-1">
+                      Give all of it to
+                    </label>
+                    <select
+                      id="delete-handover-to"
+                      value={handoverTo}
+                      onChange={e => setHandoverTo(e.target.value)}
+                      disabled={deleting}
+                      className="w-full px-3 py-2 text-sm border border-amber-300 rounded-lg bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    >
+                      <option value="">Choose a person…</option>
+                      {deleteHandover.candidates.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}{c.name !== c.email ? ` (${c.email})` : ''}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+              </div>
+            )}
             <div className="flex gap-3 justify-end">
               <button
-                onClick={() => setShowDeleteConfirm(false)}
+                onClick={closeDeleteConfirm}
                 disabled={deleting}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
               >
@@ -628,18 +679,18 @@ export default function UserManagementSidebar({ onClose, isOpen }: UserManagemen
               </button>
               <button
                 onClick={handleDeleteUser}
-                disabled={deleting}
+                disabled={deleting || (!!deleteHandover && !handoverTo)}
                 className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
               >
                 {deleting ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                    Deleting...
+                    {deleteHandover ? 'Moving work...' : 'Deleting...'}
                   </>
                 ) : (
                   <>
                     <Trash className="w-4 h-4" />
-                    Delete Permanently
+                    {deleteHandover ? 'Reassign & Delete' : 'Delete Permanently'}
                   </>
                 )}
               </button>

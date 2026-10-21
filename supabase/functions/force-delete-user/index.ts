@@ -11,10 +11,11 @@ const json = (body: unknown, status = 200) =>
 
 // Work that deleting the user would silently destroy or orphan, through
 // ON DELETE CASCADE / SET NULL on user_profiles. invoice_assignments is the
-// sharp one: it is what puts invoices on tickets, and it cascades, so deleting a
-// collector used to strip their invoices off every ticket without a word.
+// sharp one: it is what puts invoices on tickets (and on the Invoices tab), and
+// it cascades, so deleting a collector used to strip their invoices off every
+// ticket without a word. reassign_and_delete_user() hands all of it over.
 const ASSIGNED_WORK: Array<{ table: string; column: string; label: string }> = [
-  { table: 'invoice_assignments', column: 'assigned_collector_id', label: 'invoice(s) on tickets' },
+  { table: 'invoice_assignments', column: 'assigned_collector_id', label: 'assigned invoice(s)' },
   { table: 'collection_tickets', column: 'assigned_collector_id', label: 'ticket(s) assigned to them' },
   { table: 'ticket_collectors', column: 'collector_id', label: 'ticket(s) shared with them' },
   { table: 'collector_customer_assignments', column: 'assigned_collector_id', label: 'customer(s) assigned to them' },
@@ -33,7 +34,8 @@ Deno.serve(async (req: Request) => {
   try {
     console.log('Force delete user request received');
 
-    const { email } = await req.json();
+    // reassign_to: user id who takes over the target's work, when they hold any.
+    const { email, reassign_to } = await req.json();
     if (!email) {
       return json({ error: 'Email is required' }, 400);
     }
@@ -121,7 +123,19 @@ Deno.serve(async (req: Request) => {
     }
     const who = profile?.full_name || target;
 
-    // ── Refuse while they still hold work a delete would destroy ──
+    // After a delete: clear their sign-up request so the email can register again.
+    const clearPending = async () => {
+      let pendingDelete = supabaseAdmin.from('pending_users').delete().eq('email', target);
+      if (!isSuper) {
+        pendingDelete = pendingDelete.or(`organization_id.is.null,organization_id.eq.${callerProfile.organization_id}`);
+      }
+      const { error: pendingDeleteError } = await pendingDelete;
+      if (pendingDeleteError) {
+        console.error('Error deleting pending user:', pendingDeleteError);
+      }
+    };
+
+    // ── Work a delete would destroy: hand it over, or refuse ──
     if (profile) {
       const held: string[] = [];
       for (const w of ASSIGNED_WORK) {
@@ -133,10 +147,58 @@ Deno.serve(async (req: Request) => {
         }
         if (count) held.push(`${count} ${w.label}`);
       }
+
       if (held.length) {
+        // Who may take it: the same people the ticket screens offer as collectors.
+        const { data: candidates, error: candidatesError } = await supabaseAdmin
+          .from('user_profiles').select('id, full_name, email')
+          .eq('organization_id', profile.organization_id)
+          .in('role', ['collector', 'manager', 'admin'])
+          .eq('account_status', 'approved')
+          .neq('id', userId)
+          .order('full_name');
+        if (candidatesError) {
+          console.error('Error loading candidates:', candidatesError);
+          return json({ error: 'Could not load who can take over, so nothing was deleted', details: candidatesError.message }, 500);
+        }
+
+        if (!reassign_to) {
+          return json({
+            error: `${who} can't be deleted yet: they still have ${held.join(', ')}. Deleting them would remove that work, so choose who takes it over.`,
+            needs_reassign: true,
+            held,
+            candidates: (candidates ?? []).map(c => ({ id: c.id, name: c.full_name || c.email, email: c.email })),
+          }, 409);
+        }
+        const recipient = (candidates ?? []).find(c => c.id === reassign_to);
+        if (!recipient) {
+          return json({ error: 'The person taking over must be an approved collector, manager or admin in the same organization' }, 400);
+        }
+
+        // Moves everything and deletes the user in ONE transaction: if anything
+        // fails, nothing has moved.
+        console.log('Reassigning work of', userId, 'to', recipient.id, 'then deleting');
+        const { data: moved, error: rpcError } = await supabaseAdmin
+          .rpc('reassign_and_delete_user', { p_user: userId, p_to: recipient.id, p_actor: caller.id });
+        if (rpcError) {
+          console.error('Error reassigning/deleting:', rpcError);
+          if (rpcError.code === '23503') {
+            return json({
+              error: `${who} can't be deleted: their name is on records in the system (notes, memos, status changes or edits) that must keep it. Nothing was moved.`,
+              details: rpcError.message,
+            }, 409);
+          }
+          return json({ error: 'Failed to reassign and delete user. Nothing was moved.', details: rpcError.message }, 500);
+        }
+
+        await clearPending();
         return json({
-          error: `${who} can't be deleted yet: they still have ${held.join(', ')}. Deleting them would remove that work. Reassign it first, then delete.`,
-        }, 409);
+          success: true,
+          message: `${who}'s work went to ${recipient.full_name || recipient.email}, and ${who} has been deleted`,
+          userId,
+          reassigned_to: recipient.id,
+          moved,
+        });
       }
     }
 
@@ -159,16 +221,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Failed to delete user', details: deleteError.message }, 500);
     }
 
-    // Clear their sign-up request so the email can register again.
-    let pendingDelete = supabaseAdmin.from('pending_users').delete().eq('email', target);
-    if (!isSuper) {
-      pendingDelete = pendingDelete.or(`organization_id.is.null,organization_id.eq.${callerProfile.organization_id}`);
-    }
-    const { error: pendingDeleteError } = await pendingDelete;
-    if (pendingDeleteError) {
-      console.error('Error deleting pending user:', pendingDeleteError);
-    }
-
+    await clearPending();
     return json({
       success: true,
       message: `User ${target} has been completely deleted`,

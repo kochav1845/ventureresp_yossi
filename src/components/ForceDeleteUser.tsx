@@ -37,6 +37,8 @@ export default function ForceDeleteUser({ onBack }: ForceDeleteUserProps) {
         try {
           const body = await (invokeError as any).context?.json?.();
           if (body?.error) detail = body.error;
+          // This page has no picker for who takes the work; the Manage Users delete does.
+          if (body?.needs_reassign) detail += ' Delete them from Manage Users to choose who takes it over.';
         } catch { /* keep the generic message */ }
         throw new Error(detail);
       }
