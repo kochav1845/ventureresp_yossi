@@ -154,6 +154,7 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Starting invoice status reconciliation (mode: ${mode}, batchSize: ${batchSize})`);
 
+
     // Get credentials
     const { data: credentials, error: credError } = await supabase
       .from('acumatica_sync_credentials')
@@ -182,6 +183,32 @@ Deno.serve(async (req: Request) => {
       errors: [] as string[],
       details: [] as any[],
     };
+
+    // ── STEP 0: close what our own payment records already settle ─────────
+    // No Acumatica calls at all. If the payments recorded against an invoice
+    // cover its amount, it is paid -- that is the exact drift that left 192
+    // invoices ($120,425.84) sitting Open for months while
+    // payment_invoice_applications already showed them settled in full.
+    // Runs before the Acumatica walk and before login, so it still works when
+    // Acumatica is unreachable, and it shrinks the set the slow pass must cover.
+    let paidClosed = 0;
+    let paidBalanceCleared = 0;
+    try {
+      const { data: paidFix, error: paidErr } = await supabase.rpc('close_fully_paid_invoices');
+      if (paidErr) {
+        results.errors.push(`close_fully_paid_invoices: ${paidErr.message}`);
+      } else {
+        const row = Array.isArray(paidFix) ? paidFix[0] : paidFix;
+        paidClosed = Number(row?.closed_count ?? 0);
+        paidBalanceCleared = Number(row?.balance_cleared ?? 0);
+        results.updated += paidClosed;
+        if (paidClosed > 0) {
+          console.log(`payments pass closed ${paidClosed} fully-paid invoice(s), clearing $${paidBalanceCleared.toFixed(2)}`);
+        }
+      }
+    } catch (e) {
+      results.errors.push(`close_fully_paid_invoices threw: ${(e as Error).message}`);
+    }
 
     // STEP 1: Remove duplicate invoice records (null customer copies)
     const { data: duplicates } = await supabase
@@ -275,9 +302,51 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Found ${dbInvoices.length} invoices to reconcile`);
 
+    // ── resume where the last run stopped ──────────────────────────────────
+    // There are ~14k documents to check at 50 per Acumatica round-trip. That
+    // cannot finish inside the 150s gateway limit, and restarting from the
+    // lowest reference number every night meant the tail was NEVER reached --
+    // 192 invoices stayed Open for months after Acumatica closed them. Walk a
+    // bounded slice from a saved cursor instead, and wrap around at the end.
+    const docKey = (inv: any) => `${inv.reference_number}|${inv.type}`;
+    dbInvoices.sort((a, b) => docKey(a).localeCompare(docKey(b)));
+
+    const { data: cursorRow } = await supabase
+      .from('reconcile_cursor')
+      .select('last_key, passes')
+      .eq('key', 'invoice_statuses')
+      .maybeSingle();
+
+    const startedFrom = cursorRow?.last_key || '';
+    const totalDocs = dbInvoices.length;
+    if (startedFrom) {
+      const resumeAt = dbInvoices.findIndex(inv => docKey(inv) > startedFrom);
+      dbInvoices = resumeAt === -1 ? [] : dbInvoices.slice(resumeAt);
+    }
+    // Cursor past the end (or nothing left) -> start a fresh pass now.
+    let wrapped = false;
+    if (dbInvoices.length === 0 && totalDocs > 0) {
+      wrapped = true;
+      dbInvoices = [];
+    }
+    console.log(`resuming after "${startedFrom || '(start)'}" - ${dbInvoices.length} of ${totalDocs} documents remain this pass`);
+
+    // Stop with time to spare so the run always reaches its logging step. The
+    // function being killed mid-loop is why sync_change_logs never recorded a
+    // single reconciliation, which is why this went unnoticed for months.
+    const TIME_BUDGET_MS = 110_000;
+    let lastKeyChecked = startedFrom;
+    let ranOutOfTime = false;
+
     // STEP 3: Process in small batches using OData filter with few items at a time
     for (let i = 0; i < dbInvoices.length; i += batchSize) {
       const batch = dbInvoices.slice(i, i + batchSize);
+      if (Date.now() - startTime > TIME_BUDGET_MS) {
+        ranOutOfTime = true;
+        console.log(`time budget reached after ${results.totalChecked} documents; stopping at "${lastKeyChecked}"`);
+        break;
+      }
+      lastKeyChecked = docKey(batch[batch.length - 1]);
 
       // Build a short OData filter (only 20 items max so URL stays reasonable)
       const refFilter = batch.map(inv => `ReferenceNbr eq '${inv.reference_number}'`).join(' or ');
@@ -400,6 +469,20 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Save where we stopped. Reaching the end of the list completes a pass and
+    // resets the cursor so the next run starts the book again.
+    const completedPass = !ranOutOfTime || wrapped;
+    await supabase
+      .from('reconcile_cursor')
+      .update({
+        last_key: completedPass ? '' : lastKeyChecked,
+        passes: (cursorRow?.passes ?? 0) + (completedPass ? 1 : 0),
+        last_run_at: new Date().toISOString(),
+        last_summary: `${results.totalChecked} checked, ${results.updated} updated` +
+          (ranOutOfTime ? ` (out of time at "${lastKeyChecked}")` : ' (pass complete)'),
+      })
+      .eq('key', 'invoice_statuses');
+
     // Log the reconciliation run
     // sync_change_logs has no entity_type/details columns; entity_reference, change_summary
     // and sync_source are NOT NULL -- the old shape 400'd on every run.
@@ -407,7 +490,9 @@ Deno.serve(async (req: Request) => {
       sync_type: 'invoice_reconciliation',
       action_type: 'reconciled',
       entity_reference: 'invoice_reconciliation',
-      change_summary: `Reconciled ${results.totalChecked} invoices (${mode}): ${results.updated} updated, ${results.statusMismatches} status / ${results.balanceMismatches} balance mismatches`,
+      change_summary: `Reconciled ${results.totalChecked} invoices (${mode}): ${results.updated} updated, ${results.statusMismatches} status / ${results.balanceMismatches} balance mismatches` +
+        (paidClosed ? `; payments pass closed ${paidClosed} ($${paidBalanceCleared.toFixed(2)})` : '') +
+        (ranOutOfTime ? `; out of time at "${lastKeyChecked}", resumes there` : '; full pass complete'),
       sync_source: 'scheduled_sync',
       change_details: {
         totalChecked: results.totalChecked,
@@ -418,6 +503,13 @@ Deno.serve(async (req: Request) => {
         notFoundInAcumatica: results.notFoundInAcumatica,
         errorCount: results.errors.length,
         mode,
+        paidPassClosed: paidClosed,
+        paidPassBalanceCleared: paidBalanceCleared,
+        resumedFrom: startedFrom || '(start)',
+        stoppedAt: lastKeyChecked,
+        ranOutOfTime,
+        completedPass,
+        documentsRemainingThisPass: totalDocs,
       },
     });
 
