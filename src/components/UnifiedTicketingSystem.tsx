@@ -381,15 +381,29 @@ export default function UnifiedTicketingSystem({
     )
   );
 
-  // Compute total balance for display
-  const displayedTicketsBalance = useMemo(() => {
-    const displayTickets = showOnlyAssigned
+  /**
+   * The tickets actually on screen right now. ONE definition, because this was
+   * duplicated three times and the copies had drifted: the one inside
+   * toggleSelectAllTickets omitted the `overdue` branch under showOnlyAssigned,
+   * so in My Assignments on the Overdue tab "Select All Tickets" selected every
+   * FILTERED ticket rather than the overdue ones shown. Those ids then fed
+   * handleBulkTicketStatusChange and handleBulkDeleteTickets -- i.e. a bulk
+   * delete could hit tickets that were never on screen. The size comparison was
+   * wrong for the same reason, so "Deselect All" could not clear either.
+   */
+  const displayTickets = useMemo(() => (
+    showOnlyAssigned
       ? (activeTab === 'overdue' ? overdueTickets : filteredTickets)
       : activeTab === 'overdue' ? overdueTickets
       : activeTab === 'closed' ? filteredClosedTickets
-      : filteredTickets;
-    return displayTickets.reduce((sum, t) => sum + t.invoices.reduce((s, inv) => s + (inv.balance || 0), 0), 0);
-  }, [filteredTickets, filteredClosedTickets, overdueTickets, activeTab, showOnlyAssigned]);
+      : filteredTickets
+  ), [filteredTickets, filteredClosedTickets, overdueTickets, activeTab, showOnlyAssigned]);
+
+  // Compute total balance for display
+  const displayedTicketsBalance = useMemo(
+    () => displayTickets.reduce((sum, t) => sum + t.invoices.reduce((s, inv) => s + (inv.balance || 0), 0), 0),
+    [displayTickets]
+  );
 
   const initialLoadDone = useRef(false);
   useEffect(() => {
@@ -693,26 +707,19 @@ export default function UnifiedTicketingSystem({
 
     if (isInitialLoad) setLoading(true);
     try {
-      // Phase 1: Fetch base ticket data from two sources in parallel
-      let assignmentQuery = supabase
-        .from('collector_assignment_details')
-        .select('*');
-
-      let emptyTicketsQuery = supabase
-        .from('collection_tickets')
-        .select(`
-          id,
-          ticket_number,
-          customer_id,
-          customer_name,
-          status,
-          priority,
-          ticket_type,
-          due_date,
-          assigned_collector_id,
-          collector:user_profiles!collection_tickets_assigned_collector_id_fkey(full_name, email)
-        `);
-
+      // Phase 1: Fetch base ticket data from two sources in parallel.
+      //
+      // PAGINATED. PostgREST caps a response at 1000 rows and
+      // collector_assignment_details holds 1,842, so the old unpaged
+      // .select('*') silently returned HTTP 206 with content-range 0-999/1842 --
+      // only 219 of the 404 tickets. The rest were then "recovered" by the
+      // backfill below with an EMPTY invoice list, so they looked like genuinely
+      // empty tickets and any total or sort over them was wrong.
+      //
+      // Each page is ordered by a UNIQUE key. Without a stable ORDER BY,
+      // .range() over an unordered result can repeat and skip rows between
+      // pages; assignment_id is distinct across all 1,842 view rows.
+      let myTicketIds: string[] = [];
       if (showOnlyAssigned) {
         // A ticket can be shared between collectors, so "mine" is no longer
         // just assigned_collector_id -- my_ticket_ids() returns every ticket I
@@ -720,34 +727,55 @@ export default function UnifiedTicketingSystem({
         // of its invoice assignments.
         const { data: mine, error: mineError } = await supabase.rpc('my_ticket_ids');
         if (mineError) throw mineError;
-        const myTicketIds = (mine || []).map((r: any) => r.ticket_id).filter(Boolean);
-
-        if (myTicketIds.length > 0) {
-          const idList = `(${myTicketIds.join(',')})`;
-          assignmentQuery = assignmentQuery.or(
-            `assigned_collector_id.eq.${profile.id},ticket_id.in.${idList}`
-          );
-          emptyTicketsQuery = emptyTicketsQuery.or(
-            `assigned_collector_id.eq.${profile.id},id.in.${idList}`
-          );
-        } else {
-          assignmentQuery = assignmentQuery.eq('assigned_collector_id', profile.id);
-          emptyTicketsQuery = emptyTicketsQuery.eq('assigned_collector_id', profile.id);
-        }
+        myTicketIds = (mine || []).map((r: any) => r.ticket_id).filter(Boolean);
       }
 
-      const [assignmentResult, emptyTicketsResult] = await Promise.all([
-        assignmentQuery,
-        emptyTicketsQuery
-      ]);
+      const scope = (q: any, ticketIdCol: string) => {
+        if (!showOnlyAssigned) return q;
+        return myTicketIds.length > 0
+          ? q.or(`assigned_collector_id.eq.${profile.id},${ticketIdCol}.in.(${myTicketIds.join(',')})`)
+          : q.eq('assigned_collector_id', profile.id);
+      };
 
-      if (assignmentResult.error) throw assignmentResult.error;
-      const assignments = assignmentResult.data || [];
+      const PAGE = 1000;
+      const fetchAllPages = async (build: () => any) => {
+        const rows: any[] = [];
+        for (let from = 0; ; from += PAGE) {
+          const { data, error } = await build().range(from, from + PAGE - 1);
+          if (error) throw error;
+          const batch = data || [];
+          rows.push(...batch);
+          if (batch.length < PAGE) break;
+        }
+        return rows;
+      };
+
+      const [assignments, emptyTicketRows] = await Promise.all([
+        fetchAllPages(() => scope(
+          supabase.from('collector_assignment_details').select('*').order('assignment_id', { ascending: true }),
+          'ticket_id'
+        )),
+        fetchAllPages(() => scope(
+          supabase.from('collection_tickets').select(`
+            id,
+            ticket_number,
+            customer_id,
+            customer_name,
+            status,
+            priority,
+            ticket_type,
+            due_date,
+            assigned_collector_id,
+            collector:user_profiles!collection_tickets_assigned_collector_id_fkey(full_name, email)
+          `).order('id', { ascending: true }),
+          'id'
+        )),
+      ]);
 
       const { ticketGroups, individualList } = buildTicketGroups(assignments);
 
-      if (emptyTicketsResult.data) {
-        emptyTicketsResult.data.forEach((t: any) => {
+      if (emptyTicketRows) {
+        emptyTicketRows.forEach((t: any) => {
           if (!ticketGroups.has(t.id)) {
             ticketGroups.set(t.id, {
               ticket_id: t.id,
@@ -1498,14 +1526,6 @@ export default function UnifiedTicketingSystem({
   };
 
   const toggleSelectAllTickets = () => {
-    const displayTickets = showOnlyAssigned
-      ? filteredTickets
-      : activeTab === 'overdue'
-        ? overdueTickets
-        : activeTab === 'closed'
-          ? filteredClosedTickets
-          : filteredTickets;
-
     if (selectedTickets.size === displayTickets.length) {
       setSelectedTickets(new Set());
     } else {
@@ -2355,14 +2375,6 @@ export default function UnifiedTicketingSystem({
 
               <div className="space-y-4" data-tour="ticket-list">
                 {(() => {
-                  const displayTickets = showOnlyAssigned
-                    ? (activeTab === 'overdue' ? overdueTickets : filteredTickets)
-                    : activeTab === 'overdue'
-                      ? overdueTickets
-                      : activeTab === 'closed'
-                        ? filteredClosedTickets
-                        : filteredTickets;
-
                   const emptyMessage = activeTab === 'overdue'
                     ? 'No overdue tickets'
                     : activeTab === 'closed'
