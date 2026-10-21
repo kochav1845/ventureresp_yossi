@@ -4,6 +4,30 @@ import { supabase, UserProfile, logActivity, withTimeout, withRetry } from '../l
 
 const INACTIVITY_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
 const ACTIVITY_THROTTLE_MS = 60 * 1000; // Only update last-active once per minute
+// Last activity in ANY tab of this browser. Each tab runs its own timer but only
+// sees its own mouse/keys, so without this an idle tab logged out the tab you
+// were working in.
+const LAST_ACTIVITY_KEY = 'last_activity_at';
+
+/*
+ * Every sign-out here is scope 'local': it ends this browser's session only.
+ * supabase-js defaults to 'global', which revokes the user's sessions on every
+ * device and tab. Then an idle tab or a failed profile load in a new tab signed
+ * you out everywhere, and the tab you were in kept working on its leftover
+ * access token until anything that checks the session (edge functions: Delete
+ * User) answered "Unauthorized". Seen live 2026-10-21: zero sessions left.
+ */
+const signOutHere = () => supabase.auth.signOut({ scope: 'local' });
+
+const recordActivity = (at: number) => {
+  try { localStorage.setItem(LAST_ACTIVITY_KEY, String(at)); } catch { /* storage blocked */ }
+};
+
+const lastActivityAnyTab = (own: number) => {
+  let shared = 0;
+  try { shared = Number(localStorage.getItem(LAST_ACTIVITY_KEY)) || 0; } catch { /* storage blocked */ }
+  return Math.max(shared, own);
+};
 
 interface AuthContextType {
   user: User | null;
@@ -33,25 +57,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // tab regains focus, so those don't flip global `loading` and remount the app.
   const loadedProfileForUser = useRef<string | null>(null);
 
-  const resetInactivityTimer = useCallback(() => {
+  const resetInactivityTimer = useCallback((delay: number = INACTIVITY_TIMEOUT_MS) => {
     if (inactivityTimerRef.current) {
       clearTimeout(inactivityTimerRef.current);
     }
     inactivityTimerRef.current = setTimeout(async () => {
+      // Another tab may have been in use all along; wait out the rest if so.
+      const idleFor = Date.now() - lastActivityAnyTab(lastActivityRef.current);
+      if (idleFor < INACTIVITY_TIMEOUT_MS) {
+        resetInactivityTimer(INACTIVITY_TIMEOUT_MS - idleFor);
+        return;
+      }
       const currentUser = await supabase.auth.getUser();
       if (currentUser.data.user) {
         try {
           await supabase.rpc('log_user_logout', { p_user_id: currentUser.data.user.id });
         } catch (_) {}
         localStorage.removeItem('impersonation');
-        await supabase.auth.signOut();
+        await signOutHere();
         setUser(null);
         setProfile(null);
         setIsImpersonating(false);
         setOriginalProfile(null);
         window.location.reload();
       }
-    }, INACTIVITY_TIMEOUT_MS);
+    }, delay);
   }, []);
 
   useEffect(() => {
@@ -59,12 +89,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const now = Date.now();
       if (now - lastActivityRef.current < ACTIVITY_THROTTLE_MS) return;
       lastActivityRef.current = now;
+      recordActivity(now);
       resetInactivityTimer();
     };
 
     const events = ['mousedown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
     events.forEach(e => window.addEventListener(e, handleActivity, { passive: true }));
 
+    recordActivity(lastActivityRef.current);
     resetInactivityTimer();
 
     return () => {
@@ -88,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (error) {
           console.error('Session error:', error);
-          await supabase.auth.signOut();
+          await signOutHere();
           setLoading(false);
           return;
         }
@@ -137,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (err?.message?.includes('timed out') || err?.message?.includes('fetch')) {
           setLoading(false);
         } else {
-          await supabase.auth.signOut();
+          await signOutHere();
           setLoading(false);
         }
       }
@@ -218,7 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // If we've exhausted retries, clear auth
       console.error('Failed to load profile. Clearing auth state.');
       loadedProfileForUser.current = null;
-      await supabase.auth.signOut();
+      await signOutHere();
       setUser(null);
       setProfile(null);
     } finally {
@@ -336,7 +368,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     localStorage.removeItem('impersonation');
-    await supabase.auth.signOut();
+    await signOutHere();
     setProfile(null);
     setIsImpersonating(false);
     setOriginalProfile(null);

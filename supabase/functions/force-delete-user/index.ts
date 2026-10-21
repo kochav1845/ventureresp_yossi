@@ -63,9 +63,12 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Unauthorized' }, 401);
     }
     const anonClient = createClient(supabaseUrl ?? '', Deno.env.get('SUPABASE_ANON_KEY') ?? '');
-    const { data: { user: caller } } = await anonClient.auth.getUser(token);
+    const { data: { user: caller }, error: callerError } = await anonClient.auth.getUser(token);
     if (!caller) {
-      return json({ error: 'Unauthorized' }, 401);
+      // Usually the session behind a still-unexpired token was ended elsewhere
+      // (sign-out in another tab or device): pages keep loading, this can't.
+      console.error('getUser failed:', callerError?.message);
+      return json({ error: 'Your sign-in has ended (you were signed out in another tab or on another device). Sign out, sign back in, and try again.' }, 401);
     }
     const { data: callerProfile } = await supabaseAdmin
       .from('user_profiles').select('role, organization_id').eq('id', caller.id).maybeSingle();
