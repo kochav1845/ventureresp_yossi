@@ -40,17 +40,17 @@ function generateApiKey(): string {
 async function validateApiKey(
   supabase: ReturnType<typeof createClient>,
   apiKey: string
-): Promise<boolean> {
+): Promise<{ organizationId: string | null } | null> {
   const hash = await hashKey(apiKey);
   const { data } = await supabase
     .from("api_keys")
-    .select("id, is_active, expires_at, usage_count")
+    .select("id, is_active, expires_at, usage_count, organization_id")
     .eq("key_hash", hash)
     .eq("is_active", true)
     .maybeSingle();
 
-  if (!data) return false;
-  if (data.expires_at && new Date(data.expires_at) < new Date()) return false;
+  if (!data) return null;
+  if (data.expires_at && new Date(data.expires_at) < new Date()) return null;
 
   await supabase
     .from("api_keys")
@@ -61,7 +61,9 @@ async function validateApiKey(
     })
     .eq("id", data.id);
 
-  return true;
+  // This client is service-role, so nothing in the DB scopes a request for us.
+  // The key's own organization is the only tenant it may read.
+  return { organizationId: (data as any).organization_id ?? null };
 }
 
 function parseParams(url: URL): Record<string, string> {
@@ -689,19 +691,27 @@ async function handleAnalyticsAging(
 // ── Route: GET /analytics/monthly-summary ───────────────────────────────
 async function handleMonthlySummary(
   supabase: ReturnType<typeof createClient>,
-  params: Record<string, string>
+  params: Record<string, string>,
+  organizationId: string
 ) {
   const entityType = params.entity || "invoices";
 
-  if (entityType === "payments") {
-    const { data, error } = await supabase.rpc("get_payment_month_summary");
-    if (error) return errorResponse(error.message, 500);
-    return jsonResponse({ entity: "payments", data });
-  }
+  // Read the tables, not get_payment_month_summary()/get_invoice_month_summary():
+  // those scope themselves with get_user_org_id(), which is NULL for this
+  // service-role client, so they would return nothing. Scope by the key's org.
+  const table =
+    entityType === "payments"
+      ? "payment_month_summary"
+      : "invoice_month_summary_mv";
 
-  const { data, error } = await supabase.rpc("get_invoice_month_summary");
+  const { data, error } = await supabase
+    .from(table)
+    .select("*")
+    .eq("organization_id", organizationId)
+    .order("month_key", { ascending: false });
+
   if (error) return errorResponse(error.message, 500);
-  return jsonResponse({ entity: "invoices", data });
+  return jsonResponse({ entity: entityType === "payments" ? "payments" : "invoices", data });
 }
 
 // ── Route: GET /analytics/customer-balances ─────────────────────────────
@@ -1063,9 +1073,15 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const isValid = await validateApiKey(supabase, apiKey);
-    if (!isValid) {
+    const keyCtx = await validateApiKey(supabase, apiKey);
+    if (!keyCtx) {
       return errorResponse("Invalid or expired API key", 401);
+    }
+    if (!keyCtx.organizationId) {
+      return errorResponse(
+        "This API key is not bound to an organization. Regenerate it.",
+        403
+      );
     }
 
     // Route dispatch
@@ -1100,7 +1116,7 @@ Deno.serve(async (req: Request) => {
           case "aging":
             return handleAnalyticsAging(supabase);
           case "monthly-summary":
-            return handleMonthlySummary(supabase, params);
+            return handleMonthlySummary(supabase, params, keyCtx.organizationId);
           case "customer-balances":
             return handleCustomerBalances(supabase, params);
           default:

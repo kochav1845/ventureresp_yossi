@@ -62,7 +62,7 @@ export default function Dashboard() {
         const [
           statsRes, summaryRes, topRes, segRes, invMonthRes, payMonthRes, invTodayRes, payTodayRes,
         ] = await Promise.all([
-          supabase.from('cached_customer_stats').select('*').eq('id', 1).maybeSingle(),
+          supabase.from('cached_customer_stats').select('*').limit(1).maybeSingle(),
           supabase.rpc('get_customer_statements_summary', { p_test_mode: false }),
           supabase.from('cached_customer_balances')
             .select('customer_id, customer_name, email_address, calculated_balance, open_invoice_count, max_days_overdue, color_status')

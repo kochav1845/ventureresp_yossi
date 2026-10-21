@@ -550,7 +550,7 @@ async function executeTool(
         (() => {
           const now = new Date();
           const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-          return sb.from("payment_month_summary").select("total_amount, payment_count").eq("month_key", key).maybeSingle();
+          return sb.from("payment_month_summary").select("total_amount, payment_count").eq("organization_id", ctx.orgId).eq("month_key", key).maybeSingle();
         })(),
       ]);
 
@@ -623,7 +623,7 @@ async function executeTool(
         d.setMonth(d.getMonth() + 1);
       }
 
-      const { data: months, error } = await sb.from("payment_month_summary").select("*").in("month_key", monthKeys).order("month_key", { ascending: true });
+      const { data: months, error } = await sb.from("payment_month_summary").select("*").eq("organization_id", ctx.orgId).in("month_key", monthKeys).order("month_key", { ascending: true });
       if (error) return { error: error.message };
 
       let totalCollected = 0, totalPaymentAmt = 0, totalPrepaymentAmt = 0, totalVoidedAmt = 0, totalRefundAmt = 0, totalCount = 0;
@@ -825,7 +825,11 @@ async function executeTool(
 
     case "get_monthly_summary": {
       if (args.entity === "payments") {
-        const { data, error } = await sb.rpc("get_payment_month_summary");
+        // Read the table directly, not get_payment_month_summary(): that RPC scopes
+        // itself with get_user_org_id(), which is NULL for this service-role client,
+        // so it would return nothing. Scope it with the caller's org instead.
+        const { data, error } = await sb.from("payment_month_summary").select("*")
+          .eq("organization_id", ctx.orgId).order("month_key", { ascending: false });
         if (error) return { error: error.message };
         return {
           entity: "payments",
@@ -841,7 +845,9 @@ async function executeTool(
           })),
         };
       } else {
-        const { data, error } = await sb.rpc("get_invoice_month_summary");
+        // Same reason as the payments branch above.
+        const { data, error } = await sb.from("invoice_month_summary_mv").select("*")
+          .eq("organization_id", ctx.orgId).order("month_key", { ascending: false });
         if (error) return { error: error.message };
         return {
           entity: "invoices",
@@ -1011,7 +1017,8 @@ async function executeTool(
           break;
         }
         case "payment_trend": {
-          const { data } = await sb.rpc("get_payment_month_summary");
+          const { data } = await sb.from("payment_month_summary").select("*")
+            .eq("organization_id", ctx.orgId).order("month_key", { ascending: false });
           columns = ["Month", "Total Collected", "Payments", "Prepayments", "Voided", "Refunds", "Count"];
           rows = (data || []).map((m: any) => [m.month_label, parseFloat(m.total_amount) || 0, parseFloat(m.payment_amount) || 0, parseFloat(m.prepayment_amount) || 0, parseFloat(m.voided_amount) || 0, parseFloat(m.refund_amount) || 0, parseInt(m.total_payments) || 0]);
           break;

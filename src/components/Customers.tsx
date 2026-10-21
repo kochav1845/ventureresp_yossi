@@ -383,7 +383,7 @@ export default function Customers({ onBack }: CustomersProps) {
       const { data, error } = await supabase
         .from('cached_customer_stats')
         .select('*')
-        .eq('id', 1)
+        .limit(1)
         .maybeSingle();
 
       if (data && !error) {
