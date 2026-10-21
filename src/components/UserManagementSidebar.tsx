@@ -5,6 +5,7 @@ import {
   Settings, Mail, Code, FileText, DollarSign
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { currentOrgId } from '../lib/manualRecords';
 import { useAuth } from '../contexts/AuthContext';
 import { LOCKABLE_COMPONENTS, COMPONENT_LABELS, LockableComponent } from '../lib/permissions';
 import UserActivityLog from './UserActivityLog';
@@ -83,9 +84,13 @@ export default function UserManagementSidebar({ onClose, isOpen }: UserManagemen
   const loadUsers = async () => {
     setLoading(true);
     try {
+      // This organization's users only. RLS lets any admin read every org's
+      // profiles, so Venture's list also showed the demo org's 9 accounts.
+      const orgId = await currentOrgId();
       const { data, error } = await supabase
         .from('user_profiles')
         .select('id, email, role, assigned_color, can_be_assigned_as_collector')
+        .eq('organization_id', orgId)
         .order('email');
 
       if (error) throw error;

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Search, Calendar, DollarSign, Database, Filter, X, FileText, User, ChevronLeft, ChevronRight, MessageSquare, ArrowUpDown, ArrowUp, ArrowDown, Download, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { currentOrgId } from '../lib/manualRecords';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 
@@ -443,9 +444,12 @@ export default function AcumaticaInvoices({ onBack }: AcumaticaInvoicesProps) {
 
   const loadAvailableColors = async () => {
     try {
+      // This organization's people only (RLS would also return other orgs').
+      const orgId = await currentOrgId();
       const { data, error } = await supabase
         .from('user_profiles')
         .select('id, email, assigned_color')
+        .eq('organization_id', orgId)
         .not('assigned_color', 'is', null);
 
       if (error) throw error;

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Users, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { currentOrgId } from '../lib/manualRecords';
 import { useAuth } from '../contexts/AuthContext';
 
 interface AssignCustomerModalProps {
@@ -37,9 +38,12 @@ export default function AssignCustomerModal({
 
   const loadCollectors = async () => {
     try {
+      // This organization's people only (RLS would also return other orgs').
+      const orgId = await currentOrgId();
       const { data, error } = await supabase
         .from('user_profiles')
         .select('id, full_name, email, role')
+        .eq('organization_id', orgId)
         .in('role', ['collector', 'admin', 'manager'])
         .order('full_name');
 

@@ -68,6 +68,11 @@ export function setSupabaseOrgHeader(orgId: string) {
   currentOrgId = orgId;
 }
 
+/** The org the x-org-id header currently names (null before an org page loads). */
+export function getSupabaseOrgHeader(): string | null {
+  return currentOrgId;
+}
+
 export type UserProfile = {
   id: string;
   email: string;

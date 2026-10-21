@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Users, LogIn, Activity, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { currentOrgId } from '../lib/manualRecords';
 
 interface UserActivityAnalyticsProps {
   onBack?: () => void;
@@ -48,9 +49,12 @@ export default function UserActivityAnalytics({ onBack }: UserActivityAnalyticsP
   const loadUserActivity = async () => {
     setLoading(true);
     try {
+      // This organization's people only (RLS would also return other orgs').
+      const orgId = await currentOrgId();
       const { data: users, error: usersError } = await supabase
         .from('user_profiles')
-        .select('id, full_name, email');
+        .select('id, full_name, email')
+        .eq('organization_id', orgId);
 
       if (usersError) throw usersError;
 

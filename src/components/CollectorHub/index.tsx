@@ -5,6 +5,7 @@ import {
   MessageSquare, Palette
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { currentOrgId } from '../../lib/manualRecords';
 import CollectorDetailedProgress from '../CollectorDetailedProgress';
 import CollectorCard from './CollectorCard';
 import { CollectorCombined } from './types';
@@ -51,8 +52,10 @@ export default function CollectorHub({ onBack }: CollectorHubProps) {
       const now = new Date();
       const endDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
+      // This organization's people only (RLS would also return other orgs').
+      const orgId = await currentOrgId();
       const [profilesResult, monitoringResult, collectionResult, activityResult] = await Promise.all([
-        supabase.from('user_profiles').select('id, full_name, email, role').in('role', ['collector', 'admin', 'manager']),
+        supabase.from('user_profiles').select('id, full_name, email, role').eq('organization_id', orgId).in('role', ['collector', 'admin', 'manager']),
         supabase.from('collector_activity_summary').select('*').order('last_activity_at', { ascending: false }),
         supabase.rpc('get_all_collectors_collection_summary'),
         supabase.rpc('get_collector_activity_summary', { p_user_id: null, p_days_back: daysAgo })

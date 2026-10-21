@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, getSupabaseOrgHeader } from './supabase';
 
 /**
  * Creating and recognising hand-entered records.
@@ -24,14 +24,19 @@ export const isManual = (row: { source?: string | null } | null | undefined): bo
  * the demo org would get the live org's id by default and the insert would then
  * be rejected by the `organization_id = get_user_org_id()` RLS check.
  */
-let orgIdCache: string | null = null;
+// Keyed by who is asking and which org the header names: the super admin
+// switches orgs in one tab, and signing out and back in as someone else doesn't
+// reload the page. A single cached id answered both with the FIRST org.
+let orgIdCache: { key: string; id: string } | null = null;
 export async function currentOrgId(): Promise<string> {
-  if (orgIdCache) return orgIdCache;
+  const { data: { session } } = await supabase.auth.getSession();
+  const key = `${session?.user?.id ?? ''}|${getSupabaseOrgHeader() ?? ''}`;
+  if (orgIdCache?.key === key) return orgIdCache.id;
   const { data, error } = await supabase.rpc('get_user_org_id');
   if (error) throw error;
   if (!data) throw new Error('Could not determine your organization — try signing in again.');
-  orgIdCache = data as string;
-  return orgIdCache;
+  orgIdCache = { key, id: data as string };
+  return orgIdCache.id;
 }
 
 /** Business key for a new manual record: M-C-00001 / M-INV-00001 / M-PAY-00001. */

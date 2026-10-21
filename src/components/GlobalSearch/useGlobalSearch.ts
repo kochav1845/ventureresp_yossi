@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
+import { currentOrgId } from '../../lib/manualRecords';
 
 export interface SearchResult {
   category: string;
@@ -105,9 +106,13 @@ async function searchTickets(pattern: string): Promise<SearchResult[]> {
 }
 
 async function searchUsers(pattern: string): Promise<SearchResult[]> {
+  // This organization's people only (RLS would also return other orgs').
+  const orgId = await currentOrgId().catch(() => null);
+  if (!orgId) return [];
   const { data } = await supabase
     .from('user_profiles')
     .select('id, full_name, email, role, account_status')
+    .eq('organization_id', orgId)
     .or(`full_name.ilike.%${pattern}%,email.ilike.%${pattern}%`)
     .limit(MAX_PER_CATEGORY);
 

@@ -5,6 +5,7 @@ import {
   Tag, AtSign, Paperclip, Users, Lightbulb, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { currentOrgId } from '../lib/manualRecords';
 import { useAuth } from '../contexts/AuthContext';
 
 type RuleType =
@@ -96,9 +97,13 @@ export default function ProposedReminderRulesSettings() {
   };
 
   const loadUsers = async () => {
+    // This organization's people only (RLS would also return other orgs').
+    const orgId = await currentOrgId().catch(() => null);
+    if (!orgId) return;
     const { data } = await supabase
       .from('user_profiles')
       .select('id, full_name, email')
+      .eq('organization_id', orgId)
       .order('full_name');
     setUsers((data as any) || []);
   };

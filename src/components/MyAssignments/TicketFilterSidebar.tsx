@@ -4,6 +4,7 @@ import {
   FileText, Users, ChevronDown, ChevronUp, RotateCcw, Hash
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { currentOrgId } from '../../lib/manualRecords';
 
 export interface TicketAdvancedFilters {
   searchTerm: string;
@@ -111,9 +112,13 @@ export default function TicketFilterSidebar({
   };
 
   const loadCollectors = async () => {
+    // This organization's people only (RLS would also return other orgs').
+    const orgId = await currentOrgId().catch(() => null);
+    if (!orgId) return;
     const { data } = await supabase
       .from('user_profiles')
       .select('id, full_name, email')
+      .eq('organization_id', orgId)
       .eq('account_status', 'approved')
       .order('full_name', { ascending: true });
     setCollectors(data || []);

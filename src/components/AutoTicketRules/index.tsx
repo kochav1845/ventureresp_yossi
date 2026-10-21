@@ -4,6 +4,7 @@ import {
   Clock, Save, Check, Zap, Mail, Bell, Ticket, Filter, AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { currentOrgId } from '../../lib/manualRecords';
 import { useToast } from '../../contexts/ToastContext';
 import RuleFormModal from './RuleFormModal';
 import {
@@ -142,9 +143,12 @@ export default function AutoTicketRulesPage({ onBack }: AutoTicketRulesPageProps
 
   const fetchCollectors = async () => {
     try {
+      // This organization's people only (RLS would also return other orgs').
+      const orgId = await currentOrgId();
       const { data, error } = await supabase
         .from('user_profiles')
         .select('id, full_name, email')
+        .eq('organization_id', orgId)
         .in('role', ['collector', 'manager', 'admin'])
         .order('full_name');
       if (error) throw error;
