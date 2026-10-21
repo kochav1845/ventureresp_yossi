@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Play, Pause, RotateCcw, Loader2, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 interface BackfillProgress {
   id: string;
   backfill_type: string;
@@ -56,10 +57,7 @@ export default function AutoBackfillMonitor() {
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auto-backfill-payment-data`,
         {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
+          headers: await functionAuthHeaders(),
           body: JSON.stringify({})
         }
       );

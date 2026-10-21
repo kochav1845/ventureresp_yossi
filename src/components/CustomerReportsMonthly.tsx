@@ -8,6 +8,7 @@ import { generateCustomerInvoicePDF } from '../lib/pdfGenerator';
 import { formatDate as formatDateUtil } from '../lib/dateUtils';
 import { exportToExcel as exportExcel, formatDate, formatCurrency as excelFormatCurrency } from '../lib/excelExport';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 interface CustomerReportsMonthlyProps {
   onBack?: () => void;
 }
@@ -467,10 +468,7 @@ export default function CustomerReportsMonthly({ onBack }: CustomerReportsMonthl
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-customer-invoice-email`,
           {
             method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              'Content-Type': 'application/json',
-            },
+            headers: await functionAuthHeaders(),
             body: JSON.stringify({
               templateId: selectedTemplateId,
               templateName: selectedTemplate.name,

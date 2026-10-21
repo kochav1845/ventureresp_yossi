@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Activity, RefreshCw, ArrowLeft, AlertTriangle, CheckCircle, XCircle, TrendingUp } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 export default function PaymentSyncHealthCheck() {
   const rawNavigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -27,10 +28,7 @@ export default function PaymentSyncHealthCheck() {
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-payment-sync-health`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
+          headers: await functionAuthHeaders(),
           body: JSON.stringify({ sampleSize })
         }
       );

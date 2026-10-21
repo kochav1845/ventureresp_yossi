@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { ArrowLeft, PlayCircle, Loader2, CheckCircle, XCircle, Calendar, StopCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 interface JobProgress {
   updated: number;
   failed: number;
@@ -56,10 +57,7 @@ export default function BackfillDocDates() {
     const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/backfill-payment-doc-dates`;
     const resp = await fetch(apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      },
+      headers: await functionAuthHeaders(),
       body: JSON.stringify({ jobId: id, pollStatus: true }),
     });
     const data = await resp.json();
@@ -83,10 +81,7 @@ export default function BackfillDocDates() {
     const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/backfill-payment-doc-dates`;
     const resp = await fetch(apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      },
+      headers: await functionAuthHeaders(),
       body: JSON.stringify({ startDate, endDate }),
     });
 

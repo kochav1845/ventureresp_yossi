@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, RefreshCw, AlertCircle, CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 export default function PaymentStatusDiagnostic() {
   const navigate = useNavigate();
   const [paymentRef, setPaymentRef] = useState('025670');
@@ -22,10 +23,7 @@ export default function PaymentStatusDiagnostic() {
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/diagnose-single-payment`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
+          headers: await functionAuthHeaders(),
           body: JSON.stringify({ paymentRef })
         }
       );
@@ -54,10 +52,7 @@ export default function PaymentStatusDiagnostic() {
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resync-single-payment`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
+          headers: await functionAuthHeaders(),
           body: JSON.stringify({ paymentRef })
         }
       );

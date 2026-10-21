@@ -4,6 +4,7 @@ import { ArrowLeft, RefreshCw, Activity, CheckCircle, XCircle, Clock, Play, Chev
 import { supabase } from '../lib/supabase';
 import CronJobControl from './CronJobControl';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 interface SyncStatusDashboardProps {
   onBack?: () => void;
 }
@@ -113,10 +114,7 @@ export default function SyncStatusDashboard({ onBack }: SyncStatusDashboardProps
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/acumatica-master-sync`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
+          headers: await functionAuthHeaders(),
           body: JSON.stringify({}),
         }
       );
@@ -198,10 +196,7 @@ export default function SyncStatusDashboard({ onBack }: SyncStatusDashboardProps
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
+          headers: await functionAuthHeaders(),
           body: JSON.stringify({}),
         }
       );

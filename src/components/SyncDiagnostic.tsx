@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, AlertTriangle, CheckCircle, XCircle, PlayCircle, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 interface Props {
   onBack?: () => void;
 }
@@ -164,10 +165,7 @@ export default function SyncDiagnostic({ onBack }: Props) {
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/acumatica-master-sync`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
+          headers: await functionAuthHeaders(),
           body: JSON.stringify({}),
         }
       );

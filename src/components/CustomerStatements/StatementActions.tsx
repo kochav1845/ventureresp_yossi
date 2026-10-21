@@ -13,6 +13,7 @@ import { generateCustomerStatementPdf, downloadCustomerStatementPdf } from '../.
 import EmailPreviewModal from './EmailPreviewModal';
 import type { StatementCustomer, ReportTemplate, StatementExcelTemplate } from './types';
 
+import { functionAuthHeaders } from '../../lib/functionAuth';
 export type AttachmentFormat = 'excel' | 'pdf' | 'both';
 
 interface Props {
@@ -138,6 +139,16 @@ export default function StatementActions({ selectedCustomers, templates, selecte
       const customer = customersWithEmail[i];
       const customerInvoices = invoiceMap[customer.customer_id] || customer.invoices;
       const customerWithInvoices = { ...customer, invoices: customerInvoices };
+
+      // A statement with a balance but no line items is wrong on its face --
+      // that is what a dropped page of invoices looks like. Don't send it.
+      if (customerInvoices.length === 0 && Math.abs(customer.total_balance) > 0.005) {
+        progress[i].status = 'failed';
+        progress[i].error = `No invoice lines loaded for a balance of ${customer.total_balance.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} - not sent`;
+        setEmailProgress([...progress]);
+        continue;
+      }
+
       progress[i].status = 'sending';
       setEmailProgress([...progress]);
 
@@ -168,10 +179,7 @@ export default function StatementActions({ selectedCustomers, templates, selecte
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-customer-invoice-email`,
           {
             method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              'Content-Type': 'application/json',
-            },
+            headers: await functionAuthHeaders(),
             body: JSON.stringify({
               templateId: selectedTemplateId,
               templateName: selectedTemplate.name,

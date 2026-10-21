@@ -5,6 +5,43 @@ import { normalizeExcelLayout } from '../../lib/statementExport';
 
 const BATCH_SIZE = 200;
 
+// PostgREST caps a response at 1,000 rows. Both statement queries used to run
+// unpaged, so a customer with 3,623 open invoices got 1,000 of them -- the PDF
+// header showed the correct $1,558,129.41 from the server-side RPC while its
+// own TOTAL row, summed from the rows it received, read $305,338. On a bulk
+// send the 1,000 rows were shared across a batch of 20 customers, so one large
+// account consumed the whole window and the other 19 were emailed a statement
+// with an empty invoice table and a TOTAL of $0.00.
+const INVOICE_PAGE = 1000;
+
+const STATEMENT_INVOICE_COLUMNS =
+  'customer, reference_number, date, due_date, amount, dac_total, balance, status, description, type';
+
+// due_date alone is not unique, so paging on it can skip or repeat rows;
+// reference_number breaks the tie.
+async function fetchStatementInvoices(customerId: string): Promise<any[]> {
+  const rows: any[] = [];
+  for (let from = 0; ; from += INVOICE_PAGE) {
+    const { data, error } = await supabase
+      .from('acumatica_invoices')
+      .select(STATEMENT_INVOICE_COLUMNS)
+      .neq('status', 'On Hold')
+      .eq('customer', customerId)
+      .gt('balance', 0)
+      .neq('status', 'Voided')
+      .neq('status', 'Draft')
+      .order('due_date', { ascending: true })
+      .order('reference_number', { ascending: true })
+      .range(from, from + INVOICE_PAGE - 1);
+
+    if (error) throw error;
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < INVOICE_PAGE) break;
+  }
+  return rows;
+}
+
 // Headline totals for the stat cards, computed once server-side so they show a
 // final figure instead of counting up as row batches stream in.
 export type StatementSummary = { customers: number; balance: number; invoices: number; overdue: number };
@@ -145,19 +182,9 @@ export function useCustomerStatements() {
     setLoadingInvoices(customerId);
 
     try {
-      const { data, error } = await supabase
-        .from('acumatica_invoices')
-        .select('reference_number, date, due_date, amount, dac_total, balance, status, description, type')
-        .neq('status', 'On Hold')
-        .eq('customer', customerId)
-        .gt('balance', 0)
-        .neq('status', 'Voided')
-        .neq('status', 'Draft')
-        .order('due_date', { ascending: true });
+      const data = await fetchStatementInvoices(customerId);
 
-      if (error) throw error;
-
-      const invoices = mapInvoices(data || []);
+      const invoices = mapInvoices(data);
       setInvoiceCache(prev => ({ ...prev, [customerId]: invoices }));
       setCustomers(prev => prev.map(c =>
         c.customer_id === customerId ? { ...c, invoices } : c
@@ -177,31 +204,18 @@ export function useCustomerStatements() {
       return result;
     }
 
-    const batchSize = 20;
+    // Per customer, not 20 at a time: a shared 1,000-row window let one large
+    // account starve the rest of its batch. A few at a time keeps it quick.
+    const CONCURRENCY = 5;
     const newCache: Record<string, StatementInvoice[]> = {};
 
-    for (let i = 0; i < missing.length; i += batchSize) {
-      const batch = missing.slice(i, i + batchSize);
-      const { data, error } = await supabase
-        .from('acumatica_invoices')
-        .select('customer, reference_number, date, due_date, amount, dac_total, balance, status, description, type')
-        .neq('status', 'On Hold')
-        .in('customer', batch)
-        .gt('balance', 0)
-        .neq('status', 'Voided')
-        .neq('status', 'Draft')
-        .order('due_date', { ascending: true });
-
-      if (error) throw error;
-
-      const grouped: Record<string, any[]> = {};
-      (data || []).forEach((inv: any) => {
-        if (!grouped[inv.customer]) grouped[inv.customer] = [];
-        grouped[inv.customer].push(inv);
-      });
-
-      batch.forEach(cid => {
-        newCache[cid] = mapInvoices(grouped[cid] || []);
+    for (let i = 0; i < missing.length; i += CONCURRENCY) {
+      const slice = missing.slice(i, i + CONCURRENCY);
+      const fetched = await Promise.all(
+        slice.map(async cid => ({ cid, rows: await fetchStatementInvoices(cid) }))
+      );
+      fetched.forEach(({ cid, rows }) => {
+        newCache[cid] = mapInvoices(rows);
       });
     }
 

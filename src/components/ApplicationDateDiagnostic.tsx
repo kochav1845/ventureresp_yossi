@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, Calendar } from 'lucide-react';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 interface ApplicationDateDiagnosticProps {
   onBack?: () => void;
 }
@@ -30,10 +31,7 @@ export default function ApplicationDateDiagnostic({ onBack }: ApplicationDateDia
 
       const response = await fetch(apiUrl, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
+        headers: await functionAuthHeaders(),
       });
 
       const data = await response.json();

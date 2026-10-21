@@ -3,6 +3,7 @@ import { Calendar, RefreshCw, ArrowLeft, AlertCircle, CheckCircle, Clock } from 
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 export default function PaymentDateRangeResync() {
   const navigate = useNavigate();
   const [startDate, setStartDate] = useState('');
@@ -55,10 +56,7 @@ export default function PaymentDateRangeResync() {
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resync-payment-date-range`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
+          headers: await functionAuthHeaders(),
           body: JSON.stringify({ startDate, endDate })
         }
       );

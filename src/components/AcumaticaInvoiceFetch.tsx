@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, AlertCircle } from 'lucide-react';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 interface AcumaticaInvoiceFetchProps {
   onBack?: () => void;
 }
@@ -50,10 +51,7 @@ export default function AcumaticaInvoiceFetch({ onBack }: AcumaticaInvoiceFetchP
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/acumatica-invoice-bulk-fetch`,
           {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            },
+            headers: await functionAuthHeaders(),
             body: JSON.stringify({
               count,
               skip,

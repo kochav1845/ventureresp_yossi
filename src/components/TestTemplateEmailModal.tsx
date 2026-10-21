@@ -3,6 +3,7 @@ import { X, Search, Mail, Send, Loader2, CheckCircle, AlertCircle, User, FileTex
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 interface Template {
   id: string;
   name: string;
@@ -218,10 +219,7 @@ export default function TestTemplateEmailModal({ template, onClose }: TestTempla
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-customer-invoice-email`,
         {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
+          headers: await functionAuthHeaders(),
           body: JSON.stringify({
             templateId: template.id,
             templateName: `[TEST] ${template.name}`,

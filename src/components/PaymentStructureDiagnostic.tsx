@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, AlertCircle } from 'lucide-react';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 interface PaymentDiagnosticProps {
   onBack?: () => void;
 }
@@ -32,9 +33,7 @@ export default function PaymentStructureDiagnostic({ onBack }: PaymentDiagnostic
 
       const response = await fetch(apiUrl, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
+        headers: await functionAuthHeaders(),
       });
 
       const data = await response.json();

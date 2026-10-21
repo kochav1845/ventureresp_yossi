@@ -3,6 +3,7 @@ import { ArrowLeft, Download, Calendar, AlertCircle, CheckCircle2, Loader2, Data
 import { supabase } from '../lib/supabase';
 import { useToast } from '../contexts/ToastContext';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 interface BatchResult {
   batchNumber: number;
   startDate: string;
@@ -64,10 +65,7 @@ export default function Last15DaysPaymentFetch() {
 
     const response = await fetch(functionUrl, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await functionAuthHeaders(),
       body: JSON.stringify({
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),

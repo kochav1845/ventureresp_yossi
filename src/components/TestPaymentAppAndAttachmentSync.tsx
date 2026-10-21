@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { PlayCircle, Loader2, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 interface TestResult {
   step: string;
   status: 'pending' | 'success' | 'error';
@@ -44,10 +45,7 @@ export function TestPaymentAppAndAttachmentSync() {
 
       const response = await fetch(apiUrl, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
+        headers: await functionAuthHeaders(),
         body: JSON.stringify(body)
       });
 

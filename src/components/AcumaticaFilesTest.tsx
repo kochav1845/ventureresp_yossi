@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 
+import { functionAuthHeaders } from '../lib/functionAuth';
 export default function AcumaticaFilesTest() {
   const [acumaticaUrl, setAcumaticaUrl] = useState('');
   const [username, setUsername] = useState('');
@@ -28,10 +29,7 @@ export default function AcumaticaFilesTest() {
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/test-acumatica-files`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
+          headers: await functionAuthHeaders(),
           body: JSON.stringify({
             acumaticaUrl,
             username,
