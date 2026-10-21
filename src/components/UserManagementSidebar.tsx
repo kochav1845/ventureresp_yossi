@@ -211,10 +211,13 @@ export default function UserManagementSidebar({ onClose, isOpen }: UserManagemen
   const toggleCollectorAssignment = async (userId: string, canBeCollector: boolean) => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ can_be_assigned_as_collector: canBeCollector })
-        .eq('id', userId);
+      // Direct UPDATE of this column is no longer granted to signed-in users
+      // (it sits next to role / account_status / organization_id, which nobody
+      // may edit about themselves). The RPC is admin-gated and org-scoped.
+      const { error } = await supabase.rpc('admin_set_can_be_collector', {
+        p_user_id: userId,
+        p_value: canBeCollector,
+      });
 
       if (error) throw error;
 
