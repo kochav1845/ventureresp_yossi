@@ -153,10 +153,14 @@ export default function UserManagementSidebar({ onClose, isOpen }: UserManagemen
   const updateRole = async (userId: string, newRole: string) => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ role: newRole })
-        .eq('id', userId);
+      // Role changes go through an admin-gated RPC. `authenticated` no longer
+      // holds UPDATE on user_profiles.role -- it previously did, which let ANY
+      // logged-in user set their own role to admin (audit C4). The RPC verifies
+      // the caller is an admin and that the target is in their own org.
+      const { error } = await supabase.rpc('admin_set_user_role', {
+        p_user_id: userId,
+        p_role: newRole,
+      });
 
       if (error) throw error;
 
