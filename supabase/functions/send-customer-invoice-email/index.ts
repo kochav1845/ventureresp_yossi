@@ -139,8 +139,47 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // ── AuthZ ────────────────────────────────────────────────────────────
+    // This sends mail from the company's authenticated SendGrid domain to any
+    // address in the request body. With verify_jwt off and no caller check it
+    // was an OPEN RELAY: anyone could send mail that appears to come from
+    // Venture AR. Two legitimate callers: a signed-in staff member, and the
+    // statement auto-send cron, which calls in with the SERVICE ROLE key.
+    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrlEarly = Deno.env.get('SUPABASE_URL')!;
+    const bearer = req.headers.get('Authorization')?.replace('Bearer ', '') ?? '';
+
+    if (!bearer) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    const isInternalCall = bearer === svcKey;
+    let callerOrgId: string | undefined;
+
+    if (!isInternalCall) {
+      const userClient = createClient(supabaseUrlEarly, Deno.env.get('SUPABASE_ANON_KEY') ?? '');
+      const { data: { user: caller } } = await userClient.auth.getUser(bearer);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const admin = createClient(supabaseUrlEarly, svcKey);
+      const { data: prof } = await admin
+        .from('user_profiles').select('role, organization_id').eq('id', caller.id).maybeSingle();
+      if (!prof || !['admin', 'manager', 'collector'].includes(prof.role)) {
+        return new Response(JSON.stringify({ error: 'Forbidden: staff only' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      callerOrgId = prof.organization_id ?? undefined;
+    }
+
     const body: RequestBody = await req.json();
-    const { templateId, templateName, template, customerData, pdfBase64, excelBase64, sentByUserId, department, organizationId } = body;
+    const { templateId, templateName, template, customerData, pdfBase64, excelBase64, sentByUserId, department } = body;
+    // Never trust organizationId from the body for a user call -- that decides
+    // which org's mail domain and settings are used. Take it from the caller's
+    // own profile. Only the internal cron may state it, since it iterates orgs.
+    const organizationId = isInternalCall ? body.organizationId : callerOrgId;
 
     if (!template || !customerData || !customerData.customer_email) {
       return new Response(

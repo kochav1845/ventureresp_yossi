@@ -37,7 +37,6 @@ export default function PaymentApplicationResync({ onBack }: { onBack: () => voi
   const [isPaused, setIsPaused] = useState(false);
   const [currentSkip, setCurrentSkip] = useState(0);
   const [batchSize, setBatchSize] = useState(50);
-  const [clearFirst, setClearFirst] = useState(true);
   const [progress, setProgress] = useState<ResyncResult | null>(null);
   const [batchLogs, setBatchLogs] = useState<BatchLog[]>([]);
   const [totalStats, setTotalStats] = useState({
@@ -53,7 +52,7 @@ export default function PaymentApplicationResync({ onBack }: { onBack: () => voi
   const abortRef = useRef(false);
   const batchCountRef = useRef(0);
 
-  const runBatch = async (skip: number, shouldClear: boolean): Promise<ResyncResult> => {
+  const runBatch = async (skip: number): Promise<ResyncResult> => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
 
@@ -68,7 +67,9 @@ export default function PaymentApplicationResync({ onBack }: { onBack: () => voi
         body: JSON.stringify({
           batchSize,
           skip,
-          clearFirst: shouldClear && skip === 0
+          // clearFirst removed: it wiped every payment_invoice_applications row
+          // up front while a run only rebuilt its own batch. The function now
+          // deletes each payment's rows immediately before reinserting them.
         })
       }
     );
@@ -102,7 +103,7 @@ export default function PaymentApplicationResync({ onBack }: { onBack: () => voi
     try {
       while (!abortRef.current) {
         batchCountRef.current++;
-        const result = await runBatch(skip, isFirstBatch && clearFirst);
+        const result = await runBatch(skip);
         isFirstBatch = false;
 
         if (!result.success) {
@@ -248,18 +249,12 @@ export default function PaymentApplicationResync({ onBack }: { onBack: () => voi
             </div>
           </div>
 
-          <div className="mb-6">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={clearFirst}
-                onChange={(e) => setClearFirst(e.target.checked)}
-                disabled={isRunning || currentSkip > 0}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <span className="text-sm text-gray-700">Clear existing applications before syncing</span>
-            </label>
-            <p className="text-xs text-gray-500 ml-6 mt-1">Recommended for a clean re-sync</p>
+          <div className="mb-6 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-xs text-blue-800">
+              Each payment's existing links are replaced as it is processed. There is no
+              global clear — the old "clear first" option emptied the whole table while a
+              single run only rebuilt the payments in its own batch.
+            </p>
           </div>
 
           <div className="flex gap-3 flex-wrap">

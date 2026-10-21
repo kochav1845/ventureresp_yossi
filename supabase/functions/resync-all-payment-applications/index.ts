@@ -19,26 +19,40 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // ── AuthZ: admin only ───────────────────────────────────────────────
+    // This endpoint rewrites every payment-to-invoice link in the database and
+    // had NO caller check with verify_jwt off, so an unauthenticated POST could
+    // destroy all 29,326 rows. Same guard the other hardened functions use.
+    const token = req.headers.get("Authorization")?.replace("Bearer ", "");
+    if (!token) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") ?? "");
+    const { data: { user: caller } } = await anonClient.auth.getUser(token);
+    if (!caller) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const { data: callerProfile } = await supabase
+      .from("user_profiles").select("role").eq("id", caller.id).maybeSingle();
+    if (!callerProfile || callerProfile.role !== "admin") {
+      return new Response(JSON.stringify({ error: "Forbidden: admin only" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const requestBody = await req.json().catch(() => ({}));
     const {
       batchSize = 50,
-      skip = 0,
-      clearFirst = false
+      skip = 0
     } = requestBody;
 
-    if (clearFirst && skip === 0) {
-      console.log("Clearing all existing payment_invoice_applications...");
-      const { error: deleteError } = await supabase
-        .from('payment_invoice_applications')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000');
-
-      if (deleteError) {
-        console.error("Error clearing applications:", deleteError.message);
-      } else {
-        console.log("Cleared all existing applications");
-      }
-    }
+    // `clearFirst` is gone on purpose. It deleted EVERY row of
+    // payment_invoice_applications up front, then this run rebuilt only the
+    // payments in its own batch -- so a single call left the table almost
+    // empty and reported success. It bought nothing either: the batch loop
+    // below already deletes each payment's own rows immediately before
+    // reinserting them, which is the correct, non-destructive scope.
 
     const { data: credentials, error: credsError } = await supabase
       .from('acumatica_sync_credentials')
@@ -62,13 +76,25 @@ Deno.serve(async (req: Request) => {
       acumaticaUrl = `https://${acumaticaUrl}`;
     }
 
-    const { data: allPayments, error: paymentsError } = await supabase
-      .from('acumatica_payments')
-      .select('id, reference_number, type, customer_id')
-      .order('reference_number', { ascending: true });
-
-    if (paymentsError || !allPayments) {
-      throw new Error(`Failed to fetch payments: ${paymentsError?.message}`);
+    // Paginated: PostgREST caps a response at 1000 rows and there are ~48,836
+    // payments, so the unpaged select made totalPayments read 1000 and the
+    // run report "complete" after covering 2% of the book.
+    const allPayments: any[] = [];
+    {
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data, error: paymentsError } = await supabase
+          .from('acumatica_payments')
+          .select('id, reference_number, type, customer_id')
+          .order('reference_number', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (paymentsError) {
+          throw new Error(`Failed to fetch payments: ${paymentsError.message}`);
+        }
+        const batch = data || [];
+        allPayments.push(...batch);
+        if (batch.length < PAGE) break;
+      }
     }
 
     const totalPayments = allPayments.length;
