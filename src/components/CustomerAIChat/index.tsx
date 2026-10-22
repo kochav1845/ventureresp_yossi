@@ -21,6 +21,16 @@ import { supabase } from '../../lib/supabase';
 import { customerChatSignal } from '../../lib/customerChatSignal';
 import ChatChart, { ChartSpec } from './ChatChart';
 
+// A write the assistant has PREPARED but not performed. create_ticket and
+// create_reminder return one of these instead of writing; nothing reaches the
+// database until the user approves it here.
+interface PendingAction {
+  action: 'create_ticket' | 'create_reminder';
+  args: Record<string, any>;
+  summary: string;
+  detail?: Record<string, any> | null;
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -28,6 +38,9 @@ interface ChatMessage {
   timestamp: Date;
   isLoading?: boolean;
   charts?: ChartSpec[];
+  pendingAction?: PendingAction;
+  actionState?: 'pending' | 'approving' | 'done' | 'discarded';
+  actionResult?: string;
 }
 
 interface CustomerAIChatProps {
@@ -173,6 +186,46 @@ export default function CustomerAIChat({ customerId, customerName }: CustomerAIC
     setIsSpeaking(false);
   };
 
+  const approveAction = async (msgId: string, action: PendingAction) => {
+    setMessages(prev => prev.map(m => (m.id === msgId ? { ...m, actionState: 'approving' } : m)));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not signed in');
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/customer-ai-chat`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          // Only the action and the customer go back. The server re-checks the
+          // action against its own allowlist, and re-checks that the customer
+          // belongs to the caller's organization, before running it.
+          body: JSON.stringify({ confirm_action: action, customer_id: customerId }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not complete the action');
+
+      const num = data.result?.ticket?.ticket_number || data.result?.ticket_number;
+      setMessages(prev => prev.map(m => (m.id === msgId
+        ? { ...m, actionState: 'done', actionResult: num ? `Created ${num}` : 'Done.' }
+        : m)));
+    } catch (err: any) {
+      setMessages(prev => prev.map(m => (m.id === msgId
+        ? { ...m, actionState: 'pending', actionResult: `Failed: ${err.message}` }
+        : m)));
+    }
+  };
+
+  const discardAction = (msgId: string) => {
+    setMessages(prev => prev.map(m => (m.id === msgId
+      ? { ...m, actionState: 'discarded', actionResult: 'Discarded. Nothing was changed.' }
+      : m)));
+  };
+
   const sendMessage = async (text: string) => {
     if (!text.trim() || isLoading) return;
 
@@ -227,7 +280,14 @@ export default function CustomerAIChat({ customerId, customerName }: CustomerAIC
       setMessages(prev =>
         prev.map(m =>
           m.id === loadingMsg.id
-            ? { ...m, content: data.reply, charts: Array.isArray(data.charts) ? data.charts : undefined, isLoading: false }
+            ? {
+                ...m,
+                content: data.reply,
+                charts: Array.isArray(data.charts) ? data.charts : undefined,
+                isLoading: false,
+                pendingAction: data.pending_action || undefined,
+                actionState: data.pending_action ? 'pending' : undefined,
+              }
             : m
         )
       );
@@ -447,6 +507,51 @@ export default function CustomerAIChat({ customerId, customerName }: CustomerAIC
                   {hasCharts && msg.charts!.map((c, i) => (
                     <ChatChart key={i} spec={c} height={fullscreen ? 300 : 200} />
                   ))}
+                  {msg.pendingAction && (
+                    <div className="mt-3">
+                      {msg.actionState === 'done' ? (
+                        <p className="text-[11px] text-emerald-700 font-medium">{msg.actionResult}</p>
+                      ) : msg.actionState === 'discarded' ? (
+                        <p className="text-[11px] text-gray-500">{msg.actionResult}</p>
+                      ) : (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                          <p className="text-[11px] font-semibold text-amber-900 mb-1">Needs your approval</p>
+                          <p className="text-[11px] text-amber-900 mb-2">{msg.pendingAction.summary}</p>
+                          {msg.pendingAction.detail && (
+                            <dl className="mb-2 space-y-0.5">
+                              {Object.entries(msg.pendingAction.detail)
+                                .filter(([, v]) => v !== null && v !== undefined && v !== '')
+                                .map(([k, v]) => (
+                                  <div key={k} className="flex gap-1.5 text-[10px] text-amber-800">
+                                    <dt className="font-medium capitalize">{k.replace(/_/g, ' ')}:</dt>
+                                    <dd className="break-words">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</dd>
+                                  </div>
+                                ))}
+                            </dl>
+                          )}
+                          {msg.actionResult && (
+                            <p className="text-[10px] text-red-700 mb-1.5">{msg.actionResult}</p>
+                          )}
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={() => approveAction(msg.id, msg.pendingAction!)}
+                              disabled={msg.actionState === 'approving'}
+                              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 rounded-lg text-white text-[11px] font-medium transition-colors"
+                            >
+                              {msg.actionState === 'approving' ? 'Working...' : 'Approve'}
+                            </button>
+                            <button
+                              onClick={() => discardAction(msg.id)}
+                              disabled={msg.actionState === 'approving'}
+                              className="px-2.5 py-1 bg-white hover:bg-gray-50 disabled:opacity-60 border border-gray-200 rounded-lg text-gray-700 text-[11px] font-medium transition-colors"
+                            >
+                              Discard
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </div>

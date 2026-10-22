@@ -176,7 +176,20 @@ const tools = [
   },
 ];
 
-async function executeTool(sb: any, name: string, args: any, customerId: string, userId: string): Promise<any> {
+// Returned by a write tool the user has not approved yet.
+const pendingAction = (action: string, args: Record<string, any>, summary: string, detail?: Record<string, any>) => ({
+  __pending_action: { action, args, summary, detail: detail ?? null },
+});
+
+async function executeTool(
+  sb: any,
+  name: string,
+  args: any,
+  customerId: string,
+  userId: string,
+  orgId: string | null = null,
+  confirmed = false,
+): Promise<any> {
   switch (name) {
     case "get_customer_overview": {
       const { data: customer } = await sb
@@ -375,15 +388,30 @@ async function executeTool(sb: any, name: string, args: any, customerId: string,
         .eq("customer_id", customerId)
         .maybeSingle();
 
+      // collection_tickets has no title, description or created_by_user_id
+      // column -- this insert named all three and so had never once succeeded.
+      // The real columns are notes, created_by and organization_id, and the
+      // last of those cannot come from set_org_id_on_insert() here because this
+      // runs service-role, where get_user_org_id() is NULL.
       const ticketData: any = {
         customer_id: customerId,
         customer_name: customer?.customer_name || customerId,
-        title: args.title,
-        description: args.description || "",
+        notes: [args.title, args.description].filter(Boolean).join(" - ") || "Raised from customer chat",
         priority: args.priority || "medium",
         status: "open",
-        created_by_user_id: userId,
+        ticket_type: "overdue payment",
+        created_by: userId,
       };
+      if (orgId) ticketData.organization_id = orgId;
+
+      if (!confirmed) {
+        return pendingAction(
+          "create_ticket",
+          args,
+          `Create a ${ticketData.priority} ticket for ${ticketData.customer_name}`,
+          { customer_name: ticketData.customer_name, priority: ticketData.priority, notes: ticketData.notes },
+        );
+      }
 
       const { data: ticket, error } = await sb
         .from("collection_tickets")
@@ -419,16 +447,29 @@ async function executeTool(sb: any, name: string, args: any, customerId: string,
         .eq("customer_id", customerId)
         .maybeSingle();
 
+      // invoice_reminders has neither customer_id nor is_active; naming them
+      // meant this insert had never succeeded either. The customer goes in the
+      // note, since the table links to invoices and tickets rather than
+      // customers.
+      const reminderRow = {
+        user_id: userId,
+        title: args.title,
+        reminder_date: args.reminder_date,
+        notes: args.notes || `Reminder for customer ${customer?.customer_name || customerId}`,
+      };
+
+      if (!confirmed) {
+        return pendingAction(
+          "create_reminder",
+          args,
+          `Set a reminder "${reminderRow.title}" for ${reminderRow.reminder_date}`,
+          { title: reminderRow.title, reminder_date: reminderRow.reminder_date, notes: reminderRow.notes },
+        );
+      }
+
       const { data: reminder, error } = await sb
         .from("invoice_reminders")
-        .insert({
-          user_id: userId,
-          title: args.title,
-          reminder_date: args.reminder_date,
-          notes: args.notes || `Reminder for customer ${customer?.customer_name || customerId}`,
-          customer_id: customerId,
-          is_active: true,
-        })
+        .insert(reminderRow)
         .select("id, title, reminder_date")
         .single();
 
@@ -481,8 +522,7 @@ Deno.serve(async (req: Request) => {
     const callerOrg = callerProfile?.organization_id ?? null;
 
     const body = await req.json();
-    const { message, conversation_history, customer_id } = body;
-    if (!message) return errorResponse("Message is required");
+    const { message, conversation_history, customer_id, confirm_action } = body;
     if (!customer_id) return errorResponse("customer_id is required");
 
     // NOTE: acumatica_customers has no "email" column (it's email_address /
@@ -504,6 +544,26 @@ Deno.serve(async (req: Request) => {
     if (!customerInfo || (callerOrg && customerInfo.organization_id !== callerOrg)) {
       return errorResponse("Customer not found in your organization", 403);
     }
+
+    // The user approved a write the assistant proposed earlier. Run that one
+    // action and return -- no model call, so the model has no say in what is
+    // actually written. The action name is checked against an allowlist rather
+    // than trusted from the request. Placed after the tenant check above so an
+    // approval cannot be used to reach another organization's customer.
+    if (confirm_action) {
+      const WRITE_ACTIONS = ["create_ticket", "create_reminder"];
+      const action = String(confirm_action.action || "");
+      if (!WRITE_ACTIONS.includes(action)) {
+        return errorResponse(`Not a confirmable action: ${action}`, 400);
+      }
+      const result = await executeTool(
+        supabase, action, confirm_action.args || {}, customer_id, user.id, callerOrg, true,
+      );
+      if (result?.error) return errorResponse(String(result.error), 400);
+      return jsonResponse({ reply: "Done.", confirmed: action, result });
+    }
+
+    if (!message) return errorResponse("Message is required");
 
     const customerName = customerInfo?.customer_name || customer_id;
     const today = new Date().toISOString().split("T")[0];
@@ -532,6 +592,11 @@ RULES:
 - For tickets, use get_customer_tickets.
 - To create a collection ticket, use create_ticket. Include invoice references if discussed.
 - To set a reminder, use create_reminder.
+- WRITES NEED THE USER'S APPROVAL. create_ticket and create_reminder write nothing when you call
+  them -- they return a proposal the user approves or discards in the interface. Never say you
+  created a ticket or set a reminder; say what you have prepared and that it is waiting for their
+  approval. Do not report a ticket number, which is assigned on approval, and do not call a write
+  tool twice hoping it will take effect.
 - If no tool can answer a question, say so and name the figure you would need. Never estimate a number, and never state one you did not get from a tool.
 - Format currency as $1,234.56. Be specific with numbers.
 - Keep responses concise but informative. Use bullet points for lists.
@@ -559,6 +624,7 @@ RULES:
     let assistantMessage = result.choices?.[0]?.message;
     let rounds = 0;
     const charts: any[] = [];
+    let pending: any = null;
 
     while (assistantMessage?.tool_calls?.length > 0 && rounds < 6) {
       rounds++;
@@ -573,7 +639,7 @@ RULES:
             if (Array.isArray(args?.data) && args.data.length > 0) charts.push(args);
             return { role: "tool", tool_call_id: tc.id, content: JSON.stringify({ ok: true, note: "Chart displayed to the user." }) };
           }
-          const toolResult = await executeTool(supabase, tc.function.name, args, customer_id, user.id);
+          const toolResult = await executeTool(supabase, tc.function.name, args, customer_id, user.id, callerOrg);
           return { role: "tool", tool_call_id: tc.id, content: JSON.stringify(toolResult) };
         })
       );
@@ -591,10 +657,22 @@ RULES:
       assistantMessage = result.choices?.[0]?.message;
     }
 
+    for (const msg of messages) {
+      if (msg.role === "tool" && msg.content) {
+        try {
+          const parsed = JSON.parse(msg.content);
+          if (parsed.__pending_action && !pending) pending = parsed.__pending_action;
+        } catch {}
+      }
+    }
+
     return jsonResponse({
       reply: assistantMessage?.content || "I could not generate a response.",
       tools_used: rounds > 0,
       charts,
+      // Rendered as an approve/discard card and sent back as confirm_action.
+      // Nothing is written until then.
+      pending_action: pending,
     });
   } catch (error: any) {
     console.error("Customer AI Chat error:", error);
