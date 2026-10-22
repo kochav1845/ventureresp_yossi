@@ -66,6 +66,21 @@ const formatDateString = (dateString: string): string => {
   }
 };
 
+/**
+ * cached_payment_analytics rows older than this are treated as missing, so the
+ * page rebuilds rather than rendering a frozen figure. The hourly refresh that
+ * fills this cache reported success while failing 3,420 times in a row, which
+ * left monthly rows 46 days old and yearly rows 58 days old on screen with
+ * nothing to indicate it.
+ */
+const CACHE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+function isCacheFresh(calculatedAt: string | null | undefined): boolean {
+  if (!calculatedAt) return false;
+  const age = Date.now() - new Date(calculatedAt).getTime();
+  return Number.isFinite(age) && age >= 0 && age < CACHE_MAX_AGE_MS;
+}
+
 export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
   const rawNavigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -867,7 +882,13 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         .eq('year', year)
         .order('calculated_at', { ascending: false });
 
-      if (!cacheError && cachedData && cachedData.length > 0) {
+      // Treat stale rows as if they were missing. The hourly refresh behind this
+      // cache failed silently for five months (3,420 consecutive runs), and
+      // because these rows were rendered with no age check, September read
+      // $172,428 collected against a real $2,061,111. The only self-heal fired
+      // when the CURRENT month had no row at all, so a month that had a stale
+      // row was never corrected.
+      if (!cacheError && cachedData && cachedData.length > 0 && isCacheFresh(cachedData[0].calculated_at)) {
         console.log(`Loaded ${cachedData.length} months from cache`);
 
         const seenMonths = new Set<number>();
@@ -1099,7 +1120,11 @@ export default function PaymentAnalytics({ onBack }: PaymentAnalyticsProps) {
         .order('calculated_at', { ascending: false })
         .order('year', { ascending: false });
 
-      if (!cacheError && cachedData && cachedData.length > 0) {
+      // Same age check as the monthly view. This one had no self-heal at all:
+      // if any rows existed it rendered them and returned, so 2026 showed
+      // $13.6M collected against a real $18.3M and nothing on screen suggested
+      // a refresh was needed.
+      if (!cacheError && cachedData && cachedData.length > 0 && isCacheFresh(cachedData[0].calculated_at)) {
         console.log(`Loaded ${cachedData.length} years from cache`);
 
         const seenYears = new Set<number>();
