@@ -375,7 +375,23 @@ const tools = [
 // Caller identity. The client below is service-role, so auth.uid() is NULL inside
 // the DB — any insert that would rely on get_user_org_id() (organization_id) or on
 // auth.uid() (note authorship) must pass these explicitly or the row is orphaned.
-type ToolCtx = { userId: string | null; orgId: string | null };
+type ToolCtx = {
+  userId: string | null;
+  orgId: string | null;
+  // False for anything the MODEL decided to do. A write tool called without it
+  // resolves and validates its arguments, then returns a proposal instead of
+  // writing; the user approves it in the UI and the same tool runs again with
+  // confirmed: true. Nothing this assistant writes is ever a model decision
+  // alone -- the pattern every comparable product uses (ChatFin drafts and a
+  // person posts; Quadient refuses autonomous send; the Dynamics reference
+  // agent queues drafted actions for a collector).
+  confirmed?: boolean;
+};
+
+// Returned by a write tool when the user has not approved it yet.
+const pendingAction = (action: string, args: Record<string, any>, summary: string, detail?: Record<string, any>) => ({
+  __pending_action: { action, args, summary, detail: detail ?? null },
+});
 
 async function executeTool(
   sb: ReturnType<typeof createClient>,
@@ -742,6 +758,17 @@ async function executeTool(
       if (args.due_date) insert.due_date = args.due_date;
       if (args.assigned_collector_id) insert.assigned_collector_id = args.assigned_collector_id;
 
+      if (!ctx.confirmed) {
+        return pendingAction(
+          "create_ticket",
+          args,
+          `Create a ${insert.priority} "${insert.ticket_type}" ticket for ${customer.customer_name} (${customer.customer_id})`,
+          { customer_name: customer.customer_name, customer_id: customer.customer_id,
+            priority: insert.priority, ticket_type: insert.ticket_type,
+            notes: insert.notes ?? null, due_date: insert.due_date ?? null },
+        );
+      }
+
       const { data: ticket, error } = await sb
         .from("collection_tickets")
         .insert(insert)
@@ -776,6 +803,15 @@ async function executeTool(
       const { data: ticket } = await sb.from("collection_tickets").select("id, ticket_number").eq("ticket_number", args.ticket_number).maybeSingle();
       if (!ticket) return { error: `Ticket '${args.ticket_number}' not found` };
 
+      if (!ctx.confirmed) {
+        return pendingAction(
+          "add_ticket_note",
+          args,
+          `Add a note to ticket ${ticket.ticket_number}`,
+          { ticket_number: ticket.ticket_number, note_text: args.note_text },
+        );
+      }
+
       const { data: note, error } = await sb
         .from("ticket_notes")
         .insert({ ticket_id: ticket.id, note_text: args.note_text, created_by_user_id: ctx.userId })
@@ -795,6 +831,16 @@ async function executeTool(
         if (args[f] !== undefined && args[f] !== null) patch[f] = args[f];
       }
       if (Object.keys(patch).length === 0) return { error: "Nothing to update" };
+
+      if (!ctx.confirmed) {
+        const changes = Object.entries(patch).map(([k, v]) => `${k} → ${v}`).join(", ");
+        return pendingAction(
+          "update_ticket",
+          args,
+          `Update ticket ${ticket.ticket_number}: ${changes}`,
+          { ticket_number: ticket.ticket_number, current_status: ticket.status, changes: patch },
+        );
+      }
 
       const { data: updated, error } = await sb
         .from("collection_tickets")
@@ -1119,7 +1165,37 @@ Deno.serve(async (req: Request) => {
     };
 
     const body = await req.json();
-    const { message, conversation_history } = body;
+    const { message, conversation_history, confirm_action } = body;
+
+    // The user approved an action the assistant proposed earlier. Execute that
+    // one action and return -- no model call, so the model cannot influence
+    // what actually gets written at this point. The action name is checked
+    // against an allowlist rather than trusted from the request.
+    if (confirm_action) {
+      const WRITE_ACTIONS = ["create_ticket", "add_ticket_note", "update_ticket"];
+      const action = String(confirm_action.action || "");
+      if (!WRITE_ACTIONS.includes(action)) {
+        return errorResponse(`Not a confirmable action: ${action}`, 400);
+      }
+      const startedAt = Date.now();
+      let result: any;
+      try {
+        result = await executeTool(userSb, action, confirm_action.args || {}, { ...toolCtx, confirmed: true });
+      } catch (e: any) {
+        result = { error: e?.message || "Action failed" };
+      }
+      await auditToolCall({
+        tool_name: `${action} (confirmed)`,
+        arguments: redactArgs(confirm_action.args || {}),
+        outcome: result?.error ? "error" : "ok",
+        error_message: result?.error ? String(result.error).slice(0, 500) : null,
+        row_count: null,
+        duration_ms: Date.now() - startedAt,
+      });
+      if (result?.error) return errorResponse(String(result.error), 400);
+      return jsonResponse({ reply: result.message || "Done.", confirmed: action, result });
+    }
+
     if (!message) return errorResponse("Message is required");
 
     const today = new Date().toISOString().split("T")[0];
@@ -1150,11 +1226,18 @@ RULES:
 TICKETS — you can fully manage collection tickets:
 - To find tickets use search_tickets (by status/priority/customer/collector).
 - To discuss ONE ticket (its story, notes, what happened) use get_ticket_detail — it returns the notes, activity log and status history. Summarise those rather than guessing.
-- To create a ticket use create_ticket. Resolve the customer with find_customer FIRST to get the customer_id. Never invent a ticket number — it is assigned automatically. Confirm back the ticket number that was created.
+- To create a ticket use create_ticket. Resolve the customer with find_customer FIRST to get the customer_id. Never invent a ticket number — it is assigned automatically.
 - To log a call/promise/comment on a ticket use add_ticket_note.
 - To close, reprioritise, reassign or re-date a ticket use update_ticket.
 - If asked about a customer's tickets, use get_customer_detail (includes their tickets) or search_tickets with their customer_id.
-- Before create_ticket / update_ticket / add_ticket_note, briefly confirm the intent with the user if the request is ambiguous; otherwise just do it and report the result.
+- WRITES NEED THE USER'S APPROVAL. create_ticket, update_ticket and add_ticket_note do NOT write
+  anything when you call them — they return a proposal that the user approves or discards in the
+  interface. So never say you created, updated or noted something. Say what you have prepared and
+  that it is waiting for their approval, e.g. "I've prepared a high-priority ticket for Ditmas
+  Park Care Center — approve it below and I'll create it." Do not call the same write tool twice
+  hoping it will take effect, and do not report a ticket number for a ticket that does not exist
+  yet; the number is assigned on approval.
+- If the request is ambiguous, ask before proposing.
 - NEVER compute balances by summing rows yourself.
 - Format currency as $1,234.56. Be specific with numbers.
 - List results clearly. Offer follow-up actions when relevant.`;
@@ -1226,11 +1309,13 @@ TICKETS — you can fully manage collection tickets:
     }
 
     let reportData = null;
+    let pending = null;
     for (const msg of messages) {
       if (msg.role === "tool" && msg.content) {
         try {
           const parsed = JSON.parse(msg.content);
-          if (parsed.__report) { reportData = parsed; break; }
+          if (parsed.__report && !reportData) reportData = parsed;
+          if (parsed.__pending_action && !pending) pending = parsed.__pending_action;
         } catch {}
       }
     }
@@ -1239,6 +1324,9 @@ TICKETS — you can fully manage collection tickets:
       reply: assistantMessage?.content || "I could not generate a response.",
       tools_used: rounds > 0,
       report: reportData,
+      // The client renders this as an approve/discard card and sends it back as
+      // confirm_action. Until then nothing has been written.
+      pending_action: pending,
     });
   } catch (error: any) {
     console.error("AI Chat error:", error);

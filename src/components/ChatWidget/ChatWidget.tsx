@@ -15,6 +15,7 @@ import {
   FileSpreadsheet,
   FileText,
   ArrowUp,
+  Check,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { customerChatSignal } from '../../lib/customerChatSignal';
@@ -29,6 +30,16 @@ interface ReportData {
   generated_at: string;
 }
 
+// A write the assistant has PREPARED but not performed. create_ticket,
+// update_ticket and add_ticket_note return one of these instead of writing;
+// nothing reaches the database until the user approves it here.
+interface PendingAction {
+  action: 'create_ticket' | 'update_ticket' | 'add_ticket_note';
+  args: Record<string, any>;
+  summary: string;
+  detail?: Record<string, any> | null;
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -36,6 +47,9 @@ interface ChatMessage {
   timestamp: Date;
   isLoading?: boolean;
   report?: ReportData;
+  pendingAction?: PendingAction;
+  actionState?: 'pending' | 'approving' | 'done' | 'discarded';
+  actionResult?: string;
 }
 
 const SUGGESTED_QUESTIONS = [
@@ -230,7 +244,14 @@ export default function ChatWidget() {
       setMessages(prev =>
         prev.map(m =>
           m.id === loadingMsg.id
-            ? { ...m, content: data.reply, isLoading: false, report: data.report || undefined }
+            ? {
+                ...m,
+                content: data.reply,
+                isLoading: false,
+                report: data.report || undefined,
+                pendingAction: data.pending_action || undefined,
+                actionState: data.pending_action ? 'pending' : undefined,
+              }
             : m
         )
       );
@@ -253,6 +274,46 @@ export default function ChatWidget() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const approveAction = async (msgId: string, action: PendingAction) => {
+    setMessages(prev => prev.map(m => (m.id === msgId ? { ...m, actionState: 'approving' } : m)));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not signed in');
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat-assistant`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          // Only the action is sent back. The server re-checks it against its
+          // own allowlist and runs it with no model call involved.
+          body: JSON.stringify({ confirm_action: action }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not complete the action');
+
+      setMessages(prev => prev.map(m => (m.id === msgId
+        ? { ...m, actionState: 'done', actionResult: data.result?.ticket_number
+            ? `${data.reply} (${data.result.ticket_number})`
+            : data.reply || 'Done.' }
+        : m)));
+    } catch (err: any) {
+      setMessages(prev => prev.map(m => (m.id === msgId
+        ? { ...m, actionState: 'pending', actionResult: `Failed: ${err.message}` }
+        : m)));
+    }
+  };
+
+  const discardAction = (msgId: string) => {
+    setMessages(prev => prev.map(m => (m.id === msgId
+      ? { ...m, actionState: 'discarded', actionResult: 'Discarded. Nothing was changed.' }
+      : m)));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -468,6 +529,59 @@ export default function ChatWidget() {
                     className="whitespace-pre-wrap break-words chat-content"
                     dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}
                   />
+                  {msg.pendingAction && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      {msg.actionState === 'done' ? (
+                        <p className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
+                          <Check size={13} />
+                          {msg.actionResult}
+                        </p>
+                      ) : msg.actionState === 'discarded' ? (
+                        <p className="text-xs text-gray-500">{msg.actionResult}</p>
+                      ) : (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                          <p className="text-xs font-semibold text-amber-900 mb-1">
+                            Needs your approval
+                          </p>
+                          <p className="text-xs text-amber-900 mb-2.5">{msg.pendingAction.summary}</p>
+                          {msg.pendingAction.detail && (
+                            <dl className="mb-2.5 space-y-0.5">
+                              {Object.entries(msg.pendingAction.detail)
+                                .filter(([, v]) => v !== null && v !== undefined && v !== '')
+                                .map(([k, v]) => (
+                                  <div key={k} className="flex gap-2 text-[11px] text-amber-800">
+                                    <dt className="font-medium capitalize">{k.replace(/_/g, ' ')}:</dt>
+                                    <dd className="break-words">
+                                      {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                                    </dd>
+                                  </div>
+                                ))}
+                            </dl>
+                          )}
+                          {msg.actionResult && (
+                            <p className="text-[11px] text-red-700 mb-2">{msg.actionResult}</p>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => approveAction(msg.id, msg.pendingAction!)}
+                              disabled={msg.actionState === 'approving'}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 rounded-xl text-white text-xs font-medium transition-colors"
+                            >
+                              <Check size={13} />
+                              {msg.actionState === 'approving' ? 'Working...' : 'Approve'}
+                            </button>
+                            <button
+                              onClick={() => discardAction(msg.id)}
+                              disabled={msg.actionState === 'approving'}
+                              className="px-3 py-1.5 bg-white hover:bg-gray-50 disabled:opacity-60 border border-gray-200 rounded-xl text-gray-700 text-xs font-medium transition-colors"
+                            >
+                              Discard
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {msg.report && (
                     <div className="mt-3 pt-3 border-t border-gray-100">
                       <p className="text-xs text-gray-500 mb-2">
