@@ -349,22 +349,6 @@ const tools = [
   {
     type: "function",
     function: {
-      name: "run_sql_query",
-      description:
-        "Run a read-only SQL query for advanced analysis not covered by other tools. Only SELECT allowed. Key tables: acumatica_invoices (customer, customer_name, reference_number, type, status, amount, balance, date, due_date, color_status, description, terms), acumatica_payments (customer_id, customer_name, reference_number, type, status, payment_amount, application_date, doc_date, payment_method, payment_ref), acumatica_customers (customer_id, customer_name, customer_class, email_address, credit_limit, terms, customer_status, country, city, is_test_customer), collection_tickets (id, ticket_number, customer_id, customer_name, status, priority, ticket_type, notes, due_date, assigned_collector_id, created_at, resolved_at), ticket_notes (ticket_id, note_text, created_by_user_id, created_at), ticket_activity_log (ticket_id, activity_type, description, created_by, created_at), ticket_status_history (ticket_id, old_status, new_status, changed_by, changed_at, notes), payment_invoice_applications (payment_reference_number, invoice_reference_number, amount_paid, doc_type), collector_customer_assignments (customer_id, assigned_collector_id), user_profiles (id, full_name, email, role, account_status), invoice_color_status_history (invoice_id, old_status, new_status, changed_at, changed_by_user_id), invoice_memos (invoice_reference_number, memo_text, created_by_user_id, created_at).",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "SELECT SQL query (max 200 rows returned)" },
-          explanation: { type: "string", description: "Brief explanation of what this query does" },
-        },
-        required: ["query", "explanation"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
       name: "generate_report",
       description:
         "Generate a downloadable report (Excel/PDF). Use when user asks to export, download, generate a spreadsheet/PDF/report. Returns structured data the frontend converts to files. Report types: customer_balances, invoices, payments, aging_report, payment_trend, collector_performance, overdue_customers, customer_analytics.",
@@ -825,11 +809,9 @@ async function executeTool(
 
     case "get_monthly_summary": {
       if (args.entity === "payments") {
-        // Read the table directly, not get_payment_month_summary(): that RPC scopes
-        // itself with get_user_org_id(), which is NULL for this service-role client,
-        // so it would return nothing. Scope it with the caller's org instead.
-        const { data, error } = await sb.from("payment_month_summary").select("*")
-          .eq("organization_id", ctx.orgId).order("month_key", { ascending: false });
+        // The RPC scopes itself with get_user_org_id(), which resolves now that
+        // `sb` carries the caller's identity.
+        const { data, error } = await sb.rpc("get_payment_month_summary");
         if (error) return { error: error.message };
         return {
           entity: "payments",
@@ -845,9 +827,10 @@ async function executeTool(
           })),
         };
       } else {
-        // Same reason as the payments branch above.
-        const { data, error } = await sb.from("invoice_month_summary_mv").select("*")
-          .eq("organization_id", ctx.orgId).order("month_key", { ascending: false });
+        // Same as the payments branch. Also: invoice_month_summary_mv lost its
+        // direct `authenticated` grant in 20261021250000, so it must go via the
+        // SECURITY DEFINER RPC.
+        const { data, error } = await sb.rpc("get_invoice_month_summary");
         if (error) return { error: error.message };
         return {
           entity: "invoices",
@@ -932,29 +915,18 @@ async function executeTool(
       return { results: grouped, total: (data || []).length };
     }
 
-    case "run_sql_query": {
-      const query = (args.query || "").trim();
-      if (!query.toUpperCase().startsWith("SELECT")) return { error: "Only SELECT queries are allowed." };
-      if (query.replace(/;\s*$/, "").includes(";")) return { error: "Only a single statement is allowed." };
-      const forbidden = ["insert", "update", "delete", "drop", "alter", "create", "truncate", "grant", "revoke"];
-      const lower = query.toLowerCase();
-      for (const word of forbidden) {
-        if (lower.includes(` ${word} `) || lower.startsWith(`${word} `)) return { error: `Forbidden keyword: ${word}` };
-      }
-      // SECURITY: execute_readonly_sql is SECURITY DEFINER (bypasses RLS), so block
-      // access to secrets, auth, and cross-user PII surfaces via raw SQL.
-      const blockedObjects = ["password_reset", "api_keys", "email_settings", "auth.", "pg_catalog", "pg_shadow",
-        "information_schema", "vault", "secret", "credential", "service_role", "user_profiles", "pending_users"];
-      for (const b of blockedObjects) {
-        if (lower.includes(b)) return { error: `Querying '${b}' is not permitted.` };
-      }
-
-      const limited = query.match(/\blimit\b/i) ? query : `${query} LIMIT 200`;
-
-      const { data, error } = await sb.rpc("execute_readonly_sql", { sql_query: limited });
-      if (error) return { error: error.message, query: limited };
-      return { rows: data, row_count: Array.isArray(data) ? data.length : 0, query: limited };
-    }
+    // `run_sql_query` is gone. It handed an LLM-composed SQL string to
+    // execute_readonly_sql, guarded only by a keyword denylist that matched
+    // " insert "/" update "/" delete " with surrounding spaces -- so a function
+    // NAME containing one of those words passed straight through -- and by a
+    // read-only setting that did not actually apply to the running transaction.
+    // A write through it was reproduced end to end. The denylist also blocked
+    // information_schema but not pg_class, pg_proc, pg_user or pg_stat_activity,
+    // so schema and role enumeration were open.
+    //
+    // No comparable product exposes raw SQL to a model; they all expose curated
+    // tools, and the 22 tools here cover the same questions. If a genuinely new
+    // question needs SQL, it should become a tool with typed parameters.
 
     case "generate_report": {
       const filters = args.filters || {};
@@ -1017,8 +989,7 @@ async function executeTool(
           break;
         }
         case "payment_trend": {
-          const { data } = await sb.from("payment_month_summary").select("*")
-            .eq("organization_id", ctx.orgId).order("month_key", { ascending: false });
+          const { data } = await sb.rpc("get_payment_month_summary");
           columns = ["Month", "Total Collected", "Payments", "Prepayments", "Voided", "Refunds", "Count"];
           rows = (data || []).map((m: any) => [m.month_label, parseFloat(m.total_amount) || 0, parseFloat(m.payment_amount) || 0, parseFloat(m.prepayment_amount) || 0, parseFloat(m.voided_amount) || 0, parseFloat(m.refund_amount) || 0, parseInt(m.total_payments) || 0]);
           break;
@@ -1078,6 +1049,22 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
     const token = authHeader.replace("Bearer ", "");
+
+    // Every tool used to run on the service-role client, which bypasses RLS, so
+    // the assistant answered with BOTH tenants' rows: "total outstanding" came
+    // back $48,993,362.36 when the caller's own organization owes
+    // $23,360,297.24. Hand-written org filters on 23 tools would be a filter to
+    // forget; running the reads under the CALLER's identity makes RLS the
+    // boundary instead, which is also what every comparable product does.
+    //
+    // This works because all but two of the RPCs the tools call are SECURITY
+    // INVOKER, so RLS reaches through them; the two SECURITY DEFINER ones
+    // (search_customers_fuzzy, get_customer_payment_timeliness) were given
+    // explicit get_user_org_id() filters in migration 20261022120000.
+    const userSb = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
     const { data: { user } } = await anonClient.auth.getUser(token);
     if (!user) return errorResponse("Invalid session", 401);
 
@@ -1096,6 +1083,40 @@ Deno.serve(async (req: Request) => {
     }
 
     const toolCtx = { userId: user.id, orgId: (callerProfile as any)?.organization_id ?? null };
+
+    // One correlation id per chat request, so an auditor can reconstruct a whole
+    // exchange from the tool rows.
+    const correlationId = crypto.randomUUID();
+
+    // Arguments can carry a customer name or a free-text search. Keep the shape
+    // and the short scalars, drop anything long enough to be prose.
+    const redactArgs = (a: Record<string, any>) => {
+      const out: Record<string, any> = {};
+      for (const [k, v] of Object.entries(a ?? {})) {
+        if (typeof v === "string") out[k] = v.length > 120 ? `<${v.length} chars>` : v;
+        else if (v === null || ["number", "boolean"].includes(typeof v)) out[k] = v;
+        else out[k] = Array.isArray(v) ? `<array:${v.length}>` : "<object>";
+      }
+      return out;
+    };
+
+    // Audited on the service-role client on purpose: a caller must not be able
+    // to suppress or edit their own audit row. Logging never breaks a reply.
+    const auditToolCall = async (row: Record<string, any>) => {
+      if (!toolCtx.orgId) return;
+      try {
+        await supabase.from("ai_tool_calls").insert({
+          organization_id: toolCtx.orgId,
+          user_id: user.id,
+          user_email: user.email ?? null,
+          assistant: "ai-chat-assistant",
+          correlation_id: correlationId,
+          ...row,
+        });
+      } catch (e) {
+        console.error("ai_tool_calls insert failed:", e);
+      }
+    };
 
     const body = await req.json();
     const { message, conversation_history } = body;
@@ -1121,8 +1142,9 @@ RULES:
 - For deep customer analysis use find_customer to get the customer_id, then get_customer_detail, then get_customer_timeline.
 - For "how late/how soon does a customer pay", "days after the due date", or payment timeliness/promptness, use get_customer_payment_timeliness (after find_customer). The timeline does NOT contain this — do not use it for lateness.
 - For customer comparisons use get_customer_level_analytics.
-- For complex queries not covered by other tools, use run_sql_query. To compute payment lateness manually: join payment_invoice_applications to acumatica_invoices (due_date, type='Invoice') and acumatica_payments (application_date, type='Payment'), then average (application_date - due_date).
-- NEVER tell the user data is unavailable/not tracked until you have tried get_customer_payment_timeliness and/or run_sql_query. Most metrics are derivable from the raw tables.
+- Payment lateness has a dedicated tool: get_customer_payment_timeliness.
+- NEVER tell the user data is unavailable/not tracked until you have tried the relevant tool, get_customer_payment_timeliness among them. If no tool can answer it, say exactly that and say which figure you would need -- do not estimate, and do not state a number you did not get from a tool.
+- You see only the caller's own organization. Report what the tools return; never add to it.
 - When asked to export/download/generate a report, use generate_report.
 
 TICKETS — you can fully manage collection tickets:
@@ -1165,7 +1187,27 @@ TICKETS — you can fully manage collection tickets:
       const toolResults = await Promise.all(
         assistantMessage.tool_calls.map(async (tc: any) => {
           const args = JSON.parse(tc.function.arguments || "{}");
-          const result = await executeTool(supabase, tc.function.name, args, toolCtx);
+          const startedAt = Date.now();
+          let result: any;
+          try {
+            result = await executeTool(userSb, tc.function.name, args, toolCtx);
+          } catch (e: any) {
+            result = { error: e?.message || "Tool failed" };
+          }
+          const rows = Array.isArray(result?.rows) ? result.rows.length
+            : Array.isArray(result?.customers) ? result.customers.length
+            : Array.isArray(result?.invoices) ? result.invoices.length
+            : Array.isArray(result?.payments) ? result.payments.length
+            : Array.isArray(result?.tickets) ? result.tickets.length
+            : null;
+          await auditToolCall({
+            tool_name: tc.function.name,
+            arguments: redactArgs(args),
+            outcome: result?.error ? "error" : "ok",
+            error_message: result?.error ? String(result.error).slice(0, 500) : null,
+            row_count: rows,
+            duration_ms: Date.now() - startedAt,
+          });
           return { role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) };
         })
       );

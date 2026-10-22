@@ -174,20 +174,6 @@ const tools = [
       },
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "run_customer_query",
-      description: "Run a custom read-only SQL query scoped to this customer for advanced analysis. Only SELECT statements allowed.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "SQL SELECT query. Use '{customer_id}' as placeholder for the customer ID." },
-        },
-        required: ["query"],
-      },
-    },
-  },
 ];
 
 async function executeTool(sb: any, name: string, args: any, customerId: string, userId: string): Promise<any> {
@@ -450,30 +436,15 @@ async function executeTool(sb: any, name: string, args: any, customerId: string,
       return { success: true, reminder };
     }
 
-    case "run_customer_query": {
-      let query = (args.query || "").trim();
-      if (!query.toUpperCase().startsWith("SELECT")) return { error: "Only SELECT queries allowed." };
-      if (query.replace(/;\s*$/, "").includes(";")) return { error: "Only a single statement is allowed." };
-
-      const forbidden = ["insert", "update", "delete", "drop", "alter", "create", "truncate", "grant", "revoke"];
-      const lower = query.toLowerCase();
-      for (const word of forbidden) {
-        if (lower.includes(` ${word} `) || lower.startsWith(`${word} `)) return { error: `Forbidden: ${word}` };
-      }
-      // SECURITY: execute_readonly_sql bypasses RLS — block secrets/auth/PII surfaces.
-      const blockedObjects = ["password_reset", "api_keys", "email_settings", "auth.", "pg_catalog", "pg_shadow",
-        "information_schema", "vault", "secret", "credential", "service_role", "user_profiles", "pending_users"];
-      for (const b of blockedObjects) {
-        if (lower.includes(b)) return { error: `Querying '${b}' is not permitted.` };
-      }
-
-      query = query.replace(/\{customer_id\}/g, customerId);
-      if (!query.match(/\blimit\b/i)) query += " LIMIT 100";
-
-      const { data, error } = await sb.rpc("execute_readonly_sql", { sql_query: query });
-      if (error) return { error: error.message };
-      return { rows: data, row_count: Array.isArray(data) ? data.length : 0 };
-    }
+    // `run_customer_query` is gone, for the same reasons as run_sql_query in
+    // ai-chat-assistant: the keyword denylist only matched " insert "/" update "/
+    // " delete " with surrounding spaces, so a function NAME containing one of
+    // those words passed through, and execute_readonly_sql's read-only setting
+    // did not apply to the running transaction (fixed in 20261022120000, but the
+    // tool is still the wrong shape). This one additionally interpolated
+    // customerId straight into the SQL string.
+    //
+    // The eight remaining tools answer the same questions with typed parameters.
 
     default:
       return { error: `Unknown tool: ${name}` };
@@ -561,7 +532,7 @@ RULES:
 - For tickets, use get_customer_tickets.
 - To create a collection ticket, use create_ticket. Include invoice references if discussed.
 - To set a reminder, use create_reminder.
-- For complex analysis not covered by other tools, use run_customer_query.
+- If no tool can answer a question, say so and name the figure you would need. Never estimate a number, and never state one you did not get from a tool.
 - Format currency as $1,234.56. Be specific with numbers.
 - Keep responses concise but informative. Use bullet points for lists.
 - When creating tickets or reminders, confirm what was created.

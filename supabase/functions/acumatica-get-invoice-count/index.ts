@@ -132,8 +132,10 @@ Deno.serve(async (req: Request) => {
 
       dbTotalForRange = rangeCount || 0;
 
+      // Typed parameters, not an interpolated SQL string: both bounds come from
+      // request input and used to be concatenated straight into the query.
       const { data: typeCounts } = await supabase
-        .rpc('execute_readonly_sql', { sql_query: `SELECT type, COUNT(*)::int as cnt FROM acumatica_invoices WHERE date >= '${startDate}' AND date <= '${endDate}' GROUP BY type` });
+        .rpc('get_invoice_type_counts', { p_from: startDate, p_to: endDate });
 
       if (typeCounts) {
         for (const row of typeCounts) {
