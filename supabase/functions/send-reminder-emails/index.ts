@@ -19,12 +19,69 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // ── AuthZ ───────────────────────────────────────────────────────────────
+    // This had no auth check of any kind. An unauthenticated POST of
+    // {"recipient_emails":["attacker@example.com"]} would render every due
+    // reminder -- title, private notes, priority, customer name, invoice
+    // reference -- and mail the lot to that address, then mark them email_sent
+    // so the collectors they belonged to never got them. Repeating it also made
+    // the company's SendGrid account a free open relay.
+    //
+    // The cron wrapper send_reminder_emails_via_cron() calls this with the
+    // service-role key, which is the internal path below.
+    const authToken = req.headers.get('Authorization')?.replace('Bearer ', '');
+    if (!authToken) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    const isCron = authToken === supabaseKey;
+    let callerOrgId: string | null = null;
+
+    if (!isCron) {
+      const anonClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') ?? '');
+      const { data: { user: caller } } = await anonClient.auth.getUser(authToken);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const { data: callerProfile } = await supabase
+        .from('user_profiles').select('role, account_status, organization_id').eq('id', caller.id).maybeSingle();
+      if (!callerProfile
+          || (callerProfile as any).account_status !== 'approved'
+          || !['admin', 'manager'].includes((callerProfile as any).role)) {
+        return new Response(JSON.stringify({ error: 'Forbidden: admin or manager only' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      callerOrgId = (callerProfile as any).organization_id ?? null;
+      if (!callerOrgId) {
+        return new Response(JSON.stringify({ error: 'Caller has no organization' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
+
     let recipientEmails: string[] = [];
     try {
       const body = await req.json();
-      recipientEmails = body.recipient_emails || [];
+      // Only a signed-in admin/manager may redirect reminders, and only their
+      // own organization's reminders are in scope (below). The cron path never
+      // accepts an override.
+      recipientEmails = (!isCron && Array.isArray(body?.recipient_emails)) ? body.recipient_emails : [];
     } catch {
       // no body
+    }
+
+    // A manual, targeted nudge: scope to the caller's organization by resolving
+    // whose reminders may be touched at all.
+    let allowedUserIds: string[] | null = null;
+    if (!isCron) {
+      const { data: orgUsers } = await supabase
+        .from('user_profiles').select('id').eq('organization_id', callerOrgId);
+      allowedUserIds = (orgUsers || []).map((u: any) => u.id);
+      if (allowedUserIds.length === 0) {
+        return new Response(JSON.stringify({ success: true, message: 'No users in organization', total: 0, results: [] }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
     }
 
     const now = new Date();
@@ -57,7 +114,9 @@ Deno.serve(async (req: Request) => {
       .eq('send_email_notification', true)
       .eq('email_sent', false)
       .is('completed_at', null)
-      .lte('reminder_date', now.toISOString());
+      .lte('reminder_date', now.toISOString())
+      .order('reminder_date', { ascending: true })
+      .limit(500);
 
     if (fetchError) {
       throw fetchError;
@@ -70,29 +129,38 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    let emailTargets: string[] = recipientEmails;
+    // Only reminders this caller is allowed to touch. On the cron path that is
+    // all of them; for a manual send it is the caller's own organization, so a
+    // live-org reminder can never be mailed to a demo-org address.
+    const inScope = allowedUserIds
+      ? reminders.filter(r => allowedUserIds!.includes(r.user_id))
+      : reminders;
 
-    if (emailTargets.length === 0) {
-      const userIds = [...new Set(reminders.map(r => r.user_id))];
-      const { data: users } = await supabase
-        .from('user_profiles')
-        .select('id, email')
-        .in('id', userIds);
-
-      const userEmailMap = new Map(users?.map(u => [u.id, u.email]) || []);
-      emailTargets = [];
-
-      for (const reminder of reminders) {
-        const email = userEmailMap.get(reminder.user_id);
-        if (email && !emailTargets.includes(email)) {
-          emailTargets.push(email);
-        }
-      }
+    if (inScope.length === 0) {
+      return new Response(
+        JSON.stringify({ success: true, message: 'No reminders in scope', total: 0, results: [] }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    // Each reminder's own owner. The old code built one de-duplicated union of
+    // the owners of ALL due reminders and then sent EVERY reminder to EVERY
+    // address in it -- reminders.length x targets.length emails. Two collectors
+    // with a reminder due in the same 5-minute window each read the other's
+    // private note, customer name and invoice reference, and when a live
+    // reminder shared a window with any of the 2,800 demo ones, a real
+    // customer's details went to mike.chen@demo.com. Live data confirmed it:
+    // 2026-07-26 09:06 UTC sent 6 reminders belonging to 4 distinct users.
+    const ownerIds = [...new Set(inScope.map(r => r.user_id))];
+    const { data: owners } = await supabase
+      .from('user_profiles')
+      .select('id, email')
+      .in('id', ownerIds);
+    const ownerEmail = new Map((owners || []).map((u: any) => [u.id, u.email]));
 
     const emailResults: any[] = [];
 
-    for (const reminder of reminders) {
+    for (const reminder of inScope) {
       const invoiceRef = reminder.invoice_reference_number || (reminder as any).acumatica_invoices?.reference_number;
       const customerName = (reminder as any).acumatica_invoices?.customer_name || (reminder as any).collection_tickets?.customer_name;
       const ticketNumber = (reminder as any).collection_tickets?.ticket_number;
@@ -106,9 +174,20 @@ Deno.serve(async (req: Request) => {
       const emailSubject = `Reminder: ${reminder.title}`;
       const emailBody = buildEmailHtml(reminder, invoiceRef, customerName, ticketNumber, reminderUrl, invoiceUrl, ticketUrl);
 
+      // Cron: the owner, and only the owner. Manual: the addresses the
+      // admin named.
+      const targets = recipientEmails.length > 0
+        ? recipientEmails
+        : [ownerEmail.get(reminder.user_id)].filter(Boolean) as string[];
+
+      if (targets.length === 0) {
+        emailResults.push({ id: reminder.id, status: 'skipped', error: 'No email address for the reminder owner' });
+        continue;
+      }
+
       let allSentOk = true;
 
-      for (const targetEmail of emailTargets) {
+      for (const targetEmail of targets) {
         try {
           const sendEmailUrl = `${supabaseUrl}/functions/v1/send-email-reply`;
           const emailResponse = await fetch(sendEmailUrl, {
@@ -138,7 +217,14 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      if (allSentOk || emailResults.some(r => r.id === reminder.id && r.status === 'sent')) {
+      // Mark email_sent only when the OWNER was mailed. A manual nudge to
+      // other addresses must not suppress the owner's own notification -- that
+      // is how reminders used to vanish: they were marked sent after going to
+      // somebody else entirely.
+      const ownerWasMailed = recipientEmails.length === 0
+        && emailResults.some(r => r.id === reminder.id && r.status === 'sent');
+
+      if (ownerWasMailed) {
         await supabase
           .from('invoice_reminders')
           .update({
@@ -158,8 +244,8 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         message: 'Reminder emails processed',
-        total: reminders.length,
-        recipients: emailTargets.length,
+        total: inScope.length,
+        mode: recipientEmails.length > 0 ? 'manual' : 'cron',
         results: emailResults,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
