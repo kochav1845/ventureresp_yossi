@@ -14,6 +14,8 @@ interface SendEmailRequest {
   html?: string;
   inbound_email_id?: string;
   department?: string;
+  /** Send from the configured noreply sender instead of the AR sender. */
+  use_noreply?: boolean;
 }
 
 Deno.serve(async (req: Request) => {
@@ -49,7 +51,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { to, subject, body, html, inbound_email_id, department }: SendEmailRequest = await req.json();
+    const { to, subject, body, html, inbound_email_id, department, use_noreply }: SendEmailRequest = await req.json();
 
     if (!to || !subject || (!body && !html)) {
       return new Response(
@@ -68,6 +70,17 @@ Deno.serve(async (req: Request) => {
     let arFromName = emailSettings?.company_name || 'Venture Respiratory';
     let replyToEmail = emailSettings?.reply_to_email || arFromEmail;
     let replyToName = emailSettings?.reply_to_name || arFromName;
+
+    // Account mail (password resets) is not AR correspondence. email_settings
+    // already carries noreply_from_email / noreply_from_name for this; nothing
+    // could select it, so a password reset arrived from "Venture Respiratory -
+    // Accounts Receivable" with a reply-to of ar@stardevar.com.
+    if (use_noreply && emailSettings?.noreply_from_email) {
+      arFromEmail = emailSettings.noreply_from_email;
+      arFromName = emailSettings.noreply_from_name || arFromName;
+      replyToEmail = emailSettings.noreply_from_email;
+      replyToName = arFromName;
+    }
 
     if (department) {
       const { data: deptSender } = await supabase

@@ -73,7 +73,10 @@ Deno.serve(async (req: Request) => {
     const { error: insertError } = await supabase
       .from('password_reset_tokens')
       .insert({
-        user_email: email,
+        // The profile row, not the raw form input: store the address
+        // canonically so the reset step can match it. Rows exist with
+        // FINANCE@VENTURERESP.COM in them because this took `email` verbatim.
+        user_email: profile.email || String(email).trim().toLowerCase(),
         token: token,
         expires_at: expiresAt.toISOString(),
       });
@@ -169,6 +172,9 @@ Deno.serve(async (req: Request) => {
         to: email,
         subject: emailSubject,
         html: emailBody,
+        // Not AR correspondence: send it from noreply@, not from the
+        // "Accounts Receivable" sender.
+        use_noreply: true,
       }),
     });
 

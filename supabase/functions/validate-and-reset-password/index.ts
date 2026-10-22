@@ -91,11 +91,28 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // Get user by email
-      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-      
+      // Look the user up through user_profiles, the same way
+      // request-password-reset does, and case-insensitively.
+      //
+      // This used to be auth.admin.listUsers() plus
+      // `users.find(u => u.email === tokenData.user_email)`, which had two
+      // faults. (a) The comparison was exact, while the token row stores the
+      // address exactly as the person typed it into the form -- someone who
+      // typed FINANCE@VENTURERESP.COM got a token whose email never matched the
+      // lowercase address in auth.users, so submitting a new password returned
+      // "User not found" with no way to tell why. (b) listUsers() returns only
+      // the first 50 users by default and was called with no pagination, so
+      // past 50 accounts a reset would fail for everyone further down the list.
+      // request-password-reset already carries a comment about that exact trap;
+      // this half of the flow never got the same fix.
+      const { data: profile, error: authError } = await supabase
+        .from('user_profiles')
+        .select('id, email')
+        .ilike('email', tokenData.user_email)
+        .maybeSingle();
+
       if (authError) {
-        console.error('Error fetching users:', authError);
+        console.error('Error looking up user:', authError);
         return new Response(
           JSON.stringify({ error: 'Failed to reset password' }),
           {
@@ -105,8 +122,8 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      const user = authUsers.users.find(u => u.email === tokenData.user_email);
-      
+      const user = profile;
+
       if (!user) {
         console.error('User not found for email:', tokenData.user_email);
         return new Response(
