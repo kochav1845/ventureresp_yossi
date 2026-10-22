@@ -114,7 +114,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
     }
   };
 
-  const handleSearch = async () => {
+  const handleSearch = async (page = 0) => {
     const searchTermTrimmed = searchTerm.trim();
     const hasSearchTerm = searchTermTrimmed.length >= 3;
     const hasFilters = hasSearchTerm || statusFilter !== 'all' || customerFilter !== 'all' || typeFilter !== 'all' || hasApplicationsFilter;
@@ -141,13 +141,21 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
           .map(([id]) => id);
       }
 
-      let query = supabase
-        .from('acumatica_payments')
-        .select('id, reference_number, type, customer_id, status, application_date, doc_date, payment_amount, available_balance, currency_id, description, payment_method, payment_ref, cash_account, hold, is_cc_payment, last_modified_datetime, synced_at, created_at, last_sync_timestamp, source');
+      // The filter chain is built as a factory so it can be issued twice: once
+      // for the exact count, once for the requested page. It used to run unpaged,
+      // which PostgREST caps at 1,000 rows -- the footer then read "1000 total
+      // payments / Page 1 of 1" with 46,971 matching, the next-page control was
+      // dead, and nothing indicated anything had been dropped.
+      let paymentIdFilter: string[] | null = null;
 
-      if (hasSearchTerm) {
-        // Build OR condition that includes customer IDs matching customer names
-        const searchConditions = [
+      const buildQuery = (forCount: boolean) => {
+        let q: any = forCount
+          ? supabase.from('acumatica_payments').select('*', { count: 'exact', head: true })
+          : supabase.from('acumatica_payments').select('id, reference_number, type, customer_id, status, application_date, doc_date, payment_amount, available_balance, currency_id, description, payment_method, payment_ref, cash_account, hold, is_cc_payment, last_modified_datetime, synced_at, created_at, last_sync_timestamp, source');
+
+        if (hasSearchTerm) {
+          // Build OR condition that includes customer IDs matching customer names
+          const searchConditions = [
           `reference_number.ilike.%${searchTermTrimmed}%`,
           `customer_id.ilike.%${searchTermTrimmed}%`,
           `payment_method.ilike.%${searchTermTrimmed}%`,
@@ -161,23 +169,16 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
           searchConditions.push(...limitedIds.map(id => `customer_id.eq.${id}`));
         }
 
-        query = query.or(searchConditions.join(','));
-      }
+          q = q.or(searchConditions.join(','));
+        }
 
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
+        if (statusFilter !== 'all') q = q.eq('status', statusFilter);
+        if (customerFilter !== 'all') q = q.eq('customer_id', customerFilter);
+        if (typeFilter !== 'all') q = q.eq('type', typeFilter);
+        if (paymentIdFilter) q = q.in('id', paymentIdFilter);
 
-      if (customerFilter !== 'all') {
-        query = query.eq('customer_id', customerFilter);
-      }
-
-      if (typeFilter !== 'all') {
-        query = query.eq('type', typeFilter);
-      }
-
-      let data: any[];
-      let error: any;
+        return forCount ? q : q.order('application_date', { ascending: false });
+      };
 
       if (hasApplicationsFilter) {
         const { data: appData, error: appError } = await supabase.rpc('get_payment_ids_with_applications');
@@ -211,7 +212,7 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
             return;
           }
 
-          query = query.in('id', paymentIdsWithApps);
+          paymentIdFilter = paymentIdsWithApps;
         } else {
           const paymentIdsWithApps = appData || [];
 
@@ -222,15 +223,18 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
             return;
           }
 
-          query = query.in('id', paymentIdsWithApps);
+          paymentIdFilter = paymentIdsWithApps;
         }
       }
 
-      query = query.order('application_date', { ascending: false });
+      // Exact count and the page itself, from the same filter chain.
+      const [countResult, pageResult] = await Promise.all([
+        buildQuery(true),
+        buildQuery(false).range(page * pageSize, (page + 1) * pageSize - 1),
+      ]);
 
-      ({ data, error } = await query);
-
-      if (error) throw error;
+      if (pageResult.error) throw pageResult.error;
+      const data = pageResult.data;
 
       let paymentsWithCustomerNames = (data || []).map(payment => ({
         ...payment,
@@ -254,7 +258,8 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
       }
 
       setDisplayedPayments(paymentsWithCustomerNames);
-      setTotalCount(data?.length || 0);
+      setTotalCount(countResult.count || 0);
+      setCurrentPage(page);
 
       await Promise.all([
         loadPaymentApplications(paymentsWithCustomerNames),
@@ -267,18 +272,24 @@ export default function AcumaticaPayments({ onBack, onNavigate }: AcumaticaPayme
     }
   };
 
-  const goToNextPage = () => {
-    if ((currentPage + 1) * pageSize < totalCount) {
-      loadPayments(currentPage + 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  // Page through whichever view is active. These used to call loadPayments
+  // unconditionally, so paging while a filter was applied silently dropped the
+  // filter and showed unfiltered rows under a filtered heading.
+  const goToPage = (page: number) => {
+    if (isSearching) {
+      handleSearch(page);
+    } else {
+      loadPayments(page);
     }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const goToNextPage = () => {
+    if ((currentPage + 1) * pageSize < totalCount) goToPage(currentPage + 1);
   };
 
   const goToPreviousPage = () => {
-    if (currentPage > 0) {
-      loadPayments(currentPage - 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+    if (currentPage > 0) goToPage(currentPage - 1);
   };
 
   const fetchSinglePaymentApplications = async (payment: any) => {

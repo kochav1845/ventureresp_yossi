@@ -1104,16 +1104,13 @@ export default function UnifiedTicketingSystem({
         );
 
         if (confirmMerge) {
-          for (const refNumber of selectedInvoicesForTicket) {
-            await supabase.from('invoice_assignments').upsert({
-              invoice_reference_number: refNumber,
-              assigned_collector_id: selectedCollector,
-              ticket_id: existingTickets[0].id,
-              assigned_by: user!.id,
-              notes: ticketNotes || null
-            }, {
-              onConflict: 'invoice_reference_number'
-            });
+          const merge = await attachInvoicesToTicket(
+            existingTickets[0].id, selectedInvoicesForTicket, selectedCollector, ticketNotes || null,
+          );
+          if (merge.error) {
+            toast.error(merge.error);
+            setCreating(false);
+            return;
           }
 
           // Only stamp the filter if the ticket doesn't already carry one --
@@ -1182,26 +1179,25 @@ export default function UnifiedTicketingSystem({
         }
       }
 
-      for (const refNumber of selectedInvoicesForTicket) {
-        await supabase.from('invoice_assignments').upsert({
-          invoice_reference_number: refNumber,
-          assigned_collector_id: selectedCollector,
-          ticket_id: newTicket.id,
-          assigned_by: user!.id,
-          notes: ticketNotes || null
-        }, {
-          onConflict: 'invoice_reference_number'
-        });
-      }
+      // Report a short attach rather than claiming all of them landed. The
+      // ticket itself already exists at this point, so this is a warning, not
+      // a failure of the whole operation.
+      const attach = await attachInvoicesToTicket(
+        newTicket.id, selectedInvoicesForTicket, selectedCollector, ticketNotes || null,
+      );
+      if (attach.error) toast.warning(attach.error);
 
       await supabase.from('ticket_activity_log').insert({
         ticket_id: newTicket.id,
         created_by: user!.id,
         activity_type: 'created',
+        // attach.attached, not selectedInvoicesForTicket.length: the log used to
+        // claim every selected invoice had been attached even when RLS had
+        // refused them all.
         description:
           (activeSource
-            ? `Created ticket with ${selectedInvoicesForTicket.length} invoice(s) matching "${describeInvoiceFilters(createFilters, createTab)}"`
-            : `Created ticket with ${selectedInvoicesForTicket.length} invoice(s)`) +
+            ? `Created ticket with ${attach.attached} invoice(s) matching "${describeInvoiceFilters(createFilters, createTab)}"`
+            : `Created ticket with ${attach.attached} invoice(s)`) +
           (extraCollectors.length > 0 ? `, shared with ${extraCollectors.length + 1} collectors` : '')
       });
 
@@ -1824,24 +1820,69 @@ export default function UnifiedTicketingSystem({
     });
   };
 
-  const handleAddInvoicesToTicket = async (ticketId: string, invoiceRefs: string[], collectorId: string) => {
-    if (!user?.id) return;
-    try {
-      for (const refNumber of invoiceRefs) {
-        await supabase.from('invoice_assignments').upsert({
+  /**
+   * Attach invoices to a ticket in ONE upsert, and report failure.
+   *
+   * Each of the three call sites used to loop a per-row upsert and discard the
+   * result. invoice_assignments' UPDATE policy does not know about ticket
+   * sharing, so moving an invoice off another collector's ticket is
+   * RLS-blocked -- and because the error was dropped, the user still got
+   * "Ticket created successfully!" and an activity-log line claiming N invoices
+   * were attached, while the ticket showed none of them. A single upsert also
+   * means a partial failure cannot masquerade as success.
+   */
+  const attachInvoicesToTicket = async (
+    ticketId: string,
+    invoiceRefs: string[],
+    collectorId: string,
+    notes: string | null,
+  ): Promise<{ attached: number; error: string | null }> => {
+    if (invoiceRefs.length === 0) return { attached: 0, error: null };
+
+    const { data, error } = await supabase
+      .from('invoice_assignments')
+      .upsert(
+        invoiceRefs.map(refNumber => ({
           invoice_reference_number: refNumber,
           assigned_collector_id: collectorId,
           ticket_id: ticketId,
-          assigned_by: user.id,
-        }, { onConflict: 'invoice_reference_number' });
+          assigned_by: user!.id,
+          notes,
+        })),
+        { onConflict: 'invoice_reference_number' },
+      )
+      .select('invoice_reference_number');
+
+    if (error) return { attached: 0, error: error.message };
+
+    // A silent short write means RLS refused some rows.
+    const attached = data?.length ?? 0;
+    if (attached < invoiceRefs.length) {
+      return {
+        attached,
+        error: `Only ${attached} of ${invoiceRefs.length} invoice(s) could be attached. `
+          + `The rest belong to another collector's ticket and you do not have permission to move them.`,
+      };
+    }
+    return { attached, error: null };
+  };
+
+  const handleAddInvoicesToTicket = async (ticketId: string, invoiceRefs: string[], collectorId: string) => {
+    if (!user?.id) return;
+    try {
+      const result = await attachInvoicesToTicket(ticketId, invoiceRefs, collectorId, null);
+      if (result.error) {
+        toast.error(result.error);
+        if (result.attached === 0) return;
       }
 
+      // Log what actually landed, not what was asked for.
       await supabase.from('ticket_activity_log').insert({
         ticket_id: ticketId,
         created_by: user.id,
         activity_type: 'invoice_added',
-        description: `Added ${invoiceRefs.length} invoice(s) to ticket`,
-        metadata: { invoice_refs: invoiceRefs }
+        description: `Added ${result.attached} invoice(s) to ticket`,
+        metadata: { invoice_refs: invoiceRefs, attached: result.attached }
       });
 
       await loadTickets();
