@@ -12,6 +12,16 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
+  // The app only ever POSTs here (AcumaticaPaymentFetch.tsx) with a JSON body. A
+  // body-less GET — an outside prober or health check — used to reach req.json()
+  // below, throw "Invalid JSON in request body" and surface as a 500. Reject cleanly.
+  if (req.method !== "POST") {
+    return new Response(
+      JSON.stringify({ error: "Method not allowed" }),
+      { status: 405, headers: { ...corsHeaders, Allow: "POST, OPTIONS", "Content-Type": "application/json" } }
+    );
+  }
+
   const startTime = Date.now();
 
   try {

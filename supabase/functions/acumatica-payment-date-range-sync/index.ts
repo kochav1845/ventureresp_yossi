@@ -716,6 +716,17 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
+  // The app only ever POSTs here (Last15DaysPaymentFetch.tsx, usePaymentComparison.ts),
+  // carrying the JSON body this handler needs. A body-less GET — an outside prober or
+  // health check hitting the URL — used to fall through to req.json() below and crash
+  // with "Unexpected end of JSON input", surfacing as a 500. Reject it cleanly instead.
+  if (req.method !== "POST") {
+    return new Response(
+      JSON.stringify({ error: "Method not allowed" }),
+      { status: 405, headers: { ...corsHeaders, Allow: "POST, OPTIONS", "Content-Type": "application/json" } }
+    );
+  }
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
