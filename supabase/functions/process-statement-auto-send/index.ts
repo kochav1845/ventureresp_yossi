@@ -192,8 +192,17 @@ Deno.serve(async (req: Request) => {
     if (rules.length === 0) return json({ ok: true, sent: 0, note: "no active rules" });
 
     // Manual per-customer email overrides take precedence over synced emails.
-    const { data: ovRows } = await supabase.from("statement_email_overrides").select("customer_id, email");
-    const emailOverrides = new Map<string, string>((ovRows || []).map((o: any) => [o.customer_id, o.email]));
+    // Service role bypasses RLS, so scope this by hand, and key the map by
+     // organization as well: a customer code is only unique within one, and
+     // overriding on code alone would have let one tenant's override redirect
+     // the other tenant's statement.
+    const { data: ovRows } = await supabase
+      .from("statement_email_overrides")
+      .select("customer_id, email, organization_id")
+      .in("organization_id", [...enabledOrgs]);
+    const emailOverrides = new Map<string, string>(
+      (ovRows || []).map((o: any) => [`${o.organization_id}:${o.customer_id}`, o.email]),
+    );
 
     // Default Excel statement layout (from the Statements settings drawer).
     let excelLayout: any = null;
@@ -268,7 +277,8 @@ Deno.serve(async (req: Request) => {
             const { data: cust } = await supabase.from("acumatica_customers")
               .select("customer_id, customer_name, email_address, billing_email, general_email, terms")
               .eq("customer_id", cid).eq("organization_id", orgId).maybeSingle();
-            const email = emailOverrides.get(cid) || cust?.email_address || cust?.billing_email || cust?.general_email || "";
+            const email = emailOverrides.get(`${orgId}:${cid}`)
+              || cust?.email_address || cust?.billing_email || cust?.general_email || "";
             if (!email) { await finalize("failed", null, "no email on file"); failed++; continue; }
 
             const { data: invRows } = await supabase.from("acumatica_invoices")

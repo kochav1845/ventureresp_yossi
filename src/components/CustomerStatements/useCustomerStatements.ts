@@ -293,7 +293,10 @@ export function useCustomerStatements() {
   const saveEmailOverride = useCallback(async (customerId: string, email: string) => {
     const { error } = await supabase
       .from('statement_email_overrides')
-      .upsert({ customer_id: customerId, email }, { onConflict: 'customer_id' });
+      // organization_id is filled by the column default (get_user_org_id()), and
+      // the unique key is (organization_id, customer_id) -- a customer code is
+      // only unique within an organization, so the conflict target names both.
+      .upsert({ customer_id: customerId, email }, { onConflict: 'organization_id,customer_id' });
     if (error) throw error;
     setEmailOverrides(prev => ({ ...prev, [customerId]: email }));
   }, []);
