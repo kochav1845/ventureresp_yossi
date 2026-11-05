@@ -39,6 +39,18 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // This sends mail from the company's domain to a customer, so the account
+    // has to be approved -- a self-signup now lands in 'pending', and a pending
+    // account holds a perfectly valid JWT.
+    const { data: senderProfile } = await supabase
+      .from("user_profiles").select("account_status").eq("id", user.id).maybeSingle();
+    if (!senderProfile || (senderProfile as any).account_status !== "approved") {
+      return new Response(JSON.stringify({ error: "Your account is not approved" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const body = await req.json();
     const {
       ticket_id,
@@ -220,45 +232,74 @@ Deno.serve(async (req: Request) => {
       console.error("Failed to log email thread:", threadError);
     }
 
-    // Log activity on the ticket
-    await supabase.from("collection_ticket_activity").insert({
+    // ── After the email has gone ────────────────────────────────────────────
+    // Everything below happens AFTER SendGrid has accepted the message, so none
+    // of it may fail the request. It used to: `reminderNote` was never declared
+    // (the body destructures `reminder_note`), so picking the "Reminder" or
+    // "Both" after-send option threw a ReferenceError, the outer catch returned
+    // 500, and the collector -- shown a red error with their draft still on
+    // screen -- reasonably concluded nothing had been sent and clicked Send
+    // again. The customer got the identical email twice, and no reminder was
+    // created either way.
+    const warnings: string[] = [];
+
+    // The table is ticket_activity_log; collection_ticket_activity does not
+    // exist, and the error was discarded, so the "Email sent to X" entry was
+    // silently dropped from every ticket's history.
+    const { error: activityError } = await supabase.from("ticket_activity_log").insert({
       ticket_id,
       activity_type: "email_sent",
       description: `Email sent to ${to_email}: "${subject}"`,
       created_by: user.id,
     });
+    if (activityError) {
+      console.error("Failed to log ticket activity:", activityError);
+      warnings.push("the email was sent but could not be added to the ticket history");
+    }
 
-    // Handle after-send actions
-    if (after_send_action === "reminder" || after_send_action === "both") {
-      if (reminder_date) {
-        await supabase.from("invoice_reminders").insert({
-          user_id: user.id,
-          title: reminderNote || `Follow up: ${subject}`,
-          reminder_date: reminder_date,
-          reminder_type: "custom",
-          is_active: true,
-        });
+    if ((after_send_action === "reminder" || after_send_action === "both") && reminder_date) {
+      // reminder_note, not reminderNote. invoice_reminders has no is_active
+      // column (it has status / is_triggered), and ticket_id links the reminder
+      // to the ticket it came from.
+      const { error: reminderError } = await supabase.from("invoice_reminders").insert({
+        user_id: user.id,
+        title: reminder_note || `Follow up: ${subject}`,
+        reminder_date,
+        reminder_type: "custom",
+        ticket_id,
+        notes: reminder_note || null,
+      });
+      if (reminderError) {
+        console.error("Failed to create the follow-up reminder:", reminderError);
+        warnings.push("the email was sent but the follow-up reminder could not be created");
       }
     }
 
     if (after_send_action === "ticket" || after_send_action === "both") {
       if (ticket_creation_mode === "auto" && threadEntry?.id) {
         // Record the pending action for AI to decide later
-        await supabase.from("ticket_email_actions").insert({
+        const { error: actionError } = await supabase.from("ticket_email_actions").insert({
           email_thread_id: threadEntry.id,
           ticket_id,
           action_type: "create_ticket",
           action_status: "pending",
           action_data: { mode: "auto", customer_id, subject },
         });
+        if (actionError) {
+          console.error("Failed to queue the follow-up ticket action:", actionError);
+          warnings.push("the email was sent but the follow-up ticket action could not be queued");
+        }
       }
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: "Email sent successfully",
+        message: warnings.length
+          ? `Email sent. ${warnings.join('; ')}.`
+          : "Email sent successfully",
         thread_id: threadEntry?.id || null,
+        warnings: warnings.length ? warnings : undefined,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
