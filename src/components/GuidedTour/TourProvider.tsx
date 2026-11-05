@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import { useOrgNavigation } from '../../hooks/useOrgNavigation';
 import { Tour, TourStep, getTourById } from './tours';
 
 interface TourContextValue {
@@ -28,7 +29,10 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const [activeTour, setActiveTour] = useState<Tour | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const navigate = useNavigate();
+  // Tour routes are written org-relative ('/customers'), so they need the slug
+  // adding -- and the "am I already there?" test has to compare against the
+  // org-prefixed path or it navigates on every step.
+  const { navigate, getOrgPath } = useOrgNavigation();
   const location = useLocation();
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -48,13 +52,13 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   }, [voiceEnabled]);
 
   const navigateToStep = useCallback(async (step: TourStep) => {
-    if (step.route && location.pathname !== step.route) {
+    if (step.route && location.pathname !== getOrgPath(step.route)) {
       navigate(step.route);
       await new Promise(r => setTimeout(r, step.delay || 600));
     } else if (step.delay) {
       await new Promise(r => setTimeout(r, step.delay));
     }
-  }, [navigate, location.pathname]);
+  }, [navigate, getOrgPath, location.pathname]);
 
   const startTour = useCallback((tourId: string) => {
     const tour = getTourById(tourId);

@@ -40,7 +40,14 @@ class ErrorBoundary extends Component<Props, State> {
       error: null,
       errorInfo: null,
     });
-    window.location.href = '/';
+    // '/' redirects to /demo (App.tsx), so "Go to Home" used to drop a
+    // VentureResp user into the demo organization -- where their own data is
+    // visible, so they would keep working until an insert failed with a raw
+    // "violates row-level security policy". Keep the slug they were on.
+    const slug = window.location.pathname.split('/')[1];
+    window.location.href = slug && !['developer', 'connection-test'].includes(slug)
+      ? `/${slug}`
+      : '/';
   };
 
   public render() {

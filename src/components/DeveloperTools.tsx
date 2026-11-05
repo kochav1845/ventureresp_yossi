@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useOrgNavigation } from '../hooks/useOrgNavigation';
 import { ArrowLeft, Code, FileSearch, Database, Activity, AlertCircle, CheckCircle, FileText, RefreshCw, RotateCcw, Calendar, HeartPulse, Download, Mail, Trash2, CreditCard, Monitor, XCircle, Clock, Key, Webhook, Sliders, Timer, BarChart3 } from 'lucide-react';
 
 interface Tool {
@@ -12,7 +12,10 @@ interface Tool {
 }
 
 export function DeveloperTools() {
-  const navigate = useNavigate();
+  // Every tool path below is org-scoped ('/payment-breakdown' and so on). With a
+  // bare useNavigate the slug was dropped, the route matched nothing and all 39
+  // cards landed on the public landing page.
+  const { navigate } = useOrgNavigation();
 
   const tools: Tool[] = [
     {

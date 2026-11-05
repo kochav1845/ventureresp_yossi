@@ -1,9 +1,10 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { PageCacheProvider } from './contexts/PageCacheContext';
 import { OrgProvider, useOrg } from './contexts/OrgContext';
+import { supabase } from './lib/supabase';
 // Kept eager: everything on the critical path to first paint (sign-in, shell).
 import SignIn from './components/SignIn';
 import ResetPassword from './components/ResetPassword';
@@ -284,8 +285,9 @@ function OrgAppContent() {
 
 function OrgGate() {
   const { org, loading, error } = useOrg();
+  const { profile, loading: authLoading } = useAuth();
 
-  if (loading) {
+  if (loading || authLoading) {
     return <LoadingScreen />;
   }
 
@@ -315,6 +317,16 @@ function OrgGate() {
     return <LandingPage />;
   }
 
+  // A signed-in user looking at an organization that is not theirs: send them to
+  // their own. Crash recovery used to land everyone on /demo, where their own
+  // data still showed (Layout never prints the org name) so they would carry on
+  // working in the wrong slug until a write failed with a raw RLS error -- and
+  // they could bookmark it and stay there. Super admins switch orgs on purpose.
+  if (profile && profile.organization_id && !profile.is_super_admin
+      && profile.organization_id !== org.id) {
+    return <WrongOrgRedirect ownOrgId={profile.organization_id} />;
+  }
+
   return (
     <PageCacheProvider>
       <TourProvider>
@@ -323,6 +335,34 @@ function OrgGate() {
       </TourProvider>
     </PageCacheProvider>
   );
+}
+
+/**
+ * Resolve the user's own organization slug and send them there. Rendered only
+ * when the URL names an organization the user does not belong to.
+ */
+function WrongOrgRedirect({ ownOrgId }: { ownOrgId: string }) {
+  const [slug, setSlug] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    supabase
+      .from('organizations')
+      .select('slug')
+      .eq('id', ownOrgId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!live) return;
+        if (data?.slug) setSlug(data.slug);
+        else setFailed(true);
+      });
+    return () => { live = false; };
+  }, [ownOrgId]);
+
+  if (failed) return <LandingPage />;
+  if (!slug) return <LoadingScreen />;
+  return <Navigate to={`/${slug}`} replace />;
 }
 
 function OrgWrapper() {

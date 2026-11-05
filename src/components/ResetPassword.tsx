@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
+import { useOrgNavigation } from '../hooks/useOrgNavigation';
 import { Lock, AlertCircle, CheckCircle } from 'lucide-react';
 import { useOrg } from '../contexts/OrgContext';
 
@@ -13,7 +14,9 @@ export default function ResetPassword() {
   const [tokenValid, setTokenValid] = useState(false);
   const [checkingToken, setCheckingToken] = useState(true);
   const [success, setSuccess] = useState(false);
-  const navigate = useNavigate();
+  // '/signin' only exists under /:orgSlug, so without the slug this went
+  // nowhere at all -- there is no top-level fallback route.
+  const { navigate } = useOrgNavigation();
   const { org } = useOrg();
   // Org-aware brand mark (falls back to the org name if it has no logo).
   const brandLogo = org?.logo_url
