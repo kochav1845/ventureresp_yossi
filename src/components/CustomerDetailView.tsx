@@ -267,36 +267,26 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         return;
       }
 
-      const { data: outstandingInvoices, error: invError } = await supabase
-        .from('acumatica_invoices')
-        .select('balance, type, status')
-        .eq('customer', customerId)
-        .in('status', ['Open', 'Balanced'])
-        .gt('balance', 0);
+      // Aggregated in the database. This used to pull every outstanding invoice
+      // row and add them up here, with no .range() and no .order(): PostgREST
+      // caps a response at 1,000 rows, so for a customer with 3,688 open
+      // invoices the card showed $21,399.12 against a real $1,601,444.66 --
+      // while the invoice-count block on the same screen, which already used an
+      // RPC, correctly said 3,688. And with nothing ordering the rows, which
+      // 1,000 came back was unspecified, so the figure could change between two
+      // refreshes with no data change at all.
+      const { data: breakdownRows, error: invError } = await supabase
+        .rpc('get_customer_balance_breakdown', { p_customer_id: customerId });
 
-      let calculatedBalance = 0;
-      let grossBalance = 0;
-      let creditMemoBalance = 0;
-      let openInvoiceCount = 0;
-      let balancedInvoiceCount = 0;
-      let balancedInvoiceBalance = 0;
+      const b = (breakdownRows as any[] | null)?.[0];
+      if (invError) console.error('Error loading the balance breakdown:', invError);
 
-      if (!invError && outstandingInvoices) {
-        outstandingInvoices.forEach((inv: any) => {
-          if (inv.type === 'Credit Memo') {
-            creditMemoBalance += inv.balance;
-          } else {
-            grossBalance += inv.balance;
-            if (inv.status === 'Balanced') {
-              balancedInvoiceCount++;
-              balancedInvoiceBalance += inv.balance;
-            } else {
-              openInvoiceCount++;
-            }
-          }
-        });
-        calculatedBalance = excludeCreditMemos ? grossBalance : grossBalance - creditMemoBalance;
-      }
+      const grossBalance = Number(b?.gross_balance) || 0;
+      const creditMemoBalance = Number(b?.credit_memo_balance) || 0;
+      const openInvoiceCount = Number(b?.open_invoice_count) || 0;
+      const balancedInvoiceCount = Number(b?.balanced_invoice_count) || 0;
+      const balancedInvoiceBalance = Number(b?.balanced_invoice_balance) || 0;
+      const calculatedBalance = excludeCreditMemos ? grossBalance : grossBalance - creditMemoBalance;
 
       const customerData: CustomerData = {
         id: custRow.id,
@@ -320,10 +310,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         open_invoice_count: openInvoiceCount,
         balanced_invoice_count: balancedInvoiceCount,
         balanced_invoice_balance: balancedInvoiceBalance,
-        red_count: null,
-        yellow_count: null,
-        green_count: null,
-        max_days_overdue: null,
+        red_count: b ? Number(b.red_count) || 0 : null,
+        yellow_count: b ? Number(b.yellow_count) || 0 : null,
+        green_count: b ? Number(b.green_count) || 0 : null,
+        max_days_overdue: b ? Number(b.max_days_overdue) || 0 : null,
         customer_type: custRow.customer_type,
         contact_status: custRow.contact_status,
         last_contact_date: custRow.last_contact_date,
@@ -349,22 +339,16 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         });
       }
 
-      const { data: colorCounts, error: colorCountsError } = await supabase
-        .from('acumatica_invoices')
-        .select('color_status')
-        .eq('customer', customerId)
-        .neq('status', 'On Hold')
-        .gt('balance', 0);
-
-      if (!colorCountsError && colorCounts) {
-        const counts = colorCounts.reduce((acc, inv) => {
-          if (inv.color_status === 'red') acc.red++;
-          else if (inv.color_status === 'yellow') acc.yellow++;
-          else if (inv.color_status === 'green') acc.green++;
-          acc.total++;
-          return acc;
-        }, { red: 0, yellow: 0, green: 0, total: 0 });
-        setInvoiceColorCounts(counts);
+      // Same story as the balance above: this counted colours over at most
+      // 1,000 of the rows, so for a large account the tallies never added up to
+      // the real invoice count. They come from the one breakdown call made
+      // earlier, counted in the database over the same `status <> 'On Hold'`
+      // set this used.
+      if (b) {
+        const red = Number(b.red_count) || 0;
+        const yellow = Number(b.yellow_count) || 0;
+        const green = Number(b.green_count) || 0;
+        setInvoiceColorCounts({ red, yellow, green, total: red + yellow + green });
       }
 
       const { data: avgDays, error: avgDaysError } = await supabase
