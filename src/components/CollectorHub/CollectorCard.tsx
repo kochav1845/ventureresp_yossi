@@ -91,7 +91,7 @@ export default function CollectorCard({ collector, isExpanded, onToggleExpand, o
           <div className="bg-gradient-to-br from-amber-50 to-yellow-50 p-4 rounded-xl border border-amber-200">
             <div className="flex items-center gap-2 mb-1.5">
               <TrendingUp className="w-5 h-5 text-amber-600" />
-              <span className="text-xs font-semibold text-amber-800">Avg / Invoice</span>
+              <span className="text-xs font-semibold text-amber-800">Average Collected per Invoice</span>
             </div>
             <p className="text-2xl font-bold text-amber-700">
               ${collector.invoices_paid > 0
