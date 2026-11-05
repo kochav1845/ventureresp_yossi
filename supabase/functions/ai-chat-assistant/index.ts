@@ -349,6 +349,24 @@ const tools = [
   {
     type: "function",
     function: {
+      name: "request_app_change",
+      description:
+        "File a request to CHANGE THE APP ITSELF -- a screen, a wording, a calculation, a new button, a bug in the software. Use this when the user is asking for the product to be different, not for data. A developer session on the owner's PC does the work and the OWNER must approve it by text message before anything goes live, so nothing you file here changes the app by itself. Admins only. Do NOT use it for creating tickets, notes or reminders (those have their own tools), and do not use it to answer questions about data.",
+      parameters: {
+        type: "object",
+        properties: {
+          change: {
+            type: "string",
+            description: "What to change, in the user's own words, with any detail they gave: which screen, what it does now, what it should do instead.",
+          },
+        },
+        required: ["change"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "generate_report",
       description:
         "Generate a downloadable report (Excel/PDF). Use when user asks to export, download, generate a spreadsheet/PDF/report. Returns structured data the frontend converts to files. Report types: customer_balances, invoices, payments, aging_report, payment_trend, collector_performance, overdue_customers, customer_analytics.",
@@ -974,6 +992,38 @@ async function executeTool(
     // tools, and the 22 tools here cover the same questions. If a genuinely new
     // question needs SQL, it should become a tool with typed parameters.
 
+    case "request_app_change": {
+      // devbot_new is SECURITY DEFINER and enforces is_admin() plus the
+      // caller's organization, and `sb` carries the caller's identity, so a
+      // non-admin asking the bot for a change is refused by the database
+      // rather than by the model's judgement.
+      const { data: requestId, error } = await sb.rpc("devbot_new", {
+        p_body: String(args.change || "").slice(0, 8000),
+      });
+
+      if (error) {
+        return { error: /admin/i.test(error.message)
+          ? "Only an admin can ask for a change to the app."
+          : `Could not file the change: ${error.message}` };
+      }
+
+      // Is the PC that does the work actually listening? Say so now rather
+      // than leaving the request looking stuck.
+      const { data: worker } = await sb
+        .from("devbot_worker").select("last_seen").eq("id", 1).maybeSingle();
+      const seenAt = (worker as any)?.last_seen ? new Date((worker as any).last_seen).getTime() : 0;
+      const online = seenAt > 0 && Date.now() - seenAt < 90_000;
+
+      return {
+        __change_request: { request_id: requestId, online },
+        message: `Filed as change #${requestId}. The owner has to approve it by text before it goes live.`,
+        worker_online: online,
+        note: online
+          ? "The developer session is running and will pick it up within a few seconds."
+          : "The owner's PC is not checked in right now, so it will be picked up when it next comes online.",
+      };
+    }
+
     case "generate_report": {
       const filters = args.filters || {};
       const limit = Math.min(filters.limit || 500, 2000);
@@ -1223,6 +1273,18 @@ RULES:
 - You see only the caller's own organization. Report what the tools return; never add to it.
 - When asked to export/download/generate a report, use generate_report.
 
+CHANGES TO THE APP:
+- If the user wants the SOFTWARE different -- a screen, a wording, a total that is calculated the
+  wrong way, a button that should exist, a bug -- that is request_app_change, not a ticket. Pass
+  their own words plus any detail they gave. Admins only; if it is refused, say that only an admin
+  can ask for a change.
+- File it straight away when the request is clear enough for a developer to start -- if they named
+  the screen or the wording, that is enough, do not ask them to repeat it. Ask a question ONLY when
+  you genuinely could not say what to change. Do not design the change yourself and do not promise
+  when it will be done.
+- Say clearly that the OWNER has to approve it by text before anything goes live, and give the
+  change number. Never say a change has been made or deployed -- you only filed the request.
+
 TICKETS — you can fully manage collection tickets:
 - To find tickets use search_tickets (by status/priority/customer/collector).
 - To discuss ONE ticket (its story, notes, what happened) use get_ticket_detail — it returns the notes, activity log and status history. Summarise those rather than guessing.
@@ -1310,12 +1372,14 @@ TICKETS — you can fully manage collection tickets:
 
     let reportData = null;
     let pending = null;
+    let changeRequest = null;
     for (const msg of messages) {
       if (msg.role === "tool" && msg.content) {
         try {
           const parsed = JSON.parse(msg.content);
           if (parsed.__report && !reportData) reportData = parsed;
           if (parsed.__pending_action && !pending) pending = parsed.__pending_action;
+          if (parsed.__change_request && !changeRequest) changeRequest = parsed.__change_request;
         } catch {}
       }
     }
@@ -1327,6 +1391,9 @@ TICKETS — you can fully manage collection tickets:
       // The client renders this as an approve/discard card and sends it back as
       // confirm_action. Until then nothing has been written.
       pending_action: pending,
+      // A filed app-change request: the client follows its progress and lets
+      // the admin answer the developer session's questions.
+      change_request: changeRequest,
     });
   } catch (error: any) {
     console.error("AI Chat error:", error);

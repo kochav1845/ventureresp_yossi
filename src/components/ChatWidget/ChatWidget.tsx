@@ -18,6 +18,7 @@ import {
   Check,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import ChangeRequestPanel from './ChangeRequestPanel';
 import { customerChatSignal } from '../../lib/customerChatSignal';
 
 interface ReportData {
@@ -40,6 +41,12 @@ interface PendingAction {
   detail?: Record<string, any> | null;
 }
 
+/** A filed request to change the app itself, followed live in the chat. */
+interface ChangeRequestRef {
+  request_id: number;
+  online: boolean;
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -50,6 +57,7 @@ interface ChatMessage {
   pendingAction?: PendingAction;
   actionState?: 'pending' | 'approving' | 'done' | 'discarded';
   actionResult?: string;
+  changeRequest?: ChangeRequestRef;
 }
 
 const SUGGESTED_QUESTIONS = [
@@ -251,6 +259,7 @@ export default function ChatWidget() {
                 report: data.report || undefined,
                 pendingAction: data.pending_action || undefined,
                 actionState: data.pending_action ? 'pending' : undefined,
+                changeRequest: data.change_request || undefined,
               }
             : m
         )
@@ -581,6 +590,12 @@ export default function ChatWidget() {
                         </div>
                       )}
                     </div>
+                  )}
+                  {msg.changeRequest && (
+                    <ChangeRequestPanel
+                      requestId={msg.changeRequest.request_id}
+                      workerOnline={msg.changeRequest.online}
+                    />
                   )}
                   {msg.report && (
                     <div className="mt-3 pt-3 border-t border-gray-100">
